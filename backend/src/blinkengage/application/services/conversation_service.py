@@ -44,6 +44,7 @@ from blinkengage.infrastructure.repositories.channel_config_repository import (
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.message_attachment_repository import (
     MessageAttachmentRepository,
 )
@@ -70,6 +71,7 @@ class ConversationService:
         messages: MessageRepository,
         attachments: MessageAttachmentRepository,
         channel_configs: ChannelConfigRepository,
+        customers: CustomerRepository,
         attachment_store: AttachmentStore,
         provider_factory: ChannelProviderFactory,
         events: DomainEventPublisher,
@@ -79,6 +81,7 @@ class ConversationService:
         self._messages = messages
         self._attachments = attachments
         self._channel_configs = channel_configs
+        self._customers = customers
         self._attachment_store = attachment_store
         self._provider_factory = provider_factory
         self._events = events
@@ -244,10 +247,36 @@ class ConversationService:
                 )
             )
 
+        # A generic escape hatch (domain.channels.OutboundMessage.metadata)
+        # rather than a channel-specific branch here — EmailProvider needs
+        # the recipient address, other channels ignore this key.
+        metadata: dict[str, str] = {}
+        customer = await self._customers.get_by_id(
+            company_id=company_id, customer_id=conversation.customer_id
+        )
+        if customer is not None and customer.email is not None:
+            metadata["customer_email"] = customer.email
+
+        # Reference the most recent message in the thread (whichever
+        # direction) so channels with native threading (email's
+        # In-Reply-To/References) chain correctly in the customer's client.
+        previous_messages, _ = await self._messages.list_for_conversation(
+            conversation_id=conversation.id, offset=0, limit=1
+        )
+        reply_to_external_message_id = (
+            previous_messages[0].external_message_id if previous_messages else None
+        )
+
         provider = self._provider_factory.build(config)
         thread_id = conversation.external_thread_id or str(conversation.id)
         result = await provider.send_message(
-            OutboundMessage(external_thread_id=thread_id, body=body, attachments=attachment_refs)
+            OutboundMessage(
+                external_thread_id=thread_id,
+                body=body,
+                attachments=attachment_refs,
+                metadata=metadata,
+                reply_to_external_message_id=reply_to_external_message_id,
+            )
         )
 
         message = await self._messages.add(

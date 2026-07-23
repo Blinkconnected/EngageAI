@@ -41,6 +41,7 @@ from blinkengage.infrastructure.repositories.agent_skill_repository import Agent
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
@@ -56,19 +57,28 @@ _REOPEN_ON_NEW_MESSAGE = frozenset({ConversationStatus.RESOLVED, ConversationSta
 
 
 async def _resolve_customer_id(
-    *, channel_type: str, external_customer_id: str, company_id: UUID, session: AsyncSession
+    *,
+    channel_type: str,
+    external_customer_id: str,
+    external_customer_name: str | None,
+    company_id: UUID,
+    session: AsyncSession,
 ) -> UUID | None:
     """Per-channel customer identity resolution.
 
-    Only ``web_chat`` exists today, and its ``external_customer_id`` *is*
-    our own ``Customer.id`` — the visitor session already resolved
-    identity before the first message arrived (see ``web-chat.md``). Every
-    future provider-pushed channel needs real matching/merge logic against
-    existing customers by phone number, platform user id, etc. — that's
-    the "multi-channel identity resolution" M8 explicitly deferred until a
-    channel existed to need it, and it's still deferred: this function
-    gets a new branch per channel type as each is actually built, not a
-    speculative generic resolver now.
+    ``web_chat``'s ``external_customer_id`` *is* our own ``Customer.id`` —
+    the visitor session already resolved identity before the first
+    message arrived (see ``web-chat.md``). ``email`` gets real matching:
+    unlike a phone number or platform user id, an email address is
+    already a first-class, unambiguous ``Customer.email`` field, so this
+    gets-or-creates by address using M8's existing
+    ``CustomerRepository.get_by_email`` — the first channel where
+    "multi-channel identity resolution" (deferred since M8) is actually
+    implemented, because there was nothing extra to build. Every future
+    provider-pushed channel with a *not*-already-unambiguous identifier
+    (WhatsApp phone numbers, Messenger PSIDs) still needs its own matching
+    strategy — that's still deferred, one new branch per channel as each
+    is actually built, not a speculative generic resolver now.
     """
     if channel_type == "web_chat":
         try:
@@ -79,6 +89,27 @@ async def _resolve_customer_id(
             select(Customer.id).where(Customer.id == customer_id, Customer.company_id == company_id)
         )
         return result.scalar_one_or_none()
+
+    if channel_type == "email":
+        normalized_email = external_customer_id.strip().lower()
+        if not normalized_email:
+            return None
+        customers = CustomerRepository(session)
+        existing = await customers.get_by_email(company_id=company_id, email=normalized_email)
+        if existing is not None:
+            return existing.id
+        created = await customers.add(
+            Customer(
+                company_id=company_id,
+                full_name=external_customer_name or normalized_email,
+                email=normalized_email,
+                phone=None,
+                notes=None,
+                custom_fields={"source": "email"},
+            )
+        )
+        return created.id
+
     return None
 
 
@@ -97,6 +128,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
     customer_id = await _resolve_customer_id(
         channel_type=channel_type,
         external_customer_id=data["external_customer_id"],
+        external_customer_name=data.get("external_customer_name"),
         company_id=company_id,
         session=session,
     )

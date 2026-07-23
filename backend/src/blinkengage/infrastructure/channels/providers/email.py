@@ -1,0 +1,165 @@
+"""``EmailProvider`` — SMTP outbound, generic MIME inbound (webhook or
+IMAP poll). See ``docs/architecture/email-channel.md``.
+"""
+
+import hashlib
+import hmac
+from email import policy
+from email.message import EmailMessage
+from email.parser import BytesParser
+from email.utils import parseaddr
+from uuid import uuid4
+
+import aiosmtplib
+
+from blinkengage.domain.channel_provider import ChannelProvider
+from blinkengage.domain.channels import (
+    AttachmentRef,
+    HealthStatus,
+    InboundMessage,
+    OutboundAttachment,
+    OutboundMessage,
+    SendResult,
+    WebhookAck,
+    WebhookRequest,
+)
+from blinkengage.infrastructure.channels.registry import ChannelRegistry
+
+
+@ChannelRegistry.register("email")
+class EmailProvider(ChannelProvider):
+    async def send_message(self, message: OutboundMessage) -> SendResult:
+        to_address = message.metadata.get("customer_email")
+        if not to_address:
+            raise ValueError(
+                "EmailProvider.send_message requires metadata['customer_email'] — "
+                "ConversationService.send_reply populates this from the conversation's "
+                "customer record."
+            )
+
+        email_message = EmailMessage()
+        email_message["From"] = self._credentials.get(
+            "from_address", self._credentials.get("smtp_username", "")
+        )
+        email_message["To"] = to_address
+        email_message["Subject"] = self._credentials.get("default_subject", "Re: your message")
+        if message.reply_to_external_message_id:
+            email_message["In-Reply-To"] = message.reply_to_external_message_id
+            email_message["References"] = message.reply_to_external_message_id
+        message_id = f"<{uuid4()}@{self._credentials.get('smtp_host', 'blinkengage.local')}>"
+        email_message["Message-ID"] = message_id
+        email_message.set_content(message.body or "")
+
+        for attachment in message.attachments:
+            data = await self._attachments.download(key=attachment.external_id)
+            content_type = attachment.content_type or "application/octet-stream"
+            maintype, _, subtype = content_type.partition("/")
+            email_message.add_attachment(
+                data, maintype=maintype or "application", subtype=subtype or "octet-stream"
+            )
+
+        await aiosmtplib.send(
+            email_message,
+            hostname=self._credentials["smtp_host"],
+            port=int(self._credentials.get("smtp_port", 587)),
+            username=self._credentials.get("smtp_username"),
+            password=self._credentials.get("smtp_password"),
+            use_tls=bool(self._credentials.get("smtp_use_tls", True)),
+        )
+        return SendResult(external_message_id=message_id)
+
+    async def receive_message(self, raw_payload: bytes) -> list[InboundMessage]:
+        msg = BytesParser(EmailMessage, policy=policy.default).parsebytes(raw_payload)
+        sender_name, sender_address = parseaddr(str(msg.get("From", "")))
+        message_id = str(msg.get("Message-ID") or f"<{uuid4()}@generated>").strip()
+
+        references = msg.get_all("References", [])
+        in_reply_to = msg.get("In-Reply-To")
+        if references:
+            thread_id = str(references[0]).split()[0].strip()
+        elif in_reply_to:
+            thread_id = str(in_reply_to).strip()
+        else:
+            thread_id = message_id
+
+        body: str | None = None
+        attachments: list[AttachmentRef] = []
+        for part in msg.walk():
+            if part.get_content_disposition() == "attachment":
+                filename = part.get_filename() or "attachment"
+                content_type = part.get_content_type()
+                data = part.get_content()
+                if isinstance(data, str):
+                    data = data.encode()
+                key = f"email-inbound/{uuid4()}/{filename}"
+                await self._attachments.upload(key=key, data=data, content_type=content_type)
+                attachments.append(
+                    AttachmentRef(external_id=key, content_type=content_type, size_bytes=len(data))
+                )
+            elif part.get_content_type() == "text/plain" and body is None:
+                content = part.get_content()
+                body = content.strip() if isinstance(content, str) else None
+
+        return [
+            InboundMessage(
+                external_message_id=message_id,
+                external_thread_id=thread_id,
+                external_customer_id=sender_address,
+                body=body,
+                attachments=attachments,
+                reply_to_external_message_id=str(in_reply_to).strip() if in_reply_to else None,
+                raw_metadata={"subject": str(msg.get("Subject", ""))},
+                external_customer_name=sender_name or None,
+            )
+        ]
+
+    async def edit_message(self, external_message_id: str, new_body: str) -> SendResult:
+        # No provider-side edit concept for email.
+        return SendResult(external_message_id=external_message_id)
+
+    async def delete_message(self, external_message_id: str) -> None:
+        return None
+
+    async def mark_as_read(self, external_message_id: str) -> None:
+        # No universally reliable read-receipt mechanism to act on.
+        return None
+
+    async def typing_indicator(self, external_thread_id: str, *, is_typing: bool) -> None:
+        # Email has no live-typing signal.
+        return None
+
+    async def upload_attachment(self, attachment: OutboundAttachment) -> AttachmentRef:
+        key = f"email-outbound/{uuid4()}/{attachment.filename}"
+        await self._attachments.upload(
+            key=key, data=attachment.data, content_type=attachment.content_type
+        )
+        return AttachmentRef(
+            external_id=key, content_type=attachment.content_type, size_bytes=len(attachment.data)
+        )
+
+    async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:
+        return await self._attachments.download(key=attachment_ref.external_id)
+
+    async def webhook(self, request: WebhookRequest) -> tuple[list[InboundMessage], WebhookAck]:
+        messages = await self.receive_message(request.body)
+        return messages, WebhookAck(status_code=200)
+
+    def verify_signature(self, request: WebhookRequest) -> bool:
+        if not self._webhook_secret:
+            return False
+        signature = request.headers.get("x-signature", "")
+        expected = hmac.new(self._webhook_secret.encode(), request.body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+
+    async def health_check(self) -> HealthStatus:
+        try:
+            async with aiosmtplib.SMTP(
+                hostname=self._credentials.get("smtp_host", ""),
+                port=int(self._credentials.get("smtp_port", 587)),
+                use_tls=bool(self._credentials.get("smtp_use_tls", True)),
+                timeout=5,
+            ) as client:
+                await client.noop()
+        except Exception as exc:  # pragma: no cover - exercised manually against a real SMTP host
+            return HealthStatus(healthy=False, detail=str(exc))
+        return HealthStatus(healthy=True)

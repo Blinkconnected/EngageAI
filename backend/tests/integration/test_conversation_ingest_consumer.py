@@ -4,6 +4,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from blinkengage.infrastructure.database.models.conversation import Conversation
+from blinkengage.infrastructure.database.models.customer import Customer
 from blinkengage.infrastructure.database.models.message import Message
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
@@ -158,6 +159,119 @@ async def test_ingest_skips_events_with_no_company(app) -> None:
 
         msg_result = await db_session.execute(select(Message))
         assert msg_result.scalars().all() == []
+
+
+async def _create_email_channel_config(client: AsyncClient, owner_headers: dict) -> str:
+    response = await client.post(
+        "/api/v1/channel-configs",
+        json={
+            "channel_type": "email",
+            "display_name": "Support Inbox",
+            "credentials": {"smtp_host": "smtp.example.com"},
+        },
+        headers=owner_headers,
+    )
+    assert response.status_code == 201, response.text
+    return str(response.json()["id"])
+
+
+async def test_ingest_creates_a_new_customer_for_first_contact_by_email(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    channel_config_id = await _create_email_channel_config(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": channel_config_id,
+                    "channel_type": "email",
+                    "external_thread_id": "<msg-1@customer.example>",
+                    "external_customer_id": "alice@customer.example",
+                    "external_customer_name": "Alice",
+                    "external_message_id": "<msg-1@customer.example>",
+                    "body": "I need help with my order",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        customers = (await db_session.execute(select(Customer))).scalars().all()
+        conversations = (await db_session.execute(select(Conversation))).scalars().all()
+
+    assert len(customers) == 1
+    assert customers[0].email == "alice@customer.example"
+    assert customers[0].full_name == "Alice"
+    assert customers[0].custom_fields == {"source": "email"}
+    assert len(conversations) == 1
+    assert conversations[0].customer_id == customers[0].id
+
+
+async def test_ingest_reuses_existing_customer_matched_by_email(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    channel_config_id = await _create_email_channel_config(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        for i in range(2):
+            await handle_message_received(
+                _event(
+                    company_id=company_id,
+                    payload={
+                        "channel_config_id": channel_config_id,
+                        "channel_type": "email",
+                        "external_thread_id": "<msg-1@customer.example>",
+                        "external_customer_id": "ALICE@customer.example"
+                        if i == 0
+                        else "alice@customer.example",
+                        "external_customer_name": "Alice",
+                        "external_message_id": f"<msg-{i}@customer.example>",
+                        "body": f"message {i}",
+                    },
+                ),
+                db_session,
+            )
+        await db_session.commit()
+
+        customers = (await db_session.execute(select(Customer))).scalars().all()
+
+    assert len(customers) == 1
+    assert customers[0].email == "alice@customer.example"
+
+
+async def test_ingest_skips_email_with_no_sender_address(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    channel_config_id = await _create_email_channel_config(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": channel_config_id,
+                    "channel_type": "email",
+                    "external_thread_id": "<msg-1@customer.example>",
+                    "external_customer_id": "  ",
+                    "external_message_id": "<msg-1@customer.example>",
+                    "body": "hi",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        messages = (await db_session.execute(select(Message))).scalars().all()
+
+    assert messages == []
 
 
 async def test_ingest_skips_unresolvable_customer_for_unknown_channel(app) -> None:

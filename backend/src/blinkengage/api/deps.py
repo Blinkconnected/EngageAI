@@ -319,6 +319,7 @@ def get_conversation_service(
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
         channel_configs=ChannelConfigRepository(session),
+        customers=CustomerRepository(session),
         attachment_store=attachment_store,
         provider_factory=provider_factory,
         events=events,

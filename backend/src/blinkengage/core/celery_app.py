@@ -22,6 +22,7 @@ celery_app = Celery(
         "blinkengage.core.tasks",
         "blinkengage.infrastructure.events.relay",
         "blinkengage.infrastructure.tasks.sla_sweep_task",
+        "blinkengage.infrastructure.tasks.email_imap_poll_task",
     ],
 )
 
@@ -46,6 +47,12 @@ celery_app.conf.update(
         # periodic sweep rather than a per-conversation timer.
         "check-sla-breaches": {
             "task": "blinkengage.queues.check_sla_breaches",
+            "schedule": 60.0,
+        },
+        # See docs/architecture/email-channel.md — polls every active
+        # email ChannelConfig's IMAP mailbox for UNSEEN messages.
+        "poll-email-imap": {
+            "task": "blinkengage.channels.poll_email_imap",
             "schedule": 60.0,
         },
     },

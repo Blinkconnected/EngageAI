@@ -29,6 +29,7 @@ async def publish_inbound_message_events(
                     "external_message_id": message.external_message_id,
                     "external_thread_id": message.external_thread_id,
                     "external_customer_id": message.external_customer_id,
+                    "external_customer_name": message.external_customer_name,
                     "body": message.body,
                     "reply_to_external_message_id": message.reply_to_external_message_id,
                 },

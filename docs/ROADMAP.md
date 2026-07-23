@@ -196,7 +196,29 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Phase 3 — Omnichannel Expansion
 
-- [ ] **M15. Email channel** (SMTP/IMAP + provider webhook variants)
+- [x] **M15. Email channel** (SMTP/IMAP + provider webhook variants)
+  First channel built after the plugin architecture had a second, harder
+  data point to prove itself against: provider-agnostic infrastructure
+  (SMTP/IMAP are protocols, not one vendor) with genuine inbound identity
+  to resolve. Outbound via `aiosmtplib` (async-native, no thread-pool
+  wrapping). Inbound has two entry points sharing one MIME parser
+  (stdlib `email`, not a bespoke per-ESP format): the existing generic
+  webhook route (M11, zero new route), and a new Celery-beat IMAP poll
+  task (`infrastructure/tasks/email_imap_poll_task.py`, every 60s) that
+  fetches `UNSEEN` messages and marks them `\Seen` — IMAP's own flag *is*
+  the idempotency tracker, no separate cursor table. Thread resolution
+  via `References`/`In-Reply-To` heuristics. Email is the first channel
+  where multi-channel identity resolution (deferred since M8) is actually
+  implemented: the conversation-ingest consumer gets-or-creates a
+  `Customer` by address via M8's existing `CustomerRepository.get_by_email`
+  — real matching, not deferred, because an email address is already an
+  unambiguous `Customer` field (WhatsApp/Messenger identity resolution
+  remains deferred to M16/M17). `edit_message`/`delete_message`/
+  `mark_as_read`/`typing_indicator` are documented no-ops — email has no
+  provider-side equivalent. Zero schema changes (`channel_type` stays a
+  plain string; M13's `messages`/`message_attachments` already had every
+  column needed). 27 new tests (198 total); `ruff check`/`mypy` clean.
+  See `docs/architecture/email-channel.md`.
 - [ ] **M16. WhatsApp Business + Telegram channels**
 - [ ] **M17. Facebook Messenger + Instagram channels**
 - [ ] **M18. SMS channel** (provider-agnostic gateway abstraction)

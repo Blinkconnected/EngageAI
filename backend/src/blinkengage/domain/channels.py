@@ -52,6 +52,10 @@ class InboundMessage:
     reply_to_external_message_id: str | None = None
     sent_at: datetime | None = None
     raw_metadata: dict[str, Any] = field(default_factory=dict)
+    #: A human-readable sender name, when the channel has one (e.g. an
+    #: email's "From" display name) — used only to seed a new Customer's
+    #: full_name on first contact; never authoritative identity.
+    external_customer_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
