@@ -177,9 +177,22 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   is persisted and observed arriving back over the visitor's realtime
   session channel. 23 new tests (146 total); `ruff check`/`mypy` clean.
   See `docs/architecture/conversations.md`.
-- [ ] **M14. Queues, Assignment Engine, Routing Engine**
-  Queue model, skill/load-based assignment strategies, routing rules engine,
-  SLA timers, escalation.
+- [x] **M14. Queues, Assignment Engine, Routing Engine**
+  Closes out Phase 2. Queue model (per-queue assignment strategy + SLA
+  targets), a company-scoped agent skill catalog, and a narrow
+  `RoutingRule` evaluator (priority-ordered `channel_type`/`body_contains`
+  matching — deliberately *not* the general Workflow Engine, that's M19).
+  Round-robin and least-load assignment strategies, narrowed first by
+  per-queue required skills. Both routing and assignment run synchronously
+  inside the M13 conversation-ingest consumer, only for a brand-new
+  conversation — zero changes needed to the webhook route or WebSocket
+  gateway. SLA breach detection is a single periodic Celery-beat sweep
+  (not a per-conversation timer) publishing `conversation.sla_breached`
+  exactly once per breach type; the escalation *action* itself
+  (reassign, notify) is explicitly left to Workflow Engine (M19)/
+  Notifications (M21) to consume, not faked here. 25 new tests (171
+  total); `ruff check`/`mypy` clean. See
+  `docs/architecture/queues-routing.md`.
 
 ## Phase 3 — Omnichannel Expansion
 

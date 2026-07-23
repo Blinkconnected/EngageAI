@@ -45,6 +45,8 @@ container start via `docker/backend/entrypoint.sh` →
 | `48fc9680074e` | `channel_configs` |
 | `5463a5076e76` | seeds `channels.read`/`channels.manage` into `permissions` (a fixed, explicit snapshot — not imported from `domain.rbac.PERMISSIONS` like the original seed, so this migration stays a stable diff regardless of later catalog changes) |
 | `855f7e80bccb` | `conversations`, `messages`, `message_attachments` |
+| `9fe815db63b7` | `queues`, `agent_skills`, `agent_skill_assignments`, `queue_required_skills`, `routing_rules`; adds `queue_id`/`first_response_at`/`sla_first_response_breached_at`/`sla_resolution_breached_at` to `conversations` |
+| `7c6ca45d6fac` | seeds `queues.read`/`queues.manage` into `permissions` (same fixed-snapshot pattern as `5463a5076e76`) |
 
 ## Tables
 
@@ -266,6 +268,10 @@ numbers).
 | status | varchar(20) | `open` / `pending` / `resolved` / `closed` (`ConversationStatus`) |
 | assigned_agent_id | UUID, nullable | FK → `agents.id`, `SET NULL` on delete, indexed |
 | last_message_at | timestamptz, nullable | |
+| queue_id | UUID, nullable | FK → `queues.id`, `SET NULL` on delete, indexed — added M14 |
+| first_response_at | timestamptz, nullable | set on the first outbound message — added M14 |
+| sla_first_response_breached_at | timestamptz, nullable | idempotency marker for the SLA sweep — added M14 |
+| sla_resolution_breached_at | timestamptz, nullable | idempotency marker for the SLA sweep — added M14 |
 | created_at / updated_at / deleted_at | timestamptz | |
 
 ### `messages`
@@ -306,3 +312,49 @@ company-scoped recent-activity queries respectively.
 | size_bytes | bigint | |
 | validation_status | varchar(20) | `pending` / `approved` / `rejected` (`AttachmentValidationStatus`) — only `approved` is written today; `pending` is reserved for a future virus-scan hook, see `conversations.md` decision #4 |
 | created_at | timestamptz | no `updated_at`/`deleted_at` — an attachment row never changes after upload |
+
+### `queues`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| name | varchar(255) | unique per company among active rows |
+| description | varchar(1000), nullable | |
+| department_id | UUID, nullable | FK → `departments.id`, `SET NULL` — an organizational label only, not an eligibility filter, see `queues-routing.md` decision #2 |
+| assignment_strategy | varchar(20) | `round_robin` / `least_load` (`QueueAssignmentStrategy`) |
+| first_response_target_minutes | integer, nullable | null = no first-response SLA on this queue |
+| resolution_target_minutes | integer, nullable | null = no resolution SLA on this queue |
+| is_active | boolean | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `agent_skills` (catalog, company-scoped) / `agent_skill_assignments` (join)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id, company_id, name | UUID, UUID, varchar(100) | unique per company — created on first use, mirroring `tags` (M8) |
+
+`agent_skill_assignments`: `agent_id` (FK → `agents.id`, cascade) +
+`skill_id` (FK → `agent_skills.id`, cascade), composite PK.
+
+### `queue_required_skills` (join)
+
+| Column | Type |
+|--------|------|
+| queue_id | UUID, FK → `queues.id`, cascade delete |
+| skill_id | UUID, FK → `agent_skills.id`, cascade delete |
+
+Composite PK `(queue_id, skill_id)`. Zero rows for a queue means "no
+restriction" — every active agent is eligible.
+
+### `routing_rules`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| priority | integer | lower evaluates first |
+| conditions | JSON | `{"channel_type": "..."}` and/or `{"body_contains": "..."}` — deliberately not a general rules DSL, see `queues-routing.md` |
+| target_queue_id | UUID | FK → `queues.id`, cascade delete |
+| is_active | boolean | |
+| created_at / updated_at | timestamptz | |

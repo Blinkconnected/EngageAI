@@ -111,6 +111,7 @@ class ConversationService:
         conversation_id: UUID,
         status: ConversationStatus | None,
         assigned_agent_id: UUID | None,
+        queue_id: UUID | None = None,
         actor_user_id: UUID | None = None,
     ) -> Conversation:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
@@ -123,6 +124,8 @@ class ConversationService:
             conversation.status = status
         if assigned_agent_id is not None:
             conversation.assigned_agent_id = assigned_agent_id
+        if queue_id is not None:
+            conversation.queue_id = queue_id
 
         await self._events.publish(
             DomainEvent(
@@ -265,7 +268,10 @@ class ConversationService:
         for attachment in linked_attachments:
             attachment.message_id = message.id
 
-        conversation.last_message_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        conversation.last_message_at = now
+        if conversation.first_response_at is None:
+            conversation.first_response_at = now
 
         await self._events.publish(
             DomainEvent(

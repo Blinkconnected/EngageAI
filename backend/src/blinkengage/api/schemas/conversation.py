@@ -21,8 +21,12 @@ class ConversationResponse(BaseModel):
     channel_config_id: UUID
     external_thread_id: str | None
     status: ConversationStatus
+    queue_id: UUID | None
     assigned_agent_id: UUID | None
     last_message_at: datetime | None
+    first_response_at: datetime | None
+    sla_first_response_breached_at: datetime | None
+    sla_resolution_breached_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +36,7 @@ class ConversationResponse(BaseModel):
 class ConversationUpdateRequest(BaseModel):
     status: ConversationStatus | None = None
     assigned_agent_id: UUID | None = None
+    queue_id: UUID | None = None
 
 
 class MessageResponse(BaseModel):

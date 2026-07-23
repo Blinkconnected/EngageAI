@@ -62,3 +62,17 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         GUID(), ForeignKey("agents.id", ondelete="SET NULL"), default=None, index=True
     )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+    # --- M14: queues, assignment, SLA (see docs/architecture/queues-routing.md) ---
+    queue_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("queues.id", ondelete="SET NULL"), default=None, index=True
+    )
+    first_response_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    sla_first_response_breached_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    sla_resolution_breached_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )

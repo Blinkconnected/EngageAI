@@ -3,10 +3,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
-from blinkengage.api.deps import get_agent_service, require_permission
+from blinkengage.api.deps import get_agent_service, get_agent_skill_service, require_permission
 from blinkengage.api.schemas.agent import AgentCreateRequest, AgentResponse, AgentUpdateRequest
 from blinkengage.api.schemas.pagination import Page, PageParams
+from blinkengage.api.schemas.queue import AgentSkillResponse, RequiredSkillRequest
 from blinkengage.application.services.agent_service import AgentService
+from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.agent import Agent
 
@@ -97,3 +99,37 @@ async def delete_agent(
     service: Annotated[AgentService, Depends(get_agent_service)],
 ) -> None:
     await service.delete(company_id=auth.company_id, agent_id=agent_id, actor_user_id=auth.user_id)
+
+
+@router.get("/{agent_id}/skills", response_model=list[AgentSkillResponse])
+async def list_agent_skills(
+    agent_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("agents.read"))],
+    service: Annotated[AgentSkillService, Depends(get_agent_skill_service)],
+) -> list[AgentSkillResponse]:
+    skills = await service.list_agent_skills(company_id=auth.company_id, agent_id=agent_id)
+    return [AgentSkillResponse.model_validate(skill) for skill in skills]
+
+
+@router.post("/{agent_id}/skills", status_code=status.HTTP_204_NO_CONTENT)
+async def assign_agent_skill(
+    agent_id: UUID,
+    payload: RequiredSkillRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("agents.manage"))],
+    service: Annotated[AgentSkillService, Depends(get_agent_skill_service)],
+) -> None:
+    await service.assign_skill(
+        company_id=auth.company_id, agent_id=agent_id, skill_name=payload.skill_name
+    )
+
+
+@router.delete("/{agent_id}/skills/{skill_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def unassign_agent_skill(
+    agent_id: UUID,
+    skill_name: str,
+    auth: Annotated[AuthContext, Depends(require_permission("agents.manage"))],
+    service: Annotated[AgentSkillService, Depends(get_agent_skill_service)],
+) -> None:
+    await service.unassign_skill(
+        company_id=auth.company_id, agent_id=agent_id, skill_name=skill_name
+    )

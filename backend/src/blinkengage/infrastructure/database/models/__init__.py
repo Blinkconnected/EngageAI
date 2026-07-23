@@ -26,6 +26,14 @@ from blinkengage.infrastructure.database.models.message import (
     MessageType,
     ReadStatus,
 )
+from blinkengage.infrastructure.database.models.queue import (
+    AgentSkill,
+    AgentSkillAssignment,
+    Queue,
+    QueueAssignmentStrategy,
+    QueueRequiredSkill,
+    RoutingRule,
+)
 from blinkengage.infrastructure.database.models.rbac import (
     Permission,
     Role,
@@ -37,6 +45,8 @@ from blinkengage.infrastructure.database.models.user import User
 
 __all__ = [
     "Agent",
+    "AgentSkill",
+    "AgentSkillAssignment",
     "AgentStatus",
     "AttachmentValidationStatus",
     "AuditLog",
@@ -55,9 +65,13 @@ __all__ = [
     "MessageStatus",
     "MessageType",
     "Permission",
+    "Queue",
+    "QueueAssignmentStrategy",
+    "QueueRequiredSkill",
     "ReadStatus",
     "Role",
     "RolePermission",
+    "RoutingRule",
     "Tag",
     "Team",
     "TeamMembership",

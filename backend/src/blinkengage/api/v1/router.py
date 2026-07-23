@@ -12,6 +12,8 @@ from blinkengage.api.v1.endpoints import (
     customers,
     departments,
     health,
+    queues,
+    routing_rules,
     teams,
     web_chat,
     webhooks,
@@ -29,3 +31,5 @@ api_router.include_router(channel_configs.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(web_chat.router)
 api_router.include_router(conversations.router)
+api_router.include_router(queues.router)
+api_router.include_router(routing_rules.router)

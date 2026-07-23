@@ -16,12 +16,15 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.agent_service import AgentService
+from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.queue_service import QueueService
+from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
@@ -37,6 +40,7 @@ from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
@@ -54,7 +58,11 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
+from blinkengage.infrastructure.repositories.routing_rule_repository import (
+    RoutingRuleRepository,
+)
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
@@ -316,6 +324,32 @@ def get_conversation_service(
         events=events,
         settings=settings,
     )
+
+
+def get_queue_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> QueueService:
+    return QueueService(
+        queues=QueueRepository(session),
+        agent_skills=AgentSkillRepository(session),
+        events=events,
+    )
+
+
+def get_agent_skill_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AgentSkillService:
+    return AgentSkillService(
+        agents=AgentRepository(session), agent_skills=AgentSkillRepository(session)
+    )
+
+
+def get_routing_rule_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> RoutingRuleService:
+    return RoutingRuleService(routing_rules=RoutingRuleRepository(session), events=events)
 
 
 def get_webhook_ingest_service(

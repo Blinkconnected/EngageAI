@@ -18,7 +18,11 @@ celery_app = Celery(
     "blinkengage",
     broker=settings.rabbitmq_url,
     backend=settings.celery_result_backend,
-    include=["blinkengage.core.tasks", "blinkengage.infrastructure.events.relay"],
+    include=[
+        "blinkengage.core.tasks",
+        "blinkengage.infrastructure.events.relay",
+        "blinkengage.infrastructure.tasks.sla_sweep_task",
+    ],
 )
 
 celery_app.conf.update(
@@ -37,6 +41,12 @@ celery_app.conf.update(
         "relay-event-outbox": {
             "task": "blinkengage.events.relay_outbox",
             "schedule": 5.0,
+        },
+        # See docs/architecture/queues-routing.md decision #4 — a single
+        # periodic sweep rather than a per-conversation timer.
+        "check-sla-breaches": {
+            "task": "blinkengage.queues.check_sla_breaches",
+            "schedule": 60.0,
         },
     },
 )

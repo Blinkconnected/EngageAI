@@ -17,9 +17,14 @@ from aio_pika.abc import AbstractIncomingMessage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.application.services.assignment_engine import AssignmentEngine
+from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.infrastructure.database.models.conversation import Conversation, ConversationStatus
+from blinkengage.infrastructure.database.models.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from blinkengage.infrastructure.database.models.customer import Customer
 from blinkengage.infrastructure.database.models.message import (
     Message,
@@ -32,10 +37,15 @@ from blinkengage.infrastructure.database.session import (
     session_scope,
 )
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
+from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
+from blinkengage.infrastructure.repositories.routing_rule_repository import (
+    RoutingRuleRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -102,6 +112,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
     conversation = await conversations.get_by_thread(
         channel_config_id=channel_config_id, external_thread_id=external_thread_id
     )
+    is_new_conversation = conversation is None
     if conversation is None:
         conversation = await conversations.add(
             Conversation(
@@ -146,6 +157,48 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
     conversation.last_message_at = datetime.now(UTC)
     if conversation.status in _REOPEN_ON_NEW_MESSAGE:
         conversation.status = ConversationStatus.OPEN
+
+    if is_new_conversation:
+        await _route_and_assign(
+            conversation,
+            company_id=company_id,
+            channel_type=channel_type,
+            body=data.get("body"),
+            session=session,
+        )
+
+
+async def _route_and_assign(
+    conversation: Conversation,
+    *,
+    company_id: UUID,
+    channel_type: str,
+    body: str | None,
+    session: AsyncSession,
+) -> None:
+    """Only called for a just-created conversation — see
+    ``docs/architecture/queues-routing.md`` decision #1. A conversation
+    already routed/assigned is never re-routed by a later message."""
+    routing_rules = RoutingRuleRepository(session)
+    queues = QueueRepository(session)
+    agent_skills = AgentSkillRepository(session)
+
+    routing_engine = RoutingEngine(routing_rules=routing_rules)
+    queue_id = await routing_engine.select_queue(
+        company_id=company_id, channel_type=channel_type, body=body
+    )
+    if queue_id is None:
+        return
+    conversation.queue_id = queue_id
+
+    queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
+    if queue is None or not queue.is_active:
+        return
+
+    assignment_engine = AssignmentEngine(queues=queues, agent_skills=agent_skills)
+    agent_id = await assignment_engine.select_agent(queue=queue, session=session)
+    if agent_id is not None:
+        conversation.assigned_agent_id = agent_id
 
 
 async def main() -> None:
