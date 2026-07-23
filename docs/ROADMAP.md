@@ -582,9 +582,42 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   against near-empty data can't be verified the way every other
   migration in this codebase has been. See
   `docs/architecture/performance.md`.
-- [ ] **M29. Documentation & production readiness review**
-  Full `docs/api`, `docs/database`, `docs/security`, `docs/deployment`
-  content, runbooks, disaster recovery plan, go-live checklist.
+- [x] **M29. Documentation & production readiness review**
+  `docs/api/README.md` — a curated usage guide (auth flow, pagination,
+  error shape, rate limits, public-endpoint trust models, a full
+  resource index) rather than a hand-duplicated copy of every schema,
+  which would drift the moment an endpoint changed; the live
+  auto-generated OpenAPI docs (`/docs`, `/redoc`,
+  `/api/v1/openapi.json`) remain the authoritative source for exact
+  request/response shapes. `docs/database/schema.md` verified
+  consistent: 22 migrations on disk, 22 rows in the migration-history
+  table, matching `alembic heads`. `docs/deployment/` gained three new
+  documents: `runbooks.md` (restart/rebuild/rotate-secrets/scale/
+  investigate-a-stuck-queue procedures), `disaster-recovery.md`
+  (RTO/RPO targets honestly scoped to this single-host deployment,
+  per-dependency failure scenarios and recovery steps, and two real
+  gaps surfaced by writing it: backups aren't shipped off-host yet, and
+  MinIO/attachment storage has no backup at all), and
+  `go-live-checklist.md` — a launch checklist reflecting this build's
+  *actual* state rather than a generic template, explicitly calling out
+  every open item this session's own milestones left as documented,
+  accepted risk (TLS, secrets manager, off-host backups, MinIO backup,
+  a real alert destination, a real CI/CD deploy target, and — the
+  single largest one — that no frontend UI exists for the vast majority
+  of features built across M15-M29, since that entire arc was
+  explicitly scoped backend-only per direct confirmation rather than
+  assumption). No code changes this milestone; `ruff check`/`ruff
+  format --check`/`mypy src` and the full test suite re-verified green
+  as this build's final state.
+
+---
+
+**Roadmap complete.** M0 through M29 are done. The single largest gap
+against a literal production launch is the frontend — see
+`docs/deployment/go-live-checklist.md`'s "Frontend" section — a
+deliberate, confirmed scoping decision for this build arc, not an
+oversight. Every other item flagged `[ ]` in that checklist is a real,
+specific, named piece of follow-up work, not a vague caveat.
 
 ---
 
