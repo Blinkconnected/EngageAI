@@ -5,11 +5,13 @@ only place API code touches the container directly.
 """
 
 from collections.abc import AsyncGenerator, Callable, Coroutine
+from datetime import timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from minio import Minio
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,12 +22,14 @@ from blinkengage.application.services.channel_config_service import ChannelConfi
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.team_service import TeamService
+from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.rbac import is_known_permission
+from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.database.models.user import User
@@ -46,12 +50,18 @@ from blinkengage.infrastructure.repositories.role_repository import RoleReposito
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 
 _bearer_scheme = HTTPBearer(auto_error=True)
 
 
 def get_settings_dep(request: Request) -> Settings:
     container = cast(Container, request.app.state.container)
+    return container.settings()
+
+
+def get_settings_dep_ws(websocket: WebSocket) -> Settings:
+    container = cast(Container, websocket.app.state.container)
     return container.settings()
 
 
@@ -72,10 +82,56 @@ def get_redis(request: Request) -> Redis:
     return container.redis()
 
 
+async def get_db_session_ws(websocket: WebSocket) -> AsyncGenerator[AsyncSession]:
+    """WebSocket-route counterpart to ``get_db_session`` — FastAPI
+    dependencies for WebSocket routes must be typed with ``WebSocket``,
+    not ``Request``, so this can't just reuse that function."""
+    container = cast(Container, websocket.app.state.container)
+    session_factory = container.session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+def get_redis_ws(websocket: WebSocket) -> Redis:
+    container = cast(Container, websocket.app.state.container)
+    return container.redis()
+
+
+def get_minio_client(request: Request) -> Minio:
+    container = cast(Container, request.app.state.container)
+    return container.minio_client()
+
+
+def get_attachment_store(
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    minio_client: Annotated[Minio, Depends(get_minio_client)],
+) -> AttachmentStore:
+    return AttachmentStore(minio_client, bucket=settings.s3_bucket_attachments)
+
+
 def get_refresh_token_store(
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> RefreshTokenStore:
     return RefreshTokenStore(redis)
+
+
+def get_chat_session_store(redis: Annotated[Redis, Depends(get_redis)]) -> ChatSessionStore:
+    return ChatSessionStore(redis)
+
+
+def get_chat_session_store_ws(redis: Annotated[Redis, Depends(get_redis_ws)]) -> ChatSessionStore:
+    return ChatSessionStore(redis)
+
+
+def get_realtime_publisher_ws(
+    redis: Annotated[Redis, Depends(get_redis_ws)],
+) -> RealtimePublisher:
+    return RealtimePublisher(redis)
 
 
 def get_event_publisher(
@@ -90,8 +146,34 @@ def get_realtime_publisher(redis: Annotated[Redis, Depends(get_redis)]) -> Realt
 
 def get_channel_provider_factory(
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
+    attachments: Annotated[AttachmentStore, Depends(get_attachment_store)],
 ) -> ChannelProviderFactory:
-    return ChannelProviderFactory(realtime=realtime)
+    return ChannelProviderFactory(realtime=realtime, attachments=attachments)
+
+
+def get_minio_client_ws(websocket: WebSocket) -> Minio:
+    container = cast(Container, websocket.app.state.container)
+    return container.minio_client()
+
+
+def get_attachment_store_ws(
+    settings: Annotated[Settings, Depends(get_settings_dep_ws)],
+    minio_client: Annotated[Minio, Depends(get_minio_client_ws)],
+) -> AttachmentStore:
+    return AttachmentStore(minio_client, bucket=settings.s3_bucket_attachments)
+
+
+def get_channel_provider_factory_ws(
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
+    attachments: Annotated[AttachmentStore, Depends(get_attachment_store_ws)],
+) -> ChannelProviderFactory:
+    return ChannelProviderFactory(realtime=realtime, attachments=attachments)
+
+
+def get_event_publisher_ws(
+    session: Annotated[AsyncSession, Depends(get_db_session_ws)],
+) -> OutboxEventPublisher:
+    return OutboxEventPublisher(EventOutboxRepository(session))
 
 
 def get_auth_service(
@@ -194,6 +276,19 @@ def get_channel_config_service(
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> ChannelConfigService:
     return ChannelConfigService(channel_configs=ChannelConfigRepository(session), events=events)
+
+
+def get_web_chat_session_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    sessions: Annotated[ChatSessionStore, Depends(get_chat_session_store)],
+) -> WebChatSessionService:
+    return WebChatSessionService(
+        channel_configs=ChannelConfigRepository(session),
+        customers=CustomerRepository(session),
+        sessions=sessions,
+        session_ttl=timedelta(hours=settings.webchat_session_ttl_hours),
+    )
 
 
 def get_webhook_ingest_service(

@@ -145,8 +145,20 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   check`/`mypy` clean. See `docs/architecture/channels.md` (which also
   specifies the `messages`/`message_attachments` schema for M13 to
   implement).
-- [ ] **M12. Web Chat channel (reference implementation)**
-  WebSocket gateway, chat widget contract, session handling.
+- [x] **M12. Web Chat channel (reference implementation)**
+  The first real `ChannelProvider` (`web_chat`), proving M11's architecture
+  against a genuine channel with no external API. A WebSocket gateway
+  (`WS /api/v1/web-chat/ws/{channel_config_id}`) speaking a small JSON
+  frame protocol (the "chat widget contract"), Redis-backed opaque
+  session tokens (`ChatSessionStore` — a visitor session is a different
+  trust domain than an agent's JWT login, so it isn't one), a
+  `POST .../sessions` endpoint that creates a `Customer` on first visit,
+  and Redis pub/sub fanout (`RealtimePublisher.subscribe`, new this
+  milestone) so a reply published from any app server reaches whichever
+  process holds the visitor's socket — no distributed connection registry
+  needed. Also lands the shared MinIO-backed `AttachmentStore` M13 will
+  reuse. 16 new tests (123 total); `ruff check`/`mypy` clean. See
+  `docs/architecture/web-chat.md`.
 - [ ] **M13. Conversations, Messages, Attachments**
   Conversation lifecycle (open/pending/resolved/closed), message model
   (text/media/system) per the schema specified in `channels.md`,

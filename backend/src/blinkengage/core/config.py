@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     # --- Rate limiting ---
     rate_limit_per_minute: int = 60
 
+    # --- Web Chat (see docs/architecture/web-chat.md) ---
+    webchat_session_ttl_hours: int = 720  # 30 days, sliding
+
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: str | list[str]) -> list[str]:

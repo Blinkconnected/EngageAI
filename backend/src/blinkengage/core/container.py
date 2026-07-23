@@ -12,6 +12,7 @@ from dependency_injector import containers, providers
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.database.session import create_engine, create_session_factory
+from blinkengage.infrastructure.storage.s3_client import create_minio_client
 
 
 class Container(containers.DeclarativeContainer):
@@ -22,3 +23,5 @@ class Container(containers.DeclarativeContainer):
     session_factory = providers.Singleton(create_session_factory, engine=engine)
 
     redis = providers.Singleton(create_redis_client, settings=settings)
+
+    minio_client = providers.Singleton(create_minio_client, settings=settings)

@@ -8,8 +8,11 @@ conversation engine will consume those events, never call a provider.
 
 from uuid import UUID
 
+from blinkengage.application.services.inbound_message_events import (
+    publish_inbound_message_events,
+)
 from blinkengage.domain.channels import WebhookAck, WebhookRequest
-from blinkengage.domain.events import DomainEvent, DomainEventPublisher
+from blinkengage.domain.events import DomainEventPublisher
 from blinkengage.domain.exceptions import AuthenticationError, EntityNotFoundError
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.repositories.channel_config_repository import (
@@ -39,22 +42,5 @@ class WebhookIngestService:
             raise AuthenticationError("Invalid webhook signature")
 
         messages, ack = await provider.webhook(request)
-        for message in messages:
-            await self._events.publish(
-                DomainEvent(
-                    event_type="message.received",
-                    company_id=config.company_id,
-                    aggregate_type="message",
-                    aggregate_id=None,
-                    payload={
-                        "channel_config_id": str(channel_config_id),
-                        "channel_type": config.channel_type,
-                        "external_message_id": message.external_message_id,
-                        "external_thread_id": message.external_thread_id,
-                        "external_customer_id": message.external_customer_id,
-                        "body": message.body,
-                        "reply_to_external_message_id": message.reply_to_external_message_id,
-                    },
-                )
-            )
+        await publish_inbound_message_events(self._events, config=config, messages=messages)
         return ack

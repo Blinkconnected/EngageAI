@@ -7,6 +7,7 @@ already-decrypted credentials (decryption happens transparently via
 """
 
 from blinkengage.domain.channel_provider import ChannelProvider
+from blinkengage.domain.channels import AttachmentStorage
 from blinkengage.domain.events import RealtimeSignalPublisher
 from blinkengage.domain.exceptions import InvalidChannelTypeError
 from blinkengage.infrastructure.channels.registry import ChannelRegistry
@@ -14,8 +15,11 @@ from blinkengage.infrastructure.database.models.channel_config import ChannelCon
 
 
 class ChannelProviderFactory:
-    def __init__(self, *, realtime: RealtimeSignalPublisher) -> None:
+    def __init__(
+        self, *, realtime: RealtimeSignalPublisher, attachments: AttachmentStorage
+    ) -> None:
         self._realtime = realtime
+        self._attachments = attachments
 
     def build(self, config: ChannelConfig) -> ChannelProvider:
         provider_cls = ChannelRegistry.get(config.channel_type)
@@ -27,4 +31,5 @@ class ChannelProviderFactory:
             credentials=config.credentials,
             webhook_secret=config.webhook_secret,
             realtime=self._realtime,
+            attachments=self._attachments,
         )

@@ -7,7 +7,7 @@ server. See ``docs/architecture/channels.md``.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,3 +84,17 @@ class WebhookAck:
 
     status_code: int = 200
     body: str | None = None
+
+
+class AttachmentStorage(Protocol):
+    """Every ``ChannelProvider`` needs somewhere to put/get attachment
+    bytes for its required ``upload_attachment``/``download_attachment``
+    methods — structurally satisfied by
+    ``infrastructure.storage.attachment_store.AttachmentStore`` (MinIO/S3).
+    """
+
+    async def upload(self, *, key: str, data: bytes, content_type: str) -> None: ...
+
+    async def download(self, *, key: str) -> bytes: ...
+
+    async def health_check(self) -> bool: ...

@@ -16,6 +16,7 @@ from uuid import UUID
 
 from blinkengage.domain.channels import (
     AttachmentRef,
+    AttachmentStorage,
     HealthStatus,
     InboundMessage,
     OutboundAttachment,
@@ -49,12 +50,14 @@ class ChannelProvider(ABC):
         credentials: dict[str, Any],
         webhook_secret: str | None,
         realtime: RealtimeSignalPublisher,
+        attachments: AttachmentStorage,
     ) -> None:
         self.channel_config_id = channel_config_id
         self.company_id = company_id
         self._credentials = credentials
         self._webhook_secret = webhook_secret
         self._realtime = realtime
+        self._attachments = attachments
 
     @abstractmethod
     async def send_message(self, message: OutboundMessage) -> SendResult: ...

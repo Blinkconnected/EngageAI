@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+# Registers every concrete ChannelProvider (@ChannelRegistry.register(...))
+# at import time — see infrastructure/channels/providers/__init__.py.
+import blinkengage.infrastructure.channels.providers  # noqa: F401
 from blinkengage.api.v1.endpoints import (
     agents,
     audit_logs,
@@ -9,6 +12,7 @@ from blinkengage.api.v1.endpoints import (
     departments,
     health,
     teams,
+    web_chat,
     webhooks,
 )
 
@@ -22,3 +26,4 @@ api_router.include_router(customers.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(channel_configs.router)
 api_router.include_router(webhooks.router)
+api_router.include_router(web_chat.router)
