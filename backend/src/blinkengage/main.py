@@ -15,6 +15,7 @@ from blinkengage.core.config import get_settings
 from blinkengage.core.container import Container
 from blinkengage.core.exceptions import register_exception_handlers
 from blinkengage.core.logging import configure_logging, get_logger
+from blinkengage.core.security_headers import SecurityHeadersMiddleware
 
 logger = get_logger(__name__)
 
@@ -47,6 +48,19 @@ def create_app() -> FastAPI:
     container = Container()
     app.state.container = container
 
+    # Fails fast at startup, not at request time: allow_credentials=True
+    # (needed so a browser client can send its Authorization header)
+    # combined with a wildcard origin would let any website read
+    # authenticated responses on a victim's behalf — the browser spec
+    # actually forbids this combination and a wildcard is silently
+    # ignored with credentialed requests, which is worse than an error,
+    # since it looks configured but isn't. See docs/security/hardening.md.
+    if "*" in settings.cors_allow_origins:
+        raise ValueError(
+            "cors_allow_origins must not contain '*' — allow_credentials=True requires an "
+            "explicit origin allowlist"
+        )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,
@@ -54,6 +68,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
     register_exception_handlers(app)
 

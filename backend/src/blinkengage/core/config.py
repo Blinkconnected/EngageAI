@@ -117,6 +117,11 @@ class Settings(BaseSettings):
 
     # --- Rate limiting ---
     rate_limit_per_minute: int = 60
+    # Tighter than the generic limit above, and per-*user* rather than
+    # per-IP (see api/deps.py::enforce_ai_rate_limit) — every AI Engine
+    # call has a real external cost, unlike auth/webchat, which only cost
+    # a DB round trip.
+    ai_rate_limit_per_minute: int = 20
 
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding

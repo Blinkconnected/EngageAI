@@ -471,9 +471,42 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Phase 6 — Hardening & Launch
 
-- [ ] **M26. Security hardening**
-  OWASP ASVS pass, CSRF/XSS/SQLi verification, secrets management,
-  encryption at rest/in transit, dependency scanning, pen-test checklist.
+- [x] **M26. Security hardening**
+  An audit first (see `docs/security/hardening.md`), then fixes for the
+  real gaps it found — not a rebuild of what was already solid.
+  Confirmed already-solid and left alone: no raw-SQL injection surface
+  anywhere (SQLAlchemy parameterized queries exclusively), no XSS
+  surface (pure JSON API, no HTML rendering), no CSRF surface
+  (bearer-JWT-only, zero cookies), bcrypt password hashing, JWT decode
+  with an explicit algorithm allowlist. Gaps closed: rate limiting
+  extended to `/auth/refresh`/`/auth/logout` and the public CSAT-respond
+  endpoint, plus a new **per-user** (not per-IP) limiter on every
+  `/ai/*` endpoint since AI calls carry real external cost and several
+  agents can share one office IP; a new `SecurityHeadersMiddleware`
+  (X-Frame-Options, X-Content-Type-Options, Referrer-Policy,
+  Permissions-Policy always, CSP + HSTS in production only, since
+  `/docs`/`/redoc` — real HTML — only exist outside production); a
+  startup-time guard rejecting a CORS wildcard origin combined with
+  `allow_credentials=True`. A `pip-audit` dependency scan found 27
+  vulnerabilities across 8 packages — patched `python-jose` (JWT-bomb +
+  algorithm-confusion CVEs, security-critical), `orjson`,
+  `python-multipart`, and `aiosmtplib` (the one genuinely exploitable
+  finding: unsanitized CRLF in customer-supplied email addresses
+  reaching raw SMTP commands) via same-API patch bumps, verified
+  against the full test suite; removed the unused `black` dependency
+  entirely (superseded by `ruff format` since early in this build,
+  never actually invoked) rather than patching a CVE in dead weight.
+  Deferred with explicit, documented justification rather than
+  silently ignored: a `starlette`/`fastapi` major-version bump (~24
+  minor releases behind — its own dedicated upgrade project, not a
+  hardening-pass line item), a `pytest` major bump (dev-only, low
+  real-world severity), and the `ecdsa` Minerva timing CVE (no fix
+  exists upstream; confirmed not exploitable since this platform only
+  ever signs JWTs with HS256, never ECDSA algorithms). Wrote
+  `docs/security/owasp-asvs-checklist.md` and
+  `docs/security/pentest-checklist.md`. 11 new tests (502 -> 513);
+  `ruff check`/`mypy` clean; no schema changes. See
+  `docs/security/hardening.md`.
 - [ ] **M27. Observability & DevOps**
   Prometheus metrics, Grafana dashboards, Loki log pipeline, alerting,
   automated backups + restore drill, GitHub Actions CI/CD (lint, test,

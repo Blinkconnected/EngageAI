@@ -42,6 +42,7 @@ from blinkengage.application.services.workflow_service import WorkflowService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
+from blinkengage.core.rate_limit import FixedWindowRateLimiter, enforce_rate_limit
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.ai_provider import AiProvider
 from blinkengage.domain.rbac import is_known_permission
@@ -572,3 +573,23 @@ def require_permission(
         return auth
 
     return _check
+
+
+async def enforce_ai_rate_limit(
+    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    redis: Annotated[Redis, Depends(get_redis)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> AuthContext:
+    """Per-*user* (not per-IP) rate limit for every ``/ai/*`` endpoint —
+    unlike ``core/rate_limit.py``'s pre-auth limiters (login, register,
+    webchat sessions), every AI Engine call has a real external cost, so
+    it's throttled per authenticated identity rather than per client IP
+    (several agents can legitimately share one office IP). Lives here,
+    not in ``core/rate_limit.py``, because it needs ``AuthContext`` —
+    core/ must not depend on api/.
+    """
+    limiter = FixedWindowRateLimiter(
+        redis, scope="ai", limit=settings.ai_rate_limit_per_minute, window_seconds=60
+    )
+    await enforce_rate_limit(limiter, str(auth.user_id))
+    return auth

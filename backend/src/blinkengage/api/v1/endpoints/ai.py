@@ -1,5 +1,7 @@
 """AI Engine endpoints. Gated by a single ``ai.use`` permission (not one
-per feature — see ``docs/architecture/ai-engine.md``). Returns 503 (via
+per feature — see ``docs/architecture/ai-engine.md``) plus a per-user
+rate limit (``enforce_ai_rate_limit`` — every AI call has a real external
+cost, see ``docs/security/hardening.md``). Returns 503 (via
 ``AiNotConfiguredError``) when ``settings.ai_provider`` is ``"disabled"``,
 the default.
 """
@@ -10,11 +12,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from blinkengage.api.deps import (
+    enforce_ai_rate_limit,
     get_ai_service,
     get_conversation_service,
     get_knowledge_service,
     get_tag_repository,
-    require_permission,
 )
 from blinkengage.api.schemas.ai import (
     ConversationSummaryResponse,
@@ -69,7 +71,7 @@ async def _conversation_history(
 )
 async def suggest_reply(
     conversation_id: UUID,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
     conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> ReplySuggestionResponse:
@@ -85,7 +87,7 @@ async def suggest_reply(
 @router.post("/conversations/{conversation_id}/summary", response_model=ConversationSummaryResponse)
 async def summarize_conversation(
     conversation_id: UUID,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
     conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> ConversationSummaryResponse:
@@ -103,7 +105,7 @@ async def summarize_conversation(
 )
 async def next_best_action(
     conversation_id: UUID,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
     conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> NextBestActionResponse:
@@ -119,7 +121,7 @@ async def next_best_action(
 @router.post("/translate", response_model=TranslateResponse)
 async def translate(
     payload: TranslateRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> TranslateResponse:
     translation = await ai_service.translate(
@@ -134,7 +136,7 @@ async def translate(
 @router.post("/detect-language", response_model=LanguageResponse)
 async def detect_language(
     payload: TextRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> LanguageResponse:
     language = await ai_service.detect_language(
@@ -146,7 +148,7 @@ async def detect_language(
 @router.post("/sentiment", response_model=SentimentResponse)
 async def analyze_sentiment(
     payload: TextRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> SentimentResponse:
     sentiment = await ai_service.analyze_sentiment(
@@ -158,7 +160,7 @@ async def analyze_sentiment(
 @router.post("/suggest-tags", response_model=SuggestTagsResponse)
 async def suggest_tags(
     payload: TextRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
     tags: Annotated[TagRepository, Depends(get_tag_repository)],
 ) -> SuggestTagsResponse:
@@ -175,7 +177,7 @@ async def suggest_tags(
 @router.post("/improve-grammar", response_model=TextResponse)
 async def improve_grammar(
     payload: TextRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> TextResponse:
     result = await ai_service.improve_grammar(
@@ -187,7 +189,7 @@ async def improve_grammar(
 @router.post("/rewrite-professional", response_model=TextResponse)
 async def rewrite_professionally(
     payload: TextRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> TextResponse:
     result = await ai_service.rewrite_professionally(
@@ -199,7 +201,7 @@ async def rewrite_professionally(
 @router.post("/knowledge-search", response_model=KnowledgeSearchResponse)
 async def knowledge_search(
     payload: KnowledgeSearchRequest,
-    auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
+    auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
     knowledge_service: Annotated[KnowledgeService, Depends(get_knowledge_service)],
 ) -> KnowledgeSearchResponse:

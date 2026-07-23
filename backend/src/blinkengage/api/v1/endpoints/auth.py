@@ -80,7 +80,11 @@ async def login(
     return TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    dependencies=[Depends(_auth_rate_limit)],
+)
 async def refresh(
     payload: RefreshRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
@@ -89,7 +93,11 @@ async def refresh(
     return TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token)
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_auth_rate_limit)],
+)
 async def logout(
     payload: LogoutRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],

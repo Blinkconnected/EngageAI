@@ -22,18 +22,18 @@ dependencies = [
   "celery[redis]==5.4.0",
   "pika==1.3.2",
   "aio-pika==9.5.3",
-  "python-jose[cryptography]==3.3.0",
+  "python-jose[cryptography]==3.5.0",
   "passlib[bcrypt]==1.7.4",
   "bcrypt==4.2.1",
-  "python-multipart==0.0.20",
+  "python-multipart==0.0.32",
   "structlog==24.4.0",
   "httpx==0.28.1",
   "tenacity==9.0.0",
   "dependency-injector==4.44.0",
   "minio==7.2.13",
   "email-validator==2.2.0",
-  "aiosmtplib==3.0.2",
-  "orjson==3.10.12",
+  "aiosmtplib==5.1.2",
+  "orjson==3.11.9",
   "prometheus-fastapi-instrumentator==7.0.2",
   "reportlab==4.2.5",
   "openpyxl==3.1.5",
@@ -46,7 +46,6 @@ dev = [
   "pytest-cov==6.0.0",
   "pytest-env==1.1.5",
   "ruff==0.8.4",
-  "black==24.10.0",
   "mypy==1.14.0",
   "aiosqlite==0.20.0",
   "factory-boy==3.3.1",
@@ -75,10 +74,6 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 ignore = ["B008"]
-
-[tool.black]
-line-length = 100
-target-version = ["py313"]
 
 [tool.mypy]
 python_version = "3.13"

@@ -14,11 +14,22 @@ from fastapi import APIRouter, Depends, Query
 from blinkengage.api.deps import get_csat_service
 from blinkengage.api.schemas.csat import CsatSubmitRequest, CsatSubmitResponse
 from blinkengage.application.services.csat_service import CsatService
+from blinkengage.core.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/csat", tags=["csat"])
 
+# Public, unauthenticated endpoint — rate limited per client IP like every
+# other pre-auth public endpoint (webchat session creation, login/register),
+# since a valid-looking request needs no credential beyond a guessable-in-
+# principle token.
+_csat_rate_limit = rate_limit_dependency(scope="csat_respond", limit=30, window_seconds=60)
 
-@router.post("/{conversation_id}/respond", response_model=CsatSubmitResponse)
+
+@router.post(
+    "/{conversation_id}/respond",
+    response_model=CsatSubmitResponse,
+    dependencies=[Depends(_csat_rate_limit)],
+)
 async def submit_csat_response(
     conversation_id: UUID,
     payload: CsatSubmitRequest,

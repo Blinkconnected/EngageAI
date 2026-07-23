@@ -105,5 +105,8 @@ no hard-coded secrets or environment-specific values in source code.
   the suite.
 - Integration tests exercise the FastAPI app through `httpx.AsyncClient`
   over an `ASGITransport`, so no network socket is bound during tests.
-- Static analysis gates: `ruff` (lint), `black` (format), `mypy --strict`
-  (types). All three must pass before a milestone is committed.
+- Static analysis gates: `ruff check` (lint), `ruff format` (formatting —
+  a drop-in Black-compatible formatter, which is why this project doesn't
+  also depend on `black` itself; see `docs/security/hardening.md`'s
+  dependency-scan notes for when/why it was dropped), `mypy --strict`
+  (types). All must pass before a milestone is committed.
