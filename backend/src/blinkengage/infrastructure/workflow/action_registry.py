@@ -22,9 +22,7 @@ class WorkflowActionRegistry:
     _actions: dict[str, WorkflowAction] = {}
 
     @classmethod
-    def register(
-        cls, action_type: str
-    ) -> Callable[[type[WorkflowAction]], type[WorkflowAction]]:
+    def register(cls, action_type: str) -> Callable[[type[WorkflowAction]], type[WorkflowAction]]:
         def _decorator(action_cls: type[WorkflowAction]) -> type[WorkflowAction]:
             existing = cls._actions.get(action_type)
             if existing is not None and type(existing) is not action_cls:

@@ -3,7 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 
-from blinkengage.api.deps import get_conversation_service, require_permission
+from blinkengage.api.deps import (
+    get_conversation_service,
+    get_internal_note_service,
+    require_permission,
+)
 from blinkengage.api.schemas.conversation import (
     AttachmentResponse,
     ConversationResponse,
@@ -11,8 +15,14 @@ from blinkengage.api.schemas.conversation import (
     MessageResponse,
     SendMessageRequest,
 )
+from blinkengage.api.schemas.internal_note import (
+    InternalNoteCreateRequest,
+    InternalNoteResponse,
+    InternalNoteUpdateRequest,
+)
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.conversation import ConversationStatus
 
@@ -157,3 +167,68 @@ async def download_attachment(
         media_type=attachment.content_type,
         headers={"Content-Disposition": f'attachment; filename="{attachment.filename}"'},
     )
+
+
+@router.get("/{conversation_id}/notes", response_model=Page[InternalNoteResponse])
+async def list_internal_notes(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
+    service: Annotated[InternalNoteService, Depends(get_internal_note_service)],
+    page_params: Annotated[PageParams, Depends()],
+) -> Page[InternalNoteResponse]:
+    items, total = await service.list_notes(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        offset=page_params.offset,
+        limit=page_params.page_size,
+    )
+    return Page(
+        items=[InternalNoteResponse.model_validate(item) for item in items],
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+    )
+
+
+@router.post(
+    "/{conversation_id}/notes",
+    response_model=InternalNoteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_internal_note(
+    conversation_id: UUID,
+    payload: InternalNoteCreateRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
+    service: Annotated[InternalNoteService, Depends(get_internal_note_service)],
+) -> InternalNoteResponse:
+    note = await service.create(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        body=payload.body,
+        author_user_id=auth.user_id,
+    )
+    return InternalNoteResponse.model_validate(note)
+
+
+@router.patch("/{conversation_id}/notes/{note_id}", response_model=InternalNoteResponse)
+async def update_internal_note(
+    conversation_id: UUID,
+    note_id: UUID,
+    payload: InternalNoteUpdateRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
+    service: Annotated[InternalNoteService, Depends(get_internal_note_service)],
+) -> InternalNoteResponse:
+    note = await service.update(
+        company_id=auth.company_id, note_id=note_id, body=payload.body, actor_user_id=auth.user_id
+    )
+    return InternalNoteResponse.model_validate(note)
+
+
+@router.delete("/{conversation_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_internal_note(
+    conversation_id: UUID,
+    note_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
+    service: Annotated[InternalNoteService, Depends(get_internal_note_service)],
+) -> None:
+    await service.delete(company_id=auth.company_id, note_id=note_id, actor_user_id=auth.user_id)

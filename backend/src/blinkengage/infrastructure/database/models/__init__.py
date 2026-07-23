@@ -19,6 +19,12 @@ from blinkengage.infrastructure.database.models.customer_channel_identity import
 )
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
+from blinkengage.infrastructure.database.models.internal_note import InternalNote
+from blinkengage.infrastructure.database.models.knowledge import (
+    KnowledgeArticle,
+    KnowledgeArticleTag,
+    KnowledgeCategory,
+)
 from blinkengage.infrastructure.database.models.message import (
     AttachmentValidationStatus,
     DeliveryStatus,
@@ -37,6 +43,7 @@ from blinkengage.infrastructure.database.models.queue import (
     QueueRequiredSkill,
     RoutingRule,
 )
+from blinkengage.infrastructure.database.models.quick_reply import QuickReply
 from blinkengage.infrastructure.database.models.rbac import (
     Permission,
     Role,
@@ -68,6 +75,10 @@ __all__ = [
     "DeliveryStatus",
     "Department",
     "EventOutbox",
+    "InternalNote",
+    "KnowledgeArticle",
+    "KnowledgeArticleTag",
+    "KnowledgeCategory",
     "Message",
     "MessageAttachment",
     "MessageDirection",
@@ -77,6 +88,7 @@ __all__ = [
     "Queue",
     "QueueAssignmentStrategy",
     "QueueRequiredSkill",
+    "QuickReply",
     "ReadStatus",
     "Role",
     "RolePermission",

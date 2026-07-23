@@ -23,7 +23,10 @@ from blinkengage.application.services.channel_config_service import ChannelConfi
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.internal_note_service import InternalNoteService
+from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.queue_service import QueueService
+from blinkengage.application.services.quick_reply_service import QuickReplyService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
@@ -55,11 +58,19 @@ from blinkengage.infrastructure.repositories.department_repository import Depart
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
+from blinkengage.infrastructure.repositories.internal_note_repository import (
+    InternalNoteRepository,
+)
+from blinkengage.infrastructure.repositories.knowledge_repository import (
+    KnowledgeArticleRepository,
+    KnowledgeCategoryRepository,
+)
 from blinkengage.infrastructure.repositories.message_attachment_repository import (
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
+from blinkengage.infrastructure.repositories.quick_reply_repository import QuickReplyRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
@@ -367,6 +378,35 @@ def get_workflow_service(
     return WorkflowService(
         workflows=WorkflowDefinitionRepository(session),
         runs=WorkflowRunRepository(session),
+        events=events,
+    )
+
+
+def get_knowledge_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> KnowledgeService:
+    return KnowledgeService(
+        categories=KnowledgeCategoryRepository(session),
+        articles=KnowledgeArticleRepository(session),
+        events=events,
+    )
+
+
+def get_quick_reply_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> QuickReplyService:
+    return QuickReplyService(quick_replies=QuickReplyRepository(session), events=events)
+
+
+def get_internal_note_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> InternalNoteService:
+    return InternalNoteService(
+        notes=InternalNoteRepository(session),
+        conversations=ConversationRepository(session),
         events=events,
     )
 

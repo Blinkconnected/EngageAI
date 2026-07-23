@@ -12,7 +12,9 @@ from blinkengage.api.v1.endpoints import (
     customers,
     departments,
     health,
+    knowledge,
     queues,
+    quick_replies,
     routing_rules,
     teams,
     web_chat,
@@ -35,3 +37,5 @@ api_router.include_router(conversations.router)
 api_router.include_router(queues.router)
 api_router.include_router(routing_rules.router)
 api_router.include_router(workflows.router)
+api_router.include_router(knowledge.router)
+api_router.include_router(quick_replies.router)

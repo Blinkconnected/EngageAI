@@ -41,9 +41,7 @@ class AddTagAction(WorkflowAction):
         customer_id = _require_id(context.event, "customer_id")
 
         customers = CustomerRepository(context.session)
-        customer = await customers.get_by_id(
-            company_id=context.company_id, customer_id=customer_id
-        )
+        customer = await customers.get_by_id(company_id=context.company_id, customer_id=customer_id)
         if customer is None:
             raise ValueError(f"Customer {customer_id} not found")
 

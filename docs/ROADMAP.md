@@ -316,7 +316,31 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   `workflows.read`/`workflows.manage` permissions. 33 new tests (332
   total); `ruff check`/`mypy` clean. See
   `docs/architecture/workflow-engine.md`.
-- [ ] **M20. Knowledge Base, Quick Replies, Internal Notes**
+- [x] **M20. Knowledge Base, Quick Replies, Internal Notes**
+  Three agent-productivity features, none needing a new architectural
+  pattern — straightforward applications of conventions M7/M8/M14 already
+  established. Knowledge Base: self-referential `KnowledgeCategory`
+  (`SET NULL` on parent delete, detach not cascade) + `KnowledgeArticle`,
+  reusing the existing company-scoped `Tag` catalog (M8) via a new join
+  rather than a parallel tagging system; search is basic `ILIKE`
+  substring matching — semantic/AI-powered search is explicitly an AI
+  Engine (M22) concern, not built speculatively. Building this surfaced a
+  real async-SQLAlchemy lesson: a just-flushed, never-loaded relationship
+  collection can't be lazy-loaded via plain attribute access
+  (`MissingGreenlet`) — fixed by assigning tags at construction time
+  (transient-object collections are "loaded" from the start), matching
+  what `CustomerService.create()`'s own code comment had already
+  documented. Quick Replies: company-wide canned responses with a unique
+  `shortcut`, explicit-check-before-insert (409, not a raw `IntegrityError`
+  500) mirroring `QueueService`'s pattern. Internal Notes: a genuinely
+  separate table from `Message` (M13) rather than a third
+  `MessageDirection` — a note was never sent through a channel provider
+  and has none of a message's delivery/read-status/reopen-logic concerns;
+  nested under `/conversations/{id}/notes` reusing the existing
+  `conversations.read`/`manage` permissions rather than adding a new one.
+  Five new tables; new `knowledge_base.*`/`quick_replies.*` permissions.
+  23 new tests (355 total); `ruff check`/`mypy` clean. See
+  `docs/architecture/knowledge-quick-replies-notes.md`.
 - [ ] **M21. Notifications & real-time layer**
   WebSocket presence/typing/notifications, email/push notification
   dispatch via Celery. Consumes from the M10 event bus and the

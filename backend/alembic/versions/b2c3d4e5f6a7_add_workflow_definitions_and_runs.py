@@ -46,9 +46,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_workflow_definitions_company_id", "workflow_definitions", ["company_id"]
-    )
+    op.create_index("ix_workflow_definitions_company_id", "workflow_definitions", ["company_id"])
     op.create_index(
         "ix_workflow_definitions_company_trigger",
         "workflow_definitions",
@@ -70,9 +68,7 @@ def upgrade() -> None:
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["workflow_id"], ["workflow_definitions.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["workflow_id"], ["workflow_definitions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_workflow_runs_company_id", "workflow_runs", ["company_id"])

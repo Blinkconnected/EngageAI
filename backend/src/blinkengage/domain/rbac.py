@@ -68,6 +68,17 @@ PERMISSIONS: tuple[Permission, ...] = (
     # --- Workflow Engine (see docs/architecture/workflow-engine.md) ---
     Permission("workflows.read", "View workflow definitions and their run history"),
     Permission("workflows.manage", "Create/edit/delete workflow definitions"),
+    # --- Knowledge Base / Quick Replies (see
+    # docs/architecture/knowledge-quick-replies-notes.md) — internal notes
+    # reuse conversations.read/manage rather than a new permission, since
+    # a note is just another way to interact with a conversation the
+    # agent already has access to. ---
+    Permission("knowledge_base.read", "View knowledge base categories and articles"),
+    Permission(
+        "knowledge_base.manage", "Create/edit/delete knowledge base categories and articles"
+    ),
+    Permission("quick_replies.read", "View quick replies"),
+    Permission("quick_replies.manage", "Create/edit/delete quick replies"),
 )
 
 _PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
@@ -96,6 +107,10 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "queues.manage",
             "workflows.read",
             "workflows.manage",
+            "knowledge_base.read",
+            "knowledge_base.manage",
+            "quick_replies.read",
+            "quick_replies.manage",
         }
     ),
     SystemRole.AGENT: frozenset(
@@ -110,6 +125,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "reports.read",
             "queues.read",
             "workflows.read",
+            "knowledge_base.read",
+            "quick_replies.read",
         }
     ),
 }

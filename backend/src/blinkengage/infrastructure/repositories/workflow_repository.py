@@ -11,9 +11,7 @@ class WorkflowDefinitionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_id(
-        self, *, company_id: UUID, workflow_id: UUID
-    ) -> WorkflowDefinition | None:
+    async def get_by_id(self, *, company_id: UUID, workflow_id: UUID) -> WorkflowDefinition | None:
         result = await self._session.execute(
             select(WorkflowDefinition).where(
                 WorkflowDefinition.id == workflow_id,

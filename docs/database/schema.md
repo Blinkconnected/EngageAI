@@ -412,3 +412,64 @@ restriction" — every active agent is eligible.
 No `SoftDeleteMixin` on either — `workflow_runs` is a pure audit trail
 (same reasoning as `audit_logs`/`event_outbox`); `workflow_definitions` is
 soft-deletable like every other company-configured entity in this schema.
+
+### `knowledge_categories`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| name | varchar(255) | |
+| parent_id | UUID, nullable | FK → `knowledge_categories.id`, `SET NULL` — deleting a parent detaches children to top-level rather than cascading |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `knowledge_articles`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| category_id | UUID, nullable | FK → `knowledge_categories.id`, `SET NULL` |
+| title | varchar(255) | |
+| body | text | |
+| is_published | boolean | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `knowledge_article_tags` (join)
+
+| Column | Type |
+|--------|------|
+| article_id | UUID, FK → `knowledge_articles.id`, cascade delete |
+| tag_id | UUID, FK → `tags.id`, cascade delete |
+
+Composite PK `(article_id, tag_id)` — reuses the existing company-scoped
+`tags` catalog (M8) rather than a parallel Knowledge-Base-specific
+tagging system.
+
+### `quick_replies`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| shortcut | varchar(50) | unique per `(company_id, shortcut)` among active rows — same partial-unique-index pattern as `queues.name`/`customers.email` |
+| title | varchar(255) | |
+| body | text | |
+| is_active | boolean | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `internal_notes`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| conversation_id | UUID | FK → `conversations.id`, cascade delete, indexed |
+| author_user_id | UUID, nullable | FK → `users.id`, `SET NULL` — a note outlives the user who wrote it, same reasoning as `audit_logs.actor_user_id` |
+| body | text | |
+| created_at / updated_at | timestamptz | |
+
+No `SoftDeleteMixin` — hard-deletable, same reasoning as `routing_rules`
+(low-stakes, no compliance requirement to retain a deleted note; the
+audit-log-consumer already durably records the deletion event regardless
+of the row's fate).
