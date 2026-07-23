@@ -19,6 +19,7 @@ from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
+from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.team_service import TeamService
@@ -41,11 +42,18 @@ from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
+from blinkengage.infrastructure.repositories.conversation_repository import (
+    ConversationRepository,
+)
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
+from blinkengage.infrastructure.repositories.message_attachment_repository import (
+    MessageAttachmentRepository,
+)
+from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
@@ -288,6 +296,25 @@ def get_web_chat_session_service(
         customers=CustomerRepository(session),
         sessions=sessions,
         session_ttl=timedelta(hours=settings.webchat_session_ttl_hours),
+    )
+
+
+def get_conversation_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store)],
+    provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> ConversationService:
+    return ConversationService(
+        conversations=ConversationRepository(session),
+        messages=MessageRepository(session),
+        attachments=MessageAttachmentRepository(session),
+        channel_configs=ChannelConfigRepository(session),
+        attachment_store=attachment_store,
+        provider_factory=provider_factory,
+        events=events,
+        settings=settings,
     )
 
 

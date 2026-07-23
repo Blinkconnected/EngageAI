@@ -6,12 +6,32 @@ from fakeredis import FakeAsyncRedis
 from httpx import ASGITransport, AsyncClient
 
 import blinkengage.infrastructure.database.models  # noqa: F401 - populates Base.metadata
+from blinkengage.api.deps import get_attachment_store, get_attachment_store_ws
 from blinkengage.infrastructure.database.base import Base
 from blinkengage.infrastructure.events.consumers.audit_log_consumer import handle_audit_event
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
 from blinkengage.main import create_app
+
+
+class FakeAttachmentStore:
+    """In-memory stand-in for ``AttachmentStore`` — no real MinIO server
+    runs in the test suite (the same reasoning as ``fakeredis`` standing
+    in for Redis); a real MinIO round-trip is verified manually against
+    the running `docker compose` stack."""
+
+    def __init__(self) -> None:
+        self._objects: dict[str, bytes] = {}
+
+    async def upload(self, *, key: str, data: bytes, content_type: str) -> None:
+        self._objects[key] = data
+
+    async def download(self, *, key: str) -> bytes:
+        return self._objects[key]
+
+    async def health_check(self) -> bool:
+        return True
 
 
 @pytest.fixture
@@ -23,6 +43,10 @@ def fake_redis():
 async def app(fake_redis):
     application = create_app()
     application.state.container.redis.override(providers.Object(fake_redis))
+
+    fake_attachment_store = FakeAttachmentStore()
+    application.dependency_overrides[get_attachment_store] = lambda: fake_attachment_store
+    application.dependency_overrides[get_attachment_store_ws] = lambda: fake_attachment_store
 
     engine = application.state.container.engine()
     async with engine.begin() as conn:

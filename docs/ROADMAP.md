@@ -159,13 +159,24 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   needed. Also lands the shared MinIO-backed `AttachmentStore` M13 will
   reuse. 16 new tests (123 total); `ruff check`/`mypy` clean. See
   `docs/architecture/web-chat.md`.
-- [ ] **M13. Conversations, Messages, Attachments**
-  Conversation lifecycle (open/pending/resolved/closed), message model
-  (text/media/system) per the schema specified in `channels.md`,
-  attachment storage via MinIO (S3-compatible), virus/type validation,
-  delivery/read receipts. The conversation engine consumes
-  `message.received` from the M10 bus rather than calling any provider
-  directly.
+- [x] **M13. Conversations, Messages, Attachments**
+  The "conversation engine" finally exists, concretely: a
+  `conversation-ingest-consumer` service subscribed to `message.received`
+  on the M10 bus (never calling a `ChannelProvider` — that already
+  happened upstream), building `Conversation`/`Message` rows per the
+  schema `channels.md` specified. Conversation lifecycle
+  (open/pending/resolved/closed) with validated status transitions,
+  message model (text/media/system, delivery/read receipts via separate
+  `status`/`delivery_status`/`read_status` columns), and attachments —
+  upload/download through the M12 `AttachmentStore`, with type/size
+  validation (`attachment_allowed_content_types`/`_max_size_bytes`) and
+  virus scanning deliberately left as a documented, unimplemented
+  extension point rather than a fake scanner. Outbound replies close the
+  loop through the same `ChannelProviderFactory` every other channel
+  entry point uses — end-to-end proven with `web_chat`: an agent's reply
+  is persisted and observed arriving back over the visitor's realtime
+  session channel. 23 new tests (146 total); `ruff check`/`mypy` clean.
+  See `docs/architecture/conversations.md`.
 - [ ] **M14. Queues, Assignment Engine, Routing Engine**
   Queue model, skill/load-based assignment strategies, routing rules engine,
   SLA timers, escalation.

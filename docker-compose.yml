@@ -179,6 +179,29 @@ services:
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
+  # The "conversation engine" (M13, see docs/architecture/conversations.md)
+  # — another independent consumer bound to its own queue on the M10 event
+  # bus, same shape as audit-log-consumer, zero coupling between the two.
+  conversation-ingest-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.conversation_ingest_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   frontend:
     build:
       context: .

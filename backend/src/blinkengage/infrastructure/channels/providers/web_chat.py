@@ -38,6 +38,14 @@ class WebChatProvider(ChannelProvider):
                 "external_message_id": external_message_id,
                 "body": message.body,
                 "reply_to_external_message_id": message.reply_to_external_message_id,
+                "attachments": [
+                    {
+                        "id": attachment.external_id,
+                        "content_type": attachment.content_type,
+                        "size_bytes": attachment.size_bytes,
+                    }
+                    for attachment in message.attachments
+                ],
             },
         )
         return SendResult(external_message_id=external_message_id)

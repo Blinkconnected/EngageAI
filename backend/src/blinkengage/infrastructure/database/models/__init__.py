@@ -9,9 +9,23 @@ from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
 from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
 from blinkengage.infrastructure.database.models.company import Company
+from blinkengage.infrastructure.database.models.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
+from blinkengage.infrastructure.database.models.message import (
+    AttachmentValidationStatus,
+    DeliveryStatus,
+    Message,
+    MessageAttachment,
+    MessageDirection,
+    MessageStatus,
+    MessageType,
+    ReadStatus,
+)
 from blinkengage.infrastructure.database.models.rbac import (
     Permission,
     Role,
@@ -24,14 +38,24 @@ from blinkengage.infrastructure.database.models.user import User
 __all__ = [
     "Agent",
     "AgentStatus",
+    "AttachmentValidationStatus",
     "AuditLog",
     "ChannelConfig",
     "Company",
+    "Conversation",
+    "ConversationStatus",
     "Customer",
     "CustomerTag",
+    "DeliveryStatus",
     "Department",
     "EventOutbox",
+    "Message",
+    "MessageAttachment",
+    "MessageDirection",
+    "MessageStatus",
+    "MessageType",
     "Permission",
+    "ReadStatus",
     "Role",
     "RolePermission",
     "Tag",

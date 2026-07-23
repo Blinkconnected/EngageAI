@@ -66,6 +66,24 @@ class Settings(BaseSettings):
     s3_bucket_attachments: str = "blinkengage-attachments"
     s3_use_ssl: bool = False
 
+    # --- Attachments (see docs/architecture/conversations.md) ---
+    attachment_max_size_bytes: int = 25 * 1024 * 1024  # 25 MiB
+    attachment_allowed_content_types: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/pdf",
+            "text/plain",
+            "text/csv",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]
+    )
+
     # --- AI providers ---
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
@@ -77,7 +95,7 @@ class Settings(BaseSettings):
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding
 
-    @field_validator("cors_allow_origins", mode="before")
+    @field_validator("cors_allow_origins", "attachment_allowed_content_types", mode="before")
     @classmethod
     def _split_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):

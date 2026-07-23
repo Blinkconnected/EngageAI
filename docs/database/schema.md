@@ -44,6 +44,7 @@ container start via `docker/backend/entrypoint.sh` →
 | `5a9957be8e5e` | `event_outbox` |
 | `48fc9680074e` | `channel_configs` |
 | `5463a5076e76` | seeds `channels.read`/`channels.manage` into `permissions` (a fixed, explicit snapshot — not imported from `domain.rbac.PERMISSIONS` like the original seed, so this migration stays a stable diff regardless of later catalog changes) |
+| `855f7e80bccb` | `conversations`, `messages`, `message_attachments` |
 
 ## Tables
 
@@ -252,3 +253,56 @@ regardless of how large the dispatched majority grows. See
 No uniqueness constraint on `(company_id, channel_type)` — a company may
 run multiple instances of one channel type (e.g. two WhatsApp Business
 numbers).
+
+### `conversations`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| customer_id | UUID | FK → `customers.id`, cascade delete, indexed |
+| channel_config_id | UUID | FK → `channel_configs.id`, cascade delete, indexed |
+| external_thread_id | varchar(255), nullable | unique per `channel_config_id` among active rows |
+| status | varchar(20) | `open` / `pending` / `resolved` / `closed` (`ConversationStatus`) |
+| assigned_agent_id | UUID, nullable | FK → `agents.id`, `SET NULL` on delete, indexed |
+| last_message_at | timestamptz, nullable | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `messages`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id, channel_type | UUID, varchar(50) | denormalized — see `core-crm.md`/`channels.md`'s join-avoidance reasoning |
+| channel_config_id | UUID | FK → `channel_configs.id`, cascade delete |
+| conversation_id | UUID | FK → `conversations.id`, cascade delete, indexed |
+| customer_id | UUID | FK → `customers.id`, cascade delete, indexed |
+| external_message_id | varchar(255), nullable | unique per `channel_config_id` among rows that have one |
+| direction | varchar(20) | `inbound` / `outbound` (`MessageDirection`) |
+| message_type | varchar(20) | `text` / `media` / `system` (`MessageType`) |
+| status | varchar(20) | `pending` / `sent` / `failed` — our processing state (`MessageStatus`) |
+| delivery_status | varchar(20) | `pending` / `delivered` / `undelivered` / `not_applicable` — provider-confirmed (`DeliveryStatus`) |
+| read_status | varchar(20) | `unread` / `read` (`ReadStatus`) |
+| body | text, nullable | a media-only message has no text |
+| reply_to_message_id | UUID, nullable | self-FK, `SET NULL` on delete |
+| message_metadata | JSON | portable type, not `JSONB` — see `core-crm.md` decision #5 |
+| sent_at / delivered_at / read_at | timestamptz, nullable | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+Composite indexes on `(conversation_id, created_at)` and
+`(company_id, created_at)` support conversation-history pagination and
+company-scoped recent-activity queries respectively.
+
+### `message_attachments`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| conversation_id | UUID | FK → `conversations.id`, cascade delete, indexed |
+| message_id | UUID, nullable | FK → `messages.id`, cascade delete, indexed — nullable because upload and compose-reply are separate requests, see `conversations.md` decision #1 |
+| storage_key | varchar(500) | the `AttachmentStore`/MinIO object key |
+| filename | varchar(255) | |
+| content_type | varchar(100) | |
+| size_bytes | bigint | |
+| validation_status | varchar(20) | `pending` / `approved` / `rejected` (`AttachmentValidationStatus`) — only `approved` is written today; `pending` is reserved for a future virus-scan hook, see `conversations.md` decision #4 |
+| created_at | timestamptz | no `updated_at`/`deleted_at` — an attachment row never changes after upload |

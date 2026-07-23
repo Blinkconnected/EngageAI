@@ -42,3 +42,30 @@ class InvalidChannelTypeError(DomainError):
     def __init__(self, channel_type: str) -> None:
         self.channel_type = channel_type
         super().__init__(f"Unknown channel type: {channel_type!r}")
+
+
+class InvalidConversationStatusTransitionError(DomainError):
+    """Raised on an illegal conversation status transition (e.g.
+    ``closed`` -> ``pending`` directly, skipping ``open``) — see
+    ``docs/architecture/conversations.md``."""
+
+    def __init__(self, current: str, requested: str) -> None:
+        self.current = current
+        self.requested = requested
+        super().__init__(f"Cannot transition conversation from {current!r} to {requested!r}")
+
+
+class AttachmentValidationError(DomainError):
+    """Raised when an uploaded attachment fails type/size validation."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+
+
+class AttachmentNotLinkableError(DomainError):
+    """Raised when a referenced attachment doesn't exist, belongs to a
+    different conversation, or is already linked to another message."""
+
+    def __init__(self, attachment_id: object) -> None:
+        self.attachment_id = attachment_id
+        super().__init__(f"Attachment {attachment_id!r} cannot be attached to this message")

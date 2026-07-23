@@ -8,6 +8,7 @@ from blinkengage.api.v1.endpoints import (
     audit_logs,
     auth,
     channel_configs,
+    conversations,
     customers,
     departments,
     health,
@@ -27,3 +28,4 @@ api_router.include_router(audit_logs.router)
 api_router.include_router(channel_configs.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(web_chat.router)
+api_router.include_router(conversations.router)
