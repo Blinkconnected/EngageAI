@@ -101,6 +101,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
     SystemRole.OWNER: _PERMISSION_CODES,
     SystemRole.ADMIN: frozenset(
         {
+            "company.manage",
             "users.read",
             "users.manage",
             "departments.read",

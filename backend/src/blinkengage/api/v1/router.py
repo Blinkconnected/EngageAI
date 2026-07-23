@@ -4,11 +4,13 @@ from fastapi import APIRouter
 # at import time — see infrastructure/channels/providers/__init__.py.
 import blinkengage.infrastructure.channels.providers  # noqa: F401
 from blinkengage.api.v1.endpoints import (
+    admin,
     agents,
     ai,
     audit_logs,
     auth,
     channel_configs,
+    company,
     conversations,
     csat,
     customers,
@@ -53,3 +55,5 @@ api_router.include_router(reports.router)
 api_router.include_router(csat.router)
 api_router.include_router(erp_configs.router)
 api_router.include_router(erp_webhooks.router)
+api_router.include_router(company.router)
+api_router.include_router(admin.router)

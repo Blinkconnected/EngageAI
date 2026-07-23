@@ -1,19 +1,27 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from blinkengage.api.deps import get_audit_log_service, require_permission
 from blinkengage.api.schemas.audit_log import AuditLogResponse
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.core.auth_context import AuthContext
+from blinkengage.infrastructure.reporting.export import render_excel_table, render_pdf_table
 
 router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
 
+ExportFormat = Literal["pdf", "xlsx"]
 
-@router.get("", response_model=Page[AuditLogResponse])
+# A hard cap on exported rows — an export is a human opening a file, not a
+# paginated API consumer, so an unbounded query here would risk loading an
+# unreasonable number of rows into memory for one request.
+_EXPORT_ROW_LIMIT = 10_000
+
+
+@router.get("", response_model=None)
 async def list_audit_logs(
     auth: Annotated[AuthContext, Depends(require_permission("audit_logs.read"))],
     service: Annotated[AuditLogService, Depends(get_audit_log_service)],
@@ -24,7 +32,44 @@ async def list_audit_logs(
     entity_id: UUID | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
-) -> Page[AuditLogResponse]:
+    export: ExportFormat | None = Query(default=None),
+) -> Page[AuditLogResponse] | Response:
+    if export is not None:
+        items, _ = await service.list_logs(
+            company_id=auth.company_id,
+            offset=0,
+            limit=_EXPORT_ROW_LIMIT,
+            entity_type=entity_type,
+            action=action,
+            actor_user_id=actor_user_id,
+            entity_id=entity_id,
+            since=since,
+            until=until,
+        )
+        headers = ["Timestamp", "Actor User Id", "Action", "Entity Type", "Entity Id"]
+        rows = [
+            [
+                item.created_at.isoformat(),
+                str(item.actor_user_id) if item.actor_user_id else "",
+                item.action,
+                item.entity_type,
+                str(item.entity_id) if item.entity_id else "",
+            ]
+            for item in items
+        ]
+        if export == "pdf":
+            content = render_pdf_table(title="Audit Log", headers=headers, rows=rows)
+            media_type, extension = "application/pdf", "pdf"
+        else:
+            content = render_excel_table(title="Audit Log", headers=headers, rows=rows)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            extension = "xlsx"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="audit-log.{extension}"'},
+        )
+
     items, total = await service.list_logs(
         company_id=auth.company_id,
         offset=page_params.offset,

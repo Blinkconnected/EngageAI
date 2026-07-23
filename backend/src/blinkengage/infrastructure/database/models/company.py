@@ -5,9 +5,9 @@ Every other domain entity in the platform is scoped to a company via a
 """
 
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum, String
+from sqlalchemy import JSON, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from blinkengage.infrastructure.database.base import (
@@ -42,6 +42,12 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         nullable=False,
         default=CompanyStatus.TRIAL,
     )
+    # Admin-configurable preferences (timezone, business hours, branding,
+    # ...) — a portable JSON blob like ``Customer.custom_fields`` rather
+    # than named columns, since the exact set of admin console settings
+    # is expected to grow and none of it needs to be queried/filtered on
+    # (see docs/architecture/administration.md).
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
     users: Mapped[list["User"]] = relationship(back_populates="company")
     roles: Mapped[list["Role"]] = relationship(back_populates="company")

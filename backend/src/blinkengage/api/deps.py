@@ -21,6 +21,7 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
+from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.customer_service import CustomerService
@@ -503,6 +504,13 @@ def get_webhook_ingest_service(
     return WebhookIngestService(
         channel_configs=ChannelConfigRepository(session), factory=factory, events=events
     )
+
+
+def get_company_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> CompanyService:
+    return CompanyService(companies=CompanyRepository(session), events=events)
 
 
 def get_erp_config_service(

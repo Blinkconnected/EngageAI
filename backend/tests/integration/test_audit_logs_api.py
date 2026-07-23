@@ -173,3 +173,34 @@ async def test_audit_logs_are_scoped_to_company(
         headers=second_headers,
     )
     assert response.json()["total"] == 0
+
+
+class TestExport:
+    async def test_pdf_export_returns_a_pdf_file(
+        self, client: AsyncClient, owner_headers: dict, drain_outbox: Callable[[], Awaitable[int]]
+    ) -> None:
+        await drain_outbox()
+
+        response = await client.get(
+            "/api/v1/audit-logs", params={"export": "pdf"}, headers=owner_headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.content.startswith(b"%PDF")
+
+    async def test_xlsx_export_returns_a_spreadsheet_file(
+        self, client: AsyncClient, owner_headers: dict, drain_outbox: Callable[[], Awaitable[int]]
+    ) -> None:
+        await drain_outbox()
+
+        response = await client.get(
+            "/api/v1/audit-logs", params={"export": "xlsx"}, headers=owner_headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert (
+            response.headers["content-type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        assert response.content.startswith(b"PK")

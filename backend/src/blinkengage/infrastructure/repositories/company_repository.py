@@ -21,3 +21,7 @@ class CompanyRepository:
         self._session.add(company)
         await self._session.flush()
         return company
+
+    async def save(self, company: Company) -> Company:
+        await self._session.flush()
+        return company

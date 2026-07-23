@@ -448,8 +448,26 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   records reuses `customers.read`. 34 new tests (458 -> 492); `ruff
   check`/`mypy` clean; both migrations verified against real Postgres.
   See `docs/architecture/erp-integration.md`.
-- [ ] **M25. Administration console**
-  Company/system configuration, plugin management, audit log viewer.
+- [x] **M25. Administration console**
+  Backend only, matching every milestone since M15 — a full frontend
+  console is a dedicated future phase, not a sub-task of one backend
+  milestone (confirmed explicitly rather than assumed). `Company` gained
+  a `settings` JSON blob (like `Customer.custom_fields`) plus
+  `GET/PATCH /company`: viewing needs only authentication (shared,
+  company-wide info every member already sees), editing needs
+  `company.manage` — a permission that has sat in the catalog unused
+  since M2, now wired to an actual endpoint and finally added to the
+  `Admin` role's default permission set. `GET /admin/plugins` reports
+  what's registered across all four registry-keyed-by-string plugin
+  systems (channels, SMS gateways, AI providers, workflow actions) plus
+  the active AI provider — surfaced a real gap where
+  `WorkflowActionRegistry` was only ever populated in the
+  workflow-engine-consumer process, never the API process, now fixed
+  with a scoped import in the one endpoint that needs it.
+  `GET /audit-logs` gained `export=pdf|xlsx`, reusing M23's generic
+  table renderers rather than new rendering code. 10 new tests
+  (492 -> 502); `ruff check`/`mypy` clean; migration verified against
+  real Postgres. See `docs/architecture/administration.md`.
 
 ## Phase 6 — Hardening & Launch
 
