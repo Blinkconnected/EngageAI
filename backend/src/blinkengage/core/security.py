@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -36,23 +36,29 @@ def create_token(
     settings: Settings,
     token_type: TokenType,
     extra_claims: dict[str, Any] | None = None,
-) -> str:
+) -> tuple[str, str]:
+    """Issue a JWT. Returns ``(token, jti)`` — every token carries a unique
+    ``jti`` claim so refresh tokens can be tracked/revoked individually.
+    """
     now = datetime.now(UTC)
     if token_type is TokenType.ACCESS:
         expire = now + timedelta(minutes=settings.access_token_expire_minutes)
     else:
         expire = now + timedelta(days=settings.refresh_token_expire_days)
 
+    jti = str(uuid4())
     payload: dict[str, Any] = {
         "sub": str(subject),
         "type": token_type.value,
+        "jti": jti,
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
     if extra_claims:
         payload.update(extra_claims)
 
-    return str(jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm))
+    token = str(jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm))
+    return token, jti
 
 
 def decode_token(

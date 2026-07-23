@@ -28,16 +28,27 @@ def test_create_and_decode_access_token_roundtrip() -> None:
     settings = get_settings()
     subject = uuid4()
 
-    token = create_token(subject=subject, settings=settings, token_type=TokenType.ACCESS)
+    token, jti = create_token(subject=subject, settings=settings, token_type=TokenType.ACCESS)
     payload = decode_token(token, settings=settings, expected_type=TokenType.ACCESS)
 
     assert payload["sub"] == str(subject)
     assert payload["type"] == TokenType.ACCESS.value
+    assert payload["jti"] == jti
+
+
+def test_create_token_issues_unique_jti_per_call() -> None:
+    settings = get_settings()
+    subject = uuid4()
+
+    _, jti_one = create_token(subject=subject, settings=settings, token_type=TokenType.REFRESH)
+    _, jti_two = create_token(subject=subject, settings=settings, token_type=TokenType.REFRESH)
+
+    assert jti_one != jti_two
 
 
 def test_decode_token_rejects_wrong_token_type() -> None:
     settings = get_settings()
-    token = create_token(subject=uuid4(), settings=settings, token_type=TokenType.REFRESH)
+    token, _ = create_token(subject=uuid4(), settings=settings, token_type=TokenType.REFRESH)
 
     with pytest.raises(InvalidTokenError):
         decode_token(token, settings=settings, expected_type=TokenType.ACCESS)
@@ -45,7 +56,7 @@ def test_decode_token_rejects_wrong_token_type() -> None:
 
 def test_decode_token_rejects_tampered_token() -> None:
     settings = get_settings()
-    token = create_token(subject=uuid4(), settings=settings, token_type=TokenType.ACCESS)
+    token, _ = create_token(subject=uuid4(), settings=settings, token_type=TokenType.ACCESS)
 
     with pytest.raises(InvalidTokenError):
         decode_token(token + "tampered", settings=settings, expected_type=TokenType.ACCESS)

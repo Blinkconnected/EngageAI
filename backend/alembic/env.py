@@ -5,13 +5,11 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+# Populates Base.metadata with every ORM model so autogenerate sees them.
+import blinkengage.infrastructure.database.models  # noqa: F401,E402
 from alembic import context
 from blinkengage.core.config import get_settings
 from blinkengage.infrastructure.database.base import Base
-
-# Import all ORM modules here so Base.metadata is fully populated before
-# autogenerate runs. Each domain module registers its tables on import.
-# (populated incrementally as domain milestones land)
 
 config = context.config
 

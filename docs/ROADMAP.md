@@ -57,13 +57,28 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Phase 1 — Identity & Core Directory
 
-- [ ] **M6. Auth & RBAC domain**
-  User/Agent identity, JWT access + refresh tokens, password hashing,
-  login/refresh/logout endpoints, Role/Permission model, policy-based
-  authorization dependency, rate limiting on auth endpoints.
-- [ ] **M7. Companies, Departments, Teams, Agents**
-  Multi-tenant company model, department/team hierarchy, agent profiles,
-  membership and role assignment, admin CRUD APIs + tests.
+- [x] **M6. Auth, RBAC & multi-tenant foundation**
+  Company (tenant) model + `POST /auth/register` (creates a company, its
+  Owner user, and seeded Owner/Admin/Agent roles in one transaction),
+  `User` login identity, JWT access + individually-revocable refresh
+  tokens (rotation on refresh, Redis-backed allowlist), bcrypt password
+  hashing with a strength policy, `login`/`refresh`/`logout`/`me`
+  endpoints, `Role`/`Permission`/`RolePermission`/`UserRole` schema with a
+  seeded permission catalog (`domain/rbac.py`), the `require_permission`
+  authorization dependency (permissions embedded in the access token —
+  no per-request DB round-trip), and Redis fixed-window rate limiting on
+  `/auth/register`+`/auth/login`. 50 tests passing (SQLite-backed) plus a
+  full manual end-to-end pass against real Postgres/Redis/RabbitMQ, which
+  caught and fixed three real bugs (a session-commit bug that silently
+  rolled back every write, a missing eager-load causing an async
+  lazy-load crash, and a concurrency race between services' migration
+  steps — see `docs/architecture/auth-rbac.md` for details). See also
+  `docs/database/schema.md`.
+- [ ] **M7. Departments, Teams, Agents**
+  Department/team hierarchy, agent profiles (operational layer on top of
+  the `User` identity — status, department/team membership), membership
+  management, admin CRUD APIs + tests. (Company/tenant foundation itself
+  landed in M6, above.)
 - [ ] **M8. Customers**
   Customer profile model, identity resolution across channels, custom
   fields, tagging, merge/dedupe.

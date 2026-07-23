@@ -28,7 +28,7 @@ asyncio.run(wait_for_database())
 PY
 
 echo "[entrypoint] running database migrations..."
-alembic upgrade head
+python -m blinkengage.core.migrate
 
 echo "[entrypoint] starting application..."
 exec "$@"

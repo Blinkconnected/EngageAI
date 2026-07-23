@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import StaticPool
 
 from blinkengage.core.config import Settings
 
@@ -17,7 +18,13 @@ from blinkengage.core.config import Settings
 def create_engine(settings: Settings) -> AsyncEngine:
     is_sqlite = settings.database_url.startswith("sqlite")
     engine_kwargs: dict[str, Any] = {"echo": settings.database_echo, "future": True}
-    if not is_sqlite:
+    if is_sqlite:
+        # In-memory SQLite is per-connection by default — StaticPool shares
+        # the single connection across the whole engine so schema created in
+        # one session is visible to every other session (used by the test
+        # suite; production always targets Postgres).
+        engine_kwargs |= {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
+    else:
         engine_kwargs |= {
             "pool_size": settings.database_pool_size,
             "max_overflow": settings.database_max_overflow,
