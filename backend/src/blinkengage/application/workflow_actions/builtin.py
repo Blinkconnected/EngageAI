@@ -120,6 +120,38 @@ class SendReplyAction(WorkflowAction):
         return {"conversation_id": str(conversation_id), "message_id": str(message.id)}
 
 
+@WorkflowActionRegistry.register("create_notification")
+class CreateNotificationAction(WorkflowAction):
+    """A company-configurable notification, layered on top of the
+    built-in ones ``notification_consumer.py`` already sends for
+    assignment/SLA events — this is how a workflow can notify any user
+    about anything, without new backend code per notification type."""
+
+    async def execute(
+        self, *, params: dict[str, Any], context: WorkflowExecutionContext
+    ) -> dict[str, Any]:
+        user_id = UUID(str(params["user_id"]))
+        title = str(params.get("title", "")).strip()
+        body = str(params.get("body", "")).strip()
+        if not title or not body:
+            raise ValueError("create_notification requires params['title'] and params['body']")
+
+        notification_payload: dict[str, Any] = dict(params.get("payload", {}))
+        conversation_id = context.event.get("payload", {}).get("conversation_id")
+        if conversation_id and "conversation_id" not in notification_payload:
+            notification_payload["conversation_id"] = conversation_id
+
+        notification = await context.notifications.create(
+            company_id=context.company_id,
+            user_id=user_id,
+            notification_type="workflow.notification",
+            title=title,
+            body=body,
+            payload=notification_payload,
+        )
+        return {"notification_id": str(notification.id), "user_id": str(user_id)}
+
+
 @WorkflowActionRegistry.register("publish_event")
 class PublishEventAction(WorkflowAction):
     """The extensibility escape hatch: lets a workflow emit a custom

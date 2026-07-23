@@ -25,6 +25,7 @@ from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.knowledge_service import KnowledgeService
+from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
@@ -69,6 +70,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.notification_repository import (
+    NotificationRepository,
+)
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.quick_reply_repository import QuickReplyRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
@@ -290,6 +294,19 @@ def get_agent_service(
     )
 
 
+def get_agent_service_ws(
+    session: Annotated[AsyncSession, Depends(get_db_session_ws)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher_ws)],
+) -> AgentService:
+    return AgentService(
+        session=session,
+        agents=AgentRepository(session),
+        users=UserRepository(session),
+        roles=RoleRepository(session),
+        events=events,
+    )
+
+
 def get_customer_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
@@ -345,6 +362,26 @@ def get_conversation_service(
     )
 
 
+def get_conversation_service_ws(
+    session: Annotated[AsyncSession, Depends(get_db_session_ws)],
+    settings: Annotated[Settings, Depends(get_settings_dep_ws)],
+    attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store_ws)],
+    provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory_ws)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher_ws)],
+) -> ConversationService:
+    return ConversationService(
+        conversations=ConversationRepository(session),
+        messages=MessageRepository(session),
+        attachments=MessageAttachmentRepository(session),
+        channel_configs=ChannelConfigRepository(session),
+        customers=CustomerRepository(session),
+        attachment_store=attachment_store,
+        provider_factory=provider_factory,
+        events=events,
+        settings=settings,
+    )
+
+
 def get_queue_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
@@ -380,6 +417,20 @@ def get_workflow_service(
         runs=WorkflowRunRepository(session),
         events=events,
     )
+
+
+def get_notification_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
+) -> NotificationService:
+    return NotificationService(notifications=NotificationRepository(session), realtime=realtime)
+
+
+def get_notification_service_ws(
+    session: Annotated[AsyncSession, Depends(get_db_session_ws)],
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
+) -> NotificationService:
+    return NotificationService(notifications=NotificationRepository(session), realtime=realtime)
 
 
 def get_knowledge_service(

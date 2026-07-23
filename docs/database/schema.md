@@ -50,6 +50,9 @@ container start via `docker/backend/entrypoint.sh` →
 | `a1b2c3d4e5f6` | `customer_channel_identities` (generic multi-channel identity resolution, see `docs/architecture/whatsapp-telegram.md`) |
 | `b2c3d4e5f6a7` | `workflow_definitions`, `workflow_runs` |
 | `c3d4e5f6a7b8` | seeds `workflows.read`/`workflows.manage` into `permissions` (same fixed-snapshot pattern as `5463a5076e76`/`7c6ca45d6fac`) |
+| `d4e5f6a7b8c9` | `knowledge_categories`, `knowledge_articles`, `knowledge_article_tags`, `quick_replies`, `internal_notes` |
+| `e5f6a7b8c9d0` | seeds `knowledge_base.read`/`knowledge_base.manage`/`quick_replies.read`/`quick_replies.manage` into `permissions` (same fixed-snapshot pattern) |
+| `f6a7b8c9d0e1` | `notifications` |
 
 ## Tables
 
@@ -473,3 +476,21 @@ No `SoftDeleteMixin` — hard-deletable, same reasoning as `routing_rules`
 (low-stakes, no compliance requirement to retain a deleted note; the
 audit-log-consumer already durably records the deletion event regardless
 of the row's fate).
+
+### `notifications`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| user_id | UUID | FK → `users.id`, **cascade** delete (not `SET NULL`) — a personal inbox is functional, not a compliance record that must outlive its owner |
+| notification_type | varchar(100) | plain string, usually the same domain event type that triggered it |
+| title | varchar(255) | |
+| body | text | |
+| payload | JSON | deep-linking data, e.g. `{"conversation_id": "..."}` |
+| is_read | boolean | |
+| read_at | timestamptz, nullable | |
+| email_dispatched_at | timestamptz, nullable | null = pending — same "let existing state do the idempotency work" shape as `event_outbox.dispatched_at` |
+| created_at / updated_at | timestamptz | |
+
+No `SoftDeleteMixin` — hard-deletable, same reasoning as `internal_notes`.

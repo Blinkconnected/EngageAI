@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 import blinkengage.application.workflow_actions  # noqa: F401 - registers built-in actions
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.workflow_engine import WorkflowEngine
 from blinkengage.application.workflow_actions.base import WorkflowExecutionContext
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -38,6 +39,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.notification_repository import (
+    NotificationRepository,
+)
 from blinkengage.infrastructure.repositories.workflow_repository import (
     WorkflowDefinitionRepository,
 )
@@ -151,6 +155,10 @@ async def _run_engine(app: Any, event: dict) -> None:
             event=event,
             events=events,
             conversation_service=conversation_service,
+            notifications=NotificationService(
+                notifications=NotificationRepository(session),
+                realtime=RealtimePublisher(app.state.container.redis()),
+            ),
         )
         engine = WorkflowEngine(
             workflows=WorkflowDefinitionRepository(session), runs=WorkflowRunRepository(session)
@@ -278,6 +286,44 @@ async def test_send_reply_action_sends_through_the_real_conversation_provider(
 
     assert len(outbound) == 1
     assert outbound[0].body == "Thanks, we got your message!"
+
+
+async def test_create_notification_action_notifies_the_target_user(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    seed = await _seed_conversation(client, owner_headers, app, body="refund")
+    me = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()
+    await _create_workflow(
+        client,
+        owner_headers,
+        conditions={"field": "payload.body", "operator": "contains", "value": "refund"},
+        actions=[
+            {
+                "type": "create_notification",
+                "params": {
+                    "user_id": me["id"],
+                    "title": "VIP customer needs a refund",
+                    "body": "Please prioritize this one.",
+                },
+            }
+        ],
+    )
+
+    await _run_engine(app, _message_persisted_event(seed=seed, body="refund"))
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        notifications, total = await NotificationRepository(db_session).list_for_user(
+            company_id=UUID(seed["company_id"]),
+            user_id=UUID(me["id"]),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert total == 1
+    assert notifications[0].title == "VIP customer needs a refund"
+    assert notifications[0].payload["conversation_id"] == seed["conversation_id"]
 
 
 async def test_inactive_workflow_never_triggers(

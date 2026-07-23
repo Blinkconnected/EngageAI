@@ -23,6 +23,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.events.relay",
         "blinkengage.infrastructure.tasks.sla_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
+        "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
     ],
 )
 
@@ -54,6 +55,12 @@ celery_app.conf.update(
         "poll-email-imap": {
             "task": "blinkengage.channels.poll_email_imap",
             "schedule": 60.0,
+        },
+        # See docs/architecture/notifications.md — dispatches emails for
+        # Notification rows with no email_dispatched_at yet.
+        "dispatch-notification-emails": {
+            "task": "blinkengage.notifications.dispatch_pending_emails",
+            "schedule": 30.0,
         },
     },
 )

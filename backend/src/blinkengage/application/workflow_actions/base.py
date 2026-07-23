@@ -21,6 +21,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.domain.events import DomainEventPublisher
 
 
@@ -31,6 +32,7 @@ class WorkflowExecutionContext:
     event: dict[str, Any]
     events: DomainEventPublisher
     conversation_service: ConversationService
+    notifications: NotificationService
 
 
 class WorkflowAction(ABC):

@@ -341,10 +341,34 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   Five new tables; new `knowledge_base.*`/`quick_replies.*` permissions.
   23 new tests (355 total); `ruff check`/`mypy` clean. See
   `docs/architecture/knowledge-quick-replies-notes.md`.
-- [ ] **M21. Notifications & real-time layer**
-  WebSocket presence/typing/notifications, email/push notification
-  dispatch via Celery. Consumes from the M10 event bus and the
-  `RealtimePublisher` tier.
+- [x] **M21. Notifications & real-time layer**
+  Two halves. First: closed a dormant gap left open since M11/M12 —
+  every `ChannelProvider` has implemented `typing_indicator()` since it
+  was added, but nothing ever called it. The new agent WebSocket gateway
+  (`/ws/agent`, authenticated with the same JWT every REST call uses)
+  forwards an agent's typing state to `ConversationService.
+  send_typing_indicator` (new), which finally invokes it — completing
+  the customer-visible "agent is typing" signal the architecture always
+  supported. The same gateway also handles presence (connect flips
+  `Agent.status` `OFFLINE`->`ONLINE`, never overriding an explicit
+  `AWAY`; disconnect always sets `OFFLINE`) and forwards live
+  `Notification` creations. Second: a durable per-user `Notification`
+  inbox, created either by a new built-in consumer bound to a fixed set
+  of routing keys (`conversation.assignment_changed`/
+  `conversation.sla_breached` — unlike the Workflow Engine's `#`, since
+  these are first-party notifications every company gets) or by a new
+  `create_notification` workflow action (M19's `publish_event` escape
+  hatch made concrete). Email dispatch is a Celery-beat sweep over
+  `email_dispatched_at IS NULL` — deliberately not a fire-and-forget task
+  enqueue, since no precedent for that pattern exists elsewhere in this
+  codebase and the outbox/IMAP-poll-style periodic sweep already is the
+  established one. New platform-level `settings.smtp_*`, distinct from a
+  company's own `EmailProvider` channel credentials, since a notification
+  must reach an agent even for a company with no customer-facing email
+  channel configured. One new table (`notifications`); no new RBAC
+  permission (a personal inbox is gated by authentication alone). 20 new
+  tests (375 total); `ruff check`/`mypy` clean. See
+  `docs/architecture/notifications.md`.
 - [ ] **M22. AI Engine**
   Provider abstraction (OpenAI / Claude / Ollama), reply suggestions,
   conversation summary, translation, language detection, sentiment

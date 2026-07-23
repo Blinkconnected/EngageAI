@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 import blinkengage.application.workflow_actions  # noqa: F401 - registers built-in actions
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.workflow_engine import WorkflowEngine
 from blinkengage.application.workflow_actions.base import WorkflowExecutionContext
 from blinkengage.core.config import Settings, get_settings
@@ -47,6 +48,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.notification_repository import (
+    NotificationRepository,
+)
 from blinkengage.infrastructure.repositories.workflow_repository import (
     WorkflowDefinitionRepository,
 )
@@ -85,12 +89,16 @@ def _get_attachment_store(settings: Settings) -> AttachmentStore:
     return _attachment_store
 
 
-def _get_provider_factory(settings: Settings) -> ChannelProviderFactory:
+def _get_realtime_publisher(settings: Settings) -> RealtimePublisher:
     global _redis
     if _redis is None:
         _redis = create_redis_client(settings)
+    return RealtimePublisher(_redis)
+
+
+def _get_provider_factory(settings: Settings) -> ChannelProviderFactory:
     return ChannelProviderFactory(
-        realtime=RealtimePublisher(_redis), attachments=_get_attachment_store(settings)
+        realtime=_get_realtime_publisher(settings), attachments=_get_attachment_store(settings)
     )
 
 
@@ -112,12 +120,17 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         events=events,
         settings=settings,
     )
+    notifications = NotificationService(
+        notifications=NotificationRepository(session),
+        realtime=_get_realtime_publisher(settings),
+    )
     context = WorkflowExecutionContext(
         session=session,
         company_id=company_id,
         event=event,
         events=events,
         conversation_service=conversation_service,
+        notifications=notifications,
     )
 
     engine = WorkflowEngine(

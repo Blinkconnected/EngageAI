@@ -104,6 +104,20 @@ class Settings(BaseSettings):
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding
 
+    # --- Platform/system email (see docs/architecture/notifications.md) ---
+    # Distinct from a company's per-channel EmailProvider credentials
+    # (M15, ChannelConfig.credentials) — this is the platform's own
+    # outbound email for transactional/system notifications (e.g. "you
+    # were assigned a conversation"), which must work even for a company
+    # that hasn't configured any customer-facing email channel.
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    smtp_from_address: str = "notifications@blinkengage.local"
+    smtp_from_name: str = "Blink Engage"
+
     @field_validator("cors_allow_origins", "attachment_allowed_content_types", mode="before")
     @classmethod
     def _split_origins(cls, value: str | list[str]) -> list[str]:

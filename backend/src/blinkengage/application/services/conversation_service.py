@@ -12,6 +12,7 @@ provider-side media upload, e.g. WhatsApp) can download the bytes itself
 rather than this service re-uploading them redundantly.
 """
 
+import contextlib
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -339,3 +340,24 @@ class ConversationService:
             )
         )
         return message
+
+    async def send_typing_indicator(
+        self, *, company_id: UUID, conversation_id: UUID, is_typing: bool
+    ) -> None:
+        """Finally wires up ``ChannelProvider.typing_indicator`` (M11) end
+        to end — every provider has implemented it since M12, but nothing
+        ever called it until the M21 agent WebSocket gateway started
+        forwarding an agent's typing state here. Best-effort: a channel
+        with no active config, or a provider call that fails, is silently
+        swallowed rather than surfaced — a live-typing signal is never
+        worth failing a WebSocket connection over."""
+        conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+        config = await self._channel_configs.get_by_id(
+            company_id=company_id, channel_config_id=conversation.channel_config_id
+        )
+        if config is None:
+            return
+        provider = self._provider_factory.build(config)
+        thread_id = conversation.external_thread_id or str(conversation.id)
+        with contextlib.suppress(Exception):
+            await provider.typing_indicator(thread_id, is_typing=is_typing)

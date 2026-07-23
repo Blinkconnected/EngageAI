@@ -23,6 +23,13 @@ x-backend-env: &backend-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
   RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+  SMTP_HOST: ${SMTP_HOST:-greenmail}
+  SMTP_PORT: ${SMTP_PORT:-3025}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+  SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-notifications@blinkengage.local}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Blink Engage}
 
 services:
   postgres:
@@ -218,6 +225,31 @@ services:
         "python",
         "-m",
         "blinkengage.infrastructure.events.consumers.workflow_engine_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
+  # Built-in lifecycle notifications (M21, see
+  # docs/architecture/notifications.md) — binds a fixed, code-defined set
+  # of routing keys (assignment/SLA events), unlike the Workflow Engine's
+  # "#", since these are first-party notifications every company gets.
+  notification-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.notification_consumer",
       ]
     environment: *backend-env
     volumes:
