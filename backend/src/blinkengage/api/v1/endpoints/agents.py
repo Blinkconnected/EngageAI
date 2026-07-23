@@ -57,6 +57,7 @@ async def create_agent(
         password=payload.password,
         title=payload.title,
         department_id=payload.department_id,
+        actor_user_id=auth.user_id,
     )
     return _to_response(agent)
 
@@ -84,6 +85,7 @@ async def update_agent(
         title=payload.title,
         department_id=payload.department_id,
         status=payload.status,
+        actor_user_id=auth.user_id,
     )
     return _to_response(agent)
 
@@ -94,4 +96,4 @@ async def delete_agent(
     auth: Annotated[AuthContext, Depends(require_permission("agents.manage"))],
     service: Annotated[AgentService, Depends(get_agent_service)],
 ) -> None:
-    await service.delete(company_id=auth.company_id, agent_id=agent_id)
+    await service.delete(company_id=auth.company_id, agent_id=agent_id, actor_user_id=auth.user_id)

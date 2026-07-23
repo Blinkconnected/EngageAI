@@ -40,6 +40,7 @@ container start via `docker/backend/entrypoint.sh` →
 | `1cff1a67f289` | `pgcrypto`, `citext` Postgres extensions (available for future use; no column currently depends on them) |
 | `f2df1379a476` | `companies`, `users`, `permissions` (seeded from `domain.rbac.PERMISSIONS`), `roles`, `role_permissions`, `user_roles` |
 | `37f197931b3f` | `departments`, `teams`, `team_memberships`, `agents`, `customers`, `tags`, `customer_tags` |
+| `2748c9c76517` | `audit_logs` |
 
 ## Tables
 
@@ -187,3 +188,22 @@ Created on first use (`TagRepository.get_or_create`), not via a separate
 | tag_id | UUID, FK → `tags.id`, cascade delete |
 
 Composite PK `(customer_id, tag_id)`.
+
+### `audit_logs` (append-only)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| actor_user_id | UUID, nullable | FK → `users.id`, **`SET NULL`** on delete — the audit trail outlives the actor's row |
+| action | varchar(100) | `<entity_type>.<verb>`, e.g. `department.created` |
+| entity_type | varchar(100) | e.g. `department`, `customer`, `user` |
+| entity_id | UUID, nullable | the affected row's id (null for events with no single entity) |
+| details | JSON | small, action-specific context (e.g. `{"name": "Support"}`) |
+| created_at | timestamptz | server-defaulted to `now()`, indexed |
+
+No `updated_at`/`deleted_at` — rows are never modified or deleted (see
+`docs/architecture/audit-logging.md`). Composite indexes on
+`(company_id, created_at)` and `(company_id, entity_type, entity_id)`
+support the two query patterns the API exposes: a recent-activity feed and
+an entity's history.

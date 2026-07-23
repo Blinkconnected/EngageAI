@@ -65,6 +65,7 @@ async def create_team(
         name=payload.name,
         description=payload.description,
         department_id=payload.department_id,
+        actor_user_id=auth.user_id,
     )
     return _to_response(team)
 
@@ -93,6 +94,7 @@ async def update_team(
         description=payload.description,
         department_id=payload.department_id,
         is_active=payload.is_active,
+        actor_user_id=auth.user_id,
     )
     return _to_response(team)
 
@@ -103,7 +105,7 @@ async def delete_team(
     auth: Annotated[AuthContext, Depends(require_permission("teams.manage"))],
     service: Annotated[TeamService, Depends(get_team_service)],
 ) -> None:
-    await service.delete(company_id=auth.company_id, team_id=team_id)
+    await service.delete(company_id=auth.company_id, team_id=team_id, actor_user_id=auth.user_id)
 
 
 @router.post("/{team_id}/members", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
@@ -118,6 +120,7 @@ async def add_team_member(
         team_id=team_id,
         agent_id=payload.agent_id,
         is_lead=payload.is_lead,
+        actor_user_id=auth.user_id,
     )
     team = await service.get(company_id=auth.company_id, team_id=team_id)
     return _to_response(team)
@@ -130,4 +133,9 @@ async def remove_team_member(
     auth: Annotated[AuthContext, Depends(require_permission("teams.manage"))],
     service: Annotated[TeamService, Depends(get_team_service)],
 ) -> None:
-    await service.remove_member(company_id=auth.company_id, team_id=team_id, agent_id=agent_id)
+    await service.remove_member(
+        company_id=auth.company_id,
+        team_id=team_id,
+        agent_id=agent_id,
+        actor_user_id=auth.user_id,
+    )

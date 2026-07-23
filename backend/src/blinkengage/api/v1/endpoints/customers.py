@@ -66,6 +66,7 @@ async def create_customer(
         notes=payload.notes,
         custom_fields=payload.custom_fields,
         tag_names=payload.tags,
+        actor_user_id=auth.user_id,
     )
     return _to_response(customer)
 
@@ -96,6 +97,7 @@ async def update_customer(
         notes=payload.notes,
         custom_fields=payload.custom_fields,
         tag_names=payload.tags,
+        actor_user_id=auth.user_id,
     )
     return _to_response(customer)
 
@@ -106,4 +108,6 @@ async def delete_customer(
     auth: Annotated[AuthContext, Depends(require_permission("customers.manage"))],
     service: Annotated[CustomerService, Depends(get_customer_service)],
 ) -> None:
-    await service.delete(company_id=auth.company_id, customer_id=customer_id)
+    await service.delete(
+        company_id=auth.company_id, customer_id=customer_id, actor_user_id=auth.user_id
+    )

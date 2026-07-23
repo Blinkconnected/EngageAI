@@ -1,6 +1,7 @@
 from typing import Any
 from uuid import UUID
 
+from blinkengage.domain.audit import AuditEvent, AuditPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
@@ -8,9 +9,12 @@ from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 
 
 class CustomerService:
-    def __init__(self, *, customers: CustomerRepository, tags: TagRepository) -> None:
+    def __init__(
+        self, *, customers: CustomerRepository, tags: TagRepository, audit: AuditPublisher
+    ) -> None:
         self._customers = customers
         self._tags = tags
+        self._audit = audit
 
     async def create(
         self,
@@ -22,6 +26,7 @@ class CustomerService:
         notes: str | None,
         custom_fields: dict[str, Any],
         tag_names: list[str],
+        actor_user_id: UUID | None = None,
     ) -> Customer:
         normalized_email = email.strip().lower() if email else None
         if normalized_email is not None:
@@ -46,7 +51,18 @@ class CustomerService:
             custom_fields=custom_fields,
             customer_tags=[CustomerTag(tag=tag) for tag in tags],
         )
-        return await self._customers.add(customer)
+        created = await self._customers.add(customer)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="customer.created",
+                entity_type="customer",
+                entity_id=created.id,
+                actor_user_id=actor_user_id,
+                details={"full_name": created.full_name},
+            )
+        )
+        return created
 
     async def get(self, *, company_id: UUID, customer_id: UUID) -> Customer:
         customer = await self._customers.get_by_id(company_id=company_id, customer_id=customer_id)
@@ -72,6 +88,7 @@ class CustomerService:
         notes: str | None,
         custom_fields: dict[str, Any] | None,
         tag_names: list[str] | None,
+        actor_user_id: UUID | None = None,
     ) -> Customer:
         customer = await self.get(company_id=company_id, customer_id=customer_id)
 
@@ -95,11 +112,33 @@ class CustomerService:
         if tag_names is not None:
             await self._set_tags(company_id=company_id, customer=customer, tag_names=tag_names)
 
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="customer.updated",
+                entity_type="customer",
+                entity_id=customer.id,
+                actor_user_id=actor_user_id,
+                details={"full_name": customer.full_name},
+            )
+        )
         return customer
 
-    async def delete(self, *, company_id: UUID, customer_id: UUID) -> None:
+    async def delete(
+        self, *, company_id: UUID, customer_id: UUID, actor_user_id: UUID | None = None
+    ) -> None:
         customer = await self.get(company_id=company_id, customer_id=customer_id)
         await self._customers.soft_delete(customer)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="customer.deleted",
+                entity_type="customer",
+                entity_id=customer.id,
+                actor_user_id=actor_user_id,
+                details={"full_name": customer.full_name},
+            )
+        )
 
     async def _resolve_tags(self, *, company_id: UUID, tag_names: list[str]) -> list[Tag]:
         names = {name.strip() for name in tag_names if name.strip()}

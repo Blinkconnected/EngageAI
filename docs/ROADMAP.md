@@ -92,8 +92,21 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   three real bugs found and fixed during this milestone (a soft-delete +
   unique-constraint conflict, and two ORM-relationship-staleness bugs),
   and `docs/database/schema.md` for the full schema.
-- [ ] **M9. Audit logging foundation**
-  Append-only audit log table, domain event hooks, audit query API.
+- [x] **M9. Audit logging foundation**
+  Append-only `audit_logs` table (no update/soft-delete mixins — a row is
+  written once and never changes), an `AuditEvent`/`AuditPublisher`
+  contract (`domain/audit.py`) hooked directly into every mutating method
+  of `DepartmentService`, `TeamService` (incl. membership add/remove),
+  `AgentService`, `CustomerService`, and `AuthService` (registration,
+  login, logout) — each publish call runs on the same DB session as the
+  triggering change, so an audit entry and its business change commit or
+  roll back together atomically. `GET /audit-logs` read API (the
+  `audit_logs.read` permission was already seeded back in M6) with
+  filtering by entity type/action/actor/entity id/date range plus the
+  standard pagination. 86 tests passing (6 new). See
+  `docs/architecture/audit-logging.md` for the design decisions
+  (particularly why this is synchronous/in-transaction rather than queued)
+  and `docs/database/schema.md` for the table.
 
 ## Phase 2 — Conversations Core
 

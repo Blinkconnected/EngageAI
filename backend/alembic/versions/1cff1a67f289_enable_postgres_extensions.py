@@ -1,7 +1,7 @@
 """enable postgres extensions
 
 Revision ID: 1cff1a67f289
-Revises: 
+Revises:
 Create Date: 2026-07-23 00:32:03.980704
 """
 

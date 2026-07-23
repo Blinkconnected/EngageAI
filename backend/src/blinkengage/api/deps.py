@@ -14,6 +14,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.agent_service import AgentService
+from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
@@ -23,9 +24,11 @@ from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.rbac import is_known_permission
+from blinkengage.infrastructure.audit.publisher import AuditLogPublisher
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
@@ -65,10 +68,17 @@ def get_refresh_token_store(
     return RefreshTokenStore(redis)
 
 
+def get_audit_publisher(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditLogPublisher:
+    return AuditLogPublisher(AuditLogRepository(session))
+
+
 def get_auth_service(
     settings: Annotated[Settings, Depends(get_settings_dep)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store)],
+    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
 ) -> AuthService:
     return AuthService(
         settings=settings,
@@ -77,6 +87,7 @@ def get_auth_service(
         users=UserRepository(session),
         roles=RoleRepository(session),
         refresh_tokens=refresh_tokens,
+        audit=audit,
     )
 
 
@@ -116,31 +127,44 @@ async def get_current_user(
 
 def get_department_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
 ) -> DepartmentService:
-    return DepartmentService(departments=DepartmentRepository(session))
+    return DepartmentService(departments=DepartmentRepository(session), audit=audit)
 
 
 def get_team_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
 ) -> TeamService:
-    return TeamService(teams=TeamRepository(session), agents=AgentRepository(session))
+    return TeamService(teams=TeamRepository(session), agents=AgentRepository(session), audit=audit)
 
 
 def get_agent_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
 ) -> AgentService:
     return AgentService(
         session=session,
         agents=AgentRepository(session),
         users=UserRepository(session),
         roles=RoleRepository(session),
+        audit=audit,
     )
 
 
 def get_customer_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
 ) -> CustomerService:
-    return CustomerService(customers=CustomerRepository(session), tags=TagRepository(session))
+    return CustomerService(
+        customers=CustomerRepository(session), tags=TagRepository(session), audit=audit
+    )
+
+
+def get_audit_log_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuditLogService:
+    return AuditLogService(audit_logs=AuditLogRepository(session))
 
 
 def require_permission(

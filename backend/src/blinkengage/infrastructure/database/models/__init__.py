@@ -6,6 +6,7 @@ the same side effect.
 """
 
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
+from blinkengage.infrastructure.database.models.audit_log import AuditLog
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
 from blinkengage.infrastructure.database.models.department import Department
@@ -21,6 +22,7 @@ from blinkengage.infrastructure.database.models.user import User
 __all__ = [
     "Agent",
     "AgentStatus",
+    "AuditLog",
     "Company",
     "Customer",
     "CustomerTag",

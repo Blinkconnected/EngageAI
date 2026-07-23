@@ -40,7 +40,10 @@ async def create_department(
     service: Annotated[DepartmentService, Depends(get_department_service)],
 ) -> DepartmentResponse:
     department = await service.create(
-        company_id=auth.company_id, name=payload.name, description=payload.description
+        company_id=auth.company_id,
+        name=payload.name,
+        description=payload.description,
+        actor_user_id=auth.user_id,
     )
     return DepartmentResponse.model_validate(department)
 
@@ -68,6 +71,7 @@ async def update_department(
         name=payload.name,
         description=payload.description,
         is_active=payload.is_active,
+        actor_user_id=auth.user_id,
     )
     return DepartmentResponse.model_validate(department)
 
@@ -78,4 +82,6 @@ async def delete_department(
     auth: Annotated[AuthContext, Depends(require_permission("departments.manage"))],
     service: Annotated[DepartmentService, Depends(get_department_service)],
 ) -> None:
-    await service.delete(company_id=auth.company_id, department_id=department_id)
+    await service.delete(
+        company_id=auth.company_id, department_id=department_id, actor_user_id=auth.user_id
+    )

@@ -1,20 +1,40 @@
 from uuid import UUID
 
+from blinkengage.domain.audit import AuditEvent, AuditPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 
 
 class DepartmentService:
-    def __init__(self, *, departments: DepartmentRepository) -> None:
+    def __init__(self, *, departments: DepartmentRepository, audit: AuditPublisher) -> None:
         self._departments = departments
+        self._audit = audit
 
-    async def create(self, *, company_id: UUID, name: str, description: str | None) -> Department:
+    async def create(
+        self,
+        *,
+        company_id: UUID,
+        name: str,
+        description: str | None,
+        actor_user_id: UUID | None = None,
+    ) -> Department:
         if await self._departments.get_by_name(company_id=company_id, name=name) is not None:
             raise EntityAlreadyExistsError("Department", "name", name)
-        return await self._departments.add(
+        department = await self._departments.add(
             Department(company_id=company_id, name=name, description=description)
         )
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="department.created",
+                entity_type="department",
+                entity_id=department.id,
+                actor_user_id=actor_user_id,
+                details={"name": department.name},
+            )
+        )
+        return department
 
     async def get(self, *, company_id: UUID, department_id: UUID) -> Department:
         department = await self._departments.get_by_id(
@@ -39,6 +59,7 @@ class DepartmentService:
         name: str | None,
         description: str | None,
         is_active: bool | None,
+        actor_user_id: UUID | None = None,
     ) -> Department:
         department = await self.get(company_id=company_id, department_id=department_id)
         if name is not None and name != department.name:
@@ -49,8 +70,30 @@ class DepartmentService:
             department.description = description
         if is_active is not None:
             department.is_active = is_active
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="department.updated",
+                entity_type="department",
+                entity_id=department.id,
+                actor_user_id=actor_user_id,
+                details={"name": department.name, "is_active": department.is_active},
+            )
+        )
         return department
 
-    async def delete(self, *, company_id: UUID, department_id: UUID) -> None:
+    async def delete(
+        self, *, company_id: UUID, department_id: UUID, actor_user_id: UUID | None = None
+    ) -> None:
         department = await self.get(company_id=company_id, department_id=department_id)
         await self._departments.soft_delete(department)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="department.deleted",
+                entity_type="department",
+                entity_id=department.id,
+                actor_user_id=actor_user_id,
+                details={"name": department.name},
+            )
+        )

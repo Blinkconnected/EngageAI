@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.core.security import hash_password
+from blinkengage.domain.audit import AuditEvent, AuditPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
@@ -32,11 +33,13 @@ class AgentService:
         agents: AgentRepository,
         users: UserRepository,
         roles: RoleRepository,
+        audit: AuditPublisher,
     ) -> None:
         self._session = session
         self._agents = agents
         self._users = users
         self._roles = roles
+        self._audit = audit
 
     async def create(
         self,
@@ -47,6 +50,7 @@ class AgentService:
         password: str,
         title: str | None,
         department_id: UUID | None,
+        actor_user_id: UUID | None = None,
     ) -> Agent:
         normalized_email = email.strip().lower()
         if await self._users.get_by_email(normalized_email) is not None:
@@ -80,6 +84,16 @@ class AgentService:
 
         reloaded = await self._agents.get_by_id(company_id=company_id, agent_id=agent.id)
         assert reloaded is not None
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="agent.created",
+                entity_type="agent",
+                entity_id=reloaded.id,
+                actor_user_id=actor_user_id,
+                details={"email": normalized_email},
+            )
+        )
         return reloaded
 
     async def get(self, *, company_id: UUID, agent_id: UUID) -> Agent:
@@ -103,6 +117,7 @@ class AgentService:
         title: str | None,
         department_id: UUID | None,
         status: AgentStatus | None,
+        actor_user_id: UUID | None = None,
     ) -> Agent:
         agent = await self.get(company_id=company_id, agent_id=agent_id)
         if title is not None:
@@ -111,8 +126,30 @@ class AgentService:
             agent.department_id = department_id
         if status is not None:
             agent.status = status
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="agent.updated",
+                entity_type="agent",
+                entity_id=agent.id,
+                actor_user_id=actor_user_id,
+                details={"status": agent.status.value},
+            )
+        )
         return agent
 
-    async def delete(self, *, company_id: UUID, agent_id: UUID) -> None:
+    async def delete(
+        self, *, company_id: UUID, agent_id: UUID, actor_user_id: UUID | None = None
+    ) -> None:
         agent = await self.get(company_id=company_id, agent_id=agent_id)
         await self._agents.soft_delete(agent)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="agent.deleted",
+                entity_type="agent",
+                entity_id=agent.id,
+                actor_user_id=actor_user_id,
+                details={},
+            )
+        )

@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from blinkengage.domain.audit import AuditEvent, AuditPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
@@ -7,9 +8,12 @@ from blinkengage.infrastructure.repositories.team_repository import TeamReposito
 
 
 class TeamService:
-    def __init__(self, *, teams: TeamRepository, agents: AgentRepository) -> None:
+    def __init__(
+        self, *, teams: TeamRepository, agents: AgentRepository, audit: AuditPublisher
+    ) -> None:
         self._teams = teams
         self._agents = agents
+        self._audit = audit
 
     async def create(
         self,
@@ -18,6 +22,7 @@ class TeamService:
         name: str,
         description: str | None,
         department_id: UUID | None,
+        actor_user_id: UUID | None = None,
     ) -> Team:
         if await self._teams.get_by_name(company_id=company_id, name=name) is not None:
             raise EntityAlreadyExistsError("Team", "name", name)
@@ -27,6 +32,16 @@ class TeamService:
                 name=name,
                 description=description,
                 department_id=department_id,
+            )
+        )
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="team.created",
+                entity_type="team",
+                entity_id=team.id,
+                actor_user_id=actor_user_id,
+                details={"name": team.name},
             )
         )
         # Reload with `memberships` eager-loaded — a freshly flushed object's
@@ -54,6 +69,7 @@ class TeamService:
         description: str | None,
         department_id: UUID | None,
         is_active: bool | None,
+        actor_user_id: UUID | None = None,
     ) -> Team:
         team = await self.get(company_id=company_id, team_id=team_id)
         if name is not None and name != team.name:
@@ -66,14 +82,42 @@ class TeamService:
             team.department_id = department_id
         if is_active is not None:
             team.is_active = is_active
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="team.updated",
+                entity_type="team",
+                entity_id=team.id,
+                actor_user_id=actor_user_id,
+                details={"name": team.name, "is_active": team.is_active},
+            )
+        )
         return team
 
-    async def delete(self, *, company_id: UUID, team_id: UUID) -> None:
+    async def delete(
+        self, *, company_id: UUID, team_id: UUID, actor_user_id: UUID | None = None
+    ) -> None:
         team = await self.get(company_id=company_id, team_id=team_id)
         await self._teams.soft_delete(team)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="team.deleted",
+                entity_type="team",
+                entity_id=team.id,
+                actor_user_id=actor_user_id,
+                details={"name": team.name},
+            )
+        )
 
     async def add_member(
-        self, *, company_id: UUID, team_id: UUID, agent_id: UUID, is_lead: bool
+        self,
+        *,
+        company_id: UUID,
+        team_id: UUID,
+        agent_id: UUID,
+        is_lead: bool,
+        actor_user_id: UUID | None = None,
     ) -> TeamMembership:
         await self.get(company_id=company_id, team_id=team_id)  # 404 if team missing/foreign
         agent = await self._agents.get_by_id(company_id=company_id, agent_id=agent_id)
@@ -82,13 +126,41 @@ class TeamService:
         existing = await self._teams.get_membership(team_id=team_id, agent_id=agent_id)
         if existing is not None:
             raise EntityAlreadyExistsError("TeamMembership", "agent_id", agent_id)
-        return await self._teams.add_membership(
+        membership = await self._teams.add_membership(
             TeamMembership(team_id=team_id, agent_id=agent_id, is_lead=is_lead)
         )
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="team_membership.added",
+                entity_type="team",
+                entity_id=team_id,
+                actor_user_id=actor_user_id,
+                details={"agent_id": str(agent_id), "is_lead": is_lead},
+            )
+        )
+        return membership
 
-    async def remove_member(self, *, company_id: UUID, team_id: UUID, agent_id: UUID) -> None:
+    async def remove_member(
+        self,
+        *,
+        company_id: UUID,
+        team_id: UUID,
+        agent_id: UUID,
+        actor_user_id: UUID | None = None,
+    ) -> None:
         await self.get(company_id=company_id, team_id=team_id)
         membership = await self._teams.get_membership(team_id=team_id, agent_id=agent_id)
         if membership is None:
             raise EntityNotFoundError("TeamMembership", agent_id)
         await self._teams.remove_membership(membership)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company_id,
+                action="team_membership.removed",
+                entity_type="team",
+                entity_id=team_id,
+                actor_user_id=actor_user_id,
+                details={"agent_id": str(agent_id)},
+            )
+        )

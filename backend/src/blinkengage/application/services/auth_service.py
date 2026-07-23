@@ -23,6 +23,7 @@ from blinkengage.core.security import (
     hash_password,
     verify_password,
 )
+from blinkengage.domain.audit import AuditEvent, AuditPublisher
 from blinkengage.domain.exceptions import AuthenticationError, EntityAlreadyExistsError
 from blinkengage.domain.rbac import DEFAULT_ROLE_PERMISSIONS, SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
@@ -77,6 +78,7 @@ class AuthService:
         users: UserRepository,
         roles: RoleRepository,
         refresh_tokens: RefreshTokenStore,
+        audit: AuditPublisher,
     ) -> None:
         self._settings = settings
         self._session = session
@@ -84,6 +86,7 @@ class AuthService:
         self._users = users
         self._roles = roles
         self._refresh_tokens = refresh_tokens
+        self._audit = audit
 
     async def register_company(
         self,
@@ -119,6 +122,16 @@ class AuthService:
         # Reload with relationships populated for the caller (e.g. to issue tokens immediately).
         reloaded = await self._users.get_by_id(user.id)
         assert reloaded is not None
+        await self._audit.publish(
+            AuditEvent(
+                company_id=company.id,
+                action="company.registered",
+                entity_type="company",
+                entity_id=company.id,
+                actor_user_id=reloaded.id,
+                details={"company_name": company.name, "owner_email": normalized_email},
+            )
+        )
         return RegisteredAccount(company=company, user=reloaded)
 
     async def authenticate(self, *, email: str, password: str) -> User:
@@ -131,6 +144,16 @@ class AuthService:
             raise AuthenticationError("Invalid email or password")
 
         user.last_login_at = datetime.now(UTC)
+        await self._audit.publish(
+            AuditEvent(
+                company_id=user.company_id,
+                action="user.login",
+                entity_type="user",
+                entity_id=user.id,
+                actor_user_id=user.id,
+                details={},
+            )
+        )
         return user
 
     async def issue_tokens(self, user: User) -> IssuedTokens:
@@ -181,7 +204,21 @@ class AuthService:
         except InvalidTokenError:
             return  # Already invalid/expired — nothing to revoke.
 
-        await self._refresh_tokens.revoke(user_id=uuid.UUID(payload["sub"]), jti=payload["jti"])
+        user_id = uuid.UUID(payload["sub"])
+        await self._refresh_tokens.revoke(user_id=user_id, jti=payload["jti"])
+
+        user = await self._users.get_by_id(user_id)
+        if user is not None:
+            await self._audit.publish(
+                AuditEvent(
+                    company_id=user.company_id,
+                    action="user.logout",
+                    entity_type="user",
+                    entity_id=user.id,
+                    actor_user_id=user.id,
+                    details={},
+                )
+            )
 
     async def _unique_slug(self, base_slug: str) -> str:
         candidate = base_slug
