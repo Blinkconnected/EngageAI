@@ -1,19 +1,10 @@
 """Pydantic request/response schemas for the auth API."""
 
-import re
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-
-def _validate_password_strength(password: str) -> str:
-    if len(password) < 10:
-        raise ValueError("Password must be at least 10 characters long")
-    if not re.search(r"[A-Za-z]", password):
-        raise ValueError("Password must contain at least one letter")
-    if not re.search(r"\d", password):
-        raise ValueError("Password must contain at least one digit")
-    return password
+from blinkengage.api.schemas.validators import validate_password_strength
 
 
 class RegisterRequest(BaseModel):
@@ -25,7 +16,7 @@ class RegisterRequest(BaseModel):
     @field_validator("owner_password")
     @classmethod
     def _check_password_strength(cls, value: str) -> str:
-        return _validate_password_strength(value)
+        return validate_password_strength(value)
 
 
 class LoginRequest(BaseModel):

@@ -36,3 +36,21 @@ async def client(app) -> AsyncGenerator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+async def registered_owner(client: AsyncClient) -> dict:
+    payload = {
+        "company_name": "Acme Corp",
+        "owner_full_name": "Ada Owner",
+        "owner_email": "ada@acme.example",
+        "owner_password": "correct-horse-battery-9",
+    }
+    response = await client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@pytest.fixture
+def owner_headers(registered_owner: dict) -> dict[str, str]:
+    return {"Authorization": f"Bearer {registered_owner['tokens']['access_token']}"}

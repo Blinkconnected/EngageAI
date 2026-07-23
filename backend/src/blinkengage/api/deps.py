@@ -13,7 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.auth_service import AuthService
+from blinkengage.application.services.customer_service import CustomerService
+from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.team_service import TeamService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
@@ -21,8 +25,13 @@ from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.rbac import is_known_permission
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.user import User
+from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
+from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
+from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
+from blinkengage.infrastructure.repositories.tag_repository import TagRepository
+from blinkengage.infrastructure.repositories.team_repository import TeamRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
 
 _bearer_scheme = HTTPBearer(auto_error=True)
@@ -103,6 +112,35 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is no longer active"
         )
     return user
+
+
+def get_department_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DepartmentService:
+    return DepartmentService(departments=DepartmentRepository(session))
+
+
+def get_team_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TeamService:
+    return TeamService(teams=TeamRepository(session), agents=AgentRepository(session))
+
+
+def get_agent_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AgentService:
+    return AgentService(
+        session=session,
+        agents=AgentRepository(session),
+        users=UserRepository(session),
+        roles=RoleRepository(session),
+    )
+
+
+def get_customer_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> CustomerService:
+    return CustomerService(customers=CustomerRepository(session), tags=TagRepository(session))
 
 
 def require_permission(

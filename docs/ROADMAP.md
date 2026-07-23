@@ -74,14 +74,24 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   lazy-load crash, and a concurrency race between services' migration
   steps — see `docs/architecture/auth-rbac.md` for details). See also
   `docs/database/schema.md`.
-- [ ] **M7. Departments, Teams, Agents**
-  Department/team hierarchy, agent profiles (operational layer on top of
-  the `User` identity — status, department/team membership), membership
-  management, admin CRUD APIs + tests. (Company/tenant foundation itself
-  landed in M6, above.)
-- [ ] **M8. Customers**
-  Customer profile model, identity resolution across channels, custom
-  fields, tagging, merge/dedupe.
+- [x] **M7. Departments, Teams, Agents**
+  Department/team hierarchy (teams optionally scoped to a department),
+  agent profiles (operational layer on top of the `User` identity —
+  title, status, department/team membership) created together with their
+  underlying `User` + seeded "Agent" role via `POST /agents`, team
+  membership management (`POST`/`DELETE .../members`), full CRUD +
+  pagination + RBAC-protected admin APIs, 80 tests passing. (Company/
+  tenant foundation itself landed in M6, above.)
+- [x] **M8. Customers**
+  Customer profile model, tagging (company-scoped tag catalog,
+  created-on-first-use), schema-less custom fields (JSON), search
+  (name/email/phone), full CRUD + pagination + tenant isolation verified.
+  Multi-channel identity resolution and merge/dedupe explicitly deferred
+  to Phase 4 (nothing to resolve/merge until channels exist to create
+  per-channel contact records). See `docs/architecture/core-crm.md` for
+  three real bugs found and fixed during this milestone (a soft-delete +
+  unique-constraint conflict, and two ORM-relationship-staleness bugs),
+  and `docs/database/schema.md` for the full schema.
 - [ ] **M9. Audit logging foundation**
   Append-only audit log table, domain event hooks, audit query API.
 

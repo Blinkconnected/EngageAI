@@ -15,7 +15,7 @@ coverage.xml
 *.sqlite3
 backend/.env
 backend/alembic/versions/__pycache__/
-backend/celerybeat-schedule
+backend/celerybeat-schedule*
 
 # --- Node / frontend ---
 node_modules/

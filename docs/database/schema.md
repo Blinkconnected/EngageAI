@@ -21,7 +21,17 @@ container start via `docker/backend/entrypoint.sh` →
 - Foreign keys cascade on delete (`ondelete="CASCADE"`) for
   strictly-owned child rows (a company's users/roles, a role's
   permission/user assignments) — deleting a company or role is expected
-  to cascade, not orphan rows.
+  to cascade, not orphan rows. Foreign keys to an entity a row merely
+  *references* (a team/agent's `department_id`) use `ondelete="SET NULL"`
+  instead — deleting a department detaches its teams/agents rather than
+  deleting them.
+- Tables that are both soft-deletable **and** uniquely named/keyed per
+  company (`departments.name`, `teams.name`, `agents.user_id`,
+  `customers.email`) enforce that uniqueness with a **partial** unique
+  index (`WHERE deleted_at IS NULL`), not a plain `UniqueConstraint` —
+  otherwise a soft-deleted row's name/email stays permanently reserved
+  and can never be reused. See `docs/architecture/core-crm.md` decision
+  #1 for the bug this fixes.
 
 ## Migration history
 
@@ -29,6 +39,7 @@ container start via `docker/backend/entrypoint.sh` →
 |----------|------|
 | `1cff1a67f289` | `pgcrypto`, `citext` Postgres extensions (available for future use; no column currently depends on them) |
 | `f2df1379a476` | `companies`, `users`, `permissions` (seeded from `domain.rbac.PERMISSIONS`), `roles`, `role_permissions`, `user_roles` |
+| `37f197931b3f` | `departments`, `teams`, `team_memberships`, `agents`, `customers`, `tags`, `customer_tags` |
 
 ## Tables
 
@@ -96,3 +107,83 @@ Composite PK `(role_id, permission_code)`.
 | role_id | UUID, FK → `roles.id`, cascade delete |
 
 Composite PK `(user_id, role_id)` — a user can hold multiple roles.
+
+### `departments`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| name | varchar(255) | unique per `(company_id, name)` among active rows |
+| description | text, nullable | |
+| is_active | boolean | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `teams`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| department_id | UUID, nullable | FK → `departments.id`, `SET NULL` on delete, indexed |
+| name | varchar(255) | unique per `(company_id, name)` among active rows |
+| description | text, nullable | |
+| is_active | boolean | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `team_memberships` (join)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| team_id | UUID | FK → `teams.id`, cascade delete |
+| agent_id | UUID | FK → `agents.id`, cascade delete |
+| is_lead | boolean | |
+| created_at / updated_at | timestamptz | |
+
+Composite PK `(team_id, agent_id)`.
+
+### `agents` (operational profile on top of a `user`)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| user_id | UUID | FK → `users.id`, cascade delete; unique among active rows |
+| department_id | UUID, nullable | FK → `departments.id`, `SET NULL` on delete, indexed |
+| title | varchar(255), nullable | |
+| status | varchar(20) | `online` / `away` / `offline` (`AgentStatus`) |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `customers`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| full_name | varchar(255) | |
+| email | varchar(320), nullable | unique per `(company_id, email)` among active rows; multiple NULLs allowed |
+| phone | varchar(32), nullable | indexed |
+| notes | text, nullable | |
+| custom_fields | JSON | schema-less bag; portable type (not `JSONB` — see core-crm.md decision #5) |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `tags` (company-scoped catalog)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| name | varchar(100) | unique per `(company_id, name)` — no soft-delete, so a plain `UniqueConstraint` |
+| created_at / updated_at | timestamptz | |
+
+Created on first use (`TagRepository.get_or_create`), not via a separate
+"define a tag" step.
+
+### `customer_tags` (join)
+
+| Column | Type |
+|--------|------|
+| customer_id | UUID, FK → `customers.id`, cascade delete |
+| tag_id | UUID, FK → `tags.id`, cascade delete |
+
+Composite PK `(customer_id, tag_id)`.
