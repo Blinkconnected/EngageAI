@@ -2,8 +2,6 @@
 ``docs/architecture/whatsapp-telegram.md``.
 """
 
-import hashlib
-import hmac
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -21,6 +19,10 @@ from blinkengage.domain.channels import (
     SendResult,
     WebhookAck,
     WebhookRequest,
+)
+from blinkengage.infrastructure.channels.providers._meta_webhook import (
+    meta_hub_challenge_ack,
+    verify_meta_signature,
 )
 from blinkengage.infrastructure.channels.registry import ChannelRegistry
 
@@ -230,24 +232,18 @@ class WhatsAppProvider(ChannelProvider):
         return await self._attachments.download(key=attachment_ref.external_id)
 
     async def webhook(self, request: WebhookRequest) -> tuple[list[InboundMessage], WebhookAck]:
-        if request.query_params.get("hub.mode") == "subscribe":
-            return [], WebhookAck(status_code=200, body=request.query_params.get("hub.challenge"))
+        challenge_ack = meta_hub_challenge_ack(request)
+        if challenge_ack is not None:
+            return [], challenge_ack
         messages = await self.receive_message(request.body)
         return messages, WebhookAck(status_code=200)
 
     def verify_signature(self, request: WebhookRequest) -> bool:
-        if request.query_params.get("hub.mode") == "subscribe":
-            return request.query_params.get("hub.verify_token") == self._credentials.get(
-                "verify_token"
-            )
-        if not self._webhook_secret:
-            return False
-        signature = request.headers.get("x-hub-signature-256", "")
-        expected = (
-            "sha256="
-            + hmac.new(self._webhook_secret.encode(), request.body, hashlib.sha256).hexdigest()
+        return verify_meta_signature(
+            request,
+            webhook_secret=self._webhook_secret,
+            verify_token=self._credentials.get("verify_token"),
         )
-        return hmac.compare_digest(signature, expected)
 
     async def health_check(self) -> HealthStatus:
         try:

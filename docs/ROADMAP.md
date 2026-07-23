@@ -242,7 +242,28 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   verified against real Postgres — upgrade/downgrade/re-upgrade — not
   only SQLite). 52 new tests (250 total); `ruff check`/`mypy` clean. See
   `docs/architecture/whatsapp-telegram.md`.
-- [ ] **M17. Facebook Messenger + Instagram channels**
+- [x] **M17. Facebook Messenger + Instagram channels**
+  Two more providers built together — Messenger and Instagram are the
+  same underlying Meta "Messenger Platform" (one webhook envelope, one
+  Send API), so this is the second concrete case that justified
+  extracting shared code rather than a third near-duplicate: an
+  unregistered `MetaMessagingProvider` base (send/receive/attachments/
+  typing/health-check) with `MessengerProvider`/`InstagramProvider` as
+  five-line registered subclasses differing only in which credential key
+  names the Graph API node id. WhatsApp's GET-handshake/signature logic
+  (M16) was also lifted into shared `_meta_webhook.py` functions and
+  WhatsApp refactored onto it (behavior-preserving — its 21 tests re-run
+  unchanged) now that a third provider needs the identical logic.
+  `mark_as_read` is a no-op (the real `mark_seen` action needs a
+  recipient id this ABC method's signature doesn't provide); real
+  `typing_indicator` via `sender_action`; no-op `edit_message`/
+  `delete_message` (no platform capability); no reply-context field (an
+  honest Send API limitation, not built around). No sender display name
+  in either platform's webhook — deferred as a documented future
+  enrichment, not a gap, since the M16 generic identity-resolution path
+  already tolerates a missing name. Zero schema changes. 28 new tests
+  (278 total); `ruff check`/`mypy` clean. See
+  `docs/architecture/messenger-instagram.md`.
 - [ ] **M18. SMS channel** (provider-agnostic gateway abstraction)
 
 ## Phase 4 — Engagement Intelligence
