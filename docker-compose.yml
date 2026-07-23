@@ -286,6 +286,30 @@ services:
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
+  # ERPNext Integration (M24, see docs/architecture/erp-integration.md) —
+  # binds customer.created only, pushing a new customer to ERPNext for
+  # any company with an active ErpConfig (a no-op for the rest). Inbound
+  # sync is webhook-driven (POST /webhooks/erpnext/...), not a consumer.
+  erp-sync-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.erp_sync_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   # Local SMTP+IMAP test mailbox for manually verifying the Email channel
   # (M15, see docs/architecture/email-channel.md) end-to-end — outbound
   # send and the IMAP poll task — without depending on a real mail

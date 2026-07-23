@@ -18,6 +18,11 @@ from blinkengage.infrastructure.database.models.customer_channel_identity import
     CustomerChannelIdentity,
 )
 from blinkengage.infrastructure.database.models.department import Department
+from blinkengage.infrastructure.database.models.erp import (
+    ErpConfig,
+    ErpCustomerLink,
+    ErpSyncedRecord,
+)
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 from blinkengage.infrastructure.database.models.internal_note import InternalNote
 from blinkengage.infrastructure.database.models.knowledge import (
@@ -88,6 +93,9 @@ __all__ = [
     "CustomerTag",
     "DeliveryStatus",
     "Department",
+    "ErpConfig",
+    "ErpCustomerLink",
+    "ErpSyncedRecord",
     "EventOutbox",
     "InternalNote",
     "KnowledgeArticle",

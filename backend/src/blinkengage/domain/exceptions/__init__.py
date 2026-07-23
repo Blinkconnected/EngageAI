@@ -92,3 +92,13 @@ class AiNotConfiguredError(DomainError):
 
     def __init__(self) -> None:
         super().__init__("AI features are not configured on this platform")
+
+
+class ErpNotConfiguredError(DomainError):
+    """Raised when an ERPNext-dependent action is requested for a company
+    with no active ``ErpConfig`` — a deployment/configuration state, not
+    a missing resource, so it maps to 503 like ``AiNotConfiguredError``.
+    See ``docs/architecture/erp-integration.md``."""
+
+    def __init__(self) -> None:
+        super().__init__("ERPNext is not configured for this company")

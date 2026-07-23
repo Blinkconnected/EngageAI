@@ -13,6 +13,8 @@ from blinkengage.api.v1.endpoints import (
     csat,
     customers,
     departments,
+    erp_configs,
+    erp_webhooks,
     health,
     knowledge,
     notifications,
@@ -49,3 +51,5 @@ api_router.include_router(realtime.router)
 api_router.include_router(ai.router)
 api_router.include_router(reports.router)
 api_router.include_router(csat.router)
+api_router.include_router(erp_configs.router)
+api_router.include_router(erp_webhooks.router)

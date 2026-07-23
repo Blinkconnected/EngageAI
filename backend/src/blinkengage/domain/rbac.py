@@ -86,6 +86,13 @@ PERMISSIONS: tuple[Permission, ...] = (
     # granular permissions for ten AI features would be needless
     # fragmentation with no distinct access-control need behind it. ---
     Permission("ai.use", "Use AI Engine features (reply suggestions, summaries, translation, ...)"),
+    # --- ERPNext Integration (see docs/architecture/erp-integration.md) —
+    # configuring the connection and triggering manual sync/pull is an
+    # admin action distinct from viewing a customer's synced ERP records,
+    # which reuses customers.read the same way Internal Notes reuse
+    # conversations.*: no new access-control question behind viewing
+    # data about a customer the agent can already see. ---
+    Permission("erp.manage", "Configure the ERPNext connection and trigger manual sync/pull"),
 )
 
 _PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
@@ -119,6 +126,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "quick_replies.read",
             "quick_replies.manage",
             "ai.use",
+            "erp.manage",
         }
     ),
     SystemRole.AGENT: frozenset(

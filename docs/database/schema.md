@@ -55,6 +55,8 @@ container start via `docker/backend/entrypoint.sh` →
 | `f6a7b8c9d0e1` | `notifications` |
 | `a7b8c9d0e1f2` | seeds `ai.use` into `permissions` (same fixed-snapshot pattern) — no new tables: the AI Engine (M22) is stateless request/response, with usage recorded only via the durable `ai.completed` domain event, not a dedicated table (see `docs/architecture/ai-engine.md`) |
 | `b8c9d0e1f2a3` | `conversation_daily_stats`, `agent_daily_stats`, `queue_daily_stats`, `ai_daily_stats`, `csat_daily_stats`, `csat_responses` — Reports & Analytics (M23) rollups + CSAT responses; no new permission (`reports.read` already existed, see `docs/architecture/reports-analytics.md`) |
+| `c9d0e1f2a3b4` | `erp_configs`, `erp_customer_links`, `erp_synced_records` — ERPNext Integration (M24, see `docs/architecture/erp-integration.md`) |
+| `d0e1f2a3b4c5` | seeds `erp.manage` into `permissions` (same fixed-snapshot pattern) |
 
 ## Tables
 

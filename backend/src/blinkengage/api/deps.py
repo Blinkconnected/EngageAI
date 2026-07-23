@@ -25,6 +25,8 @@ from blinkengage.application.services.conversation_service import ConversationSe
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.erp_config_service import ErpConfigService
+from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.notification_service import NotificationService
@@ -62,6 +64,13 @@ from blinkengage.infrastructure.repositories.conversation_repository import (
 from blinkengage.infrastructure.repositories.csat_repository import CsatResponseRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
+from blinkengage.infrastructure.repositories.erp_config_repository import ErpConfigRepository
+from blinkengage.infrastructure.repositories.erp_customer_link_repository import (
+    ErpCustomerLinkRepository,
+)
+from blinkengage.infrastructure.repositories.erp_synced_record_repository import (
+    ErpSyncedRecordRepository,
+)
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
@@ -493,6 +502,26 @@ def get_webhook_ingest_service(
 ) -> WebhookIngestService:
     return WebhookIngestService(
         channel_configs=ChannelConfigRepository(session), factory=factory, events=events
+    )
+
+
+def get_erp_config_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> ErpConfigService:
+    return ErpConfigService(erp_configs=ErpConfigRepository(session), events=events)
+
+
+def get_erp_sync_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> ErpSyncService:
+    return ErpSyncService(
+        erp_configs=ErpConfigRepository(session),
+        customer_links=ErpCustomerLinkRepository(session),
+        synced_records=ErpSyncedRecordRepository(session),
+        customers=CustomerRepository(session),
+        events=events,
     )
 
 

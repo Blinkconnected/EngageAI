@@ -424,9 +424,30 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   pre-existing gap where `workflow-engine-consumer`/`notification-
   consumer` were missing from the production docker-compose overlay
   since M19/M21. See `docs/architecture/reports-analytics.md`.
-- [ ] **M24. ERPNext Integration**
-  Customers, invoices, sales orders, quotations, support tickets, payments,
-  contacts — sync + webhook layer. Consumes from the M10 event bus.
+- [x] **M24. ERPNext Integration**
+  One named integration, not a plugin architecture — `ErpClient` is a
+  `Protocol` (like `DomainEventPublisher`), not a registry-backed `ABC`
+  (like `ChannelProvider`/`AiProvider`), since there's exactly one
+  concrete implementation and nothing to register a second entry
+  against. `ErpConfig` mirrors `ChannelConfig` exactly (per-company,
+  encrypted credentials). Outbound: a new `erp-sync-consumer` binds
+  `customer.created` and silently no-ops for the vast majority of
+  companies with no ERPNext connection configured, syncing idempotently
+  (via a unique `ErpCustomerLink`) for the rest; ERPNext-side failures
+  are logged, never re-raised, so a customer's sync failing can't block
+  the customer's own creation. Inbound: a doctype-agnostic webhook route
+  (`POST /webhooks/erpnext/{id}/{doctype}`, secret verified via a custom
+  header — ERPNext has no standardized signature scheme) lands every
+  document type in one generic `erp_synced_records` cache table rather
+  than six near-duplicate tables, since invoices/orders/quotations/
+  tickets/payments/contacts are heterogeneous, read-only, per-company-
+  customized shapes only ever displayed. Manual pull
+  (`POST /customers/{id}/erp-pull/{doctype}`) shares that same cache for
+  backfill/retry. One new `erp.manage` permission (Admin-only) for
+  configuring the connection and manual sync/pull; viewing synced
+  records reuses `customers.read`. 34 new tests (458 -> 492); `ruff
+  check`/`mypy` clean; both migrations verified against real Postgres.
+  See `docs/architecture/erp-integration.md`.
 - [ ] **M25. Administration console**
   Company/system configuration, plugin management, audit log viewer.
 

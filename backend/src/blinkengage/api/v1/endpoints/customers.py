@@ -3,14 +3,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from blinkengage.api.deps import get_customer_service, require_permission
+from blinkengage.api.deps import get_customer_service, get_erp_sync_service, require_permission
 from blinkengage.api.schemas.customer import (
     CustomerCreateRequest,
     CustomerResponse,
     CustomerUpdateRequest,
 )
+from blinkengage.api.schemas.erp import ErpCustomerLinkResponse, ErpSyncedRecordResponse
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.application.services.customer_service import CustomerService
+from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.customer import Customer
 
@@ -111,3 +113,41 @@ async def delete_customer(
     await service.delete(
         company_id=auth.company_id, customer_id=customer_id, actor_user_id=auth.user_id
     )
+
+
+@router.get("/{customer_id}/erp-records", response_model=list[ErpSyncedRecordResponse])
+async def list_customer_erp_records(
+    customer_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("customers.read"))],
+    erp_service: Annotated[ErpSyncService, Depends(get_erp_sync_service)],
+    doctype: str | None = None,
+) -> list[ErpSyncedRecordResponse]:
+    records = await erp_service.list_synced_records(
+        company_id=auth.company_id, customer_id=customer_id, doctype=doctype
+    )
+    return [ErpSyncedRecordResponse.model_validate(record) for record in records]
+
+
+@router.post("/{customer_id}/erp-sync", response_model=ErpCustomerLinkResponse)
+async def sync_customer_to_erp(
+    customer_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("erp.manage"))],
+    erp_service: Annotated[ErpSyncService, Depends(get_erp_sync_service)],
+) -> ErpCustomerLinkResponse:
+    link = await erp_service.sync_customer_or_raise(
+        company_id=auth.company_id, customer_id=customer_id
+    )
+    return ErpCustomerLinkResponse.model_validate(link)
+
+
+@router.post("/{customer_id}/erp-pull/{doctype}", response_model=list[ErpSyncedRecordResponse])
+async def pull_customer_erp_records(
+    customer_id: UUID,
+    doctype: str,
+    auth: Annotated[AuthContext, Depends(require_permission("erp.manage"))],
+    erp_service: Annotated[ErpSyncService, Depends(get_erp_sync_service)],
+) -> list[ErpSyncedRecordResponse]:
+    records = await erp_service.pull_records(
+        company_id=auth.company_id, customer_id=customer_id, doctype=doctype
+    )
+    return [ErpSyncedRecordResponse.model_validate(record) for record in records]

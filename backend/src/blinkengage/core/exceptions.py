@@ -15,6 +15,7 @@ from blinkengage.domain.exceptions import (
     DomainError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
+    ErpNotConfiguredError,
 )
 
 _STATUS_MAP: dict[type[Exception], int] = {
@@ -23,6 +24,7 @@ _STATUS_MAP: dict[type[Exception], int] = {
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,
     AuthorizationError: status.HTTP_403_FORBIDDEN,
     AiNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ErpNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 
