@@ -552,10 +552,36 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   almost entirely infra-layer, verified against the real stack rather
   than through new pytest coverage). See
   `docs/architecture/observability.md`.
-- [ ] **M28. Performance & load testing**
-  Load/soak testing of conversation + messaging paths, query optimization,
-  caching strategy validation, `messages` table partitioning if warranted
-  at real data volume.
+- [x] **M28. Performance & load testing**
+  A real load test (`scripts/load_test.py`, no new dependency — a ~160-
+  line async `httpx` script, not Locust/k6) against the live stack
+  surfaced a genuine finding: at concurrency=20, p50 latency balloons
+  from 30-45ms (concurrency=3) to 190-370ms, with throughput barely
+  rising — the signature of a saturated single dev-mode uvicorn worker,
+  not slow application code. Confirmed by comparing against a
+  standalone build of the production `--workers 4` target: ~44% higher
+  throughput at the same concurrency. Honest caveat documented: this
+  sandbox has only 2 CPU cores shared across 18+ containers, so absolute
+  numbers aren't production-representative — the qualitative finding
+  (worker-count matters; 0% error rate under load) is. `EXPLAIN ANALYZE`
+  against the two highest-traffic list queries
+  (`ConversationRepository`/`CustomerRepository.list_for_company`) found
+  both doing an index scan on `company_id` alone followed by a separate
+  in-memory sort before `LIMIT` — invisible at today's row counts, real
+  cost at scale. Fixed with two partial, pre-sorted composite indexes
+  (migration `f2a3b4c5d6e7`), confirmed via `EXPLAIN ANALYZE` before/
+  after that the separate `Sort` node disappears entirely. Caching
+  strategy reviewed and validated rather than expanded: RBAC permissions
+  are already effectively cached via the JWT's `permissions` claim (zero
+  DB round trips per permission check), and the load test didn't surface
+  a caching-shaped bottleneck — adding one anyway would be exactly the
+  premature optimization this codebase's principles argue against.
+  `messages` table partitioning written up as a documented, ready-to-
+  execute playbook rather than applied now — partitioning a near-empty
+  table is pure risk for zero benefit, and a migration that does nothing
+  against near-empty data can't be verified the way every other
+  migration in this codebase has been. See
+  `docs/architecture/performance.md`.
 - [ ] **M29. Documentation & production readiness review**
   Full `docs/api`, `docs/database`, `docs/security`, `docs/deployment`
   content, runbooks, disaster recovery plan, go-live checklist.

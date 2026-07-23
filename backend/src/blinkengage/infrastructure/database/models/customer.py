@@ -37,6 +37,18 @@ class Customer(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
+        # M28 (see docs/architecture/performance.md): CustomerRepository
+        # .list_for_company's non-search browse case sorts by full_name —
+        # the single-column company_id index alone forces a separate sort
+        # of every matching row before LIMIT, same issue as the
+        # conversations list query fixed alongside this one.
+        Index(
+            "ix_customers_company_full_name",
+            "company_id",
+            "full_name",
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(

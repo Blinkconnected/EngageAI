@@ -58,6 +58,7 @@ container start via `docker/backend/entrypoint.sh` →
 | `c9d0e1f2a3b4` | `erp_configs`, `erp_customer_links`, `erp_synced_records` — ERPNext Integration (M24, see `docs/architecture/erp-integration.md`) |
 | `d0e1f2a3b4c5` | seeds `erp.manage` into `permissions` (same fixed-snapshot pattern) |
 | `e1f2a3b4c5d6` | adds `companies.settings` (JSON) — Administration (M25, see `docs/architecture/administration.md`); no new tables or permissions (`company.manage` already existed since `f2df1379a476`) |
+| `f2a3b4c5d6e7` | adds `ix_conversations_company_last_message` and `ix_customers_company_full_name` — Performance & Load Testing (M28, see `docs/architecture/performance.md`); index-only, no new tables or columns |
 
 ## Tables
 
