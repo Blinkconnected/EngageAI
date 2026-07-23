@@ -9,6 +9,9 @@ from blinkengage.infrastructure.database.models.message import Message
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
 )
+from blinkengage.infrastructure.repositories.event_outbox_repository import (
+    EventOutboxRepository,
+)
 
 
 async def _create_web_chat_session(client: AsyncClient, owner_headers: dict) -> dict:
@@ -71,6 +74,81 @@ async def test_ingest_creates_a_conversation_and_message(
     assert len(messages) == 1
     assert messages[0].body == "Hello, I need help"
     assert messages[0].direction.value == "inbound"
+
+
+async def test_ingest_publishes_conversation_created_and_message_persisted_events(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """Fills the gap against the original event-bus mandate — the M19
+    Workflow Engine (and future consumers) need post-persistence events
+    carrying our own resolved ids, not just the raw pre-persistence
+    ``message.received``. See docs/architecture/workflow-engine.md."""
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello, I need help",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+        message = (await db_session.execute(select(Message))).scalar_one()
+        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+
+    created_events = [e for e in batch if e.event_type == "conversation.created"]
+    persisted_events = [e for e in batch if e.event_type == "message.persisted"]
+    assert len(created_events) == 1
+    assert created_events[0].payload["conversation_id"] == str(conversation.id)
+    assert created_events[0].payload["customer_id"] == session["customer_id"]
+    assert len(persisted_events) == 1
+    assert persisted_events[0].payload["conversation_id"] == str(conversation.id)
+    assert persisted_events[0].payload["message_id"] == str(message.id)
+    assert persisted_events[0].payload["body"] == "Hello, I need help"
+    assert persisted_events[0].payload["direction"] == "inbound"
+
+
+async def test_ingest_second_message_does_not_republish_conversation_created(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        for i in range(2):
+            await handle_message_received(
+                _event(
+                    company_id=company_id,
+                    payload={
+                        "channel_config_id": session["channel_config_id"],
+                        "channel_type": "web_chat",
+                        "external_thread_id": session["session_token"],
+                        "external_customer_id": session["customer_id"],
+                        "external_message_id": f"ext-{i}",
+                        "body": f"message {i}",
+                    },
+                ),
+                db_session,
+            )
+        await db_session.commit()
+
+        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+
+    assert len([e for e in batch if e.event_type == "conversation.created"]) == 1
+    assert len([e for e in batch if e.event_type == "message.persisted"]) == 2
 
 
 async def test_second_message_on_same_thread_reuses_the_conversation(
@@ -202,6 +280,7 @@ async def test_ingest_creates_a_new_customer_for_first_contact_by_email(
 
         customers = (await db_session.execute(select(Customer))).scalars().all()
         conversations = (await db_session.execute(select(Conversation))).scalars().all()
+        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
 
     assert len(customers) == 1
     assert customers[0].email == "alice@customer.example"
@@ -209,6 +288,11 @@ async def test_ingest_creates_a_new_customer_for_first_contact_by_email(
     assert customers[0].custom_fields == {"source": "email"}
     assert len(conversations) == 1
     assert conversations[0].customer_id == customers[0].id
+
+    customer_created_events = [e for e in batch if e.event_type == "customer.created"]
+    assert len(customer_created_events) == 1
+    assert customer_created_events[0].payload["customer_id"] == str(customers[0].id)
+    assert customer_created_events[0].payload["full_name"] == "Alice"
 
 
 async def test_ingest_reuses_existing_customer_matched_by_email(

@@ -65,6 +65,9 @@ PERMISSIONS: tuple[Permission, ...] = (
     # --- Queues, skills, routing (see docs/architecture/queues-routing.md) ---
     Permission("queues.read", "View queues, required skills, and routing rules"),
     Permission("queues.manage", "Create/edit/delete queues, required skills, and routing rules"),
+    # --- Workflow Engine (see docs/architecture/workflow-engine.md) ---
+    Permission("workflows.read", "View workflow definitions and their run history"),
+    Permission("workflows.manage", "Create/edit/delete workflow definitions"),
 )
 
 _PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
@@ -91,6 +94,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "channels.manage",
             "queues.read",
             "queues.manage",
+            "workflows.read",
+            "workflows.manage",
         }
     ),
     SystemRole.AGENT: frozenset(
@@ -104,6 +109,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.manage",
             "reports.read",
             "queues.read",
+            "workflows.read",
         }
     ),
 }

@@ -45,6 +45,11 @@ from blinkengage.infrastructure.database.models.rbac import (
 )
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.database.models.user import User
+from blinkengage.infrastructure.database.models.workflow import (
+    WorkflowDefinition,
+    WorkflowRun,
+    WorkflowRunStatus,
+)
 
 __all__ = [
     "Agent",
@@ -81,4 +86,7 @@ __all__ = [
     "TeamMembership",
     "User",
     "UserRole",
+    "WorkflowDefinition",
+    "WorkflowRun",
+    "WorkflowRunStatus",
 ]

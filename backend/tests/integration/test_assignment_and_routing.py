@@ -16,6 +16,9 @@ from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer im
     handle_message_received,
 )
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
+from blinkengage.infrastructure.repositories.event_outbox_repository import (
+    EventOutboxRepository,
+)
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 
 
@@ -99,9 +102,16 @@ async def test_new_conversation_is_routed_and_assigned(
 
         result = await db_session.execute(select(Conversation))
         conversation = result.scalar_one()
+        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
 
     assert str(conversation.queue_id) == queue_id
     assert str(conversation.assigned_agent_id) == agent_id
+
+    assignment_events = [e for e in batch if e.event_type == "conversation.assignment_changed"]
+    assert len(assignment_events) == 1
+    assert assignment_events[0].payload["agent_id"] == agent_id
+    assert assignment_events[0].payload["previous_agent_id"] is None
+    assert assignment_events[0].payload["conversation_id"] == str(conversation.id)
 
 
 async def test_second_message_does_not_reroute_or_reassign(

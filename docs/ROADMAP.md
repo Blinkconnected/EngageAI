@@ -289,9 +289,33 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Phase 4 — Engagement Intelligence
 
-- [ ] **M19. Workflow Engine**
-  Trigger/condition/action model, visual-friendly JSON DSL, execution
-  engine, audit trail of workflow runs. Consumes from the M10 event bus.
+- [x] **M19. Workflow Engine**
+  The first module that consumes from the M10 event bus purely as a
+  subscriber, no channel concerns at all — and building its trigger
+  surface exposed that "assignment changed"/"customer created" (named in
+  the original event-bus mandate) were never actually published in every
+  path, and the pre-persistence `message.received` had no
+  `conversation_id` to trigger on. Fixed with two new events
+  (`conversation.created`, `message.persisted`) and two new publish sites
+  for `conversation.assignment_changed`/`customer.created` — all
+  additive, no existing consumer changed. Condition DSL
+  (`domain/workflow_condition.py`): `{"all"/"any": [...]}` trees,
+  deliberately not a full expression grammar — visual-builder-friendly by
+  construction. Actions are a third application of this codebase's
+  "registry keyed by a database-stored string" idiom
+  (`WorkflowActionRegistry`, after `ChannelRegistry`/`SmsGatewayRegistry`):
+  `add_tag`, `assign_to_queue`, `assign_to_agent`,
+  `set_conversation_status`, `send_reply` (reusing
+  `ConversationService`'s existing validated logic, not re-derived), and
+  `publish_event` (the extensibility escape hatch for future modules).
+  `WorkflowEngine` records one `WorkflowRun` per (workflow, event) pair
+  unconditionally — matched, failed, or skipped — and publishes
+  `workflow.executed`, closing the last event the original mandate named.
+  One workflow's failure never affects sibling workflows or the consumer
+  loop. Two new tables (`workflow_definitions`, `workflow_runs`); new
+  `workflows.read`/`workflows.manage` permissions. 33 new tests (332
+  total); `ruff check`/`mypy` clean. See
+  `docs/architecture/workflow-engine.md`.
 - [ ] **M20. Knowledge Base, Quick Replies, Internal Notes**
 - [ ] **M21. Notifications & real-time layer**
   WebSocket presence/typing/notifications, email/push notification

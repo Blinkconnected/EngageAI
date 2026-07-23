@@ -17,6 +17,7 @@ from blinkengage.api.v1.endpoints import (
     teams,
     web_chat,
     webhooks,
+    workflows,
 )
 
 api_router = APIRouter()
@@ -33,3 +34,4 @@ api_router.include_router(web_chat.router)
 api_router.include_router(conversations.router)
 api_router.include_router(queues.router)
 api_router.include_router(routing_rules.router)
+api_router.include_router(workflows.router)

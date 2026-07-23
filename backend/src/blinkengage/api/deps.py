@@ -28,6 +28,7 @@ from blinkengage.application.services.routing_rule_service import RoutingRuleSer
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
+from blinkengage.application.services.workflow_service import WorkflowService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
@@ -66,6 +67,12 @@ from blinkengage.infrastructure.repositories.routing_rule_repository import (
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+from blinkengage.infrastructure.repositories.workflow_repository import (
+    WorkflowDefinitionRepository,
+)
+from blinkengage.infrastructure.repositories.workflow_run_repository import (
+    WorkflowRunRepository,
+)
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 
 _bearer_scheme = HTTPBearer(auto_error=True)
@@ -351,6 +358,17 @@ def get_routing_rule_service(
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> RoutingRuleService:
     return RoutingRuleService(routing_rules=RoutingRuleRepository(session), events=events)
+
+
+def get_workflow_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> WorkflowService:
+    return WorkflowService(
+        workflows=WorkflowDefinitionRepository(session),
+        runs=WorkflowRunRepository(session),
+        events=events,
+    )
 
 
 def get_webhook_ingest_service(

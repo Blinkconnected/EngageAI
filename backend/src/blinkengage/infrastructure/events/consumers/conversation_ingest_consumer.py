@@ -21,6 +21,7 @@ from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import get_settings
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
@@ -36,6 +37,7 @@ from blinkengage.infrastructure.database.session import (
     create_session_factory,
     session_scope,
 )
+from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
@@ -45,6 +47,9 @@ from blinkengage.infrastructure.repositories.customer_channel_identity_repositor
     CustomerChannelIdentityRepository,
 )
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
+from blinkengage.infrastructure.repositories.event_outbox_repository import (
+    EventOutboxRepository,
+)
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
@@ -72,6 +77,7 @@ async def _resolve_customer_id(
     external_customer_name: str | None,
     company_id: UUID,
     session: AsyncSession,
+    events: DomainEventPublisher,
 ) -> UUID | None:
     """Per-channel customer identity resolution.
 
@@ -125,6 +131,7 @@ async def _resolve_customer_id(
                 custom_fields={"source": "email"},
             )
         )
+        await _publish_customer_created(events, company_id=company_id, customer=created)
         return created.id
 
     external_id = external_customer_id.strip()
@@ -155,7 +162,27 @@ async def _resolve_customer_id(
         channel_type=channel_type,
         external_id=external_id,
     )
+    await _publish_customer_created(events, company_id=company_id, customer=created)
     return created.id
+
+
+async def _publish_customer_created(
+    events: DomainEventPublisher, *, company_id: UUID, customer: Customer
+) -> None:
+    """Fills a gap against the original event-bus mandate ("customer
+    created" must be a domain event): ``CustomerService.create`` (M8)
+    already publishes this for API-created customers, but a customer
+    auto-created here on first contact from a channel never did. Every
+    creation path now publishes it, regardless of source."""
+    await events.publish(
+        DomainEvent(
+            event_type="customer.created",
+            company_id=company_id,
+            aggregate_type="customer",
+            aggregate_id=customer.id,
+            payload={"customer_id": str(customer.id), "full_name": customer.full_name},
+        )
+    )
 
 
 async def handle_message_received(event: dict[str, Any], session: AsyncSession) -> None:
@@ -169,6 +196,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
     channel_type = data["channel_type"]
     external_thread_id = data["external_thread_id"]
     external_message_id = data.get("external_message_id")
+    events = OutboxEventPublisher(EventOutboxRepository(session))
 
     customer_id = await _resolve_customer_id(
         channel_type=channel_type,
@@ -176,6 +204,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
         external_customer_name=data.get("external_customer_name"),
         company_id=company_id,
         session=session,
+        events=events,
     )
     if customer_id is None:
         logger.warning(
@@ -199,6 +228,25 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
                 external_thread_id=external_thread_id,
             )
         )
+        # Fills a gap against the original event-bus mandate — the M19
+        # Workflow Engine (and future consumers) need a post-persistence
+        # event carrying our own resolved ids, not just the raw
+        # pre-persistence ``message.received``. See
+        # docs/architecture/workflow-engine.md.
+        await events.publish(
+            DomainEvent(
+                event_type="conversation.created",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "customer_id": str(customer_id),
+                    "channel_type": channel_type,
+                    "channel_config_id": str(channel_config_id),
+                },
+            )
+        )
 
     messages = MessageRepository(session)
     if external_message_id is not None:
@@ -216,7 +264,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
         )
         reply_to_message_id = replied_to.id if replied_to is not None else None
 
-    await messages.add(
+    message = await messages.add(
         Message(
             company_id=company_id,
             channel_type=channel_type,
@@ -235,6 +283,23 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
     if conversation.status in _REOPEN_ON_NEW_MESSAGE:
         conversation.status = ConversationStatus.OPEN
 
+    await events.publish(
+        DomainEvent(
+            event_type="message.persisted",
+            company_id=company_id,
+            aggregate_type="message",
+            aggregate_id=message.id,
+            payload={
+                "conversation_id": str(conversation.id),
+                "message_id": str(message.id),
+                "customer_id": str(customer_id),
+                "channel_type": channel_type,
+                "body": message.body,
+                "direction": "inbound",
+            },
+        )
+    )
+
     if is_new_conversation:
         await _route_and_assign(
             conversation,
@@ -242,6 +307,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
             channel_type=channel_type,
             body=data.get("body"),
             session=session,
+            events=events,
         )
 
 
@@ -252,6 +318,7 @@ async def _route_and_assign(
     channel_type: str,
     body: str | None,
     session: AsyncSession,
+    events: DomainEventPublisher,
 ) -> None:
     """Only called for a just-created conversation — see
     ``docs/architecture/queues-routing.md`` decision #1. A conversation
@@ -276,6 +343,22 @@ async def _route_and_assign(
     agent_id = await assignment_engine.select_agent(queue=queue, session=session)
     if agent_id is not None:
         conversation.assigned_agent_id = agent_id
+        # Fills the "assignment changed" gap named in the original
+        # event-bus mandate — this initial auto-assignment previously
+        # published nothing; see docs/architecture/workflow-engine.md.
+        await events.publish(
+            DomainEvent(
+                event_type="conversation.assignment_changed",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "agent_id": str(agent_id),
+                    "previous_agent_id": None,
+                },
+            )
+        )
 
 
 async def main() -> None:

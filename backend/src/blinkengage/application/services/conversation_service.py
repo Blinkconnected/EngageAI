@@ -125,6 +125,7 @@ class ConversationService:
                     conversation.status.value, status.value
                 )
             conversation.status = status
+        previous_agent_id = conversation.assigned_agent_id
         if assigned_agent_id is not None:
             conversation.assigned_agent_id = assigned_agent_id
         if queue_id is not None:
@@ -138,6 +139,7 @@ class ConversationService:
                 aggregate_id=conversation.id,
                 actor_user_id=actor_user_id,
                 payload={
+                    "conversation_id": str(conversation.id),
                     "status": conversation.status.value,
                     "assigned_agent_id": (
                         str(conversation.assigned_agent_id)
@@ -147,6 +149,25 @@ class ConversationService:
                 },
             )
         )
+        if assigned_agent_id is not None and assigned_agent_id != previous_agent_id:
+            # See docs/architecture/workflow-engine.md — a dedicated event
+            # (alongside the generic conversation.updated above) so
+            # consumers that only care about assignment don't need to
+            # diff conversation.updated payloads to notice it.
+            await self._events.publish(
+                DomainEvent(
+                    event_type="conversation.assignment_changed",
+                    company_id=company_id,
+                    aggregate_type="conversation",
+                    aggregate_id=conversation.id,
+                    actor_user_id=actor_user_id,
+                    payload={
+                        "conversation_id": str(conversation.id),
+                        "agent_id": str(assigned_agent_id),
+                        "previous_agent_id": str(previous_agent_id) if previous_agent_id else None,
+                    },
+                )
+            )
         return conversation
 
     async def delete(

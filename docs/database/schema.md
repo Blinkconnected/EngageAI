@@ -48,6 +48,8 @@ container start via `docker/backend/entrypoint.sh` →
 | `9fe815db63b7` | `queues`, `agent_skills`, `agent_skill_assignments`, `queue_required_skills`, `routing_rules`; adds `queue_id`/`first_response_at`/`sla_first_response_breached_at`/`sla_resolution_breached_at` to `conversations` |
 | `7c6ca45d6fac` | seeds `queues.read`/`queues.manage` into `permissions` (same fixed-snapshot pattern as `5463a5076e76`) |
 | `a1b2c3d4e5f6` | `customer_channel_identities` (generic multi-channel identity resolution, see `docs/architecture/whatsapp-telegram.md`) |
+| `b2c3d4e5f6a7` | `workflow_definitions`, `workflow_runs` |
+| `c3d4e5f6a7b8` | seeds `workflows.read`/`workflows.manage` into `permissions` (same fixed-snapshot pattern as `5463a5076e76`/`7c6ca45d6fac`) |
 
 ## Tables
 
@@ -377,3 +379,36 @@ restriction" — every active agent is eligible.
 | target_queue_id | UUID | FK → `queues.id`, cascade delete |
 | is_active | boolean | |
 | created_at / updated_at | timestamptz | |
+
+### `workflow_definitions`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| name | varchar(255) | |
+| description | text, nullable | |
+| trigger_event_type | varchar(100) | plain string — new domain event types need zero migration, same reasoning as `channel_configs.channel_type` |
+| conditions | JSON | `{"all": [...]}` / `{"any": [...]}` tree — see `domain/workflow_condition.py` |
+| actions | JSON | ordered `[{"type": "...", "params": {...}}]` — see `application/workflow_actions/builtin.py` |
+| is_active | boolean | |
+| priority | integer | lower runs first among workflows sharing one `trigger_event_type` |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+### `workflow_runs` (append-only)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| workflow_id | UUID | FK → `workflow_definitions.id`, cascade delete, indexed |
+| triggering_event_type | varchar(100) | |
+| triggering_event_payload | JSON | full snapshot of the event that triggered this run |
+| status | varchar(20) | `succeeded` / `failed` / `skipped` (`WorkflowRunStatus`) |
+| actions_executed | JSON | `[{"action_type": "...", "result"/"error": {...}}]` — execution stops at the first failing step |
+| error_message | text, nullable | |
+| started_at / finished_at | timestamptz | no `created_at`/`updated_at` — these two already fully describe the run's timing, same reasoning as `AuditLog` having no `updated_at` |
+
+No `SoftDeleteMixin` on either — `workflow_runs` is a pure audit trail
+(same reasoning as `audit_logs`/`event_outbox`); `workflow_definitions` is
+soft-deletable like every other company-configured entity in this schema.
