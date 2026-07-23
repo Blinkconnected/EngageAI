@@ -40,10 +40,13 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   environment (async-aware `env.py`), base repository pattern + unit of
   work, shared entity mixins (UUID PK, timestamps, soft-delete). First
   concrete tables land with M6/M7.
-- [ ] **M5. Frontend application skeleton**
-  Vite + React + TypeScript, Material UI theme (light/dark/RTL), Redux
-  Toolkit store, React Query client, routing, API client with auth
-  interceptor, ESLint/Prettier/Vitest config.
+- [x] **M5. Frontend application skeleton**
+  Vite + React 19 + TypeScript, Material UI theme (light/dark/RTL) branded
+  to Blink ("Baloo 2" + "Nunito Sans", brand green `#8CC63F` on warm black
+  `#171412`), Redux Toolkit store (`auth`, `ui` slices), React Query client,
+  React Router with a `ProtectedRoute`, Axios API client with JWT
+  access/refresh-token interceptor, ESLint (flat config)/Prettier/Vitest +
+  Testing Library — all green. See `docs/architecture/frontend.md`.
 
 ## Phase 1 — Identity & Core Directory
 
