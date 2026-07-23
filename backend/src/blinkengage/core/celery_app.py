@@ -36,6 +36,13 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     broker_connection_retry_on_startup=True,
+    # Emits the task lifecycle events (sent/started/succeeded/failed/
+    # runtime) the celery-exporter service (M27, see
+    # docs/architecture/observability.md) listens for on the broker —
+    # without these, Celery never publishes them and Prometheus would
+    # scrape an always-empty /metrics from the exporter.
+    worker_send_task_events=True,
+    task_send_sent_event=True,
     beat_schedule={
         # Drains the transactional outbox to the RabbitMQ event exchange —
         # see docs/architecture/event-bus.md. Runs frequently since it's

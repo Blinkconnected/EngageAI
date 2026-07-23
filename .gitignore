@@ -42,6 +42,7 @@ docker/**/data/
 docker/postgres/data/
 docker/minio/data/
 backups/*.sql
+backups/*.sql.gz
 backups/*.dump
 backups/*.tar.gz
 

@@ -126,22 +126,32 @@ async def _poll_all_email_channels_async() -> int:
     session_factory = _get_session_factory(settings)
     factory = _get_provider_factory(settings)
 
-    async with session_scope(session_factory) as session:
-        result = await session.execute(
-            select(ChannelConfig).where(
-                ChannelConfig.channel_type == "email",
-                ChannelConfig.is_active.is_(True),
-                ChannelConfig.deleted_at.is_(None),
+    try:
+        async with session_scope(session_factory) as session:
+            result = await session.execute(
+                select(ChannelConfig).where(
+                    ChannelConfig.channel_type == "email",
+                    ChannelConfig.is_active.is_(True),
+                    ChannelConfig.deleted_at.is_(None),
+                )
             )
-        )
-        configs = list(result.scalars().all())
+            configs = list(result.scalars().all())
 
-        total = 0
-        for config in configs:
-            total += await poll_channel_config(config, session=session, factory=factory)
-        if total:
-            logger.info("email_imap_poll_ingested", count=total)
-        return total
+            total = 0
+            for config in configs:
+                total += await poll_channel_config(config, session=session, factory=factory)
+            if total:
+                logger.info("email_imap_poll_ingested", count=total)
+            return total
+    finally:
+        # See infrastructure/events/relay.py's identical fix for why this
+        # is required: a pooled asyncpg connection is bound to the event
+        # loop that opened it, but this task's cached engine/session
+        # factory outlive any single `asyncio.run()`-created loop —
+        # without disposing the pool here, the *next* invocation's loop
+        # would try to reuse a connection from *this* loop and crash.
+        if _engine is not None:
+            await _engine.dispose()
 
 
 @celery_app.task(name="blinkengage.channels.poll_email_imap")  # type: ignore[misc]

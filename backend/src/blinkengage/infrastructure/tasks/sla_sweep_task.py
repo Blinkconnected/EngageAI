@@ -41,12 +41,22 @@ def _get_session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]
 async def _check_sla_breaches_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
-    async with session_scope(session_factory) as session:
-        monitor = SlaMonitorService(events=OutboxEventPublisher(EventOutboxRepository(session)))
-        breached = await monitor.check_breaches(session)
-        if breached:
-            logger.info("sla_breaches_detected", count=breached)
-        return breached
+    try:
+        async with session_scope(session_factory) as session:
+            monitor = SlaMonitorService(events=OutboxEventPublisher(EventOutboxRepository(session)))
+            breached = await monitor.check_breaches(session)
+            if breached:
+                logger.info("sla_breaches_detected", count=breached)
+            return breached
+    finally:
+        # See infrastructure/events/relay.py's identical fix for why this
+        # is required: a pooled asyncpg connection is bound to the event
+        # loop that opened it, but this task's cached engine/session
+        # factory outlive any single `asyncio.run()`-created loop —
+        # without disposing the pool here, the *next* invocation's loop
+        # would try to reuse a connection from *this* loop and crash.
+        if _engine is not None:
+            await _engine.dispose()
 
 
 @celery_app.task(name="blinkengage.queues.check_sla_breaches")  # type: ignore[misc]

@@ -126,7 +126,11 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      # /health/ready (M27), not the plain liveness /health — reflects
+      # whether Postgres/Redis/RabbitMQ are actually reachable, which is
+      # what nginx's service_healthy gate and a load-balanced pool's
+      # traffic routing should key off, not just "the process is up."
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -373,6 +377,25 @@ services:
       REDIS_ADDR: redis://redis:6379
     depends_on:
       redis: { condition: service_healthy }
+    networks: [blinkengage]
+
+  # Celery queue/task metrics (M27, see docs/architecture/observability.md)
+  # — listens to the Celery events stream over the same broker every
+  # celery-worker/celery-beat already uses; no changes to those services
+  # needed for their tasks/queues to become visible in Prometheus.
+  celery-exporter:
+    image: danihodovic/celery-exporter:latest
+    restart: unless-stopped
+    # --broker-url as an explicit CLI arg, not an env var — confirmed
+    # against the image directly that it has no documented env-var
+    # binding, only a required --broker-url flag.
+    command:
+      [
+        "--broker-url",
+        "${RABBITMQ_URL:-amqp://blinkengage:blinkengage@rabbitmq:5672/}",
+      ]
+    depends_on:
+      rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
   prometheus:

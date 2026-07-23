@@ -507,13 +507,51 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   `docs/security/pentest-checklist.md`. 11 new tests (502 -> 513);
   `ruff check`/`mypy` clean; no schema changes. See
   `docs/security/hardening.md`.
-- [ ] **M27. Observability & DevOps**
-  Prometheus metrics, Grafana dashboards, Loki log pipeline, alerting,
-  automated backups + restore drill, GitHub Actions CI/CD (lint, test,
-  build, scan, deploy). Also where nginx moves from a single hardcoded
-  `backend` upstream to a load-balanced pool, enabling multiple stateless
-  app-server replicas (see `docs/architecture/event-bus.md`'s scaling
-  posture note).
+- [x] **M27. Observability & DevOps**
+  Found and fixed a real, systemic bug while verifying the new Celery
+  metrics pipeline against the live stack: all four Celery-beat tasks
+  (outbox relay, SLA sweep, IMAP poll, notification email dispatch)
+  cache their async engine at module level across `asyncio.run()`-per-
+  invocation calls, and a pooled asyncpg connection bound to one
+  invocation's (now-closed) event loop crashed the next invocation's
+  `pool_pre_ping` — 50+ occurrences in 3 minutes before the fix
+  (`engine.dispose()` in a `finally` block on all four), zero after,
+  verified against the real running stack. Added `celery-exporter`
+  (closing the last exporter gap alongside existing
+  postgres/redis/rabbitmq exporters) plus the two Celery config flags
+  it needs to receive any events at all; four new Grafana dashboards
+  (Postgres, Redis, RabbitMQ & Celery, Logs) alongside the existing
+  Backend API one, every metric name verified against real Prometheus
+  query results before going into a panel. Six Grafana unified-alerting
+  rules (5xx rate, p95 latency, Postgres/Redis down, queue backlog,
+  Celery failures), provisioned and confirmed loaded via Grafana's own
+  API — contact point is a deliberately obvious placeholder webhook,
+  since the real Slack/PagerDuty/email destination is a business
+  decision this codebase can't make for itself. Promtail now extracts
+  only `level` (5 values) as an indexed Loki label, not `logger` (~90
+  values), per Loki's own cardinality guidance. `/health/ready` now
+  checks Redis and RabbitMQ alongside Postgres, returning 503 with a
+  per-dependency breakdown — the backend's Docker healthcheck now
+  points at it instead of plain liveness. Closed a real gap where
+  `nginx.prod.conf`'s `/metrics` was publicly exposed with no
+  restriction; scoped to private IP ranges. nginx's existing dynamic-
+  DNS re-resolution against `backend:8000` already gives coarse-grained
+  load distribution across `docker compose up --scale backend=N`
+  replicas (documented honestly as DNS-rotation, not per-request
+  balancing — a real orchestrator is the next step at higher scale).
+  Automated backups (`scripts/backup_postgres.sh`) plus a genuine
+  restore drill (`scripts/verify_backup_restore.sh`, restoring into a
+  scratch database and sanity-checking it) — both run against the real
+  stack as part of this milestone's own verification, not just written
+  and assumed to work. `.github/workflows/ci.yml` built from an empty
+  `.github/workflows/` directory: lint/test/build/scan jobs for both
+  backend and frontend, plus a documented placeholder deploy job gated
+  on version tags (no fabricated deploy target). `ruff check`/`mypy`
+  clean; 513 tests still passing (one updated in place for the richer
+  readiness response, no new test files — this milestone's changes are
+  almost entirely infra-layer, verified against the real stack rather
+  than through new pytest coverage). See
+  `docs/architecture/observability.md`.
 - [ ] **M28. Performance & load testing**
   Load/soak testing of conversation + messaging paths, query optimization,
   caching strategy validation, `messages` table partitioning if warranted

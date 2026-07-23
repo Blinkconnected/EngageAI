@@ -7,12 +7,19 @@ async def test_liveness_endpoint(client: AsyncClient) -> None:
     assert response.json() == {"status": "ok", "service": "blinkengage-api"}
 
 
-async def test_readiness_endpoint_reports_database_ok(client: AsyncClient) -> None:
+async def test_readiness_endpoint_reports_database_and_redis_ok(client: AsyncClient) -> None:
+    # No real RabbitMQ broker runs in the test process (broker connectivity
+    # is always verified manually against the real docker-compose stack,
+    # same bar as every other "real infra" check in this suite) — so this
+    # also doubles as the "degraded" path test: database/redis are real
+    # (SQLite/fakeredis), rabbitmq is genuinely unreachable here.
     response = await client.get("/api/v1/health/ready")
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
-    assert body["status"] == "ok"
+    assert body["status"] == "degraded"
     assert body["database"] == "ok"
+    assert body["redis"] == "ok"
+    assert body["rabbitmq"] == "unreachable"
 
 
 async def test_openapi_schema_is_served(client: AsyncClient) -> None:

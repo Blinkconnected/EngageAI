@@ -1,0 +1,18 @@
+apiVersion: 1
+
+# The actual notification destination (Slack, PagerDuty, email, etc.) is
+# an operator/business decision this codebase can't make on its own — see
+# docs/architecture/observability.md. This webhook URL is a deliberate,
+# obviously-fake placeholder; replace it (or add a second contact point)
+# before relying on this in production. Alert rules and routing are fully
+# wired regardless, so plugging in a real destination is a one-line change.
+contactPoints:
+  - orgId: 1
+    name: ops-placeholder
+    receivers:
+      - uid: ops-placeholder-webhook
+        type: webhook
+        settings:
+          url: https://ops-placeholder.invalid/blinkengage-alerts
+          httpMethod: POST
+        disableResolveMessage: false

@@ -104,8 +104,18 @@ async def dispatch_pending(session: AsyncSession, settings: Settings) -> int:
 async def _dispatch_pending_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
-    async with session_scope(session_factory) as session:
-        return await dispatch_pending(session, settings)
+    try:
+        async with session_scope(session_factory) as session:
+            return await dispatch_pending(session, settings)
+    finally:
+        # See infrastructure/events/relay.py's identical fix for why this
+        # is required: a pooled asyncpg connection is bound to the event
+        # loop that opened it, but this task's cached engine/session
+        # factory outlive any single `asyncio.run()`-created loop —
+        # without disposing the pool here, the *next* invocation's loop
+        # would try to reuse a connection from *this* loop and crash.
+        if _engine is not None:
+            await _engine.dispose()
 
 
 @celery_app.task(name="blinkengage.notifications.dispatch_pending_emails")  # type: ignore[misc]

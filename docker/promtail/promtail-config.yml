@@ -21,3 +21,21 @@ scrape_configs:
         target_label: service
       - source_labels: [__meta_docker_container_label_com_docker_compose_project]
         target_label: project
+    # core/logging.py emits structured JSON in production/staging (plain
+    # colored text in development, which these stages simply fail to
+    # match — safe no-op, the raw line still ships). `level` is promoted
+    # to an indexed label (low cardinality: debug/info/warning/error/
+    # critical); `logger`/`event`/everything else stays in the log line
+    # body, queryable via LogQL's `| json` at query time rather than
+    # indexed — promoting a ~90-distinct-value field like `logger` to a
+    # label would blow up Loki's stream cardinality for no query benefit.
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            timestamp: timestamp
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: RFC3339

@@ -100,15 +100,33 @@ async def relay_batch(session: AsyncSession, publish: PublishFn, *, batch_size: 
 async def _relay_outbox_batch_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
-    connection = await rabbitmq.connect(settings)
-    async with connection:
-        channel = await connection.channel()
+    try:
+        connection = await rabbitmq.connect(settings)
+        async with connection:
+            channel = await connection.channel()
 
-        async def _publish(routing_key: str, body: bytes) -> None:
-            await rabbitmq.publish_event(channel, settings, routing_key=routing_key, body=body)
+            async def _publish(routing_key: str, body: bytes) -> None:
+                await rabbitmq.publish_event(channel, settings, routing_key=routing_key, body=body)
 
-        async with session_scope(session_factory) as session:
-            return await relay_batch(session, _publish, batch_size=settings.events_relay_batch_size)
+            async with session_scope(session_factory) as session:
+                return await relay_batch(
+                    session, _publish, batch_size=settings.events_relay_batch_size
+                )
+    finally:
+        # The engine/session factory are cached at module level across
+        # task invocations (see ``_get_session_factory``), but each
+        # invocation runs inside its own ``asyncio.run()`` loop (see
+        # ``relay_outbox_batch`` below) — and a pooled asyncpg connection
+        # is bound to the loop it was opened on. Without disposing the
+        # pool here, the *next* invocation's loop would try to reuse a
+        # connection from *this* loop and fail with "Future attached to a
+        # different loop" the moment SQLAlchemy's `pool_pre_ping` pings
+        # it. Disposing only closes pooled connections, not the engine
+        # object itself, so the cache above still avoids recreating the
+        # engine machinery — the next call just opens fresh connections,
+        # correctly bound to its own new loop.
+        if _engine is not None:
+            await _engine.dispose()
 
 
 @celery_app.task(name="blinkengage.events.relay_outbox")  # type: ignore[misc]

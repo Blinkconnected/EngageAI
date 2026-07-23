@@ -1,9 +1,10 @@
 # Production Deployment
 
-> Status: infrastructure-level deployment mechanics only. TLS termination,
-> secrets management (beyond `.env`), backup automation, and the full
-> security hardening pass are tracked separately in `docs/ROADMAP.md`
-> (Phase 6) and must be completed before handling real customer data.
+> Status: security hardening (M26), automated backups, and monitoring/
+> alerting (M27) are done — see `docs/security/hardening.md` and
+> `docs/architecture/observability.md`. TLS termination, secrets manager
+> integration, and a real CI/CD deploy target remain open — see "What's
+> intentionally NOT here yet" below.
 
 ## Bring-up
 
@@ -55,13 +56,47 @@ once ahead of a multi-replica rollout, run them explicitly first:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backend alembic upgrade head
 ```
 
+## Backups & restore (M27)
+
+```bash
+./scripts/backup_postgres.sh            # pg_dump, gzip, timestamped, into backups/
+./scripts/verify_backup_restore.sh      # restore drill against a scratch database
+./scripts/restore_postgres.sh <file> [--force] [--target-db NAME]
+```
+
+Run `backup_postgres.sh` on a schedule (host cron, or a scheduled CI job)
+and `verify_backup_restore.sh` right after it — a backup nobody has ever
+restored is not a verified backup. See
+`docs/architecture/observability.md` for the full design rationale.
+`BACKUP_RETENTION_DAYS` (default 14) controls pruning.
+
+## Monitoring & alerting (M27)
+
+Grafana at `:3000` (datasources/dashboards/alert rules all provisioned
+automatically, see `docs/architecture/observability.md`), Prometheus at
+`:9090`. Alert rules are wired but point at a deliberate placeholder
+contact point (`docker/grafana/provisioning/alerting/contact-points.yml`)
+— replace the webhook URL there with a real Slack/PagerDuty/email
+destination before relying on alerting in production.
+
+## CI/CD
+
+`.github/workflows/ci.yml` runs lint/test/build/scan on every push and PR
+to `main`. The `deploy` job is a documented placeholder gated on version
+tags — it does not deploy anywhere until a real target (host, registry,
+credentials) is configured; see the comments in that file.
+
 ## What's intentionally NOT here yet
 
 - TLS/HTTPS — deploy behind a TLS-terminating load balancer, or add a
   `listen 443 ssl` server block + certificate volume to
   `docker/nginx/nginx.prod.conf` before any real-world exposure.
-- Automated backups (`backups/` — Phase 6).
-- Secrets manager integration (currently a plain `.env` file — Phase 6).
-- Horizontal scaling / multi-node orchestration (this is a single-host
-  Compose deployment by design at this stage; Kubernetes manifests are out
-  of scope unless requested).
+- A real CI/CD deploy target — see "CI/CD" above.
+- Secrets manager integration (currently a plain `.env` file — tracked as
+  a follow-up, not blocking for a single-host deployment).
+- True per-request load balancing across multiple `backend` replicas —
+  nginx's dynamic-DNS re-resolution (`docker/nginx/nginx.*.conf`) gives
+  coarse-grained rotation across `docker compose up --scale backend=N`
+  replicas, not per-request spreading; a real orchestrator (Kubernetes
+  Service/Ingress) or nginx Plus is the documented next step at higher
+  scale. See `docs/architecture/observability.md`.
