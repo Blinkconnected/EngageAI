@@ -111,6 +111,7 @@ def drain_outbox(app) -> Callable[[], Awaitable[int]]:
                     "aggregate_type": event.aggregate_type,
                     "aggregate_id": str(event.aggregate_id) if event.aggregate_id else None,
                     "payload": event.payload,
+                    "occurred_at": event.occurred_at.isoformat(),
                 }
                 await handle_audit_event(payload, session)
                 await outbox.mark_dispatched(event)

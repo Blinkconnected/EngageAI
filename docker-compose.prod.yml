@@ -67,6 +67,39 @@ services:
           cpus: "0.5"
           memory: 256m
 
+  workflow-engine-consumer:
+    build:
+      target: runtime
+    restart: always
+    volumes: !override []
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
+  notification-consumer:
+    build:
+      target: runtime
+    restart: always
+    volumes: !override []
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
+  reporting-consumer:
+    build:
+      target: runtime
+    restart: always
+    volumes: !override []
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
   # The dev Vite server is not used in production; the compiled SPA is baked
   # into the `nginx` image below. Gate it behind a profile that stays
   # inactive unless explicitly requested, so `docker compose up` never

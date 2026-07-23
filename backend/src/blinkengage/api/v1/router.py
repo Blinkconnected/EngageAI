@@ -10,6 +10,7 @@ from blinkengage.api.v1.endpoints import (
     auth,
     channel_configs,
     conversations,
+    csat,
     customers,
     departments,
     health,
@@ -18,6 +19,7 @@ from blinkengage.api.v1.endpoints import (
     queues,
     quick_replies,
     realtime,
+    reports,
     routing_rules,
     teams,
     web_chat,
@@ -45,3 +47,5 @@ api_router.include_router(quick_replies.router)
 api_router.include_router(notifications.router)
 api_router.include_router(realtime.router)
 api_router.include_router(ai.router)
+api_router.include_router(reports.router)
+api_router.include_router(csat.router)

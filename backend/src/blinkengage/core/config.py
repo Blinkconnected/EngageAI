@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # How long a CSAT survey link stays valid after a conversation closes
+    # (see docs/architecture/reports-analytics.md) — long enough for a
+    # customer to get to it, unlike the much shorter access/refresh token
+    # lifetimes above, since this token is emailed/messaged to a customer
+    # rather than kept alive by an active session.
+    csat_token_expire_days: int = 14
     # Encrypts secrets-at-rest (e.g. channel provider credentials — see
     # docs/architecture/channels.md). Deliberately separate from
     # jwt_secret_key so rotating one never invalidates the other.

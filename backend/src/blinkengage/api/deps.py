@@ -22,6 +22,7 @@ from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.internal_note_service import InternalNoteService
@@ -29,6 +30,7 @@ from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
+from blinkengage.application.services.reporting_service import ReportingService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
@@ -57,6 +59,7 @@ from blinkengage.infrastructure.repositories.company_repository import CompanyRe
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.csat_repository import CsatResponseRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
@@ -78,6 +81,7 @@ from blinkengage.infrastructure.repositories.notification_repository import (
 )
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.quick_reply_repository import QuickReplyRepository
+from blinkengage.infrastructure.repositories.reporting_repository import ReportingRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
@@ -489,6 +493,25 @@ def get_webhook_ingest_service(
 ) -> WebhookIngestService:
     return WebhookIngestService(
         channel_configs=ChannelConfigRepository(session), factory=factory, events=events
+    )
+
+
+def get_reporting_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ReportingService:
+    return ReportingService(reporting=ReportingRepository(session), agents=AgentRepository(session))
+
+
+def get_csat_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> CsatService:
+    return CsatService(
+        conversations=ConversationRepository(session),
+        responses=CsatResponseRepository(session),
+        events=events,
+        settings=settings,
     )
 
 

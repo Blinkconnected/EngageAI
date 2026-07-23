@@ -397,10 +397,33 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Phase 5 — Reporting & Ecosystem
 
-- [ ] **M23. Reports & Analytics**
-  Executive/agent/live dashboards, conversation/performance/queue/SLA/CSAT/
-  AI reports, PDF + Excel export. Consumes from the M10 event bus rather
-  than querying operational tables directly where a projection suffices.
+- [x] **M23. Reports & Analytics**
+  Five incremental rollup tables (`conversation`/`agent`/`queue`/`ai`/
+  `csat_daily_stats`), fed by a new `reporting-consumer` bound to a fixed
+  set of M10 event-bus routing keys — reports aggregate a handful of
+  pre-summed rows per date range instead of scanning
+  `conversations`/`messages` directly, the concrete payoff of the
+  original event-bus mandate at this milestone's target scale. The one
+  exception is the Live Dashboard, which queries current
+  `agents`/`conversations`/`queues` state directly — a daily rollup can't
+  represent "right now," and these tables are small enough that a direct
+  query costs nothing. `conversation.updated` gained a `previous_status`
+  field so the consumer can detect a genuine transition into
+  closed/resolved rather than recounting an already-closed conversation
+  on every unrelated update. Customer Satisfaction reuses the existing
+  JWT machinery for a new conversation-scoped `TokenType.CSAT` survey
+  link (`POST /conversations/{id}/csat-survey-link`,
+  `conversations.manage`) and a public, token-gated response endpoint
+  (`POST /csat/{id}/respond`, no auth) — no new customer-auth system
+  built for one rating per conversation. Every report reuses the
+  existing `reports.read` permission (no new permission needed). PDF/
+  Excel export (`reportlab`/`openpyxl`, two new runtime dependencies) is
+  one generic table-renderer pair shared by every report, not one
+  renderer per report type. 34 new tests (424 -> 458); `ruff check`/
+  `mypy` clean; migration verified against real Postgres. Also closed a
+  pre-existing gap where `workflow-engine-consumer`/`notification-
+  consumer` were missing from the production docker-compose overlay
+  since M19/M21. See `docs/architecture/reports-analytics.md`.
 - [ ] **M24. ERPNext Integration**
   Customers, invoices, sales orders, quotations, support tickets, payments,
   contacts — sync + webhook layer. Consumes from the M10 event bus.

@@ -16,6 +16,11 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class TokenType(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
+    # A conversation-scoped, non-user token — see
+    # docs/architecture/reports-analytics.md. Reuses this same JWT
+    # machinery rather than a bespoke signing scheme; its "subject" is a
+    # conversation id, not a user id.
+    CSAT = "csat"
 
 
 class InvalidTokenError(Exception):
@@ -43,8 +48,10 @@ def create_token(
     now = datetime.now(UTC)
     if token_type is TokenType.ACCESS:
         expire = now + timedelta(minutes=settings.access_token_expire_minutes)
-    else:
+    elif token_type is TokenType.REFRESH:
         expire = now + timedelta(days=settings.refresh_token_expire_days)
+    else:
+        expire = now + timedelta(days=settings.csat_token_expire_days)
 
     jti = str(uuid4())
     payload: dict[str, Any] = {

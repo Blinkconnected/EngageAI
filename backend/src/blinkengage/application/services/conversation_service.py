@@ -119,6 +119,7 @@ class ConversationService:
         actor_user_id: UUID | None = None,
     ) -> Conversation:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+        previous_status = conversation.status
         if status is not None and status != conversation.status:
             allowed = _ALLOWED_TRANSITIONS.get(conversation.status, frozenset())
             if status not in allowed:
@@ -142,6 +143,13 @@ class ConversationService:
                 payload={
                     "conversation_id": str(conversation.id),
                     "status": conversation.status.value,
+                    # Lets consumers (e.g. the M23 reporting consumer)
+                    # detect a genuine transition into a status, rather
+                    # than recounting every update() call made while a
+                    # conversation's status happens to already be at that
+                    # value (e.g. reassigning an already-closed
+                    # conversation).
+                    "previous_status": previous_status.value,
                     "assigned_agent_id": (
                         str(conversation.assigned_agent_id)
                         if conversation.assigned_agent_id

@@ -51,6 +51,14 @@ from blinkengage.infrastructure.database.models.rbac import (
     RolePermission,
     UserRole,
 )
+from blinkengage.infrastructure.database.models.reporting import (
+    AgentDailyStats,
+    AiDailyStats,
+    ConversationDailyStats,
+    CsatDailyStats,
+    CsatResponse,
+    QueueDailyStats,
+)
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.database.models.workflow import (
@@ -61,15 +69,20 @@ from blinkengage.infrastructure.database.models.workflow import (
 
 __all__ = [
     "Agent",
+    "AgentDailyStats",
     "AgentSkill",
     "AgentSkillAssignment",
     "AgentStatus",
+    "AiDailyStats",
     "AttachmentValidationStatus",
     "AuditLog",
     "ChannelConfig",
     "Company",
     "Conversation",
+    "ConversationDailyStats",
     "ConversationStatus",
+    "CsatDailyStats",
+    "CsatResponse",
     "Customer",
     "CustomerChannelIdentity",
     "CustomerTag",
@@ -89,6 +102,7 @@ __all__ = [
     "Permission",
     "Queue",
     "QueueAssignmentStrategy",
+    "QueueDailyStats",
     "QueueRequiredSkill",
     "QuickReply",
     "ReadStatus",

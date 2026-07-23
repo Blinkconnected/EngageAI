@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 
 from blinkengage.api.deps import (
     get_conversation_service,
+    get_csat_service,
     get_internal_note_service,
     require_permission,
 )
@@ -15,6 +16,7 @@ from blinkengage.api.schemas.conversation import (
     MessageResponse,
     SendMessageRequest,
 )
+from blinkengage.api.schemas.csat import CsatSurveyLinkResponse
 from blinkengage.api.schemas.internal_note import (
     InternalNoteCreateRequest,
     InternalNoteResponse,
@@ -22,6 +24,7 @@ from blinkengage.api.schemas.internal_note import (
 )
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.conversation import ConversationStatus
@@ -75,6 +78,18 @@ async def update_conversation(
         actor_user_id=auth.user_id,
     )
     return ConversationResponse.model_validate(conversation)
+
+
+@router.post("/{conversation_id}/csat-survey-link", response_model=CsatSurveyLinkResponse)
+async def generate_csat_survey_link(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
+    conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
+    csat_service: Annotated[CsatService, Depends(get_csat_service)],
+) -> CsatSurveyLinkResponse:
+    await conversation_service.get(company_id=auth.company_id, conversation_id=conversation_id)
+    url = csat_service.build_survey_url(conversation_id=conversation_id)
+    return CsatSurveyLinkResponse(url=url)
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

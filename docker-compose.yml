@@ -260,6 +260,32 @@ services:
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
+  # Reports & Analytics (M23, see docs/architecture/reports-analytics.md)
+  # — maintains the *_daily_stats rollup tables incrementally, binding a
+  # fixed, code-defined set of routing keys (like notification-consumer),
+  # same shape as every other M10 event-bus consumer. No Redis dependency
+  # (unlike notification-consumer) since it never publishes realtime
+  # signals, only writes rollup rows.
+  reporting-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.reporting_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   # Local SMTP+IMAP test mailbox for manually verifying the Email channel
   # (M15, see docs/architecture/email-channel.md) end-to-end — outbound
   # send and the IMAP poll task — without depending on a real mail

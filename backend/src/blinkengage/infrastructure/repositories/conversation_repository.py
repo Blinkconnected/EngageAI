@@ -24,6 +24,19 @@ class ConversationRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_id_any_company(self, conversation_id: UUID) -> Conversation | None:
+        """Unscoped by ``company_id`` — the public CSAT survey-response
+        endpoint (see ``docs/architecture/reports-analytics.md``) carries
+        no JWT/tenant context, only a signed CSAT token whose ``sub``
+        claim already pins it to this exact conversation id. Security
+        here is the token's signature, not tenant isolation."""
+        result = await self._session.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id, Conversation.deleted_at.is_(None)
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_thread(
         self, *, channel_config_id: UUID, external_thread_id: str
     ) -> Conversation | None:

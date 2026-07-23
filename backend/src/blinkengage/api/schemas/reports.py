@@ -1,0 +1,114 @@
+from datetime import date
+from uuid import UUID
+
+from pydantic import BaseModel
+
+
+class ConversationStatsRowResponse(BaseModel):
+    stat_date: date
+    channel_type: str
+    opened: int
+    closed: int
+    resolved: int
+    first_response_breached: int
+    resolution_breached: int
+
+
+class ExecutiveDashboardResponse(BaseModel):
+    date_from: date
+    date_to: date
+    conversations_opened: int
+    conversations_closed: int
+    conversations_resolved: int
+    first_response_breached: int
+    resolution_breached: int
+    top_channels: list[ConversationStatsRowResponse]
+    csat_average_rating: float | None
+    csat_response_count: int
+    ai_calls_total: int
+    active_agent_count: int
+
+
+class AgentDashboardResponse(BaseModel):
+    agent_id: UUID
+    date_from: date
+    date_to: date
+    conversations_assigned: int
+    conversations_closed: int
+    messages_sent: int
+
+
+class LiveAgentCountsResponse(BaseModel):
+    online: int
+    away: int
+    offline: int
+
+
+class LiveConversationCountsResponse(BaseModel):
+    open: int
+    pending: int
+    resolved: int
+    closed: int
+
+
+class LiveQueueDepthResponse(BaseModel):
+    queue_id: UUID
+    queue_name: str
+    open_conversations: int
+
+
+class LiveDashboardResponse(BaseModel):
+    agents: LiveAgentCountsResponse
+    conversations: LiveConversationCountsResponse
+    queues: list[LiveQueueDepthResponse]
+
+
+class AgentPerformanceRowResponse(BaseModel):
+    agent_id: UUID
+    agent_name: str
+    conversations_assigned: int
+    conversations_closed: int
+    messages_sent: int
+
+
+class QueueStatsRowResponse(BaseModel):
+    queue_id: UUID
+    queue_name: str
+    conversations_entered: int
+    sla_breached: int
+
+
+class SlaReportResponse(BaseModel):
+    date_from: date
+    date_to: date
+    first_response_breached: int
+    resolution_breached: int
+    conversations_opened: int
+    by_queue: list[QueueStatsRowResponse]
+
+
+class CsatDailyRowResponse(BaseModel):
+    stat_date: date
+    response_count: int
+    average_rating: float | None
+
+
+class CsatAgentRowResponse(BaseModel):
+    agent_id: UUID
+    agent_name: str
+    response_count: int
+    average_rating: float | None
+
+
+class CsatReportResponse(BaseModel):
+    date_from: date
+    date_to: date
+    response_count: int
+    average_rating: float | None
+    daily_trend: list[CsatDailyRowResponse]
+    by_agent: list[CsatAgentRowResponse]
+
+
+class AiOperationRowResponse(BaseModel):
+    operation: str
+    calls: int
