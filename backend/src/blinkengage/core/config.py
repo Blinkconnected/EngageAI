@@ -5,10 +5,10 @@ All runtime configuration is sourced from environment variables (see
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -32,7 +32,11 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
 
     # --- CORS ---
-    cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    # NoDecode: pydantic-settings otherwise tries to JSON-decode list-typed env
+    # vars before our validator runs, which rejects a plain comma-separated string.
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:5173"]
+    )
 
     # --- Database ---
     database_url: str = Field(..., description="Async SQLAlchemy DSN")

@@ -19,27 +19,34 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 - [x] **M0. Server & tooling preparation**
   Docker Engine + Compose plugin, Node.js 22 LTS, Python 3.13, PostgreSQL /
   Redis client tools installed on the host. Docker daemon verified running.
-- [~] **M1. Repository bootstrap**
+- [x] **M1. Repository bootstrap**
   Git repo, directory structure (`docs/`, `frontend/`, `backend/`, `docker/`,
   `scripts/`, `tests/`, `monitoring/`, `backups/`, `.github/`), `.gitignore`,
-  `README.md`, `CLAUDE.md`, this roadmap, license/editorconfig, CI skeleton.
-- [ ] **M2. Docker Compose infrastructure**
-  PostgreSQL, Redis, RabbitMQ, MinIO, backend, frontend, NGINX reverse proxy,
-  Prometheus, Grafana, Loki + Promtail, Celery worker/beat. Local
-  `docker-compose.yml` (dev) + `docker-compose.prod.yml` overlay. Health
-  checks on every service.
+  `README.md`, `CLAUDE.md`, this roadmap, editorconfig.
+- [x] **M2. Docker Compose infrastructure**
+  PostgreSQL, Redis, RabbitMQ, MinIO (+ bucket auto-create), backend,
+  frontend (dev), NGINX reverse proxy (unified origin, dynamic upstream
+  resolution), Prometheus, Grafana (provisioned datasources + a live
+  dashboard), Loki + Promtail, Celery worker/beat. `docker-compose.yml`
+  (dev) + `docker-compose.prod.yml` overlay (lean runtime images, no bind
+  mounts, resource limits, SPA baked into NGINX). All 15 services verified
+  healthy end-to-end, including a real Celery task round-tripping through
+  RabbitMQ + Redis, and both dev/prod images build successfully. See
+  `docs/architecture/infrastructure.md`, `docs/deployment/`.
 - [x] **M3. Backend application skeleton**
   FastAPI app factory, layered Clean Architecture package layout
   (`domain/`, `application/`, `infrastructure/`, `api/`), settings via
   Pydantic Settings, structured logging, dependency-injection container,
-  `/health` and `/health/ready` endpoints, OpenAPI metadata, pytest +
-  coverage config, ruff/black/mypy strict — all green. See
+  `/health` and `/health/ready` endpoints, OpenAPI metadata, Celery app +
+  a verified baseline task, Prometheus instrumentation at `/metrics`,
+  pytest + coverage config, ruff/black/mypy strict — all green. See
   `docs/architecture/backend.md`.
 - [x] **M4. Database layer**
   SQLAlchemy 2 async engine/session management, Alembic migration
   environment (async-aware `env.py`), base repository pattern + unit of
-  work, shared entity mixins (UUID PK, timestamps, soft-delete). First
-  concrete tables land with M6/M7.
+  work, shared entity mixins (UUID PK, timestamps, soft-delete), first
+  real migration (`pgcrypto`/`citext` extensions) verified against a live
+  Postgres container. First domain tables land with M6/M7.
 - [x] **M5. Frontend application skeleton**
   Vite + React 19 + TypeScript, Material UI theme (light/dark/RTL) branded
   to Blink ("Baloo 2" + "Nunito Sans", brand green `#8CC63F` on warm black

@@ -20,3 +20,12 @@ async def test_openapi_schema_is_served(client: AsyncClient) -> None:
     assert response.status_code == 200
     schema = response.json()
     assert schema["info"]["title"] == "Blink Engage"
+
+
+async def test_metrics_endpoint_is_served(client: AsyncClient) -> None:
+    # First request registers the route metrics; a follow-up call is needed
+    # for the exposition to include them, but the endpoint must respond either way.
+    await client.get("/api/v1/health")
+    response = await client.get("/metrics")
+    assert response.status_code == 200
+    assert b"http_requests_total" in response.content or b"# HELP" in response.content

@@ -31,10 +31,12 @@ governing this repository.
 backend/     FastAPI application (domain / application / infrastructure / api)
 frontend/    React + TypeScript SPA
 docker/      Dockerfiles and per-service container configuration
+             (nginx, prometheus, grafana, loki, promtail, postgres, minio)
 docs/        Architecture, API, database, security, deployment documentation
 scripts/     Operational and developer scripts
 tests/       Cross-cutting / end-to-end tests
-monitoring/  Prometheus, Grafana, Loki configuration
+monitoring/  Reserved for alerting rules / runbooks (per-service configs
+             live under docker/)
 backups/     Backup artifacts (gitignored) and restore scripts
 ```
 
@@ -47,11 +49,15 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Backend API: http://localhost:8000/docs
-Frontend: http://localhost:5173
+Everything is served through NGINX on a single origin:
+http://localhost/ (app), http://localhost/api/v1/docs (Swagger UI).
+Grafana: http://localhost:3000. Prometheus: http://localhost:9090.
 
-See [`docs/deployment/`](docs/deployment/) for full setup and production
-deployment instructions.
+See [`docs/deployment/local-development.md`](docs/deployment/local-development.md)
+and [`docs/deployment/production.md`](docs/deployment/production.md) for full
+setup and production deployment instructions, and
+[`docs/architecture/infrastructure.md`](docs/architecture/infrastructure.md)
+for how the stack fits together.
 
 ## Contributing
 
