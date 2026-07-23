@@ -16,6 +16,12 @@ class TagRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_for_company(self, *, company_id: UUID) -> list[Tag]:
+        result = await self._session.execute(
+            select(Tag).where(Tag.company_id == company_id).order_by(Tag.name)
+        )
+        return list(result.scalars().all())
+
     async def add(self, tag: Tag) -> Tag:
         self._session.add(tag)
         await self._session.flush()

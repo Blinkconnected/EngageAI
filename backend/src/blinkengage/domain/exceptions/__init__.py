@@ -81,3 +81,14 @@ class AttachmentNotLinkableError(DomainError):
     def __init__(self, attachment_id: object) -> None:
         self.attachment_id = attachment_id
         super().__init__(f"Attachment {attachment_id!r} cannot be attached to this message")
+
+
+class AiNotConfiguredError(DomainError):
+    """Raised when an AI Engine feature is called but
+    ``settings.ai_provider`` is ``"disabled"`` (the default) — a
+    deployment/configuration state, not a missing resource, so it maps to
+    503 rather than 404/400 in ``core/exceptions.py``. See
+    ``docs/architecture/ai-engine.md``."""
+
+    def __init__(self) -> None:
+        super().__init__("AI features are not configured on this platform")

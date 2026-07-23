@@ -53,6 +53,7 @@ container start via `docker/backend/entrypoint.sh` →
 | `d4e5f6a7b8c9` | `knowledge_categories`, `knowledge_articles`, `knowledge_article_tags`, `quick_replies`, `internal_notes` |
 | `e5f6a7b8c9d0` | seeds `knowledge_base.read`/`knowledge_base.manage`/`quick_replies.read`/`quick_replies.manage` into `permissions` (same fixed-snapshot pattern) |
 | `f6a7b8c9d0e1` | `notifications` |
+| `a7b8c9d0e1f2` | seeds `ai.use` into `permissions` (same fixed-snapshot pattern) — no new tables: the AI Engine (M22) is stateless request/response, with usage recorded only via the durable `ai.completed` domain event, not a dedicated table (see `docs/architecture/ai-engine.md`) |
 
 ## Tables
 

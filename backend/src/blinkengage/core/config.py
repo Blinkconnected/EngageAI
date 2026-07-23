@@ -93,9 +93,20 @@ class Settings(BaseSettings):
         ]
     )
 
-    # --- AI providers ---
+    # --- AI Engine (see docs/architecture/ai-engine.md) ---
+    # Platform-level, not per-company: matches how these settings were
+    # already structured before this milestone (env-configured, not a
+    # ChannelConfig-style per-company credential row) — simpler, and a
+    # per-company "bring your own AI provider" model can be layered on
+    # later without a breaking change if a real enterprise need for it
+    # emerges.
+    ai_provider: Literal["openai", "claude", "ollama", "disabled"] = "disabled"
+    ai_model: str | None = None
+    ai_default_max_tokens: int = 1000
     openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
     anthropic_api_key: str | None = None
+    anthropic_base_url: str = "https://api.anthropic.com/v1"
     ollama_base_url: str = "http://localhost:11434"
 
     # --- Rate limiting ---

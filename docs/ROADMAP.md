@@ -369,12 +369,31 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   permission (a personal inbox is gated by authentication alone). 20 new
   tests (375 total); `ruff check`/`mypy` clean. See
   `docs/architecture/notifications.md`.
-- [ ] **M22. AI Engine**
-  Provider abstraction (OpenAI / Claude / Ollama), reply suggestions,
-  conversation summary, translation, language detection, sentiment
-  analysis, auto-tagging, knowledge search, FAQ search, grammar
-  improvement, professional rewrite, next-best-action. Consumes from the
-  M10 event bus.
+- [x] **M22. AI Engine**
+  One minimal `AiProvider` contract (`complete()` + `health_check()`),
+  not one method per feature — every LLM backend shares the same
+  fundamental capability, so prompt engineering for all ten AI features
+  lives once in `AiService`, shared across the three built-in providers
+  (OpenAI, Claude, Ollama), registered via the same
+  registry-keyed-by-string idiom `ChannelRegistry`/`SmsGatewayRegistry`/
+  `WorkflowActionRegistry` already established. Platform-level
+  configuration (`settings.ai_provider`, defaulting to `"disabled"`), not
+  per-company — an AI Engine is one shared capability per deployment,
+  unlike a company's own WhatsApp number. A disabled/unconfigured
+  platform surfaces a new `AiNotConfiguredError` -> 503 consistently
+  across every endpoint, never a silent empty result. One new `ai.use`
+  permission (not ten) gates all ten endpoints — AI calls have a real
+  external per-call cost that justifies an on/off switch, unlike Internal
+  Notes' permission-reuse. `suggest_tags` only ever picks from the
+  company's real tag catalog (never a hallucinated tag name); Knowledge
+  Search and FAQ Search are implemented as one capability
+  (`answer_from_knowledge_base`), since this codebase's Knowledge Base
+  never modeled a distinct FAQ entity; Next Best Action is advisory-only,
+  surfaced to the agent, never auto-executed. Every capability publishes
+  an `ai.completed` domain event instead of a dedicated usage-tracking
+  table, for M23's AI Reports to consume later. No new tables — a
+  permission-seed-only migration. 49 new tests (375 -> 424); `ruff
+  check`/`mypy` clean. See `docs/architecture/ai-engine.md`.
 
 ## Phase 5 — Reporting & Ecosystem
 

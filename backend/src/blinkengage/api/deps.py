@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
+from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
@@ -37,7 +38,9 @@ from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
+from blinkengage.domain.ai_provider import AiProvider
 from blinkengage.domain.rbac import is_known_permission
+from blinkengage.infrastructure.ai.factory import build_ai_provider
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -431,6 +434,23 @@ def get_notification_service_ws(
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
 ) -> NotificationService:
     return NotificationService(notifications=NotificationRepository(session), realtime=realtime)
+
+
+def get_ai_provider(settings: Annotated[Settings, Depends(get_settings_dep)]) -> AiProvider | None:
+    return build_ai_provider(settings)
+
+
+def get_ai_service(
+    provider: Annotated[AiProvider | None, Depends(get_ai_provider)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> AiService:
+    return AiService(provider=provider, events=events)
+
+
+def get_tag_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> TagRepository:
+    return TagRepository(session)
 
 
 def get_knowledge_service(

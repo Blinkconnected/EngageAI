@@ -79,6 +79,13 @@ PERMISSIONS: tuple[Permission, ...] = (
     ),
     Permission("quick_replies.read", "View quick replies"),
     Permission("quick_replies.manage", "Create/edit/delete quick replies"),
+    # --- AI Engine (see docs/architecture/ai-engine.md) — one permission
+    # covering all AI capabilities, not one per feature: unlike internal
+    # notes (reusing conversations.*), AI calls have a real external cost
+    # per use that justifies its own on/off switch per role, but ten
+    # granular permissions for ten AI features would be needless
+    # fragmentation with no distinct access-control need behind it. ---
+    Permission("ai.use", "Use AI Engine features (reply suggestions, summaries, translation, ...)"),
 )
 
 _PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
@@ -111,6 +118,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "knowledge_base.manage",
             "quick_replies.read",
             "quick_replies.manage",
+            "ai.use",
         }
     ),
     SystemRole.AGENT: frozenset(
@@ -127,6 +135,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "workflows.read",
             "knowledge_base.read",
             "quick_replies.read",
+            "ai.use",
         }
     ),
 }

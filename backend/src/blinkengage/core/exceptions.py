@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from blinkengage.domain.exceptions import (
+    AiNotConfiguredError,
     AuthenticationError,
     AuthorizationError,
     DomainError,
@@ -21,6 +22,7 @@ _STATUS_MAP: dict[type[Exception], int] = {
     EntityAlreadyExistsError: status.HTTP_409_CONFLICT,
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,
     AuthorizationError: status.HTTP_403_FORBIDDEN,
+    AiNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 

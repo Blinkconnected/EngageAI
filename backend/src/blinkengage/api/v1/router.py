@@ -5,6 +5,7 @@ from fastapi import APIRouter
 import blinkengage.infrastructure.channels.providers  # noqa: F401
 from blinkengage.api.v1.endpoints import (
     agents,
+    ai,
     audit_logs,
     auth,
     channel_configs,
@@ -43,3 +44,4 @@ api_router.include_router(knowledge.router)
 api_router.include_router(quick_replies.router)
 api_router.include_router(notifications.router)
 api_router.include_router(realtime.router)
+api_router.include_router(ai.router)
