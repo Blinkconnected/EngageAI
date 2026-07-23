@@ -274,7 +274,99 @@ async def test_ingest_skips_email_with_no_sender_address(
     assert messages == []
 
 
-async def test_ingest_skips_unresolvable_customer_for_unknown_channel(app) -> None:
+async def test_ingest_resolves_new_customer_via_generic_channel_identity(app) -> None:
+    """Proves the M16 generic ``CustomerChannelIdentity`` resolution path
+    handles *any* channel type with no dedicated branch — including one
+    that doesn't exist yet — satisfying "support future providers without
+    schema changes." See docs/architecture/whatsapp-telegram.md."""
+    company_id = str(uuid4())
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": str(uuid4()),
+                    "channel_type": "some_future_channel",
+                    "external_thread_id": "t1",
+                    "external_customer_id": "platform-user-42",
+                    "external_customer_name": "Future Customer",
+                    "external_message_id": "e1",
+                    "body": "hi",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        customers = (await db_session.execute(select(Customer))).scalars().all()
+        messages = (await db_session.execute(select(Message))).scalars().all()
+
+    assert len(customers) == 1
+    assert customers[0].full_name == "Future Customer"
+    assert customers[0].custom_fields == {"source": "some_future_channel"}
+    assert len(messages) == 1
+
+
+async def test_ingest_reuses_customer_via_generic_channel_identity_on_second_message(
+    app,
+) -> None:
+    company_id = str(uuid4())
+    channel_config_id = str(uuid4())
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        for i in range(2):
+            await handle_message_received(
+                _event(
+                    company_id=company_id,
+                    payload={
+                        "channel_config_id": channel_config_id,
+                        "channel_type": "some_future_channel",
+                        "external_thread_id": "t1",
+                        "external_customer_id": "platform-user-42",
+                        "external_message_id": f"e{i}",
+                        "body": f"message {i}",
+                    },
+                ),
+                db_session,
+            )
+        await db_session.commit()
+
+        customers = (await db_session.execute(select(Customer))).scalars().all()
+
+    assert len(customers) == 1
+
+
+async def test_ingest_seeds_phone_for_phone_like_channels(app) -> None:
+    company_id = str(uuid4())
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": str(uuid4()),
+                    "channel_type": "whatsapp",
+                    "external_thread_id": "155512345670",
+                    "external_customer_id": "15551234567",
+                    "external_message_id": "e1",
+                    "body": "hi",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        customers = (await db_session.execute(select(Customer))).scalars().all()
+
+    assert len(customers) == 1
+    assert customers[0].phone == "15551234567"
+
+
+async def test_ingest_skips_generic_channel_with_blank_external_customer_id(app) -> None:
     session_factory = app.state.container.session_factory()
     async with session_factory() as db_session:
         await handle_message_received(
@@ -282,9 +374,9 @@ async def test_ingest_skips_unresolvable_customer_for_unknown_channel(app) -> No
                 company_id=str(uuid4()),
                 payload={
                     "channel_config_id": str(uuid4()),
-                    "channel_type": "whatsapp",  # not implemented — no resolver branch yet
+                    "channel_type": "some_future_channel",
                     "external_thread_id": "t1",
-                    "external_customer_id": "+15551234567",
+                    "external_customer_id": "   ",
                     "external_message_id": "e1",
                     "body": "hi",
                 },

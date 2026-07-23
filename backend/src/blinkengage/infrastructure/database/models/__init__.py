@@ -14,6 +14,9 @@ from blinkengage.infrastructure.database.models.conversation import (
     ConversationStatus,
 )
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
+from blinkengage.infrastructure.database.models.customer_channel_identity import (
+    CustomerChannelIdentity,
+)
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 from blinkengage.infrastructure.database.models.message import (
@@ -55,6 +58,7 @@ __all__ = [
     "Conversation",
     "ConversationStatus",
     "Customer",
+    "CustomerChannelIdentity",
     "CustomerTag",
     "DeliveryStatus",
     "Department",

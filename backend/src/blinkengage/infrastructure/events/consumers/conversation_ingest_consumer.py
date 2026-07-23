@@ -41,6 +41,9 @@ from blinkengage.infrastructure.repositories.agent_skill_repository import Agent
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.customer_channel_identity_repository import (
+    CustomerChannelIdentityRepository,
+)
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
@@ -55,6 +58,12 @@ ROUTING_KEYS = ["message.received"]
 
 _REOPEN_ON_NEW_MESSAGE = frozenset({ConversationStatus.RESOLVED, ConversationStatus.CLOSED})
 
+#: Channels whose external id is itself a phone number worth seeding onto
+#: ``Customer.phone`` on first contact (best-effort convenience only —
+#: identity resolution itself never depends on this column, see
+#: ``CustomerChannelIdentity``).
+_PHONE_LIKE_CHANNELS = frozenset({"whatsapp", "sms"})
+
 
 async def _resolve_customer_id(
     *,
@@ -68,17 +77,25 @@ async def _resolve_customer_id(
 
     ``web_chat``'s ``external_customer_id`` *is* our own ``Customer.id`` —
     the visitor session already resolved identity before the first
-    message arrived (see ``web-chat.md``). ``email`` gets real matching:
-    unlike a phone number or platform user id, an email address is
-    already a first-class, unambiguous ``Customer.email`` field, so this
-    gets-or-creates by address using M8's existing
-    ``CustomerRepository.get_by_email`` — the first channel where
-    "multi-channel identity resolution" (deferred since M8) is actually
-    implemented, because there was nothing extra to build. Every future
-    provider-pushed channel with a *not*-already-unambiguous identifier
-    (WhatsApp phone numbers, Messenger PSIDs) still needs its own matching
-    strategy — that's still deferred, one new branch per channel as each
-    is actually built, not a speculative generic resolver now.
+    message arrived (see ``web-chat.md``). ``email`` gets real matching
+    onto the existing ``Customer.email`` column: an email address is
+    already a first-class, unambiguous field, so this gets-or-creates by
+    address using M8's ``CustomerRepository.get_by_email`` — the first
+    channel where "multi-channel identity resolution" (deferred since M8)
+    was actually implemented. Both are kept as documented exceptions
+    rather than migrated onto the mechanism below, since they already
+    shipped, tested, working behavior before it existed.
+
+    Every other provider-pushed channel (WhatsApp, Telegram, and
+    Messenger/Instagram/SMS still to come) has no existing ``Customer``
+    column its external id unambiguously maps onto — a phone number isn't
+    always the same as a CRM-entered ``Customer.phone``, and a platform
+    user id (Telegram, a Messenger PSID) has no ``Customer`` column at
+    all. Those resolve through the generic ``CustomerChannelIdentity``
+    mapping table (M16) instead: get-or-create by
+    ``(company_id, channel_type, external_id)``, with a new ``Customer``
+    created and linked on first contact. See
+    ``docs/architecture/whatsapp-telegram.md``.
     """
     if channel_type == "web_chat":
         try:
@@ -110,7 +127,35 @@ async def _resolve_customer_id(
         )
         return created.id
 
-    return None
+    external_id = external_customer_id.strip()
+    if not external_id:
+        return None
+
+    identities = CustomerChannelIdentityRepository(session)
+    existing_customer_id = await identities.get_customer_id(
+        company_id=company_id, channel_type=channel_type, external_id=external_id
+    )
+    if existing_customer_id is not None:
+        return existing_customer_id
+
+    customers = CustomerRepository(session)
+    created = await customers.add(
+        Customer(
+            company_id=company_id,
+            full_name=external_customer_name or external_id,
+            email=None,
+            phone=external_id if channel_type in _PHONE_LIKE_CHANNELS else None,
+            notes=None,
+            custom_fields={"source": channel_type},
+        )
+    )
+    await identities.link(
+        company_id=company_id,
+        customer_id=created.id,
+        channel_type=channel_type,
+        external_id=external_id,
+    )
+    return created.id
 
 
 async def handle_message_received(event: dict[str, Any], session: AsyncSession) -> None:

@@ -47,6 +47,7 @@ container start via `docker/backend/entrypoint.sh` →
 | `855f7e80bccb` | `conversations`, `messages`, `message_attachments` |
 | `9fe815db63b7` | `queues`, `agent_skills`, `agent_skill_assignments`, `queue_required_skills`, `routing_rules`; adds `queue_id`/`first_response_at`/`sla_first_response_breached_at`/`sla_resolution_breached_at` to `conversations` |
 | `7c6ca45d6fac` | seeds `queues.read`/`queues.manage` into `permissions` (same fixed-snapshot pattern as `5463a5076e76`) |
+| `a1b2c3d4e5f6` | `customer_channel_identities` (generic multi-channel identity resolution, see `docs/architecture/whatsapp-telegram.md`) |
 
 ## Tables
 
@@ -173,6 +174,24 @@ Composite PK `(team_id, agent_id)`.
 | notes | text, nullable | |
 | custom_fields | JSON | schema-less bag; portable type (not `JSONB` — see core-crm.md decision #5) |
 | created_at / updated_at / deleted_at | timestamptz | |
+
+### `customer_channel_identities`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| customer_id | UUID | FK → `customers.id`, cascade delete, indexed |
+| channel_type | varchar(50) | plain string, same reasoning as `channel_configs.channel_type` |
+| external_id | varchar(255) | a WhatsApp `wa_id`, Telegram user id, etc. |
+| created_at / updated_at | timestamptz | |
+
+Unique on `(company_id, channel_type, external_id)`. Maps a provider's
+external identifier to a `Customer` for every channel that has no
+existing unambiguous `Customer` column to resolve onto (everything except
+`web_chat`/`email` — see `docs/architecture/whatsapp-telegram.md`). No
+`deleted_at` — these are pure mapping rows with no independent lifecycle
+worth auditing, same reasoning as `customer_tags`.
 
 ### `tags` (company-scoped catalog)
 

@@ -219,7 +219,29 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   plain string; M13's `messages`/`message_attachments` already had every
   column needed). 27 new tests (198 total); `ruff check`/`mypy` clean.
   See `docs/architecture/email-channel.md`.
-- [ ] **M16. WhatsApp Business + Telegram channels**
+- [x] **M16. WhatsApp Business + Telegram channels**
+  Two providers built together because they exercise the plugin
+  architecture from opposite directions. WhatsApp needed the provider GET
+  handshake (Meta's `hub.challenge`) M11 had explicitly flagged and
+  deferred — solved with a new `GET /webhooks/{channel_config_id}` route
+  reusing the exact same `verify_signature`/`webhook` hooks every
+  provider already has (via `WebhookAck.body`, already designed for
+  exactly this), no 12th `ChannelProvider` method needed. Telegram needed
+  real customer identity resolution with no natural `Customer` column to
+  land on (unlike email's `Customer.email`) — solved by finally building
+  the generic `customer_channel_identities` mapping table `Customer`'s
+  own docstring predicted since M8, rather than adding another
+  special-cased branch to the ingest consumer; every channel from here on
+  (Messenger/Instagram/SMS included) resolves through this one
+  channel-agnostic path with zero new resolution code. WhatsApp:
+  Meta Cloud (Graph) API, real `mark_as_read`, no-op edit/delete/typing
+  (platform has no equivalent). Telegram: Bot API, composite
+  `chat_id:message_id` ids so real `edit_message`/`delete_message`/
+  `typing_indicator` fit the existing single-id ABC signature with no
+  interface change. One new migration (`customer_channel_identities`,
+  verified against real Postgres — upgrade/downgrade/re-upgrade — not
+  only SQLite). 52 new tests (250 total); `ruff check`/`mypy` clean. See
+  `docs/architecture/whatsapp-telegram.md`.
 - [ ] **M17. Facebook Messenger + Instagram channels**
 - [ ] **M18. SMS channel** (provider-agnostic gateway abstraction)
 

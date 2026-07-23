@@ -4,6 +4,8 @@
 """
 
 from blinkengage.infrastructure.channels.providers.email import EmailProvider
+from blinkengage.infrastructure.channels.providers.telegram import TelegramProvider
 from blinkengage.infrastructure.channels.providers.web_chat import WebChatProvider
+from blinkengage.infrastructure.channels.providers.whatsapp import WhatsAppProvider
 
-__all__ = ["EmailProvider", "WebChatProvider"]
+__all__ = ["EmailProvider", "TelegramProvider", "WebChatProvider", "WhatsAppProvider"]

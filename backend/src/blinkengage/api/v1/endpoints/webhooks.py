@@ -17,6 +17,29 @@ from blinkengage.domain.channels import WebhookRequest
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
+@router.get("/{channel_config_id}")
+async def verify_webhook(
+    channel_config_id: UUID,
+    request: Request,
+    service: Annotated[WebhookIngestService, Depends(get_webhook_ingest_service)],
+) -> Response:
+    """The GET handshake some providers require to confirm webhook
+    ownership before they'll deliver POSTs (e.g. Meta's ``hub.challenge``
+    flow for WhatsApp/Messenger/Instagram) — flagged as a known concern in
+    M11, solved here using the exact same ``verify_signature``/``webhook``
+    extension points every provider already has, so the 11-method
+    ``ChannelProvider`` contract needs no 12th method for it. Providers
+    with no such handshake (Telegram, email) simply never see a GET.
+    """
+    ack = await service.ingest(
+        channel_config_id=channel_config_id,
+        request=WebhookRequest(
+            headers=dict(request.headers), body=b"", query_params=dict(request.query_params)
+        ),
+    )
+    return Response(status_code=ack.status_code, content=ack.body)
+
+
 @router.post("/{channel_config_id}")
 async def receive_webhook(
     channel_config_id: UUID,
