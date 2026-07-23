@@ -9,6 +9,7 @@ x-backend-env: &backend-env
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
   REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
   CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-blinkengage}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/${POSTGRES_DB:-blinkengage}
   REDIS_URL: redis://redis:6379/0
   CELERY_RESULT_BACKEND: redis://redis:6379/1

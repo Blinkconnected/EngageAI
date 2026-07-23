@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
+    # The externally-visible scheme+host this API is served at (no
+    # trailing slash) — used to reconstruct the *exact* webhook URL for
+    # providers whose signature scheme signs the full URL (e.g. Twilio
+    # SMS, see docs/architecture/sms.md). Deliberately a fixed setting
+    # rather than trusting X-Forwarded-Proto/Host from the request: this
+    # app's backend port is reachable directly (not only via nginx), so
+    # trusting client-supplied forwarded headers for signature-relevant
+    # URL reconstruction would be spoofable.
+    public_base_url: str = "http://localhost"
 
     # --- Security ---
     jwt_secret_key: str = Field(..., min_length=32)

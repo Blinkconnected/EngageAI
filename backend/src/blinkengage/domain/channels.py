@@ -74,11 +74,19 @@ class HealthStatus:
 class WebhookRequest:
     """Raw inbound webhook data — headers/body/query, not a FastAPI
     ``Request``, so providers stay framework-agnostic and unit-testable
-    without an ASGI server."""
+    without an ASGI server.
+
+    ``url`` was added in M18: Twilio's SMS webhook signature scheme HMACs
+    the *full webhook URL* itself (not just headers/body), unlike every
+    Meta-family or email provider built so far — a real, concrete need,
+    not spec'd speculatively. Defaults to ``""`` so it stays optional for
+    every provider that doesn't need it.
+    """
 
     headers: dict[str, str]
     body: bytes
     query_params: dict[str, str] = field(default_factory=dict)
+    url: str = ""
 
 
 @dataclass(frozen=True, slots=True)

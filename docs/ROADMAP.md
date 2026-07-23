@@ -264,7 +264,28 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   already tolerates a missing name. Zero schema changes. 28 new tests
   (278 total); `ruff check`/`mypy` clean. See
   `docs/architecture/messenger-instagram.md`.
-- [ ] **M18. SMS channel** (provider-agnostic gateway abstraction)
+- [x] **M18. SMS channel** (provider-agnostic gateway abstraction)
+  Closes out Phase 3. Unlike every other channel so far, SMS has no
+  shared vendor protocol (Twilio/Vonage/MessageBird/Plivo all differ) —
+  so this is a second, inner plugin layer: `SmsProvider` (registered as
+  `"sms"` in `ChannelRegistry`) delegates to whichever `SmsGateway` its
+  config names (`SmsGatewayRegistry`, mirroring `ChannelProvider`/
+  `ChannelRegistry` one level down). `TwilioGateway` is the first concrete
+  gateway — form-urlencoded webhooks (not JSON), and Twilio's own
+  HMAC-SHA1/base64-over-the-full-URL signature scheme, which is why
+  `WebhookRequest` gained a new `url` field (additive, default `""`, no
+  other provider affected) and why a new `settings.public_base_url`
+  exists — this stack's backend port is reachable directly alongside
+  nginx, so trusting client-supplied forwarded headers for a
+  signature-relevant URL would be spoofable; the public scheme+host is a
+  fixed setting instead. Outbound MMS is an explicit, documented scope
+  boundary (Twilio needs a publicly fetchable media URL our private MinIO
+  bucket doesn't have — `send_message` raises rather than silently
+  dropping attachments); inbound MMS works fully. `edit_message`/
+  `delete_message`/`mark_as_read`/`typing_indicator` are honest no-ops —
+  SMS has none of those capabilities at the carrier level. Zero schema
+  changes. 21 new tests (299 total); `ruff check`/`mypy` clean. See
+  `docs/architecture/sms.md`.
 
 ## Phase 4 — Engagement Intelligence
 

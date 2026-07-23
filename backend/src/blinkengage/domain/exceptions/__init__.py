@@ -44,6 +44,18 @@ class InvalidChannelTypeError(DomainError):
         super().__init__(f"Unknown channel type: {channel_type!r}")
 
 
+class InvalidSmsGatewayError(DomainError):
+    """Raised when ``ChannelConfig.credentials["gateway"]`` isn't
+    registered in ``infrastructure.channels.sms_gateway_registry.
+    SmsGatewayRegistry`` — the inner plugin registry behind ``SmsProvider``
+    (see ``docs/architecture/sms.md``). Same 400-by-default reasoning as
+    ``InvalidChannelTypeError``."""
+
+    def __init__(self, gateway_name: str) -> None:
+        self.gateway_name = gateway_name
+        super().__init__(f"Unknown SMS gateway: {gateway_name!r}")
+
+
 class InvalidConversationStatusTransitionError(DomainError):
     """Raised on an illegal conversation status transition (e.g.
     ``closed`` -> ``pending`` directly, skipping ``open``) — see
