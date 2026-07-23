@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.core.security import hash_password
-from blinkengage.domain.audit import AuditEvent, AuditPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
@@ -33,13 +33,13 @@ class AgentService:
         agents: AgentRepository,
         users: UserRepository,
         roles: RoleRepository,
-        audit: AuditPublisher,
+        events: DomainEventPublisher,
     ) -> None:
         self._session = session
         self._agents = agents
         self._users = users
         self._roles = roles
-        self._audit = audit
+        self._events = events
 
     async def create(
         self,
@@ -84,14 +84,14 @@ class AgentService:
 
         reloaded = await self._agents.get_by_id(company_id=company_id, agent_id=agent.id)
         assert reloaded is not None
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="agent.created",
                 company_id=company_id,
-                action="agent.created",
-                entity_type="agent",
-                entity_id=reloaded.id,
+                aggregate_type="agent",
+                aggregate_id=reloaded.id,
                 actor_user_id=actor_user_id,
-                details={"email": normalized_email},
+                payload={"email": normalized_email},
             )
         )
         return reloaded
@@ -126,14 +126,14 @@ class AgentService:
             agent.department_id = department_id
         if status is not None:
             agent.status = status
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="agent.updated",
                 company_id=company_id,
-                action="agent.updated",
-                entity_type="agent",
-                entity_id=agent.id,
+                aggregate_type="agent",
+                aggregate_id=agent.id,
                 actor_user_id=actor_user_id,
-                details={"status": agent.status.value},
+                payload={"status": agent.status.value},
             )
         )
         return agent
@@ -143,13 +143,13 @@ class AgentService:
     ) -> None:
         agent = await self.get(company_id=company_id, agent_id=agent_id)
         await self._agents.soft_delete(agent)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="agent.deleted",
                 company_id=company_id,
-                action="agent.deleted",
-                entity_type="agent",
-                entity_id=agent.id,
+                aggregate_type="agent",
+                aggregate_id=agent.id,
                 actor_user_id=actor_user_id,
-                details={},
+                payload={},
             )
         )

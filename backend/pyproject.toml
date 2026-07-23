@@ -61,6 +61,7 @@ testpaths = ["tests"]
 env = [
   "ENVIRONMENT=test",
   "JWT_SECRET_KEY=test-secret-key-not-for-production-use-0123456789",
+  "CREDENTIALS_ENCRYPTION_KEY=test-encryption-key-not-for-production-0123456789",
   "DATABASE_URL=sqlite+aiosqlite:///:memory:",
 ]
 

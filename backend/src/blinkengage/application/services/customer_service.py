@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from blinkengage.domain.audit import AuditEvent, AuditPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
@@ -10,11 +10,11 @@ from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 
 class CustomerService:
     def __init__(
-        self, *, customers: CustomerRepository, tags: TagRepository, audit: AuditPublisher
+        self, *, customers: CustomerRepository, tags: TagRepository, events: DomainEventPublisher
     ) -> None:
         self._customers = customers
         self._tags = tags
-        self._audit = audit
+        self._events = events
 
     async def create(
         self,
@@ -52,14 +52,14 @@ class CustomerService:
             customer_tags=[CustomerTag(tag=tag) for tag in tags],
         )
         created = await self._customers.add(customer)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="customer.created",
                 company_id=company_id,
-                action="customer.created",
-                entity_type="customer",
-                entity_id=created.id,
+                aggregate_type="customer",
+                aggregate_id=created.id,
                 actor_user_id=actor_user_id,
-                details={"full_name": created.full_name},
+                payload={"full_name": created.full_name},
             )
         )
         return created
@@ -112,14 +112,14 @@ class CustomerService:
         if tag_names is not None:
             await self._set_tags(company_id=company_id, customer=customer, tag_names=tag_names)
 
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="customer.updated",
                 company_id=company_id,
-                action="customer.updated",
-                entity_type="customer",
-                entity_id=customer.id,
+                aggregate_type="customer",
+                aggregate_id=customer.id,
                 actor_user_id=actor_user_id,
-                details={"full_name": customer.full_name},
+                payload={"full_name": customer.full_name},
             )
         )
         return customer
@@ -129,14 +129,14 @@ class CustomerService:
     ) -> None:
         customer = await self.get(company_id=company_id, customer_id=customer_id)
         await self._customers.soft_delete(customer)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="customer.deleted",
                 company_id=company_id,
-                action="customer.deleted",
-                entity_type="customer",
-                entity_id=customer.id,
+                aggregate_type="customer",
+                aggregate_id=customer.id,
                 actor_user_id=actor_user_id,
-                details={"full_name": customer.full_name},
+                payload={"full_name": customer.full_name},
             )
         )
 

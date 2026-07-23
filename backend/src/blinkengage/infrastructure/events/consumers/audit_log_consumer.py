@@ -1,0 +1,77 @@
+"""The audit-log consumer — replaces M9's direct ``AuditPublisher`` hook.
+
+Binds ``queue_name="audit-log"`` to routing key ``"#"`` (every event
+published to the bus) and writes one ``AuditLog`` row per event. This is
+what "what gets audited" moved from — a per-service opt-in list — to:
+everything published to the domain event bus is audited, unconditionally.
+See ``docs/architecture/event-bus.md``.
+
+``handle_audit_event`` is a pure function (event payload + session in, one
+``AuditLog`` row out) so it's unit-testable without a broker; ``main()``
+is the standalone consumer process entrypoint
+(``python -m blinkengage.infrastructure.events.consumers.audit_log_consumer``),
+verified manually against a real broker like the rest of this module.
+"""
+
+import asyncio
+from typing import Any
+from uuid import UUID
+
+import orjson
+from aio_pika.abc import AbstractIncomingMessage
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from blinkengage.core.config import get_settings
+from blinkengage.core.logging import get_logger
+from blinkengage.infrastructure.database.models.audit_log import AuditLog
+from blinkengage.infrastructure.database.session import (
+    create_engine,
+    create_session_factory,
+    session_scope,
+)
+from blinkengage.infrastructure.events.rabbitmq import run_consumer
+from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
+
+logger = get_logger(__name__)
+
+QUEUE_NAME = "audit-log"
+ROUTING_KEYS = ["#"]
+
+
+async def handle_audit_event(payload: dict[str, Any], session: AsyncSession) -> None:
+    company_id = payload.get("company_id")
+    if company_id is None:
+        # Platform-level events (no tenant) have nothing to attach an
+        # AuditLog row to — AuditLog.company_id is NOT NULL by design
+        # (every audit entry belongs to exactly one company). Skipped,
+        # not an error.
+        logger.debug("audit_event_skipped_no_company", event_type=payload.get("event_type"))
+        return
+
+    await AuditLogRepository(session).add(
+        AuditLog(
+            company_id=UUID(company_id),
+            actor_user_id=UUID(payload["actor_user_id"]) if payload.get("actor_user_id") else None,
+            action=payload["event_type"],
+            entity_type=payload["aggregate_type"],
+            entity_id=UUID(payload["aggregate_id"]) if payload.get("aggregate_id") else None,
+            details=payload.get("payload") or {},
+        )
+    )
+
+
+async def main() -> None:
+    settings = get_settings()
+    engine = create_engine(settings)
+    session_factory = create_session_factory(engine)
+
+    async def _handler(message: AbstractIncomingMessage) -> None:
+        payload = orjson.loads(message.body)
+        async with session_scope(session_factory) as session:
+            await handle_audit_event(payload, session)
+
+    await run_consumer(settings, queue_name=QUEUE_NAME, routing_keys=ROUTING_KEYS, handler=_handler)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

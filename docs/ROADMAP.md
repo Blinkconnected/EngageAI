@@ -110,65 +110,107 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Phase 2 — Conversations Core
 
-- [ ] **M10. Channels — plugin architecture**
-  Channel abstraction/interface, channel registry, inbound/outbound adapter
-  contract, configuration model per company.
-- [ ] **M11. Web Chat channel (reference implementation)**
+- [x] **M10. Domain event bus foundation**
+  Transactional outbox (`event_outbox` table + `OutboxEventPublisher`,
+  same-transaction as the triggering change — no dual-write gap), a
+  Celery-beat relay draining the outbox to a durable RabbitMQ topic
+  exchange (`SELECT ... FOR UPDATE SKIP LOCKED` claiming, safe under
+  concurrent relay instances), and a shared `aio_pika`-based consumer
+  runtime that any future module binds its own durable queue to — adding a
+  consumer requires zero changes to a publisher or any other consumer.
+  M9's audit hook is migrated onto this bus (the five mutating services
+  now publish a generic `DomainEvent` instead of calling `AuditPublisher`
+  directly; a new `audit-log` consumer service, bound to every routing
+  key, writes the `AuditLog` rows instead — `docker-compose.yml`'s
+  `audit-log-consumer` service). A `RealtimePublisher` (Redis pub/sub)
+  adds the ephemeral, non-durable tier for typing indicators/presence.
+  9 new tests plus the 6 existing M9 audit tests adapted to the new
+  async write path. See `docs/architecture/event-bus.md`.
+- [x] **M11. Channels — plugin architecture**
+  Channel-agnostic DTOs and an 11-method `ChannelProvider` ABC
+  (`send_message`/`receive_message`/`edit_message`/`delete_message`/
+  `mark_as_read`/`typing_indicator`/`upload_attachment`/
+  `download_attachment`/`webhook`/`verify_signature`/`health_check`), a
+  registry + factory (channel type → provider class, looked up by string,
+  never hardcoded), a per-company `ChannelConfig` model with
+  application-layer-encrypted credentials (`channels.read`/
+  `channels.manage` permissions), and a generic
+  `POST /webhooks/{channel_config_id}` ingress that verifies, parses, and
+  publishes `message.received` onto the M10 event bus — with zero
+  Conversation/Message persistence yet (that's M13) and zero real
+  providers (that's M12 and Phase 3). Proven end-to-end (12 new tests) with
+  a `FakeChannelProvider` test double only, per the explicit requirement
+  that provider implementations wait until the architecture itself is
+  signed off. 107 tests total passing across the whole suite; `ruff
+  check`/`mypy` clean. See `docs/architecture/channels.md` (which also
+  specifies the `messages`/`message_attachments` schema for M13 to
+  implement).
+- [ ] **M12. Web Chat channel (reference implementation)**
   WebSocket gateway, chat widget contract, session handling.
-- [ ] **M12. Conversations, Messages, Attachments**
+- [ ] **M13. Conversations, Messages, Attachments**
   Conversation lifecycle (open/pending/resolved/closed), message model
-  (text/media/system), attachment storage via MinIO (S3-compatible),
-  virus/type validation, delivery/read receipts.
-- [ ] **M13. Queues, Assignment Engine, Routing Engine**
+  (text/media/system) per the schema specified in `channels.md`,
+  attachment storage via MinIO (S3-compatible), virus/type validation,
+  delivery/read receipts. The conversation engine consumes
+  `message.received` from the M10 bus rather than calling any provider
+  directly.
+- [ ] **M14. Queues, Assignment Engine, Routing Engine**
   Queue model, skill/load-based assignment strategies, routing rules engine,
   SLA timers, escalation.
 
 ## Phase 3 — Omnichannel Expansion
 
-- [ ] **M14. Email channel** (SMTP/IMAP + provider webhook variants)
-- [ ] **M15. WhatsApp Business + Telegram channels**
-- [ ] **M16. Facebook Messenger + Instagram channels**
-- [ ] **M17. SMS channel** (provider-agnostic gateway abstraction)
+- [ ] **M15. Email channel** (SMTP/IMAP + provider webhook variants)
+- [ ] **M16. WhatsApp Business + Telegram channels**
+- [ ] **M17. Facebook Messenger + Instagram channels**
+- [ ] **M18. SMS channel** (provider-agnostic gateway abstraction)
 
 ## Phase 4 — Engagement Intelligence
 
-- [ ] **M18. Workflow Engine**
+- [ ] **M19. Workflow Engine**
   Trigger/condition/action model, visual-friendly JSON DSL, execution
-  engine, audit trail of workflow runs.
-- [ ] **M19. Knowledge Base, Quick Replies, Internal Notes**
-- [ ] **M20. Notifications & real-time layer**
+  engine, audit trail of workflow runs. Consumes from the M10 event bus.
+- [ ] **M20. Knowledge Base, Quick Replies, Internal Notes**
+- [ ] **M21. Notifications & real-time layer**
   WebSocket presence/typing/notifications, email/push notification
-  dispatch via Celery.
-- [ ] **M21. AI Engine**
+  dispatch via Celery. Consumes from the M10 event bus and the
+  `RealtimePublisher` tier.
+- [ ] **M22. AI Engine**
   Provider abstraction (OpenAI / Claude / Ollama), reply suggestions,
   conversation summary, translation, language detection, sentiment
   analysis, auto-tagging, knowledge search, FAQ search, grammar
-  improvement, professional rewrite, next-best-action.
+  improvement, professional rewrite, next-best-action. Consumes from the
+  M10 event bus.
 
 ## Phase 5 — Reporting & Ecosystem
 
-- [ ] **M22. Reports & Analytics**
+- [ ] **M23. Reports & Analytics**
   Executive/agent/live dashboards, conversation/performance/queue/SLA/CSAT/
-  AI reports, PDF + Excel export.
-- [ ] **M23. ERPNext Integration**
+  AI reports, PDF + Excel export. Consumes from the M10 event bus rather
+  than querying operational tables directly where a projection suffices.
+- [ ] **M24. ERPNext Integration**
   Customers, invoices, sales orders, quotations, support tickets, payments,
-  contacts — sync + webhook layer.
-- [ ] **M24. Administration console**
+  contacts — sync + webhook layer. Consumes from the M10 event bus.
+- [ ] **M25. Administration console**
   Company/system configuration, plugin management, audit log viewer.
 
 ## Phase 6 — Hardening & Launch
 
-- [ ] **M25. Security hardening**
+- [ ] **M26. Security hardening**
   OWASP ASVS pass, CSRF/XSS/SQLi verification, secrets management,
   encryption at rest/in transit, dependency scanning, pen-test checklist.
-- [ ] **M26. Observability & DevOps**
+- [ ] **M27. Observability & DevOps**
   Prometheus metrics, Grafana dashboards, Loki log pipeline, alerting,
   automated backups + restore drill, GitHub Actions CI/CD (lint, test,
-  build, scan, deploy).
-- [ ] **M27. Performance & load testing**
+  build, scan, deploy). Also where nginx moves from a single hardcoded
+  `backend` upstream to a load-balanced pool, enabling multiple stateless
+  app-server replicas (see `docs/architecture/event-bus.md`'s scaling
+  posture note).
+- [ ] **M28. Performance & load testing**
   Load/soak testing of conversation + messaging paths, query optimization,
-  caching strategy validation.
-- [ ] **M28. Documentation & production readiness review**
+  caching strategy validation, `messages` table partitioning if warranted
+  at real data volume.
+- [ ] **M29. Documentation & production readiness review**
   Full `docs/api`, `docs/database`, `docs/security`, `docs/deployment`
   content, runbooks, disaster recovery plan, go-live checklist.
 

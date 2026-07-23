@@ -16,22 +16,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
+from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.team_service import TeamService
+from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.rbac import is_known_permission
-from blinkengage.infrastructure.audit.publisher import AuditLogPublisher
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
+from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.database.models.user import User
+from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
+from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
+from blinkengage.infrastructure.repositories.channel_config_repository import (
+    ChannelConfigRepository,
+)
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
+from blinkengage.infrastructure.repositories.event_outbox_repository import (
+    EventOutboxRepository,
+)
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
@@ -68,17 +78,27 @@ def get_refresh_token_store(
     return RefreshTokenStore(redis)
 
 
-def get_audit_publisher(
+def get_event_publisher(
     session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> AuditLogPublisher:
-    return AuditLogPublisher(AuditLogRepository(session))
+) -> OutboxEventPublisher:
+    return OutboxEventPublisher(EventOutboxRepository(session))
+
+
+def get_realtime_publisher(redis: Annotated[Redis, Depends(get_redis)]) -> RealtimePublisher:
+    return RealtimePublisher(redis)
+
+
+def get_channel_provider_factory(
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
+) -> ChannelProviderFactory:
+    return ChannelProviderFactory(realtime=realtime)
 
 
 def get_auth_service(
     settings: Annotated[Settings, Depends(get_settings_dep)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store)],
-    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> AuthService:
     return AuthService(
         settings=settings,
@@ -87,7 +107,7 @@ def get_auth_service(
         users=UserRepository(session),
         roles=RoleRepository(session),
         refresh_tokens=refresh_tokens,
-        audit=audit,
+        events=events,
     )
 
 
@@ -127,37 +147,39 @@ async def get_current_user(
 
 def get_department_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> DepartmentService:
-    return DepartmentService(departments=DepartmentRepository(session), audit=audit)
+    return DepartmentService(departments=DepartmentRepository(session), events=events)
 
 
 def get_team_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> TeamService:
-    return TeamService(teams=TeamRepository(session), agents=AgentRepository(session), audit=audit)
+    return TeamService(
+        teams=TeamRepository(session), agents=AgentRepository(session), events=events
+    )
 
 
 def get_agent_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> AgentService:
     return AgentService(
         session=session,
         agents=AgentRepository(session),
         users=UserRepository(session),
         roles=RoleRepository(session),
-        audit=audit,
+        events=events,
     )
 
 
 def get_customer_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    audit: Annotated[AuditLogPublisher, Depends(get_audit_publisher)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> CustomerService:
     return CustomerService(
-        customers=CustomerRepository(session), tags=TagRepository(session), audit=audit
+        customers=CustomerRepository(session), tags=TagRepository(session), events=events
     )
 
 
@@ -165,6 +187,23 @@ def get_audit_log_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> AuditLogService:
     return AuditLogService(audit_logs=AuditLogRepository(session))
+
+
+def get_channel_config_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> ChannelConfigService:
+    return ChannelConfigService(channel_configs=ChannelConfigRepository(session), events=events)
+
+
+def get_webhook_ingest_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> WebhookIngestService:
+    return WebhookIngestService(
+        channel_configs=ChannelConfigRepository(session), factory=factory, events=events
+    )
 
 
 def require_permission(

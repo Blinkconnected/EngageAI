@@ -4,6 +4,7 @@ x-backend-env: &backend-env
   ENVIRONMENT: ${ENVIRONMENT:-development}
   DEBUG: ${DEBUG:-true}
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env}
+  CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?CREDENTIALS_ENCRYPTION_KEY must be set in .env}
   JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
   REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
@@ -153,6 +154,28 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
+  # Domain event bus consumer — see docs/architecture/event-bus.md. Not a
+  # Celery worker: it holds its own long-lived RabbitMQ topic-exchange
+  # binding (queue "audit-log", routing key "#") rather than picking up
+  # dispatched Celery tasks, so it's a separate service/process. Future
+  # consumers (AI, workflow engine, notifications, ERP sync, reporting)
+  # each get their own such service alongside this one, with zero changes
+  # to it, the relay, or each other.
+  audit-log-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command: ["python", "-m", "blinkengage.infrastructure.events.consumers.audit_log_consumer"]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 

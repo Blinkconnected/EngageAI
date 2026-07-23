@@ -4,6 +4,17 @@ M9 of the roadmap, closing out Phase 1 (Identity & Core Directory). Adds a
 company-scoped, append-only activity trail and hooks it into every
 state-changing operation added so far.
 
+> **Superseded by M10 (see `docs/architecture/event-bus.md`):** decisions
+> #2-#4 below described the original mechanism — a direct, synchronous
+> `AuditPublisher` call from each service. M10 generalized this into the
+> domain event bus: services now publish a generic `DomainEvent` onto a
+> transactional outbox, and a dedicated `audit-log` consumer (bound to
+> every routing key) writes the `AuditLog` rows instead. The data model,
+> the read API, and the "why no update/soft-delete" reasoning (#1, #5)
+> below are unchanged — only how a row gets written moved. Kept here for
+> history; `event-bus.md` is the current source of truth for the write
+> path.
+
 ## Data model
 
 ```

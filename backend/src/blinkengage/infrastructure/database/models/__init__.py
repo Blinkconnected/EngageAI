@@ -7,9 +7,11 @@ the same side effect.
 
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
+from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
 from blinkengage.infrastructure.database.models.department import Department
+from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 from blinkengage.infrastructure.database.models.rbac import (
     Permission,
     Role,
@@ -23,10 +25,12 @@ __all__ = [
     "Agent",
     "AgentStatus",
     "AuditLog",
+    "ChannelConfig",
     "Company",
     "Customer",
     "CustomerTag",
     "Department",
+    "EventOutbox",
     "Permission",
     "Role",
     "RolePermission",

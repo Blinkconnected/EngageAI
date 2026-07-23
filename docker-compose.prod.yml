@@ -45,6 +45,17 @@ services:
           cpus: "0.5"
           memory: 256m
 
+  audit-log-consumer:
+    build:
+      target: runtime
+    restart: always
+    volumes: !override []
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
   # The dev Vite server is not used in production; the compiled SPA is baked
   # into the `nginx` image below. Gate it behind a profile that stays
   # inactive unless explicitly requested, so `docker compose up` never

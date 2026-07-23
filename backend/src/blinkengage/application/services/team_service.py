@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from blinkengage.domain.audit import AuditEvent, AuditPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
@@ -9,11 +9,11 @@ from blinkengage.infrastructure.repositories.team_repository import TeamReposito
 
 class TeamService:
     def __init__(
-        self, *, teams: TeamRepository, agents: AgentRepository, audit: AuditPublisher
+        self, *, teams: TeamRepository, agents: AgentRepository, events: DomainEventPublisher
     ) -> None:
         self._teams = teams
         self._agents = agents
-        self._audit = audit
+        self._events = events
 
     async def create(
         self,
@@ -34,14 +34,14 @@ class TeamService:
                 department_id=department_id,
             )
         )
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="team.created",
                 company_id=company_id,
-                action="team.created",
-                entity_type="team",
-                entity_id=team.id,
+                aggregate_type="team",
+                aggregate_id=team.id,
                 actor_user_id=actor_user_id,
-                details={"name": team.name},
+                payload={"name": team.name},
             )
         )
         # Reload with `memberships` eager-loaded — a freshly flushed object's
@@ -82,14 +82,14 @@ class TeamService:
             team.department_id = department_id
         if is_active is not None:
             team.is_active = is_active
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="team.updated",
                 company_id=company_id,
-                action="team.updated",
-                entity_type="team",
-                entity_id=team.id,
+                aggregate_type="team",
+                aggregate_id=team.id,
                 actor_user_id=actor_user_id,
-                details={"name": team.name, "is_active": team.is_active},
+                payload={"name": team.name, "is_active": team.is_active},
             )
         )
         return team
@@ -99,14 +99,14 @@ class TeamService:
     ) -> None:
         team = await self.get(company_id=company_id, team_id=team_id)
         await self._teams.soft_delete(team)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="team.deleted",
                 company_id=company_id,
-                action="team.deleted",
-                entity_type="team",
-                entity_id=team.id,
+                aggregate_type="team",
+                aggregate_id=team.id,
                 actor_user_id=actor_user_id,
-                details={"name": team.name},
+                payload={"name": team.name},
             )
         )
 
@@ -129,14 +129,14 @@ class TeamService:
         membership = await self._teams.add_membership(
             TeamMembership(team_id=team_id, agent_id=agent_id, is_lead=is_lead)
         )
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="team_membership.added",
                 company_id=company_id,
-                action="team_membership.added",
-                entity_type="team",
-                entity_id=team_id,
+                aggregate_type="team",
+                aggregate_id=team_id,
                 actor_user_id=actor_user_id,
-                details={"agent_id": str(agent_id), "is_lead": is_lead},
+                payload={"agent_id": str(agent_id), "is_lead": is_lead},
             )
         )
         return membership
@@ -154,13 +154,13 @@ class TeamService:
         if membership is None:
             raise EntityNotFoundError("TeamMembership", agent_id)
         await self._teams.remove_membership(membership)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="team_membership.removed",
                 company_id=company_id,
-                action="team_membership.removed",
-                entity_type="team",
-                entity_id=team_id,
+                aggregate_type="team",
+                aggregate_id=team_id,
                 actor_user_id=actor_user_id,
-                details={"agent_id": str(agent_id)},
+                payload={"agent_id": str(agent_id)},
             )
         )

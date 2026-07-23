@@ -23,7 +23,7 @@ from blinkengage.core.security import (
     hash_password,
     verify_password,
 )
-from blinkengage.domain.audit import AuditEvent, AuditPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import AuthenticationError, EntityAlreadyExistsError
 from blinkengage.domain.rbac import DEFAULT_ROLE_PERMISSIONS, SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
@@ -78,7 +78,7 @@ class AuthService:
         users: UserRepository,
         roles: RoleRepository,
         refresh_tokens: RefreshTokenStore,
-        audit: AuditPublisher,
+        events: DomainEventPublisher,
     ) -> None:
         self._settings = settings
         self._session = session
@@ -86,7 +86,7 @@ class AuthService:
         self._users = users
         self._roles = roles
         self._refresh_tokens = refresh_tokens
-        self._audit = audit
+        self._events = events
 
     async def register_company(
         self,
@@ -122,14 +122,14 @@ class AuthService:
         # Reload with relationships populated for the caller (e.g. to issue tokens immediately).
         reloaded = await self._users.get_by_id(user.id)
         assert reloaded is not None
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="company.registered",
                 company_id=company.id,
-                action="company.registered",
-                entity_type="company",
-                entity_id=company.id,
+                aggregate_type="company",
+                aggregate_id=company.id,
                 actor_user_id=reloaded.id,
-                details={"company_name": company.name, "owner_email": normalized_email},
+                payload={"company_name": company.name, "owner_email": normalized_email},
             )
         )
         return RegisteredAccount(company=company, user=reloaded)
@@ -144,14 +144,14 @@ class AuthService:
             raise AuthenticationError("Invalid email or password")
 
         user.last_login_at = datetime.now(UTC)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="user.login",
                 company_id=user.company_id,
-                action="user.login",
-                entity_type="user",
-                entity_id=user.id,
+                aggregate_type="user",
+                aggregate_id=user.id,
                 actor_user_id=user.id,
-                details={},
+                payload={},
             )
         )
         return user
@@ -209,14 +209,14 @@ class AuthService:
 
         user = await self._users.get_by_id(user_id)
         if user is not None:
-            await self._audit.publish(
-                AuditEvent(
+            await self._events.publish(
+                DomainEvent(
+                    event_type="user.logout",
                     company_id=user.company_id,
-                    action="user.logout",
-                    entity_type="user",
-                    entity_id=user.id,
+                    aggregate_type="user",
+                    aggregate_id=user.id,
                     actor_user_id=user.id,
-                    details={},
+                    payload={},
                 )
             )
 

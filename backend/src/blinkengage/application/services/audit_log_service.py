@@ -8,9 +8,11 @@ from blinkengage.infrastructure.repositories.audit_log_repository import AuditLo
 class AuditLogService:
     """Read-only query side of the audit log.
 
-    Rows are never written here — every write goes through an
-    ``AuditPublisher`` (see ``domain.audit``) called directly from the
-    service whose action is being audited, in the same transaction.
+    Rows are never written here — every write comes from the
+    ``audit-log`` domain event consumer
+    (``infrastructure.events.consumers.audit_log_consumer``), which writes
+    one row per event published to the domain event bus. See
+    ``docs/architecture/event-bus.md``.
     """
 
     def __init__(self, *, audit_logs: AuditLogRepository) -> None:

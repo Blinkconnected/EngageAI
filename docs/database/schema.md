@@ -41,6 +41,9 @@ container start via `docker/backend/entrypoint.sh` →
 | `f2df1379a476` | `companies`, `users`, `permissions` (seeded from `domain.rbac.PERMISSIONS`), `roles`, `role_permissions`, `user_roles` |
 | `37f197931b3f` | `departments`, `teams`, `team_memberships`, `agents`, `customers`, `tags`, `customer_tags` |
 | `2748c9c76517` | `audit_logs` |
+| `5a9957be8e5e` | `event_outbox` |
+| `48fc9680074e` | `channel_configs` |
+| `5463a5076e76` | seeds `channels.read`/`channels.manage` into `permissions` (a fixed, explicit snapshot — not imported from `domain.rbac.PERMISSIONS` like the original seed, so this migration stays a stable diff regardless of later catalog changes) |
 
 ## Tables
 
@@ -207,3 +210,45 @@ No `updated_at`/`deleted_at` — rows are never modified or deleted (see
 `(company_id, created_at)` and `(company_id, entity_type, entity_id)`
 support the two query patterns the API exposes: a recent-activity feed and
 an entity's history.
+
+As of M10, rows are written by the `audit-log` domain event consumer, not
+by a direct per-service call — see `docs/architecture/event-bus.md`.
+
+### `event_outbox` (append-only, transactional outbox)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| event_type | varchar(150) | `<aggregate_type>.<verb>`, e.g. `message.received` |
+| company_id | UUID, nullable | some events are platform-level, not tenant-scoped |
+| aggregate_type | varchar(100) | e.g. `customer`, `message`, `channel_config` |
+| aggregate_id | UUID, nullable | |
+| actor_user_id | UUID, nullable | |
+| payload | JSON | event-specific context |
+| occurred_at | timestamptz | business time the event describes |
+| created_at | timestamptz | server-defaulted to `now()` — row insert time |
+| dispatched_at | timestamptz, nullable | null = not yet relayed to RabbitMQ |
+| attempts | integer | incremented on relay publish failure |
+
+No soft-delete — rows are never deleted here (pruning old dispatched rows
+is a separate operational job). Partial index on `created_at`
+`WHERE dispatched_at IS NULL` keeps the relay's claim query cheap
+regardless of how large the dispatched majority grows. See
+`docs/architecture/event-bus.md` for the full pattern.
+
+### `channel_configs`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete, indexed |
+| channel_type | varchar(50) | plain string, not a DB enum — validity is checked against `ChannelRegistry` at the application layer so new channel types need no migration |
+| display_name | varchar(255) | |
+| is_active | boolean | |
+| credentials | bytea | AES-256-GCM encrypted at rest (`EncryptedJSON` type — see `docs/architecture/channels.md`); never returned by the API |
+| webhook_secret | varchar(255), nullable | |
+| created_at / updated_at / deleted_at | timestamptz | |
+
+No uniqueness constraint on `(company_id, channel_type)` — a company may
+run multiple instances of one channel type (e.g. two WhatsApp Business
+numbers).

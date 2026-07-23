@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    # Encrypts secrets-at-rest (e.g. channel provider credentials — see
+    # docs/architecture/channels.md). Deliberately separate from
+    # jwt_secret_key so rotating one never invalidates the other.
+    credentials_encryption_key: str = Field(..., min_length=32)
 
     # --- CORS ---
     # NoDecode: pydantic-settings otherwise tries to JSON-decode list-typed env
@@ -50,6 +54,10 @@ class Settings(BaseSettings):
     # --- RabbitMQ / Celery ---
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
     celery_result_backend: str = "redis://localhost:6379/1"
+
+    # --- Domain event bus (see docs/architecture/event-bus.md) ---
+    events_exchange_name: str = "blinkengage.events"
+    events_relay_batch_size: int = 100
 
     # --- Object storage (MinIO / S3-compatible) ---
     s3_endpoint_url: str = "http://localhost:9000"

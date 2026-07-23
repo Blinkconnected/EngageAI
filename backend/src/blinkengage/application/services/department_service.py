@@ -1,15 +1,15 @@
 from uuid import UUID
 
-from blinkengage.domain.audit import AuditEvent, AuditPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 
 
 class DepartmentService:
-    def __init__(self, *, departments: DepartmentRepository, audit: AuditPublisher) -> None:
+    def __init__(self, *, departments: DepartmentRepository, events: DomainEventPublisher) -> None:
         self._departments = departments
-        self._audit = audit
+        self._events = events
 
     async def create(
         self,
@@ -24,14 +24,14 @@ class DepartmentService:
         department = await self._departments.add(
             Department(company_id=company_id, name=name, description=description)
         )
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="department.created",
                 company_id=company_id,
-                action="department.created",
-                entity_type="department",
-                entity_id=department.id,
+                aggregate_type="department",
+                aggregate_id=department.id,
                 actor_user_id=actor_user_id,
-                details={"name": department.name},
+                payload={"name": department.name},
             )
         )
         return department
@@ -70,14 +70,14 @@ class DepartmentService:
             department.description = description
         if is_active is not None:
             department.is_active = is_active
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="department.updated",
                 company_id=company_id,
-                action="department.updated",
-                entity_type="department",
-                entity_id=department.id,
+                aggregate_type="department",
+                aggregate_id=department.id,
                 actor_user_id=actor_user_id,
-                details={"name": department.name, "is_active": department.is_active},
+                payload={"name": department.name, "is_active": department.is_active},
             )
         )
         return department
@@ -87,13 +87,13 @@ class DepartmentService:
     ) -> None:
         department = await self.get(company_id=company_id, department_id=department_id)
         await self._departments.soft_delete(department)
-        await self._audit.publish(
-            AuditEvent(
+        await self._events.publish(
+            DomainEvent(
+                event_type="department.deleted",
                 company_id=company_id,
-                action="department.deleted",
-                entity_type="department",
-                entity_id=department.id,
+                aggregate_type="department",
+                aggregate_id=department.id,
                 actor_user_id=actor_user_id,
-                details={"name": department.name},
+                payload={"name": department.name},
             )
         )

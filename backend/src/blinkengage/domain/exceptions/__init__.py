@@ -31,3 +31,14 @@ class AuthenticationError(DomainError):
 
 class AuthorizationError(DomainError):
     """Raised when an authenticated principal lacks a required permission."""
+
+
+class InvalidChannelTypeError(DomainError):
+    """Raised when a ``channel_type`` isn't registered in
+    ``infrastructure.channels.registry.ChannelRegistry`` — an invalid
+    client-supplied value, not a missing resource, so it falls through to
+    the generic 400 in ``core/exceptions.py`` rather than 404."""
+
+    def __init__(self, channel_type: str) -> None:
+        self.channel_type = channel_type
+        super().__init__(f"Unknown channel type: {channel_type!r}")

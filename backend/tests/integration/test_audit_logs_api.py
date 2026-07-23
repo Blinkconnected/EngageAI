@@ -1,3 +1,5 @@
+from collections.abc import Awaitable, Callable
+
 from httpx import AsyncClient
 
 
@@ -16,7 +18,10 @@ async def _create_agent(client: AsyncClient, owner_headers: dict, email: str) ->
 
 
 async def test_registration_and_login_are_audited(
-    client: AsyncClient, registered_owner: dict, owner_headers: dict
+    client: AsyncClient,
+    registered_owner: dict,
+    owner_headers: dict,
+    drain_outbox: Callable[[], Awaitable[int]],
 ) -> None:
     owner_id = registered_owner["user"]["id"]
 
@@ -24,6 +29,7 @@ async def test_registration_and_login_are_audited(
         "/api/v1/auth/login",
         json={"email": "ada@acme.example", "password": "correct-horse-battery-9"},
     )
+    await drain_outbox()
 
     response = await client.get("/api/v1/audit-logs", headers=owner_headers)
     assert response.status_code == 200, response.text
@@ -40,7 +46,10 @@ async def test_registration_and_login_are_audited(
 
 
 async def test_department_lifecycle_is_audited(
-    client: AsyncClient, owner_headers: dict, registered_owner: dict
+    client: AsyncClient,
+    owner_headers: dict,
+    registered_owner: dict,
+    drain_outbox: Callable[[], Awaitable[int]],
 ) -> None:
     owner_id = registered_owner["user"]["id"]
 
@@ -55,6 +64,7 @@ async def test_department_lifecycle_is_audited(
         headers=owner_headers,
     )
     await client.delete(f"/api/v1/departments/{department_id}", headers=owner_headers)
+    await drain_outbox()
 
     response = await client.get(
         "/api/v1/audit-logs",
@@ -71,7 +81,7 @@ async def test_department_lifecycle_is_audited(
 
 
 async def test_team_membership_changes_are_audited(
-    client: AsyncClient, owner_headers: dict
+    client: AsyncClient, owner_headers: dict, drain_outbox: Callable[[], Awaitable[int]]
 ) -> None:
     team_response = await client.post(
         "/api/v1/teams", json={"name": "Tier 1"}, headers=owner_headers
@@ -85,6 +95,7 @@ async def test_team_membership_changes_are_audited(
         headers=owner_headers,
     )
     await client.delete(f"/api/v1/teams/{team_id}/members/{agent['id']}", headers=owner_headers)
+    await drain_outbox()
 
     response = await client.get(
         "/api/v1/audit-logs",
@@ -104,9 +115,12 @@ async def test_team_membership_changes_are_audited(
     assert response.json()["total"] == 1
 
 
-async def test_audit_logs_are_paginated(client: AsyncClient, owner_headers: dict) -> None:
+async def test_audit_logs_are_paginated(
+    client: AsyncClient, owner_headers: dict, drain_outbox: Callable[[], Awaitable[int]]
+) -> None:
     for name in ("Support", "Sales", "Billing"):
         await client.post("/api/v1/departments", json={"name": name}, headers=owner_headers)
+    await drain_outbox()
 
     response = await client.get(
         "/api/v1/audit-logs",
@@ -126,7 +140,9 @@ async def test_audit_logs_require_authentication(client: AsyncClient) -> None:
     assert response.status_code in (401, 403)
 
 
-async def test_audit_logs_are_scoped_to_company(client: AsyncClient) -> None:
+async def test_audit_logs_are_scoped_to_company(
+    client: AsyncClient, drain_outbox: Callable[[], Awaitable[int]]
+) -> None:
     first = await client.post(
         "/api/v1/auth/register",
         json={
@@ -149,6 +165,7 @@ async def test_audit_logs_are_scoped_to_company(client: AsyncClient) -> None:
         },
     )
     second_headers = {"Authorization": f"Bearer {second.json()['tokens']['access_token']}"}
+    await drain_outbox()
 
     response = await client.get(
         "/api/v1/audit-logs",

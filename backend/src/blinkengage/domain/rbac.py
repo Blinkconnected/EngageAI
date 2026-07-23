@@ -59,6 +59,9 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("reports.read", "View reports and dashboards"),
     # --- Audit ---
     Permission("audit_logs.read", "View audit logs"),
+    # --- Channels (see docs/architecture/channels.md) ---
+    Permission("channels.read", "View channel configurations"),
+    Permission("channels.manage", "Create/edit/delete channel configurations"),
 )
 
 _PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
@@ -81,6 +84,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.manage",
             "reports.read",
             "audit_logs.read",
+            "channels.read",
+            "channels.manage",
         }
     ),
     SystemRole.AGENT: frozenset(

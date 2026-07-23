@@ -18,7 +18,7 @@ celery_app = Celery(
     "blinkengage",
     broker=settings.rabbitmq_url,
     backend=settings.celery_result_backend,
-    include=["blinkengage.core.tasks"],
+    include=["blinkengage.core.tasks", "blinkengage.infrastructure.events.relay"],
 )
 
 celery_app.conf.update(
@@ -30,4 +30,13 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     broker_connection_retry_on_startup=True,
+    beat_schedule={
+        # Drains the transactional outbox to the RabbitMQ event exchange —
+        # see docs/architecture/event-bus.md. Runs frequently since it's
+        # cheap when the outbox is empty (one indexed, limited SELECT).
+        "relay-event-outbox": {
+            "task": "blinkengage.events.relay_outbox",
+            "schedule": 5.0,
+        },
+    },
 )

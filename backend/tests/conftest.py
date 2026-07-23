@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 import pytest
 from dependency_injector import providers
@@ -7,6 +7,10 @@ from httpx import ASGITransport, AsyncClient
 
 import blinkengage.infrastructure.database.models  # noqa: F401 - populates Base.metadata
 from blinkengage.infrastructure.database.base import Base
+from blinkengage.infrastructure.events.consumers.audit_log_consumer import handle_audit_event
+from blinkengage.infrastructure.repositories.event_outbox_repository import (
+    EventOutboxRepository,
+)
 from blinkengage.main import create_app
 
 
@@ -54,3 +58,39 @@ async def registered_owner(client: AsyncClient) -> dict:
 @pytest.fixture
 def owner_headers(registered_owner: dict) -> dict[str, str]:
     return {"Authorization": f"Bearer {registered_owner['tokens']['access_token']}"}
+
+
+@pytest.fixture
+def drain_outbox(app) -> Callable[[], Awaitable[int]]:
+    """Synchronously runs what the relay + ``audit-log`` consumer would
+    eventually do asynchronously in production: claim every undispatched
+    ``EventOutbox`` row and feed it through ``handle_audit_event``.
+
+    Tests call this after triggering a mutation and before asserting on
+    ``GET /audit-logs``, since writes no longer happen in the same request
+    (see docs/architecture/event-bus.md) — this exercises the exact same
+    outbox-row-shape → ``AuditLog``-row mapping the real consumer uses,
+    without needing a real broker in the test suite. Returns the number of
+    rows drained.
+    """
+
+    async def _drain() -> int:
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as session:
+            outbox = EventOutboxRepository(session)
+            batch = await outbox.claim_batch(limit=1000)
+            for event in batch:
+                payload = {
+                    "company_id": str(event.company_id) if event.company_id else None,
+                    "actor_user_id": (str(event.actor_user_id) if event.actor_user_id else None),
+                    "event_type": event.event_type,
+                    "aggregate_type": event.aggregate_type,
+                    "aggregate_id": str(event.aggregate_id) if event.aggregate_id else None,
+                    "payload": event.payload,
+                }
+                await handle_audit_event(payload, session)
+                await outbox.mark_dispatched(event)
+            await session.commit()
+            return len(batch)
+
+    return _drain
