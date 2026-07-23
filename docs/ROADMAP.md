@@ -28,16 +28,18 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
   Prometheus, Grafana, Loki + Promtail, Celery worker/beat. Local
   `docker-compose.yml` (dev) + `docker-compose.prod.yml` overlay. Health
   checks on every service.
-- [ ] **M3. Backend application skeleton**
+- [x] **M3. Backend application skeleton**
   FastAPI app factory, layered Clean Architecture package layout
   (`domain/`, `application/`, `infrastructure/`, `api/`), settings via
   Pydantic Settings, structured logging, dependency-injection container,
   `/health` and `/health/ready` endpoints, OpenAPI metadata, pytest +
-  coverage config, pre-commit (ruff, black, mypy).
-- [ ] **M4. Database layer**
+  coverage config, ruff/black/mypy strict — all green. See
+  `docs/architecture/backend.md`.
+- [x] **M4. Database layer**
   SQLAlchemy 2 async engine/session management, Alembic migration
-  environment, base repository pattern + unit of work, first migration
-  (extensions, audit columns, soft-delete convention).
+  environment (async-aware `env.py`), base repository pattern + unit of
+  work, shared entity mixins (UUID PK, timestamps, soft-delete). First
+  concrete tables land with M6/M7.
 - [ ] **M5. Frontend application skeleton**
   Vite + React + TypeScript, Material UI theme (light/dark/RTL), Redux
   Toolkit store, React Query client, routing, API client with auth
