@@ -232,7 +232,7 @@ async def test_webhook_ingress_publishes_message_received_event(
 
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
-        batch = await EventOutboxRepository(session).claim_batch(limit=10)
+        batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=1_000_000)
 
     received = [e for e in batch if e.event_type == "message.received"]
     assert len(received) == 1

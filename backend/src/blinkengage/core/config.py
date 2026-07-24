@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # --- Domain event bus (see docs/architecture/event-bus.md) ---
     events_exchange_name: str = "blinkengage.events"
     events_relay_batch_size: int = 100
+    # Dead-letter guard: a row that fails this many times is excluded from
+    # future claim_batch() calls (but not deleted) so one poisoned event
+    # can't starve the relay's FIFO batch of every healthy event behind it
+    # — see EventOutboxRepository.claim_batch's docstring for the real
+    # incident this guards against.
+    events_relay_max_attempts: int = 10
 
     # --- Object storage (MinIO / S3-compatible) ---
     s3_endpoint_url: str = "http://localhost:9000"

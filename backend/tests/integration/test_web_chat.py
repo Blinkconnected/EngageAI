@@ -150,7 +150,7 @@ async def test_gateway_publishes_message_received_for_a_valid_session(
             events,
         )
 
-        batch = await EventOutboxRepository(session).claim_batch(limit=10)
+        batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=1_000_000)
 
     assert ws.accepted is True
     received = [e for e in batch if e.event_type == "message.received"]

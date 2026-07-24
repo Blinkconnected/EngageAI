@@ -102,7 +102,9 @@ async def test_new_conversation_is_routed_and_assigned(
 
         result = await db_session.execute(select(Conversation))
         conversation = result.scalar_one()
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert str(conversation.queue_id) == queue_id
     assert str(conversation.assigned_agent_id) == agent_id

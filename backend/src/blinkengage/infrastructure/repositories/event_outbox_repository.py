@@ -15,8 +15,25 @@ class EventOutboxRepository:
         await self._session.flush()
         return event
 
-    async def claim_batch(self, *, limit: int) -> list[EventOutbox]:
-        """Select up to ``limit`` undispatched rows, oldest first.
+    async def claim_batch(self, *, limit: int, max_attempts: int) -> list[EventOutbox]:
+        """Select up to ``limit`` undispatched rows with ``attempts <
+        max_attempts``, oldest first.
+
+        The ``attempts < max_attempts`` bound is a dead-letter guard: without
+        it, a single permanently-failing event (a genuine production
+        incident — see the ``GUID.process_result_value`` fix this guard
+        shipped alongside) sits at the front of this FIFO forever, gets
+        reclaimed and re-fail every relay tick, and since ``limit`` rows are
+        claimed oldest-first, it and its similarly-poisoned neighbors can
+        fill the *entire* batch indefinitely — starving every healthy event
+        behind them from ever being dispatched, with no error visible
+        anywhere except a growing ``attempts`` counter. Confirmed live: one
+        such row reached 14,586 attempts (about 20 hours of 5-second relay
+        ticks) while newer, perfectly valid events sat at 0 attempts,
+        never claimed. Excluding rows past the cap still leaves them in the
+        table (`dispatched_at` stays null) for an operator to find via
+        ``WHERE attempts >= max_attempts AND dispatched_at IS NULL`` —
+        this is a circuit breaker, not a silent-drop.
 
         On Postgres, uses ``SELECT ... FOR UPDATE SKIP LOCKED`` so multiple
         concurrent relay instances each claim a disjoint batch instead of
@@ -30,7 +47,7 @@ class EventOutboxRepository:
         """
         stmt = (
             select(EventOutbox)
-            .where(EventOutbox.dispatched_at.is_(None))
+            .where(EventOutbox.dispatched_at.is_(None), EventOutbox.attempts < max_attempts)
             .order_by(EventOutbox.created_at)
             .limit(limit)
         )

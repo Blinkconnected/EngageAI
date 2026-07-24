@@ -176,6 +176,81 @@ arrives after the user stopped typing is useless).
   already excludes dispatched rows from the hot path regardless of table
   size).
 
+## Incident: silent relay starvation (found during Phase 7/M33)
+
+While building the frontend's Conversation View, a real end-to-end check
+(send a message over the web-chat WebSocket, confirm it becomes a real
+conversation via `GET /conversations`) never showed the conversation.
+Investigation traced it to two compounding, previously-undiscovered bugs:
+
+1. **Root cause**: `GUID.process_result_value`
+   (`infrastructure/database/base.py`) used `isinstance(value, uuid.UUID)`
+   to decide whether a loaded value already needs no conversion. asyncpg
+   returns its own `asyncpg.pgproto.pgproto.UUID` for UUID columns — a
+   *subclass* of `uuid.UUID`, so `isinstance` is `True` for it, and the
+   raw asyncpg object passed through unconverted. That object behaves
+   identically to a real `uuid.UUID` everywhere the app already
+   exercised it (`str()`, equality, Pydantic response serialization) —
+   except `orjson.dumps()`, which only recognizes the *exact* `uuid.UUID`
+   type, not subclasses. The relay's `_serialize()` calls `orjson.dumps()`
+   directly on `event.company_id`/`aggregate_id`/`actor_user_id`, so
+   **every single outbox row with a non-null UUID field failed to
+   publish**, unconditionally, every time. Fixed by checking
+   `type(value) is uuid.UUID` instead of `isinstance`.
+2. **Compounding severity multiplier**: `claim_batch` claims the oldest
+   undispatched rows with no bound on `attempts`, and `mark_failed` had no
+   cap. Once bug #1 started failing every publish, the *same* oldest
+   ~100 rows (`events_relay_batch_size`) were reclaimed and re-failed on
+   every 5-second relay tick, forever — permanently starving every
+   healthy event created afterward from ever being claimed, since they
+   were always newer (further back in the FIFO) than the permanently-
+   failing rows in front of them. Confirmed live: one row had reached
+   **14,586 attempts** (~20 hours of continuous failure) with `attempts=0`
+   sitting on brand-new events that had never been claimed even once.
+
+Both were live for the entire event-bus-dependent surface of the
+application — audit logging, reporting rollups, conversation ingestion,
+notifications, workflow triggers, ERP sync — since bug #1 has existed
+since the `GUID` type was introduced (M2) and only manifests when
+something calls `orjson.dumps()` on a loaded UUID field directly, which
+only the relay does (every API response's UUID serialization goes through
+Pydantic, which tolerates the subclass fine). It was never caught by any
+existing test because the established test pattern for exercising
+consumers (`drain_outbox`-style fixtures, `_ingest_inbound_message`
+helpers) calls consumer handlers directly against fabricated event dicts,
+bypassing the relay's `orjson.dumps()` call entirely — this is the first
+verification this build ever did of the *actual* outbox → relay →
+RabbitMQ → consumer path against a real Postgres/asyncpg connection with
+real, non-null UUID columns.
+
+**Fixes shipped together**:
+- `GUID.process_result_value`: `type(value) is uuid.UUID` instead of
+  `isinstance`.
+- A dead-letter guard: `claim_batch` now takes a required `max_attempts`
+  and excludes rows at or past it (`events_relay_max_attempts`, default
+  10) from future claims — a circuit breaker, not a silent drop; excluded
+  rows stay in the table (`dispatched_at` still null) for an operator to
+  find via `attempts >= max_attempts`. This doesn't fix bug #1, but it
+  means a *future*, unrelated poison event can't again take down the
+  entire relay indefinitely — one bad row now costs at most
+  `max_attempts` wasted relay ticks, not an unbounded one.
+
+**Verified live**, not just via tests: before the fix, 0 of ~1,400 outbox
+rows had `dispatched_at` set. After restarting the affected containers
+with the fix, 1,317 rows drained within seconds and exactly the 100
+rows that had already exceeded the new `max_attempts` cap were correctly
+excluded and left pending (confirmed via direct SQL) — everything else,
+including the golden-path conversation created via the web-chat WebSocket
+during this investigation, flowed through end-to-end:
+`GET /conversations` showed the real conversation, `GET .../messages`
+showed the real inbound message, and a reply/status-change/internal-note
+against it all worked exactly as the frontend expects. Regression tests
+added: `tests/unit/test_guid_type.py` (asserts the exact-type behavior
+directly, without needing a real asyncpg connection) and
+`test_event_bus.py::test_a_permanently_failing_event_is_dead_lettered_after_max_attempts`
+(simulates a permanently-failing row and asserts both that it stops being
+reclaimed and that a healthy event behind it still gets relayed).
+
 ## Verification performed
 
 9 new tests (SQLite/fakeredis-backed): outbox publish-then-claim

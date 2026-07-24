@@ -69,28 +69,40 @@ def _serialize(event: EventOutbox) -> bytes:
     )
 
 
-async def relay_batch(session: AsyncSession, publish: PublishFn, *, batch_size: int) -> int:
-    """Claim up to ``batch_size`` undispatched outbox rows and publish each
-    via ``publish(routing_key, body)``, marking it dispatched on success or
+async def relay_batch(
+    session: AsyncSession, publish: PublishFn, *, batch_size: int, max_attempts: int
+) -> int:
+    """Claim up to ``batch_size`` undispatched outbox rows (excluding any
+    that have already failed ``max_attempts`` times — see
+    ``EventOutboxRepository.claim_batch``) and publish each via
+    ``publish(routing_key, body)``, marking it dispatched on success or
     incrementing its retry count on failure. Returns the number relayed.
 
     ``publish`` is injected so this is unit-testable with a fake instead of
     a real broker connection.
     """
     outbox = EventOutboxRepository(session)
-    batch = await outbox.claim_batch(limit=batch_size)
+    batch = await outbox.claim_batch(limit=batch_size, max_attempts=max_attempts)
     relayed = 0
     for event in batch:
         try:
             await publish(event.event_type, _serialize(event))
         except Exception:
             await outbox.mark_failed(event)
-            logger.warning(
-                "event_relay_publish_failed",
-                event_id=str(event.id),
-                event_type=event.event_type,
-                attempts=event.attempts,
-            )
+            if event.attempts >= max_attempts:
+                logger.error(
+                    "event_relay_dead_lettered",
+                    event_id=str(event.id),
+                    event_type=event.event_type,
+                    attempts=event.attempts,
+                )
+            else:
+                logger.warning(
+                    "event_relay_publish_failed",
+                    event_id=str(event.id),
+                    event_type=event.event_type,
+                    attempts=event.attempts,
+                )
             continue
         await outbox.mark_dispatched(event)
         relayed += 1
@@ -110,7 +122,10 @@ async def _relay_outbox_batch_async() -> int:
 
             async with session_scope(session_factory) as session:
                 return await relay_batch(
-                    session, _publish, batch_size=settings.events_relay_batch_size
+                    session,
+                    _publish,
+                    batch_size=settings.events_relay_batch_size,
+                    max_attempts=settings.events_relay_max_attempts,
                 )
     finally:
         # The engine/session factory are cached at module level across

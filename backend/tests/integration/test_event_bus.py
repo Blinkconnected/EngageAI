@@ -42,7 +42,7 @@ async def test_outbox_publisher_writes_a_row_in_the_same_session(session) -> Non
         )
     )
 
-    batch = await EventOutboxRepository(session).claim_batch(limit=10)
+    batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=10)
     assert len(batch) == 1
     assert batch[0].event_type == "customer.created"
     assert batch[0].company_id == company_id
@@ -65,13 +65,13 @@ async def test_claim_batch_returns_oldest_undispatched_first_and_respects_limit(
             )
         )
 
-    first_batch = await outbox.claim_batch(limit=2)
+    first_batch = await outbox.claim_batch(limit=2, max_attempts=10)
     assert [e.event_type for e in first_batch] == ["test.event_0", "test.event_1"]
 
     for event in first_batch:
         await outbox.mark_dispatched(event)
 
-    remaining = await outbox.claim_batch(limit=10)
+    remaining = await outbox.claim_batch(limit=10, max_attempts=10)
     assert [e.event_type for e in remaining] == ["test.event_2"]
 
 
@@ -92,11 +92,11 @@ async def test_relay_batch_marks_dispatched_on_successful_publish(session) -> No
     async def fake_publish(routing_key: str, body: bytes) -> None:
         published.append((routing_key, body))
 
-    relayed = await relay_batch(session, fake_publish, batch_size=10)
+    relayed = await relay_batch(session, fake_publish, batch_size=10, max_attempts=10)
 
     assert relayed == 1
     assert published[0][0] == "team.created"
-    batch = await EventOutboxRepository(session).claim_batch(limit=10)
+    batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=10)
     assert batch == []  # already dispatched, no longer claimable
 
 
@@ -115,13 +115,79 @@ async def test_relay_batch_retries_on_publish_failure(session) -> None:
     async def failing_publish(routing_key: str, body: bytes) -> None:
         raise ConnectionError("broker unreachable")
 
-    relayed = await relay_batch(session, failing_publish, batch_size=10)
+    relayed = await relay_batch(session, failing_publish, batch_size=10, max_attempts=10)
 
     assert relayed == 0
     # Still claimable — not marked dispatched — and its retry count went up.
-    batch = await EventOutboxRepository(session).claim_batch(limit=10)
+    batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=10)
     assert len(batch) == 1
     assert batch[0].attempts == 1
+
+
+async def test_a_permanently_failing_event_is_dead_lettered_after_max_attempts(
+    session,
+) -> None:
+    """Regression test for a real incident: claim_batch's FIFO ordering
+    means a row that never stops failing sits at the front forever and
+    reclaims the entire batch on every relay tick, starving every healthy
+    event behind it — confirmed live at 14,586 attempts on one row before
+    this cap was added. A poisoned event must eventually stop being
+    reclaimed (though it stays in the table, undispatched, for an operator
+    to find via `attempts >= max_attempts`), and — just as important — a
+    healthy event queued behind it must still get relayed once the
+    poisoned one is excluded.
+    """
+    outbox = EventOutboxRepository(session)
+    publisher = OutboxEventPublisher(outbox)
+    await publisher.publish(
+        DomainEvent(
+            event_type="poison.event",
+            company_id=uuid4(),
+            aggregate_type="test",
+            aggregate_id=uuid4(),
+            payload={},
+        )
+    )
+    await publisher.publish(
+        DomainEvent(
+            event_type="healthy.event",
+            company_id=uuid4(),
+            aggregate_type="test",
+            aggregate_id=uuid4(),
+            payload={},
+        )
+    )
+
+    async def always_fails(routing_key: str, body: bytes) -> None:
+        if routing_key == "poison.event":
+            raise ValueError("simulated permanent failure")
+
+    # batch_size=1 mirrors the real starvation scenario: the poisoned row
+    # is always the oldest undispatched one, so with a bigger batch size
+    # the healthy event would ride along in the same batch and mask the
+    # bug — a batch size of 1 forces every tick to claim only the front of
+    # the FIFO, exactly what let one poisoned row block everything behind
+    # it in production.
+    max_attempts = 3
+    for _ in range(max_attempts):
+        await relay_batch(session, always_fails, batch_size=1, max_attempts=max_attempts)
+
+    # The poisoned row hit the cap and is no longer claimable...
+    batch = await outbox.claim_batch(limit=10, max_attempts=max_attempts)
+    assert [e.event_type for e in batch] == ["healthy.event"]
+
+    # ...but it's still in the table for an operator to find, not silently dropped.
+    result = await session.execute(
+        select(EventOutbox).where(EventOutbox.event_type == "poison.event")
+    )
+    poisoned = result.scalar_one()
+    assert poisoned.attempts == max_attempts
+    assert poisoned.dispatched_at is None
+
+    # And the healthy event behind it does get relayed once the poisoned
+    # one stops consuming a batch slot every tick.
+    relayed = await relay_batch(session, always_fails, batch_size=10, max_attempts=max_attempts)
+    assert relayed == 1
 
 
 async def test_handle_audit_event_writes_an_audit_log_row(session) -> None:

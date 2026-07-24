@@ -106,7 +106,9 @@ async def test_ingest_publishes_conversation_created_and_message_persisted_event
 
         conversation = (await db_session.execute(select(Conversation))).scalar_one()
         message = (await db_session.execute(select(Message))).scalar_one()
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     created_events = [e for e in batch if e.event_type == "conversation.created"]
     persisted_events = [e for e in batch if e.event_type == "message.persisted"]
@@ -145,7 +147,9 @@ async def test_ingest_second_message_does_not_republish_conversation_created(
             )
         await db_session.commit()
 
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert len([e for e in batch if e.event_type == "conversation.created"]) == 1
     assert len([e for e in batch if e.event_type == "message.persisted"]) == 2
@@ -280,7 +284,9 @@ async def test_ingest_creates_a_new_customer_for_first_contact_by_email(
 
         customers = (await db_session.execute(select(Customer))).scalars().all()
         conversations = (await db_session.execute(select(Conversation))).scalars().all()
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert len(customers) == 1
     assert customers[0].email == "alice@customer.example"

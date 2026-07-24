@@ -102,7 +102,11 @@ def drain_outbox(app) -> Callable[[], Awaitable[int]]:
         session_factory = app.state.container.session_factory()
         async with session_factory() as session:
             outbox = EventOutboxRepository(session)
-            batch = await outbox.claim_batch(limit=1000)
+            # This helper drains everything regardless of retry history
+            # (it's not simulating the relay's dead-letter cap, just
+            # exercising the outbox-row -> consumer mapping), hence the
+            # generous max_attempts.
+            batch = await outbox.claim_batch(limit=1000, max_attempts=1_000_000)
             for event in batch:
                 payload = {
                     "company_id": str(event.company_id) if event.company_id else None,

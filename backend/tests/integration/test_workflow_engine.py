@@ -199,7 +199,9 @@ async def test_matching_workflow_executes_add_tag_and_records_success(
         customer = await CustomerRepository(db_session).get_by_id(
             company_id=UUID(seed["company_id"]), customer_id=UUID(seed["customer_id"])
         )
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert {ct.tag.name for ct in customer.customer_tags} == {"refund-request"}
 
@@ -226,7 +228,9 @@ async def test_nonmatching_workflow_is_skipped_and_does_not_execute_actions(
         customer = await CustomerRepository(db_session).get_by_id(
             company_id=UUID(seed["company_id"]), customer_id=UUID(seed["customer_id"])
         )
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert customer.customer_tags == []
     executed_events = [e for e in batch if e.event_type == "workflow.executed"]
@@ -254,7 +258,9 @@ async def test_unknown_action_type_fails_the_run_and_stops_remaining_actions(
         customer = await CustomerRepository(db_session).get_by_id(
             company_id=UUID(seed["company_id"]), customer_id=UUID(seed["customer_id"])
         )
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert customer.customer_tags == []  # the second action never ran
     executed_events = [e for e in batch if e.event_type == "workflow.executed"]
@@ -343,7 +349,9 @@ async def test_inactive_workflow_never_triggers(
 
     session_factory = app.state.container.session_factory()
     async with session_factory() as db_session:
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
 
     assert [e for e in batch if e.event_type == "workflow.executed"] == []
 

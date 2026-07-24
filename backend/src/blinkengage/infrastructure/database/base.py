@@ -38,7 +38,20 @@ class GUID(TypeDecorator[uuid.UUID]):
     def process_result_value(self, value: object, dialect: Dialect) -> uuid.UUID | None:
         if value is None:
             return None
-        return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+        # `type(value) is uuid.UUID`, not `isinstance` — asyncpg returns its
+        # own `asyncpg.pgproto.pgproto.UUID`, which *subclasses* uuid.UUID
+        # (so isinstance is True) but isn't recognized by orjson's native
+        # UUID fast path, which checks the exact type. Passing an
+        # unconverted asyncpg UUID through this type decorator produces a
+        # value that looks fine everywhere (str(), equality, Pydantic
+        # serialization all work on the subclass) until something calls
+        # orjson.dumps() on it directly — which is exactly what the event
+        # outbox relay does, and why every relay publish for these columns
+        # was failing with "Type is not JSON serializable:
+        # asyncpg.pgproto.pgproto.UUID" (confirmed live: 14,586+ failed
+        # attempts on old rows, silently starving the relay's FIFO batch of
+        # ever reaching newer, healthy events).
+        return value if type(value) is uuid.UUID else uuid.UUID(str(value))
 
 
 class Base(DeclarativeBase):

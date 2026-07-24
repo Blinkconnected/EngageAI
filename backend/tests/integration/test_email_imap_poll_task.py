@@ -90,7 +90,7 @@ async def test_poll_channel_config_ingests_and_publishes_event(
         ingested = await poll_channel_config(config, session=session, factory=factory)
         await session.commit()
 
-        batch = await EventOutboxRepository(session).claim_batch(limit=10)
+        batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=1_000_000)
 
     assert ingested == 1
     received = [e for e in batch if e.event_type == "message.received"]

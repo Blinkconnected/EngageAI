@@ -139,7 +139,9 @@ async def test_send_reply_persists_message_and_delivers_over_the_realtime_channe
 
     session_factory = app.state.container.session_factory()
     async with session_factory() as db_session:
-        batch = await EventOutboxRepository(db_session).claim_batch(limit=50)
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
     sent_events = [e for e in batch if e.event_type == "message.sent"]
     assert len(sent_events) == 1
     assert sent_events[0].payload["conversation_id"] == conversation["id"]

@@ -84,7 +84,7 @@ def _signature(secret: str, body: bytes) -> str:
 async def _claim_events(app: Any) -> list[Any]:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
-        return await EventOutboxRepository(session).claim_batch(limit=10)
+        return await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=1_000_000)
 
 
 class TestMessengerWebhook:
