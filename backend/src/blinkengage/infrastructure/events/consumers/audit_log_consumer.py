@@ -19,6 +19,7 @@ from uuid import UUID
 
 import orjson
 from aio_pika.abc import AbstractIncomingMessage
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.core.config import get_settings
@@ -48,16 +49,35 @@ async def handle_audit_event(payload: dict[str, Any], session: AsyncSession) -> 
         logger.debug("audit_event_skipped_no_company", event_type=payload.get("event_type"))
         return
 
-    await AuditLogRepository(session).add(
-        AuditLog(
-            company_id=UUID(company_id),
-            actor_user_id=UUID(payload["actor_user_id"]) if payload.get("actor_user_id") else None,
-            action=payload["event_type"],
-            entity_type=payload["aggregate_type"],
-            entity_id=UUID(payload["aggregate_id"]) if payload.get("aggregate_id") else None,
-            details=payload.get("payload") or {},
+    try:
+        await AuditLogRepository(session).add(
+            AuditLog(
+                company_id=UUID(company_id),
+                actor_user_id=(
+                    UUID(payload["actor_user_id"]) if payload.get("actor_user_id") else None
+                ),
+                action=payload["event_type"],
+                entity_type=payload["aggregate_type"],
+                entity_id=UUID(payload["aggregate_id"]) if payload.get("aggregate_id") else None,
+                details=payload.get("payload") or {},
+            )
         )
-    )
+    except IntegrityError:
+        # A foreign key violation here means company_id (or another
+        # referenced id) no longer exists — permanent, not transient,
+        # so retrying via redelivery would just fail identically forever
+        # and crash-loop this consumer on every subsequent event behind
+        # it in the queue (confirmed live: exactly this, on backlogged
+        # events from the M33 outbox-relay incident fix finally being
+        # delivered for the first time). Roll back the poisoned flush and
+        # treat the event as handled (skip, don't re-raise) rather than
+        # leaving it for infinite redelivery.
+        await session.rollback()
+        logger.warning(
+            "audit_event_skipped_dangling_reference",
+            event_type=payload.get("event_type"),
+            company_id=company_id,
+        )
 
 
 async def main() -> None:

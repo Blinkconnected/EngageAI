@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from blinkengage.domain.events import DomainEvent
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
@@ -241,3 +242,69 @@ async def test_handle_audit_event_skips_events_with_no_company(session) -> None:
 
     result = await session.execute(select(AuditLog).where(AuditLog.action == "platform.something"))
     assert result.scalar_one_or_none() is None
+
+
+async def test_handle_audit_event_skips_a_dangling_company_reference(session, monkeypatch) -> None:
+    """Regression test for a real incident: a backlogged event referencing
+    a company that no longer exists crashed the audit-log consumer with an
+    IntegrityError on every redelivery, permanently blocking every event
+    behind it in the queue. The event must be skipped (logged, not
+    inserted) rather than left to redeliver forever, and the session must
+    still be usable afterward for the next event.
+
+    The test suite runs against SQLite (`DATABASE_URL=sqlite+aiosqlite://
+    /:memory:` in pyproject.toml), which — unlike the real Postgres this
+    incident happened against — doesn't enforce foreign keys without an
+    explicit `PRAGMA foreign_keys=ON` this codebase doesn't set, so a
+    dangling company_id wouldn't actually raise here. The IntegrityError
+    is therefore simulated via monkeypatch, isolating what this test
+    actually needs to prove: handle_audit_event's own catch/rollback/
+    continue behavior, not SQLite's constraint enforcement.
+    """
+    real_add = AuditLogRepository.add
+    calls = 0
+
+    async def add_that_fails_once(self, audit_log):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise IntegrityError("INSERT INTO audit_logs ...", {}, Exception("FK violation"))
+        return await real_add(self, audit_log)
+
+    monkeypatch.setattr(AuditLogRepository, "add", add_that_fails_once)
+
+    dangling_company_id = uuid4()
+    await handle_audit_event(
+        {
+            "company_id": str(dangling_company_id),
+            "actor_user_id": None,
+            "event_type": "customer.created",
+            "aggregate_type": "customer",
+            "aggregate_id": str(uuid4()),
+            "payload": {"full_name": "Orphaned Customer"},
+        },
+        session,
+    )  # must not raise
+
+    result = await session.execute(
+        select(AuditLog).where(AuditLog.company_id == dangling_company_id)
+    )
+    assert result.scalar_one_or_none() is None
+
+    # The session must still be usable for a subsequent, valid event —
+    # proving the rollback actually cleared the poisoned transaction state.
+    company_id = uuid4()
+    actor_id = uuid4()
+    await handle_audit_event(
+        {
+            "company_id": str(company_id),
+            "actor_user_id": str(actor_id),
+            "event_type": "customer.created",
+            "aggregate_type": "customer",
+            "aggregate_id": str(uuid4()),
+            "payload": {"full_name": "Healthy Customer"},
+        },
+        session,
+    )
+    result = await session.execute(select(AuditLog).where(AuditLog.company_id == company_id))
+    assert result.scalar_one() is not None
