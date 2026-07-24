@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
+import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 
 export interface NavItem {
   label: string
@@ -19,6 +20,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: DashboardOutlinedIcon },
   { label: 'Agents', path: '/agents', icon: GroupOutlinedIcon, permission: 'agents.read' },
+  { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
   {
     label: 'Company settings',
     path: '/settings/company',

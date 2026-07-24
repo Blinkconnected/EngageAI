@@ -6,6 +6,7 @@ import { AppLayout } from '../features/layout/AppLayout'
 import { RequirePermission } from '../features/layout/RequirePermission'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AgentsPage } from '../features/agents/AgentsPage'
+import { ChannelsPage } from '../features/channels/ChannelsPage'
 import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
@@ -29,6 +30,14 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="agents.read">
               <AgentsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="channels"
+          element={
+            <RequirePermission permission="channels.read">
+              <ChannelsPage />
             </RequirePermission>
           }
         />

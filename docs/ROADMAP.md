@@ -703,12 +703,39 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   per-test). Verified against the live dev stack: registered a test
   agent and renamed a test company through the real API, confirming
   every response shape matches the hand-authored types exactly.
-- [ ] **M32. Golden path — Channels (Connect WhatsApp)**
-  Channel config list/create/edit with per-`channel_type` dynamic
-  credential fields (WhatsApp first-class: `phone_number_id`,
-  `access_token`, `verify_token`; generic JSON editor fallback for other
-  types), webhook URL + verify-token display for pasting into Meta's App
-  Dashboard.
+- [x] **M32. Golden path — Channels (Connect WhatsApp)**
+  `features/channels/`: a `DataTable`-backed list, a connect dialog with
+  a guided WhatsApp form (`phone_number_id`, `access_token`,
+  `verify_token` — field names verified against the real
+  `WhatsAppProvider` source, not just the API schema) and a generic
+  JSON credentials editor fallback for the other five registered channel
+  types (`telegram`, `messenger`, `instagram`, `email`, `sms`,
+  `web_chat`), and an edit dialog with a collapsible "update
+  credentials" section (credentials/`webhook_secret` are write-only and
+  never echoed back, so editing never pre-fills them — confirmed against
+  `ChannelConfigResponse`, which deliberately excludes both fields).
+
+  Since the API never returns a pre-built webhook URL, the frontend
+  constructs it itself: `${window.location.origin}/api/v1/webhooks/
+  {id}` — correct because the browser's own origin is already the
+  publicly-reachable one nginx proxies `/api/` through, unlike the
+  backend's own `PUBLIC_BASE_URL` setting (which exists only because the
+  backend has no "browser origin" to infer from). Verified end-to-end
+  against the live stack: created a real WhatsApp channel config through
+  the API, then called `GET /api/v1/webhooks/{id}?hub.mode=subscribe
+  &hub.verify_token=...&hub.challenge=12345` with the exact
+  `window.location.origin`-based URL format the UI displays and
+  confirmed Meta's handshake echoes the challenge back — the URL the
+  admin is told to paste into Meta's dashboard actually works.
+
+  5 new tests (list/create-with-instructions/edit/delete/accessibility
+  — 27 → 32 total). Also bumped Vitest's default 5000ms per-test timeout
+  to 15000ms (`vite.config.ts`) after intermittent timeouts surfaced
+  running MUI X Data Grid + dialog interaction tests concurrently across
+  files on this sandbox's constrained (2-core, per M28) hardware —
+  confirmed as CPU contention, not a real bug, by re-running the
+  isolated file successfully before the fix and the full suite twice
+  stably after it.
 - [ ] **M33. Golden path — Inbox, Conversation View, Reply**
   Conversation list (status filter, pagination), conversation detail
   (message thread, send reply, attachment upload, internal notes,

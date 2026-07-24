@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, expect } from 'vitest'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { server } from '../mocks/server'
 import { resetAgentsMock } from '../mocks/handlers/agents'
+import { resetChannelsMock } from '../mocks/handlers/channels'
 
 // vitest-axe@0.1.0's own "vitest-axe/extend-expect" side-effect import ships
 // with an empty build output (confirmed: dist/extend-expect.js is 0 bytes),
@@ -15,5 +16,6 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   resetAgentsMock()
+  resetChannelsMock()
 })
 afterAll(() => server.close())
