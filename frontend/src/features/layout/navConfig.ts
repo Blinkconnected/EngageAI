@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
+import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
 
 export interface NavItem {
   label: string
@@ -14,4 +16,13 @@ export interface NavItem {
  * added here in the same milestone its route/page is built, never ahead of
  * it, so there is never a nav item pointing at an unbuilt page.
  */
-export const NAV_ITEMS: NavItem[] = [{ label: 'Dashboard', path: '/', icon: DashboardOutlinedIcon }]
+export const NAV_ITEMS: NavItem[] = [
+  { label: 'Dashboard', path: '/', icon: DashboardOutlinedIcon },
+  { label: 'Agents', path: '/agents', icon: GroupOutlinedIcon, permission: 'agents.read' },
+  {
+    label: 'Company settings',
+    path: '/settings/company',
+    icon: BusinessOutlinedIcon,
+    permission: 'company.manage',
+  },
+]

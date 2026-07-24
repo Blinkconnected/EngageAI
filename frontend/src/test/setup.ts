@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterAll, afterEach, beforeAll, expect } from 'vitest'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { server } from '../mocks/server'
+import { resetAgentsMock } from '../mocks/handlers/agents'
 
 // vitest-axe@0.1.0's own "vitest-axe/extend-expect" side-effect import ships
 // with an empty build output (confirmed: dist/extend-expect.js is 0 bytes),
@@ -11,5 +12,8 @@ import { server } from '../mocks/server'
 expect.extend(axeMatchers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
+afterEach(() => {
+  server.resetHandlers()
+  resetAgentsMock()
+})
 afterAll(() => server.close())

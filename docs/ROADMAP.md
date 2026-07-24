@@ -671,9 +671,38 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   `/metrics`; they're actually mounted under `/api/v1` like every other
   endpoint (only `/metrics` is genuinely registered outside it) — fixed
   alongside this milestone since the same verification pass surfaced it.
-- [ ] **M31. Golden path — Company settings, Agents**
-  Company settings page (`GET`/`PATCH /company`), Agents (Users)
-  list/create/edit — the first "Create User" step of the golden path.
+- [x] **M31. Golden path — Company settings, Agents**
+  Company settings page (`features/company/`) — name editing via
+  `PATCH /company`, read-only slug/status display. Agents page
+  (`features/agents/`) — the golden path's "Create User" step: a
+  `DataTable`-backed list, create dialog (email/full name/initial
+  password/title/department), edit dialog (title/department/status),
+  and delete with confirmation, all against the real `agents.read`/
+  `agents.manage`-gated endpoints. Added a minimal read-only
+  `features/departments/` (list-only, page_size=100 for the department
+  picker) rather than building full department management now — a
+  dedicated Departments CRUD page is deferred to the M37 secondary-pages
+  polish milestone, since organizations rarely have more than a handful
+  and a full-list fetch is proportionate today. Both new nav entries are
+  permission-gated (`agents.read`, `company.manage`) and match the routes'
+  own `RequirePermission` guards, so there's never a visible link to a
+  page the current user would be redirected away from.
+
+  Along the way, fixed a newer `eslint-plugin-react-hooks` rule
+  (`set-state-in-effect`, not present in the version active during M30's
+  initial setup review) flagging the common "seed local form state from
+  a query result via `useEffect`" pattern in both the agent-edit dialog
+  and the company settings form — refactored to the key-based remount
+  pattern (edit dialog) and a child component seeded directly from props
+  (company form) instead, per React's own guidance, rather than
+  suppressing the rule.
+
+  8 new tests (list/create/edit/delete/accessibility for Agents, view/
+  accessibility/save for Company settings — 19 → 27 total), all against
+  new MSW handlers including a stateful in-memory agents mock (reset
+  per-test). Verified against the live dev stack: registered a test
+  agent and renamed a test company through the real API, confirming
+  every response shape matches the hand-authored types exactly.
 - [ ] **M32. Golden path — Channels (Connect WhatsApp)**
   Channel config list/create/edit with per-`channel_type` dynamic
   credential fields (WhatsApp first-class: `phone_number_id`,
