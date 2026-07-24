@@ -146,6 +146,25 @@ async def test_reopening_a_closed_conversation_is_allowed(
     assert response.json()["status"] == "open"
 
 
+async def test_updating_queue_id_reassigns_the_conversation(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    queue_response = await client.post(
+        "/api/v1/queues", json={"name": "VIP"}, headers=owner_headers
+    )
+    assert queue_response.status_code == 201, queue_response.text
+    queue_id = queue_response.json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/conversations/{conversation['id']}",
+        json={"queue_id": queue_id},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["queue_id"] == queue_id
+
+
 async def test_delete_conversation_is_soft_delete(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:

@@ -75,6 +75,7 @@ async def update_conversation(
         conversation_id=conversation_id,
         status=payload.status,
         assigned_agent_id=payload.assigned_agent_id,
+        queue_id=payload.queue_id,
         actor_user_id=auth.user_id,
     )
     return ConversationResponse.model_validate(conversation)
