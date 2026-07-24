@@ -13,6 +13,7 @@ import { CustomersPage } from '../features/customers/CustomersPage'
 import { CustomerProfilePage } from '../features/customers/CustomerProfilePage'
 import { ErpConfigSettingsPage } from '../features/erp/ErpConfigSettingsPage'
 import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
+import { ReportsPage } from '../features/reports/ReportsPage'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 
@@ -91,6 +92,14 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="company.manage">
               <CompanySettingsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="reports/:tab?"
+          element={
+            <RequirePermission permission="reports.read">
+              <ReportsPage />
             </RequirePermission>
           }
         />

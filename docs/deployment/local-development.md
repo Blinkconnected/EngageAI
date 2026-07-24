@@ -69,3 +69,16 @@ docker compose ps                           # all core services should show "hea
   Postgres itself isn't healthy yet the backend's dependency condition
   (`service_healthy`) should already gate this, so a loop usually means an
   application-level startup error (check the traceback in the logs).
+- **`Failed to resolve import "<package>"` from the frontend, even though
+  the import and `package.json` entry both look correct**: the `frontend`
+  service mounts `node_modules` as a separate named Docker volume
+  (`frontend_node_modules`), populated once when the image was built —
+  *not* from the live bind-mounted source. Adding a dependency to
+  `package.json` after that volume already exists doesn't update it
+  automatically. Fix without a full image rebuild:
+  ```bash
+  docker compose exec frontend npm install
+  docker compose restart frontend
+  ```
+  (Confirmed twice — `@mui/x-data-grid` in M32, `@mui/x-charts` in M35 —
+  both required this exact fix.)

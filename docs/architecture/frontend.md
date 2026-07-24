@@ -162,6 +162,42 @@ the only trigger for a refetch (matching the backend's own documented
 design in `docs/architecture/notifications.md`). `ReplyBox` sends a
 throttled (3s) typing frame on keystroke via the same hook.
 
+## Reports
+
+`features/reports/ReportsPage.tsx` is a single tabbed hub (`/reports/:tab?`,
+gated by `reports.read`) over the backend's eight report endpoints
+(executive, conversations, agent performance, queues, SLA, CSAT, AI usage,
+plus an agent-only "My Performance" tab backed by `agent-dashboard`). One
+`DateRangeFilter` (native `<input type="date">` fields — deliberately not
+`@mui/x-date-pickers`, to avoid a second dependency plus `dayjs` for what
+two date inputs already cover) is lifted to the page and shared by every
+tab, so switching tabs preserves whatever range is selected; it defaults to
+the last 30 days. The "My Performance" tab is hidden unless the current
+user's `/auth/me` roles include `"Agent"` — the backend 404s that endpoint
+for a caller with no Agent profile (e.g. most Owners/Admins), which
+`MyPerformancePanel` also handles gracefully (an `EmptyState`, not an error)
+in case a user's roles ever diverge from having an actual Agent record.
+
+Charts use **`@mui/x-charts`** (Community, MIT-licensed, same major version
+as `@mui/x-data-grid`) — `BarChart`/`LineChart`/`PieChart`, chosen over a
+third-party charting library (Recharts, Nivo, etc.) to stay inside the MUI
+theming system already in place rather than introduce a second one.
+Report result sets are small, fully-loaded arrays scoped to one date range
+(not the paginated `Page<T>` shape `DataTable` wraps), so table panels use
+a new `ReportDataGrid` — MUI X Data Grid configured for **client-side**
+sorting/pagination, no server round-trip, distinct from `DataTable`'s
+server-pagination contract.
+
+**Export**: every date-ranged report except `agent-dashboard` supports
+`?export=pdf|xlsx`, returning a binary file instead of JSON.
+`ReportExportButtons` downloads it via `apiClient.get(path, {params,
+responseType: 'blob'})` (so the request still carries the same
+Authorization header as every other API call — a plain `<a href>` to the
+API URL couldn't) and triggers the save through a temporary object-URL
+`<a download>` element. The export always reflects the full date range,
+independent of any client-side-only filter a panel applies to its own
+table/chart (e.g. the Conversations tab's channel filter).
+
 ## Reusable UI primitives
 
 `shared/components/` holds the primitives every feature list/detail page

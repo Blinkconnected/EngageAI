@@ -191,6 +191,25 @@ Re-run `scripts/seed_demo_data.py` after a full reset to get it back.
     list, backed by a real WebSocket (`/api/v1/ws/agent`) plus independent
     polling as the durable fallback.
 
+### Reports
+18. Sidebar → **Reports** (`/reports`). A date range (defaults to the last
+    30 days; try the 7d/30d/90d presets or pick your own) drives every tab
+    below it — switch tabs and it stays applied.
+19. **Executive** tab: KPI cards (opened/closed/resolved, SLA breaches,
+    CSAT, AI calls, active agents) plus a bar chart of conversations by
+    channel — reflects the demo conversations from step 15/16.
+20. **Conversations** tab: filter by channel, see a bar chart of totals and
+    a sortable per-day/per-channel table. **Agent Performance**, **Queues**,
+    **SLA**, **CSAT**, **AI Usage** follow the same chart + table pattern
+    for their own data.
+21. On any tab except Agent Performance's own personal view, click
+    **PDF** or **Excel** to download a real export of exactly what's on
+    screen for the selected date range (`Content-Disposition` filename
+    included — check your browser's downloads).
+22. Sign out and back in as the Agent (`agent@blinkdemo.io` /
+    `AgentPass123!`) — an extra **My Performance** tab appears (own stats
+    only, no export), since that endpoint is scoped to the calling agent.
+
 ### A few things worth trying deliberately
 - **RBAC in action**: sign out, sign back in as the Agent
   (`agent@blinkdemo.io` / `AgentPass123!`), and try to open **Channels**,
@@ -231,8 +250,9 @@ Re-run `scripts/seed_demo_data.py` after a full reset to get it back.
   that's this environment, not the application (see
   `docs/architecture/performance.md`'s M28 load-test findings for the
   same caveat measured directly).
-- **Frontend JS bundle is a single ~1.2MB chunk** (not yet code-split by
-  route) — noted, not yet addressed; doesn't affect functionality.
+- **Frontend JS bundle is a single ~1.5MB chunk** (not yet code-split by
+  route; grew from ~1.2MB with M35's addition of `@mui/x-charts`) — noted,
+  not yet addressed; doesn't affect functionality.
 
 ## 8. Placeholder vs. production-ready
 
@@ -255,6 +275,9 @@ this session, not mocked):
   internal notes, status/assign-agent/assign-queue changes
 - Notifications — durable inbox + live WebSocket push
 - Realtime — typing indicators, agent online/away/offline presence
+- Reports — Executive, Conversations, Agent Performance, Queues, SLA,
+  CSAT, AI Usage, and agent-scoped My Performance, each with a shared
+  date-range filter, charts, a sortable table, and PDF/Excel export
 
 **Real UI, but needs external setup to be fully functional:**
 
@@ -264,8 +287,6 @@ this session, not mocked):
 **Not yet built** (explicitly scoped to later milestones on
 `docs/ROADMAP.md`, not started or only partially covered):
 
-- Reports pages (executive/agent/conversation/performance/queue/SLA/CSAT/
-  AI dashboards) — backend complete, no frontend yet
 - Departments, Teams, Queues, Routing Rules, Workflows, Knowledge Base,
   Quick Replies management UIs — backend complete; only minimal
   read-only lookups exist on the frontend (e.g. the department/queue

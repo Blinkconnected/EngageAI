@@ -835,11 +835,51 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   (confirmed both the matching and non-matching case), a real customer
   edit persisted, and `POST/GET /erp-configs` round-tripped exactly as
   the frontend expects.
-- [ ] **M35. Golden path — Reports**
-  Reports hub covering all eight report endpoints (executive, live, agent,
-  conversations, performance, queues, SLA, CSAT, AI), date-range picker,
-  PDF/Excel export buttons wired to the existing `export=pdf|xlsx` query
-  param, charts per the dataviz design system.
+- [x] **M35. Golden path — Reports**
+  `features/reports/ReportsPage.tsx`: a single tabbed hub (`/reports/:tab?`,
+  `reports.read`, new `Reports` nav entry) over all eight report endpoints
+  — Executive, Conversations, Agent Performance, Queues, SLA, CSAT, AI
+  Usage, plus an agent-only "My Performance" tab (hidden unless the
+  current user's roles include `Agent`; the backend 404s `agent-dashboard`
+  for anyone without an Agent profile, handled as an `EmptyState` rather
+  than an error). One shared `DateRangeFilter` (plain `<input type=date>`
+  fields plus 7d/30d/90d presets — no `@mui/x-date-pickers`/`dayjs` added
+  just for two date fields) drives every tab, defaulting to the last 30
+  days. Added **`@mui/x-charts`** (Community, same major version as
+  `@mui/x-data-grid`) for Bar/Line/Pie charts rather than a third-party
+  charting library, to stay inside the existing MUI theming system. Report
+  result sets are small, fully-loaded arrays (not the paginated `Page<T>`
+  shape `DataTable` wraps), so table panels use a new `ReportDataGrid` —
+  client-side sort/paginate, no server round-trip. Export
+  (`?export=pdf|xlsx`) downloads via `apiClient` with `responseType: 'blob'`
+  (so it still carries the Authorization header) into a temporary
+  object-URL `<a download>`.
+
+  Found and fixed two real accessibility bugs via `vitest-axe`, not just
+  compiled-and-shipped: `StatCard`'s numeric value used `variant="h4"`
+  (rendering an actual `<h4>`) directly under the page's `<h1>`, and every
+  panel's card-section `Typography variant="subtitle1"` renders as `<h6>`
+  by MUI's default variant mapping — both skipped heading levels
+  (axe's `heading-order` rule). Fixed by giving `StatCard` `component="p"`
+  (a stat value isn't a heading) and promoting the section titles to
+  `component="h2"` (the correct next level under `<h1>`), rather than
+  weakening or deleting the check.
+
+  Also re-hit the container `node_modules`-named-volume gotcha from M32
+  (`docker compose exec frontend npm install` + `docker compose restart
+  frontend` needed after adding the new dependency — now called out in
+  `docs/deployment/local-development.md`'s Troubleshooting section so it
+  isn't rediscovered a third time).
+
+  5 new frontend tests (52 → 57). Verified live against the real backend
+  (not just MSW): `executive-dashboard` and `conversations` return correct
+  company-scoped data for the seeded demo conversations; `export=pdf`
+  returns a genuine `%PDF-1.4` binary with the right `Content-Disposition`
+  filename, `export=xlsx` a genuine `PK\x03\x04` (zip) binary; the Owner
+  gets `404` from `agent-dashboard` (no Agent profile) while the seeded
+  Agent gets `200` with their own stats — confirming the "My Performance"
+  tab's visibility gate (`roles.includes('Agent')`) matches the backend's
+  actual 404 condition rather than guessing at it.
 - [ ] **M36. Docker deployment verification + golden-path smoke test**
   Verifies `npm run build` against the real production
   `docker/nginx/Dockerfile` target and runs the full golden-path workflow

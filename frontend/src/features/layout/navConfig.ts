@@ -6,6 +6,7 @@ import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
 import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 
 export interface NavItem {
   label: string
@@ -36,6 +37,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: 'Agents', path: '/agents', icon: GroupOutlinedIcon, permission: 'agents.read' },
   { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
+  {
+    label: 'Reports',
+    path: '/reports/executive',
+    icon: AssessmentOutlinedIcon,
+    permission: 'reports.read',
+  },
   {
     label: 'ERPNext',
     path: '/erp-configs',
