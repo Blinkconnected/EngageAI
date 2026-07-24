@@ -1033,6 +1033,22 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   Knowledge Base, Quick Replies, Internal Notes as a standalone view,
   Notifications inbox page, Audit Logs viewer).
 
+**Standing gate opened 2026-07-24, immediately after M36**: the user
+requested a complete Channel Integration Design Specification before any
+further channel-connection-flow implementation or polish — delivered at
+`docs/architecture/channel-integration-spec.md`, documenting the actual
+current state of all 7 channels (connection method, required fields,
+auth flow, webhook registration, token refresh, verification, error
+handling, reconnection, wizard UX, security, multi-tenancy — grounded in
+source with file:line references, not assumed) plus a scoped, tiered
+proposal for closing the gaps found (no send-failure visibility, no
+"Test connection" UI despite every provider already having a working
+`health_check()`, guided forms for only 1 of 7 channels, no server-side
+credential validation, no webhook auto-registration, no token-refresh/
+expiry awareness, no OAuth). **Awaiting approval — no channel connection
+flow code changes until then**; does not block M37 or other unrelated
+work.
+
 ---
 
 ## Working agreement
