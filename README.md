@@ -50,7 +50,10 @@ docker compose up -d --build
 ```
 
 Everything is served through NGINX on a single origin:
-http://localhost/ (app), http://localhost/api/v1/docs (Swagger UI).
+http://localhost/ (app). Swagger UI is on the backend directly —
+http://localhost:8000/docs — since NGINX's dev config proxies every
+unmatched path (including `/docs`) to the frontend, not the backend; see
+`docs/deployment/local-development.md` for the full URL table.
 Grafana: http://localhost:3000. Prometheus: http://localhost:9090.
 
 See [`docs/deployment/local-development.md`](docs/deployment/local-development.md)

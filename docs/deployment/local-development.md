@@ -23,7 +23,9 @@ docker compose up -d --build
 | URL                          | Service                                   |
 |-------------------------------|--------------------------------------------|
 | http://localhost/             | App, via NGINX (proxies to the Vite dev server) |
-| http://localhost/api/v1/docs  | Swagger UI (via NGINX)                     |
+| http://localhost/api/       | Backend REST API, via NGINX (`/api/v1/...`) |
+| http://localhost:8000/docs    | Swagger UI — **backend port directly**, not through NGINX: the dev NGINX config's catch-all `location /` proxies every unmatched path (including bare `/docs`) to the frontend's Vite dev server, not the backend, so `/docs` is only reachable by bypassing NGINX |
+| http://localhost:8000/redoc   | ReDoc, same direct-backend-port caveat as above |
 | http://localhost:8000         | Backend directly (bypasses NGINX)          |
 | http://localhost:5173         | Vite dev server directly (bypasses NGINX)  |
 | http://localhost:9090         | Prometheus                                  |
