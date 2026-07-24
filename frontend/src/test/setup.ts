@@ -7,6 +7,8 @@ import { resetAgentsMock } from '../mocks/handlers/agents'
 import { resetChannelsMock } from '../mocks/handlers/channels'
 import { resetConversationsMock } from '../mocks/handlers/conversations'
 import { resetNotificationsMock } from '../mocks/handlers/notifications'
+import { resetErpMock } from '../mocks/handlers/erp'
+import { resetCustomersMock } from '../mocks/handlers/customers'
 
 // vitest-axe@0.1.0's own "vitest-axe/extend-expect" side-effect import ships
 // with an empty build output (confirmed: dist/extend-expect.js is 0 bytes),
@@ -32,5 +34,7 @@ afterEach(() => {
   resetChannelsMock()
   resetConversationsMock()
   resetNotificationsMock()
+  resetErpMock()
+  resetCustomersMock()
 })
 afterAll(() => server.close())

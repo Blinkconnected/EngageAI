@@ -17,7 +17,7 @@ const MESSAGES_KEY = (conversationId: string) => ['conversations', conversationI
 const NOTES_KEY = (conversationId: string) => ['conversations', conversationId, 'notes']
 
 async function fetchConversations(
-  params: PageParams & { status_filter?: ConversationStatus },
+  params: PageParams & { status_filter?: ConversationStatus; customer_id?: string },
 ): Promise<Page<Conversation>> {
   const { data } = await apiClient.get<Page<Conversation>>('/conversations', { params })
   return data
@@ -77,7 +77,9 @@ async function createNote(conversationId: string, body: string): Promise<Interna
   return data
 }
 
-export function useConversationsQuery(params: PageParams & { status_filter?: ConversationStatus }) {
+export function useConversationsQuery(
+  params: PageParams & { status_filter?: ConversationStatus; customer_id?: string },
+) {
   return useQuery({
     queryKey: [...CONVERSATIONS_LIST_KEY, params],
     queryFn: () => fetchConversations(params),

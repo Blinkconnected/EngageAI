@@ -1,4 +1,5 @@
-import { Divider, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { Link as RouterLink } from 'react-router-dom'
 import { useAllAgentsQuery } from '../agents/api'
 import { useAllChannelsQuery } from '../channels/api'
 import { useAllQueuesQuery } from '../queues/api'
@@ -25,7 +26,11 @@ export function ConversationSidebar({
         <Typography variant="overline" color="text.secondary">
           Customer
         </Typography>
-        <Typography variant="subtitle1">{customerName}</Typography>
+        <Typography variant="subtitle1">
+          <Link component={RouterLink} to={`/customers/${conversation.customer_id}`}>
+            {customerName}
+          </Link>
+        </Typography>
       </div>
       <div>
         <Typography variant="overline" color="text.secondary">

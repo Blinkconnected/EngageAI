@@ -146,6 +146,33 @@ async def test_reopening_a_closed_conversation_is_allowed(
     assert response.json()["status"] == "open"
 
 
+async def test_list_conversations_filters_by_customer_id(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    first = await _create_conversation(client, owner_headers, registered_owner, app)
+    second_session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+    await _ingest_inbound_message(
+        app,
+        company_id=company_id,
+        session=second_session,
+        body="A different customer, different conversation",
+        external_message_id="ext-2",
+    )
+
+    all_response = await client.get("/api/v1/conversations", headers=owner_headers)
+    assert all_response.json()["total"] == 2
+
+    filtered_response = await client.get(
+        "/api/v1/conversations",
+        params={"customer_id": first["customer_id"]},
+        headers=owner_headers,
+    )
+    body = filtered_response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == first["id"]
+
+
 async def test_updating_queue_id_reassigns_the_conversation(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:

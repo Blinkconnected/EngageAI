@@ -63,7 +63,9 @@ export const conversationsHandlers = [
   http.get(`${API_BASE_URL}/conversations`, ({ request }) => {
     const url = new URL(request.url)
     const statusFilter = url.searchParams.get('status_filter')
-    const items = !statusFilter || statusFilter === conversation.status ? [conversation] : []
+    const customerIdFilter = url.searchParams.get('customer_id')
+    let items = !statusFilter || statusFilter === conversation.status ? [conversation] : []
+    if (customerIdFilter && conversation.customer_id !== customerIdFilter) items = []
     return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 })
   }),
 

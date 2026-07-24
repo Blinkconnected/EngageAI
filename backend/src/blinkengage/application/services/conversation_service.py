@@ -103,9 +103,14 @@ class ConversationService:
         offset: int,
         limit: int,
         status: ConversationStatus | None,
+        customer_id: UUID | None = None,
     ) -> tuple[list[Conversation], int]:
         return await self._conversations.list_for_company(
-            company_id=company_id, offset=offset, limit=limit, status=status
+            company_id=company_id,
+            offset=offset,
+            limit=limit,
+            status=status,
+            customer_id=customer_id,
         )
 
     async def update(

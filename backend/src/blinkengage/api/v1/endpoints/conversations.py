@@ -38,12 +38,14 @@ async def list_conversations(
     service: Annotated[ConversationService, Depends(get_conversation_service)],
     page_params: Annotated[PageParams, Depends()],
     status_filter: ConversationStatus | None = None,
+    customer_id: UUID | None = None,
 ) -> Page[ConversationResponse]:
     items, total = await service.list_conversations(
         company_id=auth.company_id,
         offset=page_params.offset,
         limit=page_params.page_size,
         status=status_filter,
+        customer_id=customer_id,
     )
     return Page(
         items=[ConversationResponse.model_validate(item) for item in items],

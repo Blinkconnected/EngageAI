@@ -126,7 +126,8 @@ anchoring) also flip.
   /channels                         Channel configs (Connect WhatsApp, etc.) — channels.read
   /conversations                    Inbox — conversations.read
   /conversations/:conversationId    Conversation View (thread, reply, notes, assign)
-  /customers/:customerId            Customer profile — Timeline + ERP tabs — customers.read
+  /customers                        Customer directory (search) — customers.read
+  /customers/:customerId            Customer profile — Timeline + ERPNext tabs — customers.read
   /erp-configs                      ERPNext connection setup — erp.manage
   /reports                          Reports hub (tabbed) — reports.read
   /settings/company                 Company settings — company.manage (GET has no gate; PATCH does)
@@ -136,6 +137,30 @@ anchoring) also flip.
 Every gated route wraps its element in `RequirePermission`; the sidebar
 independently hides nav entries the current user lacks permission for, so
 the two never disagree (both read the same `usePermissions` hook).
+
+## Realtime
+
+`features/realtime/RealtimeProvider.tsx` opens exactly one WebSocket
+connection per authenticated session, to `${VITE_WS_BASE_URL}/agent`
+(default `/api/v1/ws` — see the nginx note in Deployment below for why
+that prefix matters), and is mounted once in `AppLayout`, wrapping the
+whole shell — never per-conversation, since connecting/disconnecting
+this socket flips the caller's agent presence between online/offline on
+the backend. It reconnects automatically after a drop (3s delay) and
+exposes `sendTyping(conversationId, isTyping)` via `features/realtime/
+context.ts`'s `useRealtime()` hook (split into its own file, not
+re-exported from `RealtimeProvider.tsx`, to satisfy `react-refresh/
+only-export-components` — a file that exports both a component and a
+hook breaks Vite's fast refresh).
+
+Inbound `{type: "notification", ...}` frames invalidate the
+`features/notifications/` React Query caches (`NOTIFICATIONS_KEY`,
+`UNREAD_COUNT_KEY`) so the bell updates live — but those two queries
+also poll independently every 30s regardless, since the WebSocket push is
+an at-most-once convenience layered on top of `GET /notifications`, never
+the only trigger for a refetch (matching the backend's own documented
+design in `docs/architecture/notifications.md`). `ReplyBox` sends a
+throttled (3s) typing frame on keystroke via the same hook.
 
 ## Reusable UI primitives
 
@@ -200,7 +225,16 @@ before any feature code existed — the production nginx image builds the
 SPA (`npm run build`, `VITE_API_BASE_URL`/`VITE_WS_BASE_URL` baked in as
 build args since Vite env vars are compile-time) and serves the static
 `dist/` output directly, with `try_files ... /index.html` for
-client-side routing and `/api/`, `/ws/`, `/metrics` reverse-proxied to the
+client-side routing and `/api/`, `/metrics` reverse-proxied to the
 backend. Each frontend milestone re-verifies `npm run build` still
 succeeds against the production Dockerfile target, not just the dev
 server.
+
+Both WebSocket routes (the agent realtime gateway, web-chat's per-session
+socket) are mounted on the backend under `/api/v1/...`, same as every
+REST endpoint — not on a separate top-level prefix — so nginx's one
+`/api/` location (with `Upgrade`/`Connection` headers added specifically
+for this) proxies them correctly with no special-casing. An earlier
+`/ws/` location pointed at a path (`/ws/agent`) that was never actually
+registered on the backend and was silently unreachable through nginx the
+entire time — see `docs/architecture/event-bus.md`'s incident note.

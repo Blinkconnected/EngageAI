@@ -9,6 +9,9 @@ import { AgentsPage } from '../features/agents/AgentsPage'
 import { ChannelsPage } from '../features/channels/ChannelsPage'
 import { InboxPage } from '../features/conversations/InboxPage'
 import { ConversationViewPage } from '../features/conversations/ConversationViewPage'
+import { CustomersPage } from '../features/customers/CustomersPage'
+import { CustomerProfilePage } from '../features/customers/CustomerProfilePage'
+import { ErpConfigSettingsPage } from '../features/erp/ErpConfigSettingsPage'
 import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
@@ -48,6 +51,30 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="conversations.read">
               <ConversationViewPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="customers"
+          element={
+            <RequirePermission permission="customers.read">
+              <CustomersPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="customers/:customerId"
+          element={
+            <RequirePermission permission="customers.read">
+              <CustomerProfilePage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="erp-configs"
+          element={
+            <RequirePermission permission="erp.manage">
+              <ErpConfigSettingsPage />
             </RequirePermission>
           }
         />

@@ -4,6 +4,8 @@ import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
+import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
+import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 
 export interface NavItem {
   label: string
@@ -26,8 +28,20 @@ export const NAV_ITEMS: NavItem[] = [
     icon: InboxOutlinedIcon,
     permission: 'conversations.read',
   },
+  {
+    label: 'Customers',
+    path: '/customers',
+    icon: ContactsOutlinedIcon,
+    permission: 'customers.read',
+  },
   { label: 'Agents', path: '/agents', icon: GroupOutlinedIcon, permission: 'agents.read' },
   { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
+  {
+    label: 'ERPNext',
+    path: '/erp-configs',
+    icon: SyncOutlinedIcon,
+    permission: 'erp.manage',
+  },
   {
     label: 'Company settings',
     path: '/settings/company',

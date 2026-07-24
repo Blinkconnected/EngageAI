@@ -799,17 +799,42 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   `/api/` location (harmless for ordinary requests) and pointing
   `VITE_WS_BASE_URL` at the real `/api/v1/ws` prefix instead of a
   `/ws` prefix that was never actually registered on the backend.
-- [ ] **M34. Golden path — Customer Timeline, ERPNext Customer View**
-  Customer profile page and a composed timeline (conversations + notes +
-  audit trail — there's no single backend timeline endpoint, confirmed by
-  design). Adds one narrowly-scoped backend addition: an optional
-  `customer_id` filter on `GET /conversations` (a query param + repository
+- [x] **M34. Golden path — Customer Timeline, ERPNext Customer View**
+  `features/customers/`: a browsable Customer directory (search, `Customers`
+  nav entry) and a Customer profile page — header (name, email/phone,
+  tags, notes, edit dialog), a Timeline tab composed client-side from the
+  customer's conversations (there's no single backend timeline endpoint,
+  confirmed by design), and an ERPNext tab. `features/erp/`: an admin
+  connect/disconnect page (`/erp-configs`) and a per-customer panel
+  showing synced records rendered generically (`ErpRecordCard` renders
+  whatever key/value pairs the raw ERPNext document actually has, since
+  the backend is doctype-agnostic by design — no fixed schema per
+  doctype), plus sync-now and pull-by-doctype actions. The conversation
+  sidebar's customer name (M33) now links to this page.
+
+  Added the one narrowly-scoped backend gap this needed: an optional
+  `customer_id` filter on `GET /conversations` (query param + repository
   filter, no schema change — the existing single-column `customer_id`
-  index already covers it) since composing a customer's conversation
-  history without one means scanning the whole company's list
-  client-side. ERPNext tab: `/erp-configs` setup admin page plus the
-  customer's synced records/manual-pull view, rendered generically since
-  the backend is doctype-agnostic (`data: dict[str, Any]` per record).
+  index already covers it), since composing a customer's conversation
+  history without one meant scanning the whole company's list
+  client-side. One new backend regression test (520 → 521).
+
+  Found and fixed one test-fixture bug of its own during this milestone:
+  the MSW `customers.ts` mock never had a `PATCH` handler (it was only
+  ever a `GET`-only stub from M30, before customer editing existed), so
+  the new "edit customer" test's mutation had nowhere to succeed — caught
+  because it failed *consistently* across two independent runs, including
+  one under severe memory pressure, which is what separated it from that
+  run's other seven failures (all resource-contention flakiness that
+  vanished on a clean, isolated re-run — this sandbox's 3.7GB/2GB-swap
+  ceiling can't sustain the full frontend and backend suites running
+  concurrently; re-running them serially is the fix, not a code change).
+
+  10 new frontend tests (42 → 52). Verified live against the real
+  backend: the new `customer_id` filter correctly scopes conversations
+  (confirmed both the matching and non-matching case), a real customer
+  edit persisted, and `POST/GET /erp-configs` round-tripped exactly as
+  the frontend expects.
 - [ ] **M35. Golden path — Reports**
   Reports hub covering all eight report endpoints (executive, live, agent,
   conversations, performance, queues, SLA, CSAT, AI), date-range picker,
