@@ -8,6 +8,7 @@ Create Date: 2026-07-23 17:05:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from alembic import op
 
@@ -35,7 +36,12 @@ def upgrade() -> None:
         sa.column("code", sa.String),
         sa.column("description", sa.Text),
     )
-    op.bulk_insert(permissions_table, _NEW_PERMISSIONS)
+    # ON CONFLICT DO NOTHING, not a plain bulk_insert — see
+    # 5463a5076e76's comment for the full incident (f2df1379a476 seeds
+    # the live PERMISSIONS list on a fresh database, which already
+    # includes these codes today, so a plain insert duplicate-key-fails).
+    stmt = pg_insert(permissions_table).values(_NEW_PERMISSIONS)
+    op.execute(stmt.on_conflict_do_nothing(index_elements=["code"]))
 
 
 def downgrade() -> None:

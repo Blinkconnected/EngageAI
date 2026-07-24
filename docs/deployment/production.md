@@ -56,6 +56,35 @@ once ahead of a multi-replica rollout, run them explicitly first:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backend alembic upgrade head
 ```
 
+## Container healthchecks
+
+`backend` and `nginx` have real HTTP-based healthchecks (`/api/v1/health/ready`
+and `/`, respectively). `celery-worker` is checked via `celery inspect ping`.
+`celery-beat` and the 6 RabbitMQ event-bus consumers (`audit-log-consumer`,
+`conversation-ingest-consumer`, `workflow-engine-consumer`,
+`notification-consumer`, `reporting-consumer`, `erp-sync-consumer`)
+deliberately have their healthcheck disabled in `docker-compose.prod.yml` —
+none of them expose an HTTP or CLI-pingable liveness surface, so a
+healthcheck there would either always fail (they don't run a web server,
+despite building from the same image) or require bespoke tooling that
+doesn't exist yet. Their liveness is covered by `restart: always` plus the
+`celery-exporter` service's Prometheus metrics, not a binary Docker
+healthcheck. If you add a genuine liveness probe for these later, prefer
+something that confirms the process is actually consuming from its queue,
+not just that the OS process exists.
+
+## Verifying a deploy end to end
+
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml ps` should
+show every core service `healthy` (`backend`, `postgres`, `redis`,
+`rabbitmq`, `minio`, `nginx`, `celery-worker`) within roughly a minute of
+`up -d` — expect it to take longer than a bare `docker compose up` under
+constrained CPU (migrations + a 4-worker `uvicorn` boot compete for the
+same cores as everything else starting concurrently). `docker top
+<container>` and `docker inspect --format='{{json .Mounts}}' <container>`
+are the way to confirm a container is running the expected command with no
+bind mounts — the lean `runtime` image intentionally has no `ps` binary.
+
 ## Backups & restore (M27)
 
 ```bash

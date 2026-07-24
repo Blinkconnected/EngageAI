@@ -23,22 +23,46 @@ services:
           cpus: "2"
           memory: 1g
 
+  # NOTE on healthchecks below: docker/backend/Dockerfile's `runtime` stage
+  # bakes in a HEALTHCHECK that curls the web server on :8000 — correct for
+  # `backend`, wrong for every other service here, since they all build
+  # from that same image/target but run a Celery worker/beat process or a
+  # standalone RabbitMQ consumer script, never a web server. Left
+  # unoverridden, every one of these permanently reports "unhealthy" (the
+  # curl always fails — nothing listens on :8000) even while working
+  # correctly, which is a real operational hazard: false-unhealthy status
+  # trains operators to ignore health state. Confirmed live during M36's
+  # production-stack verification (docs/ROADMAP.md).
   celery-worker:
     build:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      test: ["CMD", "celery", "-A", "blinkengage.core.celery_app.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
           cpus: "2"
           memory: 1g
 
+  # celery beat has no equivalent to `inspect ping` (it schedules, it
+  # doesn't answer worker-control commands) — disable the inherited
+  # web-server healthcheck rather than have it permanently lie.
+  # docker-compose's own `restart: always` plus the celery-exporter
+  # service's Prometheus metrics are what actually cover this process's
+  # liveness/observability, not a binary Docker healthcheck.
   celery-beat:
     build:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
@@ -50,6 +74,8 @@ services:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
@@ -61,6 +87,8 @@ services:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
@@ -72,6 +100,8 @@ services:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
@@ -83,6 +113,8 @@ services:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
@@ -94,6 +126,8 @@ services:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
@@ -105,6 +139,8 @@ services:
       target: runtime
     restart: always
     volumes: !override []
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:

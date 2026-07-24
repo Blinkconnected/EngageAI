@@ -48,7 +48,7 @@ export function PerformanceReportPanel({ range }: { range: DateRange }) {
               </Typography>
               <BarChart
                 height={300}
-                dataset={rows}
+                dataset={rows.map((row) => ({ ...row }))}
                 xAxis={[{ dataKey: 'agent_name', scaleType: 'band' }]}
                 series={[
                   { dataKey: 'conversations_assigned', label: 'Assigned' },

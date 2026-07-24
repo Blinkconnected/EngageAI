@@ -880,11 +880,152 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   Agent gets `200` with their own stats — confirming the "My Performance"
   tab's visibility gate (`roles.includes('Agent')`) matches the backend's
   actual 404 condition rather than guessing at it.
-- [ ] **M36. Docker deployment verification + golden-path smoke test**
-  Verifies `npm run build` against the real production
-  `docker/nginx/Dockerfile` target and runs the full golden-path workflow
-  against the live `docker compose` stack end-to-end, fixing anything the
-  smoke test surfaces.
+- [x] **M36. Docker deployment verification + golden-path smoke test**
+  Treated as a full production-release validation, not just a Docker
+  sanity check — the entire `docker-compose.yml` + `docker-compose.prod.yml`
+  overlay was brought up for real (runtime-target images, compiled SPA,
+  `ENVIRONMENT=production`/`DEBUG=false`, no bind mounts, no dev servers),
+  and every golden-path step was exercised against it end to end. Four
+  real, previously-undiscovered production bugs were found and fixed —
+  this milestone existed specifically to catch exactly this class of
+  issue, and it did:
+
+  1. **Migration chain couldn't actually run from empty.** An isolated
+     throwaway-Postgres fresh-migration test (no risk to real data) hit a
+     `UniqueViolationError` on `permissions.code`: the very first
+     migration (`f2df1379a476`) seeds permissions by importing the *live*
+     `domain.rbac.PERMISSIONS` list — which today already includes every
+     permission six later "seed X permissions" migrations
+     (`5463a5076e76`, `7c6ca45d6fac`, `a7b8c9d0e1f2`, `c3d4e5f6a7b8`,
+     `d0e1f2a3b4c5`, `e5f6a7b8c9d0`) also hardcode. Every environment so
+     far was built incrementally over the life of the project, so this
+     never triggered — only a true from-scratch deploy on today's code
+     hits it. Fixed by switching those six migrations' inserts to
+     `INSERT ... ON CONFLICT (code) DO NOTHING`; re-verified clean (29
+     permissions, 0 duplicates) on a fresh DB, and confirmed a no-op
+     against the already-migrated demo database. Full backend suite
+     re-run green after the fix: 522 passed.
+  2. **`npm run build` (the real production build command) failed —
+     `npx tsc --noEmit` had been silently checking zero files.** This
+     repo's frontend `tsconfig.json` is solution-style (`files: []` +
+     `references`), so bare `tsc --noEmit` (used to "verify" M35's
+     typecheck) resolves no input files and exits 0 having checked
+     nothing — confirmed via `--listFiles`. The real command
+     (`tsc -b`, what `npm run build` and the CI-run `npm run typecheck`
+     both actually use) caught 4 genuine type errors in the M35 Reports
+     panels: `@mui/x-charts`'s `dataset` prop needs
+     `{[key: string]: T}`, which named interfaces
+     (`CsatDailyRow`/`AgentPerformanceRow`/`QueueStatsRow`) don't
+     structurally satisfy, unlike a fresh object literal. Fixed by
+     mapping into fresh literals (`rows.map(row => ({...row}))`) at the
+     four call sites. **Process lesson, not a CI gap**: CI's own
+     `npm run typecheck` was already correct; the miss was mine, running
+     an ad-hoc `tsc --noEmit` instead of the project's real script —
+     always use the project's own defined commands, never an
+     approximation, especially for project-reference ("solution-style")
+     TypeScript configs.
+  3. **Every Celery/consumer container reported permanently
+     "unhealthy."** `docker/backend/Dockerfile`'s `runtime` stage bakes
+     in a `HEALTHCHECK` that curls the web server on `:8000` — correct
+     for `backend`, wrong for `celery-worker`/`celery-beat` and all 6
+     RabbitMQ event-bus consumers, which build from the same image/target
+     but run a Celery or standalone-consumer process, never a web server.
+     A false "unhealthy" on 7 containers, permanently, on every
+     production deployment — the kind of thing that trains operators to
+     ignore health status. Fixed in `docker-compose.prod.yml`: a real
+     `celery inspect ping` healthcheck for `celery-worker` (confirmed
+     genuinely healthy), and `healthcheck: disable: true` for
+     `celery-beat` and the 6 consumers (none have an HTTP or CLI-pingable
+     surface; `restart: always` plus the existing `celery-exporter`
+     Prometheus metrics are what actually cover their liveness).
+  4. **nginx's own healthcheck always failed.** The production nginx
+     image's `/etc/hosts` maps `localhost` to `::1` only (no IPv4 entry),
+     while `nginx.prod.conf` only has `listen 80;` (IPv4) — so
+     `wget http://localhost/` inside the container always hit
+     connection-refused on `[::1]:80`, even though nginx correctly served
+     every real request on `0.0.0.0:80` throughout. Confirmed via
+     `getent hosts localhost` and a manual `wget http://127.0.0.1/`
+     succeeding where `http://localhost/` failed. Fixed by pointing
+     `docker/nginx/Dockerfile`'s `HEALTHCHECK` at `127.0.0.1` explicitly.
+
+  **Full golden path smoke-tested against the real production stack**
+  (login/register through audit log — no dev server involved anywhere):
+  Create Company (`POST /auth/register`, a brand-new company, not the
+  seeded demo) → Login → `GET /auth/me` → Dashboard (live) → Create User
+  (agent) → Create Customer → Connect WhatsApp (guided credentials form) →
+  connect a Web Chat channel → simulate a real customer message over its
+  WebSocket → confirm the conversation is created **asynchronously**
+  (outbox → 5s Celery-beat relay tick → RabbitMQ → conversation-ingest-
+  consumer — not a synchronous DB write in the WS handler; the smoke
+  test's first attempt asserted this instantly and correctly failed,
+  fixed by polling) → agent reply → Customer Timeline
+  (`GET /conversations?customer_id=`) → connect an ERPNext config →
+  per-customer ERP records endpoint (empty, correctly, no real ERPNext
+  instance) → Executive Dashboard report (same async-relay latency as
+  conversation ingestion, one more hop through `reporting-consumer`) →
+  PDF export (genuine `%PDF-1.4` binary) → Excel export (genuine `PK`
+  zip binary) → Audit Log (`GET /audit-logs`, 12 real entries spanning
+  `company.registered` through `message.sent`, proving the outbox/relay/
+  consumer pipeline works end to end under `ENVIRONMENT=production`, not
+  just in dev).
+
+  **Persistence validated across a real restart**: uploaded a real
+  attachment (`POST /conversations/{id}/attachments`), restarted
+  `backend`/`postgres`/`minio`/`rabbitmq`/`redis`/`nginx` together, then
+  confirmed — after backend re-passed its healthcheck — that login,
+  agents, customers, channels, the conversation, both messages, the ERP
+  config, the full audit log history, *and* the uploaded attachment's
+  actual bytes (a genuine MinIO object-storage durability check, not just
+  a Postgres metadata row) all survived unchanged.
+
+  **Production hardening confirmed, not assumed**: compiled SPA with no
+  Vite client/dev artifacts; `/docs`/`/redoc` return 404 (correctly
+  disabled via `settings.is_production`); `Content-Security-Policy`/
+  `Strict-Transport-Security` headers present (production-only, per
+  `core/security_headers.py`); backend running as `uvicorn ... --workers 4`
+  with no `--reload`, no bind mounts, non-root `blinkengage` user
+  (confirmed via `docker top`/`docker inspect`, since the lean runtime
+  image has no `ps`).
+
+  **Two gaps flagged, not silently fixed, since fixing them here would be
+  scope creep or a business/ops decision, not a code bug**:
+  - **This sandbox's live `.env` still has 7 literal `change-me-...`
+    placeholder secrets** (`POSTGRES_PASSWORD`, `DATABASE_URL`,
+    `RABBITMQ_DEFAULT_PASS`, `RABBITMQ_URL`, `MINIO_ROOT_PASSWORD`,
+    `S3_SECRET_KEY`, `GF_SECURITY_ADMIN_PASSWORD`) — confirmed via direct
+    inspection. Functionally harmless for this sandbox (nothing here
+    depends on their *values* being unguessable) but a real, concrete
+    launch blocker for any actual internet-facing deployment. Rotating
+    `POSTGRES_PASSWORD` on an already-initialized cluster needs an
+    in-database `ALTER USER` alongside the `.env` edit, not just a file
+    change — a coordinated rotation, correctly out of scope for this
+    verification pass to perform live against the demo data. Added to
+    `docs/deployment/go-live-checklist.md`.
+  - **This environment is already reachable from the public internet**:
+    nginx's access log, during this milestone, showed real external IPs
+    (Microsoft/Bing crawler ranges) requesting old dev-mode paths
+    (`/src/...`, `/node_modules/.vite/deps/...`) with 200 responses (the
+    SPA's `try_files ... /index.html` fallback, not an actual leak of
+    those files) — meaning this sandbox's port 80 has live, unsolicited
+    internet traffic hitting it right now, over plain HTTP, no TLS. TLS
+    absence was already a known `go-live-checklist.md` gap; this is live
+    confirmation it's not theoretical. Outside this codebase's control
+    (network/firewall/hosting-layer, not application code) — flagged
+    prominently rather than acted on unilaterally.
+
+  Left behind in the shared dev/demo database: four inert, fully
+  isolated throwaway companies (`M36 Prod Validation Co`..`Co 4`) created
+  while smoke-testing "Create Company" against a fresh tenant each retry
+  — company-scoped RBAC means they're invisible to and non-interfering
+  with the `Blink Demo` company; harmless to leave, droppable via
+  `docker compose down -v` + reseed if a pristine environment is wanted.
+
+  After verification, `.env` and the running stack were switched back to
+  `ENVIRONMENT=development` (the environment `docs/deployment/
+  demo-guide.md` documents and the user has been validating against) —
+  confirmed the original `Blink Demo` company/login and Swagger UI both
+  still work exactly as before. Frontend suite re-run green after the
+  chart-type fixes: 57 passed.
 - [ ] **M37. Polish — accessibility, responsive, secondary pages**
   Full `vitest-axe` sweep, responsive/mobile breakpoint pass, RTL
   verification, and the remaining CLAUDE.md-listed features not on the

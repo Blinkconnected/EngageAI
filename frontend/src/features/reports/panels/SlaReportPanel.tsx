@@ -50,7 +50,7 @@ export function SlaReportPanel({ range }: { range: DateRange }) {
               </Typography>
               <BarChart
                 height={300}
-                dataset={data.by_queue}
+                dataset={data.by_queue.map((row) => ({ ...row }))}
                 xAxis={[{ dataKey: 'queue_name', scaleType: 'band' }]}
                 series={[{ dataKey: 'sla_breached', label: 'SLA breached' }]}
               />

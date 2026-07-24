@@ -43,7 +43,7 @@ export function QueuesReportPanel({ range }: { range: DateRange }) {
               </Typography>
               <BarChart
                 height={300}
-                dataset={rows}
+                dataset={rows.map((row) => ({ ...row }))}
                 xAxis={[{ dataKey: 'queue_name', scaleType: 'band' }]}
                 series={[
                   { dataKey: 'conversations_entered', label: 'Entered' },

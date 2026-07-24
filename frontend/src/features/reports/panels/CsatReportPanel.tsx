@@ -60,7 +60,7 @@ export function CsatReportPanel({ range }: { range: DateRange }) {
                 </Typography>
                 <LineChart
                   height={300}
-                  dataset={trend}
+                  dataset={trend.map((row) => ({ ...row }))}
                   xAxis={[{ dataKey: 'stat_date', scaleType: 'point' }]}
                   series={[{ dataKey: 'average_rating', label: 'Average rating' }]}
                 />

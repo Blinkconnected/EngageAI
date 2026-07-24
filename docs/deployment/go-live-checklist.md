@@ -25,11 +25,25 @@ this checklist does not itself satisfy on its own.
       are unacceptable for your risk posture.
 - [ ] **TLS/HTTPS** — not configured. Deploy behind a TLS-terminating
       load balancer, or add a `listen 443 ssl` block + certificates to
-      `docker/nginx/nginx.prod.conf`. **Do not launch without this.**
+      `docker/nginx/nginx.prod.conf`. **Do not launch without this.** This
+      is not theoretical: M36's production-stack verification confirmed
+      *live* unsolicited traffic (real external IPs, Bing crawler ranges)
+      already reaching this environment's port 80 in plain HTTP — see
+      `docs/ROADMAP.md`'s M36 entry.
 - [ ] **Secrets manager integration** — currently a plain `.env` file.
       Acceptable for a single-operator early launch; migrate to a real
       secrets manager (Vault, AWS Secrets Manager, etc.) before scaling
       the operations team or handling regulated data.
+- [ ] **This environment's `.env` still has 7 literal `change-me-...`
+      placeholder secrets** (`POSTGRES_PASSWORD`, `DATABASE_URL`,
+      `RABBITMQ_DEFAULT_PASS`, `RABBITMQ_URL`, `MINIO_ROOT_PASSWORD`,
+      `S3_SECRET_KEY`, `GF_SECURITY_ADMIN_PASSWORD`) — confirmed via
+      direct inspection during M36. Harmless for this sandbox but a
+      concrete blocker for any real deployment. **Rotating
+      `POSTGRES_PASSWORD` on an already-initialized cluster needs an
+      in-database `ALTER USER` alongside the `.env` edit** — a
+      coordinated rotation, not a find-and-replace; plan it as its own
+      step before launch.
 - [ ] **Penetration test** — `docs/security/pentest-checklist.md` is a
       checklist for a human tester to execute against a real running
       instance; it has not itself been executed end-to-end by a
@@ -91,20 +105,35 @@ this checklist does not itself satisfy on its own.
       deploy credentials/target before relying on this pipeline for
       production releases.**
 - [x] Migrations apply automatically and idempotently on container start
+      — genuinely verified during M36 (not just assumed): a from-scratch
+      run against an empty database originally failed with a duplicate-
+      key error (six early "seed permissions" migrations collided with
+      the first migration's live-catalog import), fixed and re-verified
+      clean. See `docs/ROADMAP.md`'s M36 entry.
 - [x] Docker Compose prod overlay (lean runtime images, resource limits,
-      no bind mounts)
+      no bind mounts) — brought up for real during M36, not just built;
+      found and fixed 3 more real bugs (Celery/consumer containers
+      permanently false-"unhealthy", nginx's own healthcheck always
+      failing on an IPv6/IPv4 `localhost` mismatch, and a production
+      `npm run build` failure M35's own verification had missed).
 
 ## Frontend
 
-- [ ] **No frontend UI exists yet for the vast majority of features**
-      (conversations, channels, workflows, knowledge base, reports, AI,
-      ERP, administration) — this entire build arc (M15-M29) was
-      explicitly scoped backend-only, confirmed with the product owner
-      rather than assumed (see `docs/architecture/administration.md`).
-      **A real go-live needs a frontend.** This is the single largest
-      remaining gap against "go live" in the literal sense, not a
-      checklist nit — flag it prominently to whoever is making the
-      launch call.
+- [x] **Golden-path frontend shipped (M30-M36)**: Authentication,
+      Dashboard, Company Management, Agents, Channels (incl. WhatsApp
+      connect), Inbox/Conversation View/Reply/Realtime, Customers/
+      Timeline/ERPNext View, and Reports (Executive/Conversations/Agent
+      Performance/Queues/SLA/CSAT/AI Usage/My Performance, with PDF/Excel
+      export) — all verified end to end against the real production
+      build in M36, not just dev-mode/mocked.
+- [ ] **Several CLAUDE.md-listed features still have no frontend**:
+      Departments, Teams, Queues, Routing Rules, Workflows, Knowledge
+      Base, Quick Replies management UIs, and an Audit Logs viewer (the
+      backend/API for all of these is complete — `GET /audit-logs`
+      included PDF/Excel export and was exercised directly via API during
+      M36's smoke test, just with no dedicated page yet). Scoped to M37.
+      No longer "the single largest gap" now that the golden path exists,
+      but still a real gap for a literal, feature-complete go-live.
 
 ## Legal & compliance (organizational, not code)
 
