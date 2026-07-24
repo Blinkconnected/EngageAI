@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
-import { Alert, Box, Button, Paper, Stack, TextField, Typography } from '@mui/material'
+import { Link as RouterLink, Navigate, useLocation } from 'react-router-dom'
+import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material'
 import { useAppSelector } from '../../app/hooks'
+import { extractErrorMessage } from '../../shared/api/errors'
 import { selectIsAuthenticated } from './authSlice'
 import { useLoginMutation } from './api'
 
@@ -44,7 +45,7 @@ export function LoginPage() {
 
           {loginMutation.isError && (
             <Alert severity="error" data-testid="login-error">
-              Invalid email or password.
+              {extractErrorMessage(loginMutation.error, 'Invalid email or password.')}
             </Alert>
           )}
 
@@ -75,6 +76,12 @@ export function LoginPage() {
           >
             {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
           </Button>
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            New to Blink Engage?{' '}
+            <Link component={RouterLink} to="/register">
+              Create your company
+            </Link>
+          </Typography>
         </Stack>
       </Paper>
     </Box>

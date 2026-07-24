@@ -1,6 +1,8 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { store } from '../../app/store'
-import { authTokenRefreshed, loggedOut } from '../../features/auth/authSlice'
+import { queryClient } from '../../app/queryClient'
+import { authenticated, loggedOut } from '../../features/auth/authSlice'
+import { SESSION_QUERY_KEY } from './queryKeys'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
@@ -29,7 +31,7 @@ async function refreshAccessToken(): Promise<string | null> {
       { refresh_token: refreshToken },
     )
     store.dispatch(
-      authTokenRefreshed({
+      authenticated({
         accessToken: response.data.access_token,
         refreshToken: response.data.refresh_token,
       }),
@@ -37,6 +39,7 @@ async function refreshAccessToken(): Promise<string | null> {
     return response.data.access_token
   } catch {
     store.dispatch(loggedOut())
+    queryClient.removeQueries({ queryKey: SESSION_QUERY_KEY })
     return null
   }
 }

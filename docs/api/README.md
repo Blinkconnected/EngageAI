@@ -105,7 +105,7 @@ has its own documented trust model rather than being an oversight:
 
 | Endpoint | Trust model |
 |---|---|
-| `GET /health`, `GET /health/ready` | None — orchestration/monitoring probes |
+| `GET /health`, `GET /health/ready` (both under `/api/v1`, like every other endpoint — see below) | None — orchestration/monitoring probes |
 | `POST /webhooks/{channel_config_id}` | Provider signature verification (`ChannelProvider.verify_signature`) |
 | `POST /webhooks/erpnext/{erp_config_id}/{doctype}` | Shared secret header (`X-Webhook-Secret`) |
 | `POST /web-chat/{channel_config_id}/sessions`, the web-chat WebSocket | Rate limited; a session token scopes what a caller can do |
@@ -142,9 +142,20 @@ rationale:
 | `/csat` | see "Public endpoints" above (respond) / `conversations.manage` (generate link) | `docs/architecture/reports-analytics.md` |
 | `/erp-configs`, `/webhooks/erpnext` | `erp.manage` / shared secret | `docs/architecture/erp-integration.md` |
 
-## Health, metrics, and OpenAPI (unversioned)
+## Health and OpenAPI
 
-`GET /health`, `GET /health/ready`, `GET /metrics` (Prometheus
-exposition format), and `GET /api/v1/openapi.json` all sit outside the
-resource index above since they're operational, not business, endpoints
-— see `docs/architecture/observability.md`.
+`GET /api/v1/health` (liveness) and `GET /api/v1/health/ready`
+(dependency-checked readiness — Postgres/Redis/RabbitMQ) sit outside the
+resource index above since they're operational, not business, endpoints,
+but — unlike `/metrics` below — they're mounted through the same
+versioned `api_router` as everything else, not registered separately on
+the app. Docker's own healthcheck (`docker-compose.yml`) and every
+runbook in `docs/deployment/` call them with the full `/api/v1/` prefix;
+don't be misled by their absence from the resource index table above.
+`GET /api/v1/openapi.json` is versioned for the same reason.
+
+`GET /metrics` (Prometheus exposition format) is the one genuinely
+**unversioned** operational endpoint — `Instrumentator().expose(app,
+endpoint="/metrics")` registers it directly on the FastAPI app, bypassing
+`api_router`/`api_v1_prefix` entirely. See
+`docs/architecture/observability.md`.

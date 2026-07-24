@@ -612,12 +612,107 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ---
 
-**Roadmap complete.** M0 through M29 are done. The single largest gap
-against a literal production launch is the frontend — see
-`docs/deployment/go-live-checklist.md`'s "Frontend" section — a
-deliberate, confirmed scoping decision for this build arc, not an
-oversight. Every other item flagged `[ ]` in that checklist is a real,
-specific, named piece of follow-up work, not a vague caveat.
+**Backend complete.** M0 through M29 are done. Phase 7 below opens the
+next arc: the enterprise frontend, using the backend exactly as built —
+no new backend endpoints except where a milestone explicitly calls one
+out as a small, narrowly-scoped gap the frontend genuinely needs (not a
+redesign).
+
+---
+
+## Phase 7 — Enterprise Frontend
+
+Builds the React + TypeScript + MUI SPA against the already-complete
+backend. Ordered to deliver one complete, working, end-to-end workflow —
+Login → Dashboard → Create Company → Create User → Connect WhatsApp →
+Inbox → Conversation View → Reply → Customer Timeline → ERPNext Customer
+View → Reports — before polishing secondary pages (Departments, Teams,
+Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
+`docs/architecture/frontend.md` for the full architecture.
+
+- [x] **M30. Frontend core infrastructure**
+  Fixed a real bug in the original scaffold: `features/auth/api.ts`
+  assumed `POST /auth/login`'s response included a `user` object — it
+  doesn't (tokens only, confirmed against the live backend). `GET
+  /auth/me` is now the one source of truth for user/roles/permissions,
+  fetched via React Query (`features/session/`) and gated through
+  `ProtectedRoute`'s loading state so authenticated navigation never
+  flashes the wrong items. Added `features/auth/RegisterPage.tsx` (the
+  golden path's "Create Company" step — `POST /auth/register`, which
+  creates the company, Owner user, and default roles in one call and
+  auto-authenticates), an RBAC-aware sidebar (`features/layout/`,
+  `RequirePermission`, a 403 page), and the shared primitives every
+  later page builds on: `DataTable` (MUI X Data Grid, new dependency,
+  server-side pagination against this API's `Page<T>` shape),
+  `FormDialog`, `ConfirmDialog`, `EmptyState`/`ErrorState`/`LoadingState`,
+  and pagination/error-extraction helpers. Replaced the scaffold's
+  `DashboardPage` (hardcoded zeros) with a real one backed by `GET
+  /reports/live-dashboard`.
+
+  Added MSW + `vitest-axe` to the test stack (`vitest-axe`'s own
+  `extend-expect` entry point ships an empty build in the installed
+  0.1.0 — worked around by calling `expect.extend` directly against
+  `vitest-axe/matchers` and bridging its types onto `@vitest/expect`'s
+  `Matchers` interface, since Vitest 4 moved matcher augmentation off
+  the older global `Vi` namespace that package's types still target).
+  19 tests passing (component/integration tests against MSW-mocked
+  responses, an accessibility assertion on the login page, and unit
+  tests for the rewritten `authSlice` and the new error-extraction
+  helper). `tsc -b`, `eslint`, `prettier --check`, and a production
+  build (`npm run build` and the real `docker/nginx/Dockerfile` image)
+  all clean.
+
+  Verified against the live dev stack, not just MSW mocks: registered a
+  real company via `POST /auth/register` through nginx, confirmed
+  `/auth/login`, `/auth/me`, and `/reports/live-dashboard` responses
+  match the hand-authored TypeScript types byte-for-byte. That pass also
+  caught a real documentation bug from M29 — `docs/api/README.md`
+  claimed `GET /health`/`GET /health/ready` were unversioned like
+  `/metrics`; they're actually mounted under `/api/v1` like every other
+  endpoint (only `/metrics` is genuinely registered outside it) — fixed
+  alongside this milestone since the same verification pass surfaced it.
+- [ ] **M31. Golden path — Company settings, Agents**
+  Company settings page (`GET`/`PATCH /company`), Agents (Users)
+  list/create/edit — the first "Create User" step of the golden path.
+- [ ] **M32. Golden path — Channels (Connect WhatsApp)**
+  Channel config list/create/edit with per-`channel_type` dynamic
+  credential fields (WhatsApp first-class: `phone_number_id`,
+  `access_token`, `verify_token`; generic JSON editor fallback for other
+  types), webhook URL + verify-token display for pasting into Meta's App
+  Dashboard.
+- [ ] **M33. Golden path — Inbox, Conversation View, Reply**
+  Conversation list (status filter, pagination), conversation detail
+  (message thread, send reply, attachment upload, internal notes,
+  assign agent/queue), the notification bell + `/ws/agent` realtime
+  wiring (typing indicators, live notification push backed by
+  `GET /notifications` polling as the durable source of truth).
+- [ ] **M34. Golden path — Customer Timeline, ERPNext Customer View**
+  Customer profile page and a composed timeline (conversations + notes +
+  audit trail — there's no single backend timeline endpoint, confirmed by
+  design). Adds one narrowly-scoped backend addition: an optional
+  `customer_id` filter on `GET /conversations` (a query param + repository
+  filter, no schema change — the existing single-column `customer_id`
+  index already covers it) since composing a customer's conversation
+  history without one means scanning the whole company's list
+  client-side. ERPNext tab: `/erp-configs` setup admin page plus the
+  customer's synced records/manual-pull view, rendered generically since
+  the backend is doctype-agnostic (`data: dict[str, Any]` per record).
+- [ ] **M35. Golden path — Reports**
+  Reports hub covering all eight report endpoints (executive, live, agent,
+  conversations, performance, queues, SLA, CSAT, AI), date-range picker,
+  PDF/Excel export buttons wired to the existing `export=pdf|xlsx` query
+  param, charts per the dataviz design system.
+- [ ] **M36. Docker deployment verification + golden-path smoke test**
+  Verifies `npm run build` against the real production
+  `docker/nginx/Dockerfile` target and runs the full golden-path workflow
+  against the live `docker compose` stack end-to-end, fixing anything the
+  smoke test surfaces.
+- [ ] **M37. Polish — accessibility, responsive, secondary pages**
+  Full `vitest-axe` sweep, responsive/mobile breakpoint pass, RTL
+  verification, and the remaining CLAUDE.md-listed features not on the
+  golden path (Departments, Teams, Queues, Routing Rules, Workflows,
+  Knowledge Base, Quick Replies, Internal Notes as a standalone view,
+  Notifications inbox page, Audit Logs viewer).
 
 ---
 
