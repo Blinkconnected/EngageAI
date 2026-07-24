@@ -736,12 +736,69 @@ Queues, Routing Rules, Workflows, Knowledge Base, Quick Replies). See
   confirmed as CPU contention, not a real bug, by re-running the
   isolated file successfully before the fix and the full suite twice
   stably after it.
-- [ ] **M33. Golden path — Inbox, Conversation View, Reply**
-  Conversation list (status filter, pagination), conversation detail
-  (message thread, send reply, attachment upload, internal notes,
-  assign agent/queue), the notification bell + `/ws/agent` realtime
-  wiring (typing indicators, live notification push backed by
-  `GET /notifications` polling as the durable source of truth).
+- [x] **M33. Golden path — Inbox, Conversation View, Reply**
+  `features/conversations/`: an Inbox (status tabs, `DataTable`,
+  customer/channel/agent names resolved via small lookup hooks) and a
+  Conversation View (message thread with bubble styling and a
+  100-message "load older" cap — documented, not silent — a reply box
+  with attachment upload and throttled typing-indicator sends, an
+  internal notes tab, and a sidebar with status/assign-agent/assign-queue
+  controls). `features/notifications/` (bell + unread badge + mark-read)
+  and `features/realtime/` (one `/api/v1/ws/agent` WebSocket per session,
+  mounted in `AppLayout` — not per-conversation, since connecting/
+  disconnecting flips agent presence) round out realtime per the
+  architecture doc's own two-tier design.
+
+  Fixed one small, narrowly-scoped backend gap required for this
+  milestone: `PATCH /conversations/{id}` accepted `queue_id` in its
+  schema and the service already applied it, but the endpoint never
+  forwarded `payload.queue_id` through — queue reassignment silently
+  no-opped. One-line fix plus a regression test (514 → 515 backend
+  tests).
+
+  **Found and fixed a severe, previously-undiscovered production bug**
+  while doing this milestone's live verification (see
+  `docs/architecture/event-bus.md`'s new incident section for the full
+  writeup): `GUID.process_result_value` used `isinstance(value,
+  uuid.UUID)`, which is `True` for asyncpg's own UUID subclass — so it
+  passed through unconverted, working everywhere *except* the outbox
+  relay's direct `orjson.dumps()` call, which only accepts the exact
+  `uuid.UUID` type. Every outbox row with a non-null UUID field had been
+  silently failing to publish since the `GUID` type was introduced (M2);
+  compounding this, `claim_batch`'s uncapped FIFO reclaiming meant the
+  same permanently-failing oldest rows (confirmed live: one row had
+  reached 14,586 attempts, roughly 20 hours) starved every healthy event
+  created since from ever being claimed at all — the entire event-bus-
+  dependent surface (audit logging, reporting, conversation ingestion,
+  notifications, workflow triggers, ERP sync) had been silently broken.
+  No existing test caught it because every consumer test exercises
+  handlers directly against fabricated event dicts, never the relay's
+  real `orjson.dumps()` path against real asyncpg-typed columns.
+
+  Fixed both the root cause (exact-type check instead of `isinstance`)
+  and the severity multiplier (a `max_attempts` dead-letter guard on
+  `claim_batch`, so one poisoned event can only ever cost a bounded
+  number of wasted ticks, never bring down the whole relay again).
+  Verified live: before the fix, 0 of ~1,400 outbox rows had
+  `dispatched_at` set; after restarting the affected containers, 1,317
+  drained within seconds and exactly the 100 rows already past the new
+  cap were correctly excluded. The golden-path conversation created
+  during this investigation (via the real web-chat WebSocket) flowed
+  through end-to-end — list, messages, reply, status change, and an
+  internal note all worked exactly as the frontend expects. Six new
+  regression tests added (514 → 520 backend tests): five isolated
+  `GUID` type-conversion tests (`tests/unit/test_guid_type.py`) and one
+  simulated-poison-event dead-letter test.
+
+  10 new frontend tests (32 → 42), plus the six new backend regression
+  tests above. Verified the WebSocket path live too: nginx's `/api/`
+  location had no `Upgrade`/`Connection` proxy headers, so *both*
+  realtime WebSocket routes (`/api/v1/ws/agent` and the pre-existing
+  `/api/v1/web-chat/ws/{id}`) were unreachable through nginx even though
+  the backend itself was fine — fixed by adding those headers to the one
+  `/api/` location (harmless for ordinary requests) and pointing
+  `VITE_WS_BASE_URL` at the real `/api/v1/ws` prefix instead of a
+  `/ws` prefix that was never actually registered on the backend.
 - [ ] **M34. Golden path — Customer Timeline, ERPNext Customer View**
   Customer profile page and a composed timeline (conversations + notes +
   audit trail — there's no single backend timeline endpoint, confirmed by

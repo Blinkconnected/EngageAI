@@ -7,6 +7,8 @@ import { RequirePermission } from '../features/layout/RequirePermission'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AgentsPage } from '../features/agents/AgentsPage'
 import { ChannelsPage } from '../features/channels/ChannelsPage'
+import { InboxPage } from '../features/conversations/InboxPage'
+import { ConversationViewPage } from '../features/conversations/ConversationViewPage'
 import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
@@ -30,6 +32,22 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="agents.read">
               <AgentsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="conversations"
+          element={
+            <RequirePermission permission="conversations.read">
+              <InboxPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="conversations/:conversationId"
+          element={
+            <RequirePermission permission="conversations.read">
+              <ConversationViewPage />
             </RequirePermission>
           }
         />

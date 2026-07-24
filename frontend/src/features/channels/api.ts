@@ -38,6 +38,18 @@ export function useChannelsQuery(params: PageParams) {
   })
 }
 
+/** Full-list fetch for lookups (e.g. resolving a conversation's
+ * channel_config_id to a display name/type in the Inbox) — companies
+ * rarely run more than a handful of channels. */
+export function useAllChannelsQuery() {
+  return useQuery({
+    queryKey: ['channels', 'all'],
+    queryFn: () => fetchChannels({ page: 1, page_size: 100 }),
+    staleTime: 60_000,
+    select: (data) => data.items,
+  })
+}
+
 export function useCreateChannelMutation() {
   const queryClient = useQueryClient()
   return useMutation({

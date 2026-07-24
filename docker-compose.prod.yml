@@ -124,7 +124,7 @@ services:
       dockerfile: docker/nginx/Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
-        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-/ws}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-/api/v1/ws}
     image: blinkengage-nginx:prod
     volumes: !override []
     depends_on: !override

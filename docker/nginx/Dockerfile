@@ -7,7 +7,7 @@
 FROM node:22-alpine AS frontend-build
 WORKDIR /app
 ARG VITE_API_BASE_URL=/api/v1
-ARG VITE_WS_BASE_URL=/ws
+ARG VITE_WS_BASE_URL=/api/v1/ws
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_WS_BASE_URL=$VITE_WS_BASE_URL
 COPY frontend/package.json frontend/package-lock.json ./

@@ -32,6 +32,19 @@ export function useAgentsQuery(params: PageParams) {
   })
 }
 
+/** Full-list fetch for lookups (e.g. resolving a conversation's
+ * assigned_agent_id to a name in the Inbox, or populating an "assign to"
+ * picker) — a company's agent roster is rarely large enough to need
+ * paginated lookup UI. */
+export function useAllAgentsQuery() {
+  return useQuery({
+    queryKey: ['agents', 'all'],
+    queryFn: () => fetchAgents({ page: 1, page_size: 100 }),
+    staleTime: 30_000,
+    select: (data) => data.items,
+  })
+}
+
 export function useCreateAgentMutation() {
   const queryClient = useQueryClient()
   return useMutation({

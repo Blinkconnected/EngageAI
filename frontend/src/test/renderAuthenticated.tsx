@@ -14,8 +14,12 @@ import { authenticated } from '../features/auth/authSlice'
  * `usePermissions`/`useCurrentUserQuery` resolve against MSW's `/auth/me`
  * handler exactly as they would in the real app). Callers must reset
  * `store`/`queryClient` in their own `afterEach` — see App.test.tsx.
+ *
+ * Pass `initialEntries` when the component under test reads route params
+ * (`useParams`) — the caller is then responsible for wrapping `ui` in a
+ * `<Routes>` that matches those entries.
  */
-export function renderAuthenticated(ui: ReactElement) {
+export function renderAuthenticated(ui: ReactElement, initialEntries: string[] = ['/']) {
   store.dispatch(
     authenticated({ accessToken: 'mock-access-token', refreshToken: 'mock-refresh-token' }),
   )
@@ -24,7 +28,7 @@ export function renderAuthenticated(ui: ReactElement) {
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
         <AppThemeProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
+          <MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>
         </AppThemeProvider>
       </QueryClientProvider>
     </Provider>,

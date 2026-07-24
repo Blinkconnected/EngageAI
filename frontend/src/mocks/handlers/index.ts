@@ -4,6 +4,10 @@ import { companyHandlers } from './company'
 import { departmentsHandlers } from './departments'
 import { agentsHandlers } from './agents'
 import { channelsHandlers } from './channels'
+import { customersHandlers } from './customers'
+import { queuesHandlers } from './queues'
+import { conversationsHandlers } from './conversations'
+import { notificationsHandlers } from './notifications'
 
 export const handlers = [
   ...authHandlers,
@@ -12,4 +16,8 @@ export const handlers = [
   ...departmentsHandlers,
   ...agentsHandlers,
   ...channelsHandlers,
+  ...customersHandlers,
+  ...queuesHandlers,
+  ...conversationsHandlers,
+  ...notificationsHandlers,
 ]
