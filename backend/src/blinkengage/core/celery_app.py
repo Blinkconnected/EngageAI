@@ -24,6 +24,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.sla_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
         "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
+        "blinkengage.infrastructure.tasks.channel_health_check_task",
     ],
 )
 
@@ -68,6 +69,15 @@ celery_app.conf.update(
         "dispatch-notification-emails": {
             "task": "blinkengage.notifications.dispatch_pending_emails",
             "schedule": 30.0,
+        },
+        # See docs/architecture/channel-integration-spec.md (Phase 1:
+        # Channel Experience) — a slower cadence than the operational
+        # sweeps above since this calls out to real third-party APIs
+        # (Meta Graph, Telegram, SMTP/IMAP) for every active channel
+        # across every company on each tick.
+        "check-channel-health": {
+            "task": "blinkengage.channels.check_channel_health",
+            "schedule": 300.0,
         },
     },
 )

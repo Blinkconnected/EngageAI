@@ -154,12 +154,21 @@ Re-run `scripts/seed_demo_data.py` after a full reset to get it back.
     (confirmation dialog first).
 
 ### WhatsApp Connection
-12. On Channels, click **Connect channel**. WhatsApp is the default type
-    — fill in any phone number ID / access token / verify token and
-    submit. You'll land on a success screen showing the real webhook URL
-    (constructed from your browser's own origin) and the verify token —
-    exactly what you'd paste into Meta's App Dashboard for a real
-    integration.
+12. On Channels, click **Connect channel**. WhatsApp, Web Chat, Telegram
+    and Email each get a guided, per-field setup wizard (the other three
+    channel types still use a generic JSON credentials textarea). Fill in
+    any phone number ID / access token and try **Test
+    Connection** before submitting — it calls the real provider with
+    whatever you typed and shows healthy/unhealthy inline, without saving
+    anything yet. On submit you land on a success screen showing the real
+    webhook URL (constructed from your browser's own origin), the
+    server-auto-generated webhook secret, and (WhatsApp only) the
+    auto-generated verify token — exactly what you'd paste into the
+    provider's own dashboard for a real integration. Back on the list,
+    each channel shows a health badge (from a background sweep that
+    re-checks every active channel every 5 minutes); click a channel's
+    connection-logs icon to see its full history (created, credentials
+    rotated, health transitions, send failures).
 
 ### Inbox
 13. Sidebar → **Inbox** (`/conversations`). Both demo conversations are
@@ -264,8 +273,11 @@ this session, not mocked):
 - Dashboard (live data)
 - Company settings
 - Agents — full create/edit/delete
-- Channels — full create/edit/delete, WhatsApp's guided connect form,
-  generic JSON credentials for the other five channel types
+- Channels — full create/edit/delete, guided connect wizards for
+  WhatsApp/Web Chat/Telegram/Email (generic JSON credentials for the
+  other three), Test Connection (pre-save and against a saved channel),
+  a background health-monitoring sweep with a per-channel status badge,
+  and a connection-log timeline per channel
 - Customers — full create/edit/delete, search
 - Customer Timeline (composed from real conversation data)
 - ERPNext config connect/disconnect + per-customer synced-record display

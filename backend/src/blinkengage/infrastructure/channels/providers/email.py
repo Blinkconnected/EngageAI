@@ -2,8 +2,10 @@
 IMAP poll). See ``docs/architecture/email-channel.md``.
 """
 
+import contextlib
 import hashlib
 import hmac
+import imaplib
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -11,6 +13,7 @@ from email.utils import parseaddr
 from uuid import uuid4
 
 import aiosmtplib
+from anyio import to_thread
 
 from blinkengage.domain.channel_provider import ChannelProvider
 from blinkengage.domain.channels import (
@@ -152,6 +155,27 @@ class EmailProvider(ChannelProvider):
         return hmac.compare_digest(signature, expected)
 
     async def health_check(self) -> HealthStatus:
+        """Checks SMTP (outbound) always, and IMAP (inbound polling) too
+        when ``imap_host`` is configured — the pre-Phase-1 version only
+        checked SMTP, silently saying nothing about a broken IMAP
+        mailbox even though ``email_imap_poll_task`` depends on it."""
+        smtp_ok, smtp_detail = await self._check_smtp()
+        imap_host = self._credentials.get("imap_host")
+        if not imap_host:
+            return HealthStatus(
+                healthy=smtp_ok,
+                detail=smtp_detail if not smtp_ok else "SMTP OK (IMAP not configured)",
+            )
+
+        imap_ok, imap_detail = await self._check_imap(str(imap_host))
+        healthy = smtp_ok and imap_ok
+        detail = (
+            f"SMTP: {'OK' if smtp_ok else smtp_detail}; "
+            f"IMAP: {'OK' if imap_ok else imap_detail}"
+        )
+        return HealthStatus(healthy=healthy, detail=detail)
+
+    async def _check_smtp(self) -> tuple[bool, str | None]:
         try:
             async with aiosmtplib.SMTP(
                 hostname=self._credentials.get("smtp_host", ""),
@@ -161,5 +185,35 @@ class EmailProvider(ChannelProvider):
             ) as client:
                 await client.noop()
         except Exception as exc:  # pragma: no cover - exercised manually against a real SMTP host
-            return HealthStatus(healthy=False, detail=str(exc))
-        return HealthStatus(healthy=True)
+            return False, str(exc)
+        return True, None
+
+    async def _check_imap(self, host: str) -> tuple[bool, str | None]:
+        try:
+            await to_thread.run_sync(
+                _check_imap_login_sync,
+                host,
+                int(self._credentials.get("imap_port", 993)),
+                str(self._credentials.get("imap_username", "")),
+                str(self._credentials.get("imap_password", "")),
+                bool(self._credentials.get("imap_use_ssl", True)),
+            )
+        except Exception as exc:  # pragma: no cover - exercised manually against a real IMAP host
+            return False, str(exc)
+        return True, None
+
+
+def _check_imap_login_sync(
+    host: str, port: int, username: str, password: str, use_ssl: bool
+) -> None:
+    """Runs on a worker thread — ``imaplib`` is synchronous, the same
+    pattern ``email_imap_poll_task`` already established. Login + logout
+    only, no mailbox access — this is a connectivity/credentials check,
+    not a poll."""
+    imap_cls = imaplib.IMAP4_SSL if use_ssl else imaplib.IMAP4
+    connection = imap_cls(host, port)
+    try:
+        connection.login(username, password)
+    finally:
+        with contextlib.suppress(imaplib.IMAP4.error):
+            connection.logout()

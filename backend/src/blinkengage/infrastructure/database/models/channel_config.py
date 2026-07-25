@@ -12,9 +12,10 @@ one channel type (e.g. two WhatsApp Business numbers).
 """
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blinkengage.infrastructure.database.base import (
@@ -40,3 +41,13 @@ class ChannelConfig(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         EncryptedJSON(), nullable=False, default=dict
     )
     webhook_secret: Mapped[str | None] = mapped_column(String(255), default=None)
+
+    # Health monitoring (Phase 1: Channel Experience) — the *latest*
+    # known status, for an O(1) badge on the channel list without
+    # querying channel_connection_logs. Full history (including every
+    # status *transition*) lives in ChannelConnectionLog instead of here.
+    last_health_status: Mapped[str | None] = mapped_column(String(20), default=None)
+    last_health_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    last_health_detail: Mapped[str | None] = mapped_column(Text(), default=None)

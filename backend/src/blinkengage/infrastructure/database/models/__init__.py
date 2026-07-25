@@ -8,6 +8,9 @@ the same side effect.
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
 from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
+from blinkengage.infrastructure.database.models.channel_connection_log import (
+    ChannelConnectionLog,
+)
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -82,6 +85,7 @@ __all__ = [
     "AttachmentValidationStatus",
     "AuditLog",
     "ChannelConfig",
+    "ChannelConnectionLog",
     "Company",
     "Conversation",
     "ConversationDailyStats",

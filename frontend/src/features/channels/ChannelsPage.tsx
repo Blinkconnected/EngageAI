@@ -3,6 +3,7 @@ import { Button, Chip } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
+import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
@@ -12,6 +13,8 @@ import { usePaginationParams } from '../../shared/api/pagination'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { ChannelCreateDialog } from './ChannelCreateDialog'
 import { ChannelEditDialog } from './ChannelEditDialog'
+import { ChannelHealthBadge } from './ChannelHealthBadge'
+import { ConnectionLogsDialog } from './ConnectionLogsDialog'
 import { useChannelsQuery, useDeleteChannelMutation } from './api'
 import { channelTypeLabel, type ChannelConfig } from './types'
 
@@ -25,6 +28,7 @@ export function ChannelsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editingChannel, setEditingChannel] = useState<ChannelConfig | null>(null)
   const [deletingChannel, setDeletingChannel] = useState<ChannelConfig | null>(null)
+  const [logsChannel, setLogsChannel] = useState<ChannelConfig | null>(null)
   const deleteMutation = useDeleteChannelMutation()
 
   const columns: GridColDef<ChannelConfig>[] = useMemo(
@@ -40,7 +44,7 @@ export function ChannelsPage() {
       {
         field: 'is_active',
         headerName: 'Status',
-        width: 120,
+        width: 110,
         renderCell: (params) => (
           <Chip
             label={params.value ? 'Active' : 'Inactive'}
@@ -49,14 +53,27 @@ export function ChannelsPage() {
           />
         ),
       },
-      ...(canManage
-        ? [
-            {
-              field: 'actions',
-              type: 'actions' as const,
-              headerName: 'Actions',
-              width: 100,
-              getActions: (params: { row: ChannelConfig }) => [
+      {
+        field: 'last_health_status',
+        headerName: 'Connection',
+        width: 150,
+        sortable: false,
+        renderCell: (params) => <ChannelHealthBadge channel={params.row} />,
+      },
+      {
+        field: 'actions',
+        type: 'actions' as const,
+        headerName: 'Actions',
+        width: canManage ? 140 : 60,
+        getActions: (params: { row: ChannelConfig }) => [
+          <GridActionsCellItem
+            key="logs"
+            icon={<HistoryOutlinedIcon fontSize="small" />}
+            label="Connection logs"
+            onClick={() => setLogsChannel(params.row)}
+          />,
+          ...(canManage
+            ? [
                 <GridActionsCellItem
                   key="edit"
                   icon={<EditOutlinedIcon fontSize="small" />}
@@ -69,10 +86,10 @@ export function ChannelsPage() {
                   label="Delete"
                   onClick={() => setDeletingChannel(params.row)}
                 />,
-              ],
-            },
-          ]
-        : []),
+              ]
+            : []),
+        ],
+      },
     ],
     [canManage],
   )
@@ -140,6 +157,7 @@ export function ChannelsPage() {
           />
         </>
       )}
+      <ConnectionLogsDialog channel={logsChannel} onClose={() => setLogsChannel(null)} />
     </>
   )
 }

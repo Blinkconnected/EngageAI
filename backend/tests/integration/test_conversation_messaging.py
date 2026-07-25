@@ -9,6 +9,11 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
 
+# Registers the "test_fake" channel type as a side effect of import — reused
+# here (not just in test_channels.py) to exercise send_reply's failure path
+# without needing a real third-party provider.
+from tests.integration.test_channels import FakeChannelProvider  # noqa: F401
+
 
 async def _create_web_chat_session(client: AsyncClient, owner_headers: dict) -> dict:
     config_response = await client.post(
@@ -189,3 +194,67 @@ async def test_send_reply_rejects_an_already_linked_attachment(
         headers=owner_headers,
     )
     assert second_response.status_code == 400
+
+
+async def test_send_reply_persists_a_failed_message_when_the_provider_errors(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """Regression test for channel-integration-spec.md gap #1: a send
+    failure must leave a diagnosable record, not an unhandled 500 with no
+    trace of the attempt."""
+    config_response = await client.post(
+        "/api/v1/channel-configs",
+        json={
+            "channel_type": "test_fake",
+            "display_name": "Flaky Channel",
+            "credentials": {"fail_send": True},
+        },
+        headers=owner_headers,
+    )
+    assert config_response.status_code == 201, config_response.text
+    channel_config_id = config_response.json()["id"]
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": channel_config_id,
+                    "channel_type": "test_fake",
+                    "external_thread_id": "thread-1",
+                    "external_customer_id": "customer-1",
+                    "external_message_id": "ext-1",
+                    "body": "Hello, I need help",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+
+    conversation = (await client.get("/api/v1/conversations", headers=owner_headers)).json()[
+        "items"
+    ][0]
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation['id']}/messages",
+        json={"body": "This will not go through"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["external_message_id"] is None
+    assert body["body"] == "This will not go through"
+    assert "simulated provider send failure" in body["message_metadata"]["error"]
+
+    logs_response = await client.get(
+        f"/api/v1/channel-configs/{channel_config_id}/connection-logs", headers=owner_headers
+    )
+    log_events = [item["event_type"] for item in logs_response.json()["items"]]
+    assert "send_failed" in log_events

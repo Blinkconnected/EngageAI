@@ -341,3 +341,106 @@ class TestHealthCheck:
 
         assert status.healthy is False
         assert status.detail is not None and "smtp unreachable" in status.detail
+
+
+class TestHealthCheckImap:
+    """IMAP is checked too when configured — added in Phase 1: Channel
+    Experience (channel-integration-spec.md); the pre-existing SMTP-only
+    check silently said nothing about a broken mailbox."""
+
+    @pytest.fixture
+    def provider_with_imap(self, attachments: FakeAttachmentStore) -> EmailProvider:
+        return EmailProvider(
+            channel_config_id=uuid4(),
+            company_id=uuid4(),
+            credentials={
+                "smtp_host": "smtp.example.com",
+                "imap_host": "imap.example.com",
+                "imap_port": 993,
+                "imap_username": "support@example.com",
+                "imap_password": "secret",
+                "imap_use_ssl": True,
+            },
+            webhook_secret="shh",
+            realtime=FakeRealtimePublisher(),
+            attachments=attachments,
+        )
+
+    async def _patch_smtp_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class FakeSMTP:
+            def __init__(self, **kwargs: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "FakeSMTP":
+                return self
+
+            async def __aexit__(self, *exc: Any) -> None:
+                return None
+
+            async def noop(self) -> None:
+                return None
+
+        monkeypatch.setattr(
+            "blinkengage.infrastructure.channels.providers.email.aiosmtplib.SMTP", FakeSMTP
+        )
+
+    async def test_healthy_when_both_smtp_and_imap_connect(
+        self, provider_with_imap: EmailProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._patch_smtp_ok(monkeypatch)
+
+        class FakeImap4Ssl:
+            def __init__(self, host: str, port: int) -> None:
+                pass
+
+            def login(self, username: str, password: str) -> None:
+                return None
+
+            def logout(self) -> None:
+                return None
+
+        monkeypatch.setattr(
+            "blinkengage.infrastructure.channels.providers.email.imaplib.IMAP4_SSL", FakeImap4Ssl
+        )
+
+        status = await provider_with_imap.health_check()
+
+        assert status.healthy is True
+        assert status.detail == "SMTP: OK; IMAP: OK"
+
+    async def test_unhealthy_when_imap_login_fails(
+        self, provider_with_imap: EmailProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._patch_smtp_ok(monkeypatch)
+
+        class FailingImap4Ssl:
+            def __init__(self, host: str, port: int) -> None:
+                pass
+
+            def login(self, username: str, password: str) -> None:
+                raise Exception("imap authentication failed")  # noqa: TRY002
+
+            def logout(self) -> None:
+                return None
+
+        monkeypatch.setattr(
+            "blinkengage.infrastructure.channels.providers.email.imaplib.IMAP4_SSL",
+            FailingImap4Ssl,
+        )
+
+        status = await provider_with_imap.health_check()
+
+        assert status.healthy is False
+        assert status.detail is not None
+        assert "SMTP: OK" in status.detail
+        assert "imap authentication failed" in status.detail
+
+    async def test_smtp_only_when_imap_not_configured(
+        self, provider: EmailProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await self._patch_smtp_ok(monkeypatch)
+
+        status = await provider.health_check()
+
+        assert status.healthy is True
+        assert status.detail == "SMTP OK (IMAP not configured)"

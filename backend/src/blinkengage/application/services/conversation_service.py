@@ -26,7 +26,11 @@ from blinkengage.domain.exceptions import (
     EntityNotFoundError,
     InvalidConversationStatusTransitionError,
 )
+from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
+from blinkengage.infrastructure.database.models.channel_connection_log import (
+    ChannelConnectionLog,
+)
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
@@ -41,6 +45,9 @@ from blinkengage.infrastructure.database.models.message import (
 )
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
+)
+from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
+    ChannelConnectionLogRepository,
 )
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
@@ -72,6 +79,7 @@ class ConversationService:
         messages: MessageRepository,
         attachments: MessageAttachmentRepository,
         channel_configs: ChannelConfigRepository,
+        connection_logs: ChannelConnectionLogRepository,
         customers: CustomerRepository,
         attachment_store: AttachmentStore,
         provider_factory: ChannelProviderFactory,
@@ -82,6 +90,7 @@ class ConversationService:
         self._messages = messages
         self._attachments = attachments
         self._channel_configs = channel_configs
+        self._connection_logs = connection_logs
         self._customers = customers
         self._attachment_store = attachment_store
         self._provider_factory = provider_factory
@@ -304,15 +313,65 @@ class ConversationService:
 
         provider = self._provider_factory.build(config)
         thread_id = conversation.external_thread_id or str(conversation.id)
-        result = await provider.send_message(
-            OutboundMessage(
-                external_thread_id=thread_id,
-                body=body,
-                attachments=attachment_refs,
-                metadata=metadata,
-                reply_to_external_message_id=reply_to_external_message_id,
-            )
+        outbound = OutboundMessage(
+            external_thread_id=thread_id,
+            body=body,
+            attachments=attachment_refs,
+            metadata=metadata,
+            reply_to_external_message_id=reply_to_external_message_id,
         )
+
+        try:
+            result = await provider.send_message(outbound)
+        except Exception as exc:
+            # Deliberately broad: a ChannelProvider is a plugin boundary
+            # (7 providers today, more later) whose underlying libraries
+            # each raise their own exception hierarchy on a real failure
+            # — httpx.HTTPStatusError/InvalidURL, aiosmtplib.SMTPException,
+            # redis.exceptions.ConnectionError, imaplib.IMAP4.error, and
+            # whatever a future provider's own SDK raises. An earlier,
+            # narrower `except (httpx.HTTPError, ValueError)` looked
+            # reasonable but missed most of these — confirmed live during
+            # Phase 1's review that a real SMTP auth failure or a Redis
+            # outage still escaped as an unhandled 500, exactly what this
+            # handler exists to prevent. `except Exception` does not
+            # catch BaseException (KeyboardInterrupt, SystemExit,
+            # asyncio.CancelledError), so cooperative cancellation still
+            # propagates correctly.
+            #
+            # A failed send is a real, diagnosable outcome, not an
+            # unhandled 500 with no trace of the attempt — see
+            # channel-integration-spec.md gap #1. Persisting (not
+            # raising) sidesteps get_db_session's commit-or-rollback-the-
+            # whole-request semantics: raising here would roll back this
+            # very row along with it.
+            error_detail = redact_credentials(str(exc), config.credentials)
+            message = await self._messages.add(
+                Message(
+                    company_id=company_id,
+                    channel_type=config.channel_type,
+                    channel_config_id=config.id,
+                    conversation_id=conversation.id,
+                    customer_id=conversation.customer_id,
+                    direction=MessageDirection.OUTBOUND,
+                    message_type=MessageType.MEDIA if attachment_refs else MessageType.TEXT,
+                    status=MessageStatus.FAILED,
+                    body=body,
+                    message_metadata={"error": error_detail, "error_type": type(exc).__name__},
+                )
+            )
+            for attachment in linked_attachments:
+                attachment.message_id = message.id
+            await self._connection_logs.add(
+                ChannelConnectionLog(
+                    channel_config_id=config.id,
+                    company_id=company_id,
+                    event_type="send_failed",
+                    level="error",
+                    message=f"Send failed: {error_detail}",
+                )
+            )
+            return message
 
         message = await self._messages.add(
             Message(

@@ -59,6 +59,9 @@ from blinkengage.infrastructure.repositories.audit_log_repository import AuditLo
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
+from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
+    ChannelConnectionLogRepository,
+)
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
@@ -342,9 +345,15 @@ def get_audit_log_service(
 
 def get_channel_config_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> ChannelConfigService:
-    return ChannelConfigService(channel_configs=ChannelConfigRepository(session), events=events)
+    return ChannelConfigService(
+        channel_configs=ChannelConfigRepository(session),
+        connection_logs=ChannelConnectionLogRepository(session),
+        provider_factory=provider_factory,
+        events=events,
+    )
 
 
 def get_web_chat_session_service(
@@ -372,6 +381,7 @@ def get_conversation_service(
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
         channel_configs=ChannelConfigRepository(session),
+        connection_logs=ChannelConnectionLogRepository(session),
         customers=CustomerRepository(session),
         attachment_store=attachment_store,
         provider_factory=provider_factory,
@@ -392,6 +402,7 @@ def get_conversation_service_ws(
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
         channel_configs=ChannelConfigRepository(session),
+        connection_logs=ChannelConnectionLogRepository(session),
         customers=CustomerRepository(session),
         attachment_store=attachment_store,
         provider_factory=provider_factory,
@@ -590,6 +601,27 @@ async def enforce_ai_rate_limit(
     """
     limiter = FixedWindowRateLimiter(
         redis, scope="ai", limit=settings.ai_rate_limit_per_minute, window_seconds=60
+    )
+    await enforce_rate_limit(limiter, str(auth.user_id))
+    return auth
+
+
+async def enforce_channel_test_connection_rate_limit(
+    auth: Annotated[AuthContext, Depends(require_permission("channels.manage"))],
+    redis: Annotated[Redis, Depends(get_redis)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> AuthContext:
+    """Same reasoning as ``enforce_ai_rate_limit``, applied to "Test
+    Connection" (both the saved-channel and ephemeral/draft-credentials
+    variants) — each call makes the server originate a real outbound
+    connection to an operator-chosen host/port, confirmed during Phase 1's
+    review as an otherwise-unthrottled internal-network probe/oracle for
+    any ``channels.manage`` principal."""
+    limiter = FixedWindowRateLimiter(
+        redis,
+        scope="channel-test-connection",
+        limit=settings.channel_test_connection_rate_limit_per_minute,
+        window_seconds=60,
     )
     await enforce_rate_limit(limiter, str(auth.user_id))
     return auth

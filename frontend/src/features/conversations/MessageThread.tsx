@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, Button, Chip, Paper, Stack, Typography } from '@mui/material'
+import { Box, Button, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
@@ -42,7 +42,15 @@ function MessageBubble({ message }: { message: Message }) {
             {formatRelativeTime(message.created_at)}
           </Typography>
           {isOutbound && message.status === 'failed' && (
-            <Chip label="Failed" size="small" color="error" />
+            <Tooltip
+              title={
+                typeof message.message_metadata.error === 'string'
+                  ? message.message_metadata.error
+                  : 'The channel provider rejected this message — its credentials may need attention.'
+              }
+            >
+              <Chip label="Failed to send" size="small" color="error" />
+            </Tooltip>
           )}
           {isOutbound && message.delivery_status === 'delivered' && (
             <Typography variant="caption" sx={{ opacity: 0.8 }}>

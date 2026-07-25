@@ -72,6 +72,24 @@ doesn't. Every method the roadmap named is an abstract method:
   — looks up the class by `config.channel_type`, decrypts
   `config.credentials`, constructs the instance.
 
+**Registration is triggered from `factory.py`, not from each entrypoint.**
+`@ChannelRegistry.register(...)` only runs once the `providers` package is
+actually imported somewhere — for the first several milestones the only
+thing that imported it was `api/v1/router.py`, which only the FastAPI web
+process loads. Phase 1's `channel_health_check_task` (a Celery-beat task
+running in the standalone `celery-worker`/`celery-beat` processes, which
+never import `api/v1/router`) exposed this in production: every channel
+type resolved to "Unknown channel type" there from day one, silently,
+because nothing in that process had ever triggered registration.
+`email_imap_poll_task` and `workflow_engine_consumer`'s `ConversationService.
+send_reply` path had the identical latent gap. Fixed at the structural
+level rather than by adding an import to each affected entrypoint (which
+just repeats the same mistake for the next one): `factory.py` — the one
+class whose entire job is "look up a registered provider" — imports
+`infrastructure.channels.providers` itself at module level. Any code that
+imports `ChannelProviderFactory` now gets registration as a side effect,
+regardless of which process it runs in.
+
 ## Per-company configuration: `ChannelConfig`
 
 `infrastructure/database/models/channel_config.py` — company-scoped,
@@ -201,3 +219,19 @@ passing across the whole suite; `ruff check`/`mypy` clean. This proves the
 full architecture end-to-end with zero real providers implemented, per
 the explicit requirement that provider implementations wait until the
 architecture itself is signed off.
+
+**Phase 1: Channel Experience (2026-07-25)** — see `docs/ROADMAP.md`'s
+Phase 1 entry for the full feature list and the review-driven fixes
+(credential redaction, the registration-triggering fix above, etc.).
+`tests/unit/test_channel_error_sanitizer.py` specifically covers the
+credential-leak fix: both the case a provider's `health_check()` raises
+an exception embedding a credential, and the case (every current
+provider) where it catches that exception itself and returns the
+credential-embedding detail as a normal, non-exception `HealthStatus` —
+redacting only the `except` path would have left the second, more common
+case wide open. 557 backend / 65 frontend tests passing; verified live
+against the production Docker Compose stack including a manual
+`check_channel_health` invocation against the rebuilt `celery-worker`
+container to confirm the registration fix (was: "Unknown channel type"
+for all 18 active channels; now: 17/18 transitioned correctly on first
+sweep).

@@ -57,6 +57,18 @@ describe('ConversationViewPage', () => {
     expect(await screen.findByText('Sure, happy to help!')).toBeInTheDocument()
   })
 
+  it('surfaces a diagnosable error when the channel provider rejects a send', async () => {
+    const user = userEvent.setup()
+    renderConversationView()
+    await screen.findByText('Hi, I need help with my order.')
+
+    await user.type(screen.getByPlaceholderText(/write a reply/i), 'TRIGGER_SEND_FAILURE')
+    await user.click(screen.getByRole('button', { name: /send reply/i }))
+
+    expect(await screen.findByText(/message not delivered/i)).toBeInTheDocument()
+    expect(screen.getByText('Failed to send')).toBeInTheDocument()
+  })
+
   it('changes the conversation status', async () => {
     const user = userEvent.setup()
     renderConversationView()

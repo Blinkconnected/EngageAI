@@ -1045,9 +1045,88 @@ proposal for closing the gaps found (no send-failure visibility, no
 "Test connection" UI despite every provider already having a working
 `health_check()`, guided forms for only 1 of 7 channels, no server-side
 credential validation, no webhook auto-registration, no token-refresh/
-expiry awareness, no OAuth). **Awaiting approval — no channel connection
-flow code changes until then**; does not block M37 or other unrelated
-work.
+expiry awareness, no OAuth). Gate closed 2026-07-25: Section 3a approved
+and implemented as Phase 1 below.
+
+- [x] **Phase 1: Channel Experience (2026-07-25)**
+  Implements Section 3a of the approved spec for the 4 priority channels
+  (WhatsApp Cloud API, Web Chat, Telegram, Email): guided per-channel
+  setup wizard, server-side credential-shape validation before save,
+  "Test Connection" (both pre-save/ephemeral and against an already-saved
+  channel), periodic health-monitoring sweep (Celery beat, 5-minute
+  cadence, transition-only logging), structured send-failure diagnostics
+  surfaced in the conversation UI, a reconnect flow (rotate credentials
+  on an existing channel), and a connection-log timeline per channel.
+  Backend: migration adding `channel_configs.last_health_status/
+  last_health_checked_at/last_health_detail` and the new
+  `channel_connection_logs` table; `ChannelConnectionLogRepository`;
+  `ChannelProviderFactory.build_ephemeral()` for pre-save testing;
+  3 new `channel-configs` routes (`POST .../test-connection`,
+  `POST .../{id}/test-connection`, `GET .../{id}/connection-logs`);
+  `channel_health_check_task` Celery task. Frontend: a shared guided-
+  wizard architecture (`ChannelCreateDialog`/`ChannelEditDialog` +
+  per-channel field components), `TestConnectionButton`,
+  `ChannelHealthBadge`, `ConnectionLogsDialog`, and inline error
+  diagnostics on failed sends in `MessageThread`/`ReplyBox`.
+
+  An Ultracode adversarial review (4 independent dimensions — backend
+  correctness, security, frontend correctness, spec consistency — each
+  finding separately re-verified against the actual code) found 14
+  confirmed issues before this shipped, including two critical ones now
+  fixed: `send_reply`'s failure handler only caught `httpx.HTTPError`/
+  `ValueError`, so real SMTP/Redis/malformed-URL failures still surfaced
+  as unhandled 500s instead of the graceful diagnostic Phase 1 exists to
+  provide; and a live credential-leak path where a provider's own
+  `health_check()` embeds a credential in its error text (confirmed for
+  Telegram, WhatsApp and Messenger/Instagram, whose bot token/access
+  token sits in the request URL an `httpx.HTTPStatusError` echoes back
+  verbatim) — that text was persisted into 3 newly-broadly-readable
+  surfaces (`ChannelConnectionLog.message`, `ChannelConfig.
+  last_health_detail`, a `Message.message_metadata`) any `channels.read`/
+  `conversations.read` principal could see. Fixed via a single shared
+  `redact_credentials()`/`safe_health_check()` boundary
+  (`infrastructure/channels/error_sanitizer.py`) applied everywhere
+  provider error text becomes a stored or returned string. Also fixed: a
+  functional regression where the auto-generated `webhook_secret` (and,
+  for WhatsApp, `verify_token`) was never surfaced back to the operator
+  after creation — meaning Telegram/Email channels literally could not
+  receive webhooks if the operator followed the setup wizard's own
+  "leave blank to auto-generate" guidance — via a `ChannelConfigCreateResponse`
+  schema returned only from `POST /channel-configs`, the one moment a
+  server-generated secret is allowed to leave the server at all.
+
+  Live Docker verification (production build, full stack) surfaced one
+  further bug the review and both test suites had missed: the periodic
+  health-monitoring sweep and the IMAP-poll task both run in the
+  standalone `celery-worker`/`celery-beat` processes, which never
+  imported `infrastructure.channels.providers` — the module whose import-
+  time `@ChannelRegistry.register(...)` decorators are what make any
+  channel type resolvable at all. Every channel type therefore raised
+  "Unknown channel type" in those processes from the day Phase 1's sweep
+  task was written, silently. Fixed structurally, not with another ad hoc
+  import: `infrastructure/channels/factory.py` — the one class whose job
+  is "look up a registered provider" — now imports the providers package
+  itself at module level, so registration no longer depends on which
+  entrypoint happens to remember to trigger it.
+
+  Two lower-severity gaps found in review were deliberately deferred
+  (documented in `channel-integration-spec.md`'s "Phase 1 implementation
+  notes" section, not silently dropped): full SSRF host/IP restriction on
+  operator-supplied credential hosts, and the existing `400`-flat-string
+  vs `422`-field-level convention for credential validation errors —
+  both judged broader-than-Phase-1-scope, proportionate follow-ups rather
+  than blocking issues.
+
+  Backend: 557 passed (`pytest -q`), `ruff check`/`mypy src` clean.
+  Frontend: 65 passed (`vitest run`), `tsc -b --noEmit`/`eslint .` clean.
+  Verified against the production Docker Compose stack (`docker-compose.yml`
+  + `docker-compose.prod.yml`, built images only): created and tested
+  WhatsApp/Telegram/Email channels end-to-end via the live API, confirmed
+  `webhook_secret`/`verify_token` are returned once on create and never
+  again on GET, manually triggered `check_channel_health` on the rebuilt
+  `celery-worker` and confirmed all 18 active channels resolved correctly
+  with the leaked-token scenario now redacted in both `ChannelConfig.
+  last_health_detail` and the connection-log timeline.
 
 ---
 

@@ -17,6 +17,7 @@ export function ReplyBox({
 }) {
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [sendFailure, setSendFailure] = useState<string | null>(null)
   const lastTypingSentAt = useRef(0)
 
   const sendMutation = useSendMessageMutation(conversationId)
@@ -25,6 +26,7 @@ export function ReplyBox({
 
   function handleBodyChange(value: string) {
     setBody(value)
+    setSendFailure(null)
     if (!onTyping) return
     const now = Date.now()
     if (now - lastTypingSentAt.current > TYPING_THROTTLE_MS) {
@@ -44,13 +46,26 @@ export function ReplyBox({
 
   function handleSend() {
     if (!body.trim() && attachments.length === 0) return
+    setSendFailure(null)
     sendMutation.mutate(
       { body: body.trim() || null, attachment_ids: attachments.map((a) => a.id) },
       {
-        onSuccess: () => {
+        onSuccess: (message) => {
           setBody('')
           setAttachments([])
           onTyping?.(false)
+          // A failed send is still a 201 (the attempt was persisted so
+          // it's diagnosable, not lost) — this isn't sendMutation.isError,
+          // so it needs its own check to surface here, not just the
+          // "Failed to send" chip on the message itself.
+          if (message.status === 'failed') {
+            const errorDetail = message.message_metadata.error
+            setSendFailure(
+              typeof errorDetail === 'string'
+                ? errorDetail
+                : 'The channel provider rejected this message.',
+            )
+          }
         },
       },
     )
@@ -61,6 +76,11 @@ export function ReplyBox({
       {sendMutation.isError && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {extractErrorMessage(sendMutation.error)}
+        </Alert>
+      )}
+      {sendFailure && (
+        <Alert severity="error" sx={{ mb: 1 }} onClose={() => setSendFailure(null)}>
+          Message not delivered: {sendFailure}
         </Alert>
       )}
       {uploadMutation.isError && (

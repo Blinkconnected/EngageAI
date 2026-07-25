@@ -89,20 +89,24 @@ export const conversationsHandlers = [
 
   http.post(`${API_BASE_URL}/conversations/:conversationId/messages`, async ({ request }) => {
     const payload = (await request.json()) as SendMessageRequest
+    // A failed send is still a 201 with status: "failed", not an HTTP
+    // error — see conversation_service.py's send_reply. This magic body
+    // lets tests exercise that path without a real provider.
+    const simulateFailure = payload.body === 'TRIGGER_SEND_FAILURE'
     const created: Message = {
       id: `msg-${nextMessageId}`,
       conversation_id: conversation.id,
       direction: 'outbound',
       message_type: 'text',
-      status: 'sent',
-      delivery_status: 'delivered',
+      status: simulateFailure ? 'failed' : 'sent',
+      delivery_status: simulateFailure ? 'not_applicable' : 'delivered',
       read_status: 'unread',
       body: payload.body ?? null,
-      external_message_id: null,
+      external_message_id: simulateFailure ? null : null,
       reply_to_message_id: null,
-      message_metadata: {},
-      sent_at: '2026-01-01T00:10:00Z',
-      delivered_at: '2026-01-01T00:10:01Z',
+      message_metadata: simulateFailure ? { error: 'simulated provider send failure' } : {},
+      sent_at: simulateFailure ? null : '2026-01-01T00:10:00Z',
+      delivered_at: simulateFailure ? null : '2026-01-01T00:10:01Z',
       read_at: null,
       created_at: '2026-01-01T00:10:00Z',
     }

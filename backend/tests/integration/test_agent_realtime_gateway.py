@@ -30,6 +30,9 @@ from blinkengage.infrastructure.repositories.agent_repository import AgentReposi
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
+from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
+    ChannelConnectionLogRepository,
+)
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -157,6 +160,7 @@ def _build_services(session, container):
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
         channel_configs=ChannelConfigRepository(session),
+        connection_logs=ChannelConnectionLogRepository(session),
         customers=CustomerRepository(session),
         attachment_store=attachments,
         provider_factory=factory,

@@ -294,6 +294,49 @@ future extension points until a real customer asks.
 
 ---
 
+## Phase 1 implementation notes: accepted gaps
+
+Phase 1 ("Channel Experience" — guided setup wizard, connection
+validation, Test Connection, health monitoring, error diagnostics,
+reconnect flow, connection logs) is implemented for WhatsApp Cloud API,
+Web Chat, Telegram and Email per the priority order above. An adversarial
+review of that implementation surfaced two lower-severity gaps that were
+deliberately **not** fixed as part of Phase 1, to keep that fix pass
+proportionate to its own scope rather than opportunistically expanding it
+into unrelated hardening work. Both are tracked here so they aren't lost:
+
+**No SSRF host/IP restriction on credential fields.** Several credential
+fields accept an arbitrary operator-supplied host (`smtp_host`,
+`imap_host`, and any custom API base URL fields), and Test Connection
+makes the server originate a real outbound connection to whatever host is
+supplied — including internal/private IP ranges. This is rate-limited
+(`enforce_channel_test_connection_rate_limit`) and audited (every
+ephemeral test-connection call publishes a `channel_config.
+test_connection_ephemeral` domain event), which bounds abuse, but does
+not prevent a `channels.manage` principal from using Test Connection as an
+internal network probe/oracle. This is a pre-existing risk category
+broader than Test Connection alone — any future feature that lets an
+operator supply a URL the server then fetches has the same exposure — so
+it should be addressed as a general internal-network-egress policy (e.g. a
+shared `assert_not_internal_host()` helper applied at every such
+boundary), not as a one-off patch scoped to channel credentials. Tracked
+as a follow-up; not scheduled against a specific milestone yet.
+
+**Credential validation errors return `400` with a flat string detail,
+not `422` with field-level detail.** `InvalidChannelCredentialsError` (and
+the rest of this codebase's `DomainError` → HTTP mapping) intentionally
+uses `400` + a single human-readable message for domain-level validation
+failures, reserving FastAPI/Pydantic's built-in `422` +
+field-level-errors shape for request *schema* validation only. This is
+internally consistent with how every other domain validation error in
+this codebase is already surfaced, so restructuring it just for channel
+credentials would introduce an inconsistency rather than remove one.
+Revisiting this would mean deciding the convention for the whole
+`DomainError` hierarchy, not just channels — out of scope for a targeted
+Phase 1 fix pass.
+
+---
+
 ## Approval gate
 
 Per instruction, no channel connection flow implementation or

@@ -74,4 +74,113 @@ describe('ChannelsPage', () => {
 
     await waitFor(() => expect(screen.queryByText('Support Telegram')).not.toBeInTheDocument())
   })
+
+  it('shows a health badge reflecting the last known connection status', async () => {
+    renderAuthenticated(<ChannelsPage />)
+    await screen.findByText('Support Telegram')
+    expect(screen.getByText('Healthy')).toBeInTheDocument()
+  })
+
+  it('tests a connection from the guided wizard before saving', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ChannelsPage />)
+    await screen.findByText('Support Telegram')
+
+    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.type(await screen.findByLabelText(/display name/i), 'Support WhatsApp')
+    await user.type(screen.getByLabelText(/phone number id/i), '123456')
+    await user.type(screen.getByLabelText(/^access token/i), 'secret-token')
+    await user.type(screen.getByLabelText(/verify token/i), 'my-verify-token')
+
+    await user.click(screen.getByRole('button', { name: /test connection/i }))
+    expect(await screen.findByText(/connected successfully/i)).toBeInTheDocument()
+  })
+
+  it('tests the connection of an already-saved channel from the edit dialog', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ChannelsPage />)
+    const row = (await screen.findByText('Support Telegram')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    await user.click(within(row as HTMLElement).getByLabelText('Edit'))
+    await screen.findByRole('heading', { name: /edit support telegram/i })
+    await user.click(screen.getByRole('button', { name: /test connection/i }))
+
+    expect(await screen.findByText(/connected successfully/i)).toBeInTheDocument()
+  })
+
+  it('opens the connection logs for a channel', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ChannelsPage />)
+    const row = (await screen.findByText('Support Telegram')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    await user.click(within(row as HTMLElement).getByLabelText('Connection logs'))
+
+    expect(await screen.findByText(/connection logs — support telegram/i)).toBeInTheDocument()
+    expect(screen.getByText('Channel connected')).toBeInTheDocument()
+  })
+
+  it('connects a Telegram channel with the guided bot token field', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ChannelsPage />)
+    await screen.findByText('Support Telegram')
+
+    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    // MUI's Select isn't a native <select>, so userEvent.selectOptions
+    // doesn't work on it — open the popup and click the option instead.
+    await user.click(screen.getByLabelText(/channel type/i))
+    await user.click(await screen.findByRole('option', { name: 'Telegram' }))
+    await user.type(await screen.findByLabelText(/display name/i), 'Second Bot')
+    await user.type(screen.getByLabelText(/bot token/i), '123:abc-token')
+    await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
+
+    expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()
+  })
+
+  it(
+    'connects an Email channel with optional IMAP fields',
+    async () => {
+      const user = userEvent.setup()
+      renderAuthenticated(<ChannelsPage />)
+      await screen.findByText('Support Telegram')
+
+      await user.click(screen.getByRole('button', { name: /connect channel/i }))
+      await user.click(screen.getByLabelText(/channel type/i))
+      await user.click(await screen.findByRole('option', { name: 'Email' }))
+      await user.type(await screen.findByLabelText(/display name/i), 'Support Inbox')
+      await user.type(screen.getByLabelText(/smtp host/i), 'smtp.example.com')
+
+      // IMAP section is collapsed by default.
+      expect(screen.queryByLabelText(/imap host/i)).not.toBeInTheDocument()
+      await user.click(screen.getByRole('switch', { name: /also receive replies/i }))
+      await user.type(screen.getByLabelText(/imap host/i), 'imap.example.com')
+
+      await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
+      expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()
+    },
+    // This test alone exceeds the file's already-bumped 15s default under
+    // this sandbox's constrained (2-core) hardware — it's the one test in
+    // the suite that types into two extra fields and toggles a Collapse
+    // section on top of the shared heavy DataGrid mount every test in this
+    // file pays for. A local override here (not another global bump) keeps
+    // the rest of the suite's timeout tight on ordinary CI hardware.
+    30_000,
+  )
+
+  it('connects a Web Chat channel with no credential fields required', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ChannelsPage />)
+    await screen.findByText('Support Telegram')
+
+    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.click(screen.getByLabelText(/channel type/i))
+    await user.click(await screen.findByRole('option', { name: 'Web Chat' }))
+    await user.type(await screen.findByLabelText(/display name/i), 'Website Chat')
+    expect(screen.getByText(/needs no external credentials/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
+    expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()
+    expect(screen.getByText(/nothing further to configure/i)).toBeInTheDocument()
+  })
 })

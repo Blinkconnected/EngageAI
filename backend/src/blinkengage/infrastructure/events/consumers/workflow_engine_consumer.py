@@ -37,6 +37,9 @@ from blinkengage.infrastructure.events.realtime_publisher import RealtimePublish
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
+from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
+    ChannelConnectionLogRepository,
+)
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -114,6 +117,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
         channel_configs=ChannelConfigRepository(session),
+        connection_logs=ChannelConnectionLogRepository(session),
         customers=CustomerRepository(session),
         attachment_store=_get_attachment_store(settings),
         provider_factory=_get_provider_factory(settings),

@@ -128,6 +128,12 @@ class Settings(BaseSettings):
     # call has a real external cost, unlike auth/webchat, which only cost
     # a DB round trip.
     ai_rate_limit_per_minute: int = 20
+    # Per-user, like the AI limit above — "Test Connection" makes the
+    # server originate a real outbound connection to an operator-chosen
+    # host/port on every call (see channel-integration-spec.md's security
+    # review), so it gets the same treatment as any other real-network-
+    # cost action, not the generic per-IP limit.
+    channel_test_connection_rate_limit_per_minute: int = 20
 
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding

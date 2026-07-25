@@ -6,6 +6,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   MenuItem,
   Stack,
@@ -15,8 +16,10 @@ import {
 } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import { extractErrorMessage } from '../../shared/api/errors'
-import { useCreateChannelMutation } from './api'
-import { CHANNEL_TYPES, type ChannelConfig } from './types'
+import { useCreateChannelMutation, useTestConnectionEphemeralMutation } from './api'
+import { ChannelCredentialFields } from './fields/ChannelCredentialFields'
+import { TestConnectionButton } from './TestConnectionButton'
+import { CHANNEL_TYPES, hasGuidedSetup, type ChannelConfigCreateResult } from './types'
 
 function webhookUrlFor(channelConfigId: string): string {
   return `${window.location.origin}/api/v1/webhooks/${channelConfigId}`
@@ -56,26 +59,20 @@ function CopyableField({ label, value }: { label: string; value: string }) {
 export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [channelType, setChannelType] = useState('whatsapp')
   const [displayName, setDisplayName] = useState('')
-  const [phoneNumberId, setPhoneNumberId] = useState('')
-  const [accessToken, setAccessToken] = useState('')
-  const [verifyToken, setVerifyToken] = useState('')
+  const [credentials, setCredentials] = useState<Record<string, unknown>>({})
   const [webhookSecret, setWebhookSecret] = useState('')
-  const [credentialsJson, setCredentialsJson] = useState('{}')
-  const [jsonError, setJsonError] = useState<string | null>(null)
-  const [created, setCreated] = useState<ChannelConfig | null>(null)
+  const [created, setCreated] = useState<ChannelConfigCreateResult | null>(null)
 
   const createMutation = useCreateChannelMutation()
+  const testConnectionMutation = useTestConnectionEphemeralMutation()
   const isWhatsapp = channelType === 'whatsapp'
+  const guided = hasGuidedSetup(channelType)
 
   function reset() {
     setChannelType('whatsapp')
     setDisplayName('')
-    setPhoneNumberId('')
-    setAccessToken('')
-    setVerifyToken('')
+    setCredentials({})
     setWebhookSecret('')
-    setCredentialsJson('{}')
-    setJsonError(null)
     setCreated(null)
     createMutation.reset()
   }
@@ -86,23 +83,6 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
   }
 
   function handleSubmit() {
-    let credentials: Record<string, unknown>
-    if (isWhatsapp) {
-      credentials = {
-        phone_number_id: phoneNumberId,
-        access_token: accessToken,
-        verify_token: verifyToken,
-      }
-    } else {
-      try {
-        credentials = JSON.parse(credentialsJson || '{}') as Record<string, unknown>
-        setJsonError(null)
-      } catch {
-        setJsonError('Enter valid JSON.')
-        return
-      }
-    }
-
     createMutation.mutate(
       {
         channel_type: channelType,
@@ -124,11 +104,19 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
               {created.display_name} is set up. Finish connecting it on the provider's side using
               the details below.
             </Alert>
-            <CopyableField label="Webhook URL" value={webhookUrlFor(created.id)} />
-            {isWhatsapp && <CopyableField label="Verify token" value={verifyToken} />}
+            {channelType !== 'web_chat' && (
+              <>
+                <CopyableField label="Webhook URL" value={webhookUrlFor(created.id)} />
+                <CopyableField label="Webhook secret" value={created.webhook_secret} />
+              </>
+            )}
+            {isWhatsapp && created.verify_token && (
+              <CopyableField label="Verify token" value={created.verify_token} />
+            )}
             <Typography variant="body2" color="text.secondary">
-              Paste the webhook URL{isWhatsapp ? ' and verify token' : ''} into your provider's
-              dashboard to start receiving messages.
+              {channelType === 'web_chat'
+                ? "There's nothing further to configure — this channel is live immediately."
+                : `Paste the webhook URL, webhook secret${isWhatsapp ? ' and verify token' : ''} into your provider's dashboard to start receiving messages. These values are shown only once — copy them now.`}
             </Typography>
           </Stack>
         </DialogContent>
@@ -160,12 +148,16 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
               label="Channel type"
               select
               value={channelType}
-              onChange={(event) => setChannelType(event.target.value)}
+              onChange={(event) => {
+                setChannelType(event.target.value)
+                setCredentials({})
+              }}
               fullWidth
             >
               {CHANNEL_TYPES.map((type) => (
                 <MenuItem key={type.value} value={type.value}>
                   {type.label}
+                  {!hasGuidedSetup(type.value) ? ' (manual JSON setup)' : ''}
                 </MenuItem>
               ))}
             </TextField>
@@ -175,56 +167,37 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
               onChange={(event) => setDisplayName(event.target.value)}
               required
               fullWidth
-              placeholder={isWhatsapp ? 'e.g. Support WhatsApp' : undefined}
+              placeholder={guided ? `e.g. Support ${CHANNEL_TYPES.find((t) => t.value === channelType)?.label}` : undefined}
             />
 
-            {isWhatsapp ? (
-              <>
-                <TextField
-                  label="Phone number ID"
-                  value={phoneNumberId}
-                  onChange={(event) => setPhoneNumberId(event.target.value)}
-                  required
-                  fullWidth
-                  helperText="From Meta's WhatsApp Business App Dashboard"
-                />
-                <TextField
-                  label="Access token"
-                  type="password"
-                  value={accessToken}
-                  onChange={(event) => setAccessToken(event.target.value)}
-                  required
-                  fullWidth
-                />
-                <TextField
-                  label="Verify token"
-                  value={verifyToken}
-                  onChange={(event) => setVerifyToken(event.target.value)}
-                  required
-                  fullWidth
-                  helperText="Any string you choose — you'll enter this same value in Meta's dashboard"
-                />
-              </>
-            ) : (
+            <ChannelCredentialFields
+              key={channelType}
+              channelType={channelType}
+              credentials={credentials}
+              onChange={setCredentials}
+            />
+
+            {channelType !== 'web_chat' && (
               <TextField
-                label="Credentials (JSON)"
-                value={credentialsJson}
-                onChange={(event) => setCredentialsJson(event.target.value)}
+                label="Webhook secret"
+                type="password"
+                value={webhookSecret}
+                onChange={(event) => setWebhookSecret(event.target.value)}
                 fullWidth
-                multiline
-                minRows={3}
-                error={Boolean(jsonError)}
-                helperText={jsonError ?? 'Provider-specific credentials as a JSON object'}
+                helperText="Used to verify inbound webhook signatures — leave blank to auto-generate a secure one"
               />
             )}
 
-            <TextField
-              label="Webhook secret"
-              type="password"
-              value={webhookSecret}
-              onChange={(event) => setWebhookSecret(event.target.value)}
-              fullWidth
-              helperText="Used to verify inbound webhook signatures"
+            <Divider />
+            <TestConnectionButton
+              key={`${channelType}:${JSON.stringify(credentials)}`}
+              onTest={() =>
+                testConnectionMutation.mutateAsync({
+                  channel_type: channelType,
+                  credentials,
+                  webhook_secret: webhookSecret || null,
+                })
+              }
             />
           </Stack>
         </DialogContent>

@@ -44,6 +44,21 @@ class InvalidChannelTypeError(DomainError):
         super().__init__(f"Unknown channel type: {channel_type!r}")
 
 
+class InvalidChannelCredentialsError(DomainError):
+    """Raised when a channel type has a known required-fields schema
+    (``infrastructure.channels.credential_schemas``) and the supplied
+    ``credentials`` dict doesn't satisfy it — a client-input validation
+    failure, not a missing resource, so it falls through to the generic
+    400 like ``InvalidChannelTypeError``. Channel types with no schema
+    registered (not yet covered by Phase 1: Channel Experience) are left
+    unvalidated at this layer, same as before."""
+
+    def __init__(self, channel_type: str, detail: str) -> None:
+        self.channel_type = channel_type
+        self.detail = detail
+        super().__init__(f"Invalid credentials for channel type {channel_type!r}: {detail}")
+
+
 class InvalidSmsGatewayError(DomainError):
     """Raised when ``ChannelConfig.credentials["gateway"]`` isn't
     registered in ``infrastructure.channels.sms_gateway_registry.
