@@ -15,6 +15,25 @@ const SEED_AGENTS: Agent[] = [
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
+  {
+    // Matches MOCK_USER's id (mocks/handlers/auth.ts) — the logged-in
+    // test user also has an agent profile, same as a real Owner who
+    // handles conversations personally. Deliberately in no department
+    // (department_id: null) so it doesn't shift DepartmentsPage's own
+    // "Support" agent-count assertions, and deliberately NOT named after
+    // MOCK_USER's own full_name ("Ada Lovelace") — other tests create
+    // their own "Ada Lovelace" agent, and a second row with the same
+    // name makes findByText('Ada Lovelace') ambiguous.
+    id: 'a-self',
+    user_id: '11111111-1111-1111-1111-111111111111',
+    email: 'owner@example.com',
+    full_name: 'Mock Self Agent',
+    title: null,
+    department_id: null,
+    status: 'online',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
 ]
 
 let agents: Agent[] = [...SEED_AGENTS]

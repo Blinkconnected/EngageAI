@@ -5,6 +5,8 @@ import type {
   Attachment,
   Conversation,
   ConversationStatus,
+  ConversationTransfer,
+  ConversationTransferRequest,
   ConversationUpdateRequest,
   InternalNote,
   Message,
@@ -15,9 +17,14 @@ const CONVERSATIONS_LIST_KEY = ['conversations', 'list']
 const CONVERSATION_KEY = (id: string) => ['conversations', 'detail', id]
 const MESSAGES_KEY = (conversationId: string) => ['conversations', conversationId, 'messages']
 const NOTES_KEY = (conversationId: string) => ['conversations', conversationId, 'notes']
+const TRANSFERS_KEY = (conversationId: string) => ['conversations', conversationId, 'transfers']
 
 async function fetchConversations(
-  params: PageParams & { status_filter?: ConversationStatus; customer_id?: string },
+  params: PageParams & {
+    status_filter?: ConversationStatus
+    customer_id?: string
+    assigned_agent_id?: string
+  },
 ): Promise<Page<Conversation>> {
   const { data } = await apiClient.get<Page<Conversation>>('/conversations', { params })
   return data
@@ -118,8 +125,34 @@ async function createNote(conversationId: string, body: string): Promise<Interna
   return data
 }
 
+async function transferConversation(
+  conversationId: string,
+  payload: ConversationTransferRequest,
+): Promise<ConversationTransfer> {
+  const { data } = await apiClient.post<ConversationTransfer>(
+    `/conversations/${conversationId}/transfer`,
+    payload,
+  )
+  return data
+}
+
+async function fetchTransfers(
+  conversationId: string,
+  params: PageParams,
+): Promise<Page<ConversationTransfer>> {
+  const { data } = await apiClient.get<Page<ConversationTransfer>>(
+    `/conversations/${conversationId}/transfers`,
+    { params },
+  )
+  return data
+}
+
 export function useConversationsQuery(
-  params: PageParams & { status_filter?: ConversationStatus; customer_id?: string },
+  params: PageParams & {
+    status_filter?: ConversationStatus
+    customer_id?: string
+    assigned_agent_id?: string
+  },
 ) {
   return useQuery({
     queryKey: [...CONVERSATIONS_LIST_KEY, params],
@@ -188,5 +221,32 @@ export function useCreateNoteMutation(conversationId: string) {
   return useMutation({
     mutationFn: (body: string) => createNote(conversationId, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTES_KEY(conversationId) }),
+  })
+}
+
+/** Reassigns a conversation to another agent or department — see
+ * TransferDialog.tsx. Invalidates the conversation detail (assignment
+ * changed), the company-wide list (an "Assigned to" column and any "My
+ * conversations" filter both need to reflect it immediately — see
+ * InboxPage.tsx), and this conversation's own transfer-history feed. */
+export function useTransferConversationMutation(conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: ConversationTransferRequest) =>
+      transferConversation(conversationId, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversationId) })
+      void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+      void queryClient.invalidateQueries({ queryKey: TRANSFERS_KEY(conversationId) })
+    },
+  })
+}
+
+export function useTransfersQuery(conversationId: string | undefined, params: PageParams) {
+  return useQuery({
+    queryKey: [...TRANSFERS_KEY(conversationId ?? ''), params],
+    queryFn: () => fetchTransfers(conversationId as string, params),
+    enabled: Boolean(conversationId),
+    placeholderData: (previousData) => previousData,
   })
 }

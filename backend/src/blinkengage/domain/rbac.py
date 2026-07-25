@@ -55,6 +55,15 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("conversations.read", "View conversations"),
     Permission("conversations.manage", "Reply, assign, close conversations"),
     Permission("conversations.delete", "Permanently delete conversations"),
+    # A separate, narrower permission than conversations.manage: replying/
+    # closing/queue-assigning a conversation is routine agent work, but
+    # transferring it to another agent or department is a supervisory
+    # action this app's default Agent role should not have — granted to
+    # Owner (always, via the full-catalog set below) and Admin by
+    # default; "configurable" per the spec means via this same
+    # permission-catalog mechanism every other permission already uses,
+    # not a bespoke new setting.
+    Permission("conversations.transfer", "Transfer conversations to another agent or department"),
     # --- Reporting ---
     Permission("reports.read", "View reports and dashboards"),
     # --- Audit ---
@@ -114,6 +123,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "customers.manage",
             "conversations.read",
             "conversations.manage",
+            "conversations.transfer",
             "reports.read",
             "audit_logs.read",
             "channels.read",

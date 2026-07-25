@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from blinkengage.infrastructure.database.models.conversation import ConversationStatus
+from blinkengage.infrastructure.database.models.conversation_transfer import TransferTargetType
 from blinkengage.infrastructure.database.models.message import (
     AttachmentValidationStatus,
     DeliveryStatus,
@@ -23,6 +24,7 @@ class ConversationResponse(BaseModel):
     status: ConversationStatus
     queue_id: UUID | None
     assigned_agent_id: UUID | None
+    department_id: UUID | None
     last_message_at: datetime | None
     first_response_at: datetime | None
     sla_first_response_breached_at: datetime | None
@@ -34,9 +36,48 @@ class ConversationResponse(BaseModel):
 
 
 class ConversationUpdateRequest(BaseModel):
+    """``assigned_agent_id`` is deliberately not a field here — reassigning
+    a conversation to another agent (or department) always goes through
+    ``POST /conversations/{id}/transfer`` instead, which is gated by the
+    narrower ``conversations.transfer`` permission (not everyone who can
+    reply/close a conversation should be able to hand it to someone
+    else), and which records history + notifies the recipient. Letting
+    this generic PATCH also set ``assigned_agent_id`` would let any
+    ``conversations.manage`` principal bypass all of that."""
+
     status: ConversationStatus | None = None
-    assigned_agent_id: UUID | None = None
     queue_id: UUID | None = None
+
+
+class ConversationTransferRequest(BaseModel):
+    target_type: TransferTargetType
+    to_agent_id: UUID | None = None
+    to_department_id: UUID | None = None
+    note: str | None = Field(default=None, max_length=2_000)
+
+    @model_validator(mode="after")
+    def _check_target_matches_type(self) -> "ConversationTransferRequest":
+        if self.target_type is TransferTargetType.AGENT and self.to_agent_id is None:
+            raise ValueError("to_agent_id is required when target_type is 'agent'")
+        if self.target_type is TransferTargetType.DEPARTMENT and self.to_department_id is None:
+            raise ValueError("to_department_id is required when target_type is 'department'")
+        return self
+
+
+class ConversationTransferResponse(BaseModel):
+    id: UUID
+    conversation_id: UUID
+    target_type: TransferTargetType
+    from_agent_id: UUID | None
+    to_agent_id: UUID | None
+    to_department_id: UUID | None
+    to_queue_id: UUID | None
+    note: str | None
+    transferred_by_user_id: UUID | None
+    recipient_was_online: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class AttachmentResponse(BaseModel):

@@ -11,11 +11,12 @@ import { ConversationSidebar } from './ConversationSidebar'
 import { MessageThread } from './MessageThread'
 import { ReplyBox } from './ReplyBox'
 import { NotesPanel } from './NotesPanel'
+import { TransferHistoryPanel } from './TransferHistoryPanel'
 
 export function ConversationViewPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'messages' | 'notes'>('messages')
+  const [tab, setTab] = useState<'messages' | 'notes' | 'transfers'>('messages')
 
   const conversationQuery = useConversationQuery(conversationId)
   const customerQuery = useCustomerQuery(conversationQuery.data?.customer_id)
@@ -53,9 +54,10 @@ export function ConversationViewPage() {
           >
             <Tab label="Messages" value="messages" />
             <Tab label="Internal notes" value="notes" />
+            <Tab label="Transfer history" value="transfers" />
           </Tabs>
 
-          {tab === 'messages' ? (
+          {tab === 'messages' && (
             <>
               <MessageThread conversationId={conversation.id} />
               <ReplyBox
@@ -63,9 +65,9 @@ export function ConversationViewPage() {
                 onTyping={(isTyping) => sendTyping(conversation.id, isTyping)}
               />
             </>
-          ) : (
-            <NotesPanel conversationId={conversation.id} />
           )}
+          {tab === 'notes' && <NotesPanel conversationId={conversation.id} />}
+          {tab === 'transfers' && <TransferHistoryPanel conversationId={conversation.id} />}
         </Box>
 
         <Box sx={{ borderLeft: { md: 1 }, borderTop: { xs: 1, md: 0 }, borderColor: 'divider' }}>

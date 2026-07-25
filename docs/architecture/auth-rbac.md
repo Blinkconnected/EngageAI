@@ -119,6 +119,26 @@ current NIST guidance.
   itself), but no API surface exists yet to create/edit custom roles.
   Lands with Core CRM (Phase 3) or later, once there's a real admin UI
   consuming it.
+- **New permissions are not retroactively backfilled onto existing
+  companies, except where fixed one-off.** "Owner always holds the full
+  catalog" (above) is only actually true *at company-creation time* —
+  every "seed a new permission" migration before Sprint 2 Item 4
+  (Conversation Transfer, 2026-07-25) inserted the new `Permission` row
+  into the catalog but never inserted the corresponding `role_permissions`
+  rows for companies that already existed. That means `domain/rbac.py`'s
+  own docstring claim that Owner holds every permission "unconditionally"
+  has not been true in practice for any permission added after a
+  company's creation — an Owner at an older company can be missing a
+  permission a brand-new company's Owner has by default, with no code
+  path that surfaces or corrects the gap. Item 4's own migration
+  (`8a08ed1c4d83`) backfills `conversations.transfer` for every existing
+  company's Owner/Admin roles, fixing it for that one permission only —
+  every earlier permission migration remains unfixed. A proper fix needs
+  a dedicated migration (or a one-time reconciliation script) that
+  diffs each company's granted permissions against
+  `DEFAULT_ROLE_PERMISSIONS` and backfills the difference; not done here
+  since it's out of scope for a single feature's migration and deserves
+  its own review given it touches every company's role grants at once.
 - **A Postgres-backed test run.** The test suite runs against SQLite
   in-memory for speed and hermeticity (`tests/conftest.py`). This is a
   real, demonstrated blind spot: a `DateTime` column declared without

@@ -37,7 +37,11 @@ from blinkengage.infrastructure.repositories.channel_connection_log_repository i
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.conversation_transfer_repository import (
+    ConversationTransferRepository,
+)
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
+from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
@@ -167,6 +171,9 @@ def _build_services(session, container):
         provider_factory=factory,
         events=events,
         settings=settings,
+        transfers=ConversationTransferRepository(session),
+        agents=AgentRepository(session),
+        departments=DepartmentRepository(session),
     )
     agent_service = AgentService(
         session=session,

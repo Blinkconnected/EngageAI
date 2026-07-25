@@ -16,6 +16,10 @@ from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
 )
+from blinkengage.infrastructure.database.models.conversation_transfer import (
+    ConversationTransfer,
+    TransferTargetType,
+)
 from blinkengage.infrastructure.database.models.customer import Customer, CustomerTag, Tag
 from blinkengage.infrastructure.database.models.customer_channel_identity import (
     CustomerChannelIdentity,
@@ -90,6 +94,7 @@ __all__ = [
     "Conversation",
     "ConversationDailyStats",
     "ConversationStatus",
+    "ConversationTransfer",
     "CsatDailyStats",
     "CsatResponse",
     "Customer",
@@ -124,6 +129,7 @@ __all__ = [
     "Tag",
     "Team",
     "TeamMembership",
+    "TransferTargetType",
     "User",
     "UserRole",
     "WorkflowDefinition",

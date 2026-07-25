@@ -23,8 +23,24 @@ channel_config_id (FK -> channel_configs)
 external_thread_id (nullable, unique per channel_config_id among active rows)
 status            open | pending | resolved | closed
 assigned_agent_id (FK -> agents, SET NULL, nullable)
+department_id (FK -> departments, SET NULL, nullable — Sprint 2 Item 4, see below)
 last_message_at (nullable)
 created_at / updated_at / deleted_at
+
+conversation_transfers
+-----------------------
+id (PK)
+company_id (FK -> companies, CASCADE)
+conversation_id (FK -> conversations, CASCADE)
+target_type        agent | department | queue (future-ready, unused today)
+from_agent_id (FK -> agents, SET NULL, nullable — the assignment before this transfer)
+to_agent_id (FK -> agents, SET NULL, nullable)
+to_department_id (FK -> departments, SET NULL, nullable)
+to_queue_id (FK -> queues, SET NULL, nullable — unused today)
+note (nullable)
+transferred_by_user_id (FK -> users, SET NULL, nullable)
+recipient_was_online (bool — see decision #6 below)
+created_at              (append-only: no updated_at/deleted_at — a transfer is a fact, never edited)
 
 messages
 --------
@@ -105,7 +121,48 @@ created_at
    that isn't there. Documenting the gap here rather than stubbing a
    scanner that always says "clean" is the honest choice.
 
-5. **Outbound replies go through the same `ChannelProviderFactory` the
+5. **`Conversation.department_id` is a genuinely new, first-class
+   routing field — not the same thing as `Queue.department_id`.** The
+   latter is documented in `docs/architecture/queues-routing.md` as "an
+   organizational label, not an eligibility filter." This one *is* the
+   conversation's actual current routing target: a department transfer
+   sets it and clears `assigned_agent_id`; an agent transfer sets
+   `assigned_agent_id` and clears it. The two fields are mutually
+   exclusive by construction (`ConversationService.transfer()`), never by
+   a DB constraint, matching this codebase's general preference for
+   service-layer invariants over check constraints for anything that
+   needs a domain error message rather than a raw DB error.
+
+6. **Transfers are append-only history, not a mutable "current assignment"
+   annotation.** `ConversationTransfer` rows are never updated or
+   soft-deleted — each one is an immutable fact ("at this time, this
+   conversation moved from X to Y"), read back via
+   `GET /conversations/{id}/transfers` for the conversation view's
+   "Transfers" tab. `recipient_was_online` is computed once, at transfer
+   time, from `AgentStatus` — it answers "was the receiving agent
+   connected when this happened," not "is the transfer still pending
+   acceptance." There is no acceptance workflow: reassignment happens
+   immediately (`assigned_agent_id`/`department_id` update in the same
+   transaction as the history row), matching this codebase's existing
+   assignment model, which has never required an agent to confirm
+   incoming work. An offline recipient still gets a durable `Notification`
+   row via the existing outbox → notification-consumer pipeline — no new
+   "return from offline" mechanism needed, since the badge/poll flow
+   already surfaces unread notifications whenever that agent is next
+   active. For a department-target transfer, `recipient_was_online`
+   reflects whether *any* current member of that department was online at
+   transfer time (false if the department has no agents at all).
+
+7. **Reassignment is transfer-only.** `PATCH /conversations/{id}` no
+   longer accepts `assigned_agent_id` (the field was removed from
+   `ConversationUpdateRequest`) — every reassignment must go through
+   `POST /conversations/{id}/transfer` so it always produces a history row,
+   an audit-log entry, and a notification. The generic PATCH endpoint
+   silently ignores an `assigned_agent_id` key in its payload rather than
+   422ing, since the schema no longer declares the field and nothing in
+   this codebase's request models sets `extra="forbid"`.
+
+8. **Outbound replies go through the same `ChannelProviderFactory` the
    webhook route and WebSocket gateway already use — no new provider
    dispatch mechanism.** `ConversationService.send_reply` loads the
    conversation's `ChannelConfig`, builds the provider, calls
@@ -122,7 +179,8 @@ created_at
 ## API
 
 `GET /conversations`, `GET /conversations/{id}`,
-`PATCH /conversations/{id}` (status transitions, assignment) — all
+`PATCH /conversations/{id}` (status transitions only — assignment moved
+to the transfer endpoint below, Sprint 2 Item 4) — all
 `conversations.read`/`conversations.manage` (already seeded back in M6, no
 new permissions needed). `GET /conversations/{id}/messages` (paginated),
 `POST /conversations/{id}/messages` (send a reply — `conversations.manage`),
@@ -130,6 +188,22 @@ new permissions needed). `GET /conversations/{id}/messages` (paginated),
 `GET /conversations/{id}/attachments/{attachment_id}/download`
 (`conversations.read`). `DELETE /conversations/{id}` uses the existing
 `conversations.delete` permission (soft-delete).
+
+`POST /conversations/{id}/transfer` (Sprint 2 Item 4, `conversations.transfer`)
+— body is `{target_type: "agent"|"department"|"queue", to_agent_id?,
+to_department_id?, note?}`, validated so the target id matching
+`target_type` is required. `queue` is future-ready architecture only per
+the milestone's own requirement: the `TransferTargetType` enum and the
+`ConversationTransfer.to_queue_id` column both already exist, but the
+request schema has no `to_queue_id` input field and
+`ConversationService.transfer()`'s queue branch only unassigns the
+conversation (clears `assigned_agent_id`/`department_id`, never sets
+`to_queue_id`) — a real queue-transfer implementation is future work, not
+shipped here. Returns the created `ConversationTransfer`. `GET
+/conversations/{id}/transfers` (`conversations.read`, paginated,
+newest-first) backs the conversation view's "Transfers" tab and
+`GET /conversations?assigned_agent_id=` (any read-scoped caller) backs
+the Inbox's "My conversations only" toggle.
 
 `MessageResponse.attachments` (Sprint 2 "Pilot Feedback & UX
 Improvements", Item 3) — populated by both `GET .../messages` and
@@ -180,3 +254,23 @@ and reproduced as a raw request against the live backend — the server
 flatly rejects with `400 Missing boundary in multipart`. Upload from a
 real browser could not have worked at all before this fix. See
 `docs/ROADMAP.md`'s Item 3 entry for the full verification chain.
+
+**Sprint 2 "Pilot Feedback & UX Improvements", Item 4 (2026-07-25)**:
+Conversation Transfer — 15 new backend tests (transfer-to-agent and
+transfer-to-department including cross-field clearing, note + full
+history, RBAC denial for a plain Agent, audit-log creation, 422/404
+validation, SLA-timer/message-history preservation, `recipient_was_online`
+correctness, inbox filtering, and PATCH no longer reassigning) plus 2 new
+notification-consumer tests (agent fanout, department fanout with a
+control agent outside the department) — 583 backend tests total. 5 new
+frontend tests — 83 total. Full chain verified live against the
+production Docker stack with two real logged-in sessions (an Owner and
+an Agent connected over the real `/ws/agent` WebSocket gateway): a
+transfer to the connected agent delivered a `conversation.transferred`
+notification frame over their live socket, correctly recording
+`recipient_was_online: true`; a follow-up department transfer correctly
+cleared the agent assignment and recorded `recipient_was_online: false`
+(the target department had no members). Both transfers appeared in
+`GET /audit-logs` with full detail. See `docs/ROADMAP.md`'s Item 4 entry
+for the full verification chain, including the pre-existing
+permission-backfill gap this milestone discovered and partially fixed.

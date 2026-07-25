@@ -1297,6 +1297,112 @@ its own commit.
   by the live-backend verification above instead. 81 frontend tests total
   (was 76), tsc/eslint clean.
 
+- [x] **Item 4: Conversation Transfer (2026-07-25)**
+  Agents/Owners/Admins can transfer a conversation to another agent or to
+  a department, with an optional note, full history, an audit-log entry,
+  a real-time notification to the receiving agent, and immediate
+  inbox-visibility changes for both the old and new owner. New
+  `POST /conversations/{id}/transfer` and `GET /conversations/{id}/transfers`
+  endpoints, gated by a new `conversations.transfer` permission (granted
+  to Owner/Admin by default — see the RBAC decision below).
+
+  **RBAC**: rather than inventing a fourth `SystemRole` ("Supervisor")
+  with no existing role-editor anywhere in this codebase to make it
+  meaningfully configurable, "Owners/Admins/Supervisors (configurable)" is
+  satisfied the same way every other granular permission already is: a
+  single new permission code (`conversations.transfer`) in the existing
+  catalog/`RolePermission` mechanism, granted to Owner and Admin by
+  default. This surfaced a real, **pre-existing, systemic gap**: every
+  prior "seed a new permission" migration in this codebase's history only
+  ever inserted into the `permissions` catalog table and never backfilled
+  `role_permissions` for companies that already existed at the time —
+  meaning `domain/rbac.py`'s own docstring claim that "Owner is granted
+  every permission... unconditionally" has not actually been true for any
+  permission added after a company's creation. Fixed for this one
+  permission (the new seed migration backfills every existing company's
+  Owner/Admin roles, verified against a real pre-existing company on a
+  throwaway Postgres instance before shipping); **not** retroactively
+  fixed for every past permission, which remains a known, accepted,
+  out-of-scope gap for a future dedicated migration to address.
+
+  **"Pending" for an offline recipient** (requirement: "if the new agent
+  is offline, mark the transfer as pending and notify when they return")
+  is implemented as an informational `recipient_was_online: bool` on each
+  history row, computed from `AgentStatus` at transfer time — not a new
+  "accept/reject" workflow, which would be a real behavioral change this
+  codebase's assignment model has never had. The conversation is
+  reassigned immediately regardless (requirements #8/#9 say "immediately",
+  which a pending-acceptance gate would contradict); "notify when they
+  return" is satisfied for free by the existing durable
+  `Notification` row + badge/poll mechanism — no new infrastructure.
+
+  **New `Conversation.department_id`**, distinct from `Queue.department_id`
+  (an organizational label only, per `docs/architecture/queues-routing.md`)
+  — this one is the conversation's actual current routing target, needed
+  because the spec treats "transfer to a department" as equally first-class
+  as "transfer to an agent." A department transfer clears
+  `assigned_agent_id`; an agent transfer clears `department_id`.
+
+  Backend: `ConversationTransfer` model (append-only, no soft-delete),
+  `ConversationTransferRepository`, `ConversationService.transfer()`/
+  `list_transfers()`, one `conversation.transferred` `DomainEvent` per
+  transfer — audit-log and notification-fanout consumers both already
+  subscribe to the existing outbox, so requirements #6/#7 needed zero new
+  publishing infrastructure, only a new routing-key binding on the
+  existing notification consumer (fans out to every agent in a department
+  transfer, not just one). The generic `PATCH /conversations/{id}` no
+  longer accepts `assigned_agent_id` — reassignment is transfer-only now,
+  so history is never silently bypassed.
+
+  Frontend: `TransferDialog` (search-as-you-type agent/department picker
+  via MUI `Autocomplete`, optional note, an explicit confirm step),
+  `TransferHistoryPanel` (new "Transfers" tab on the conversation view),
+  and a real `assigned_agent_id` filter — the Inbox had no per-agent view
+  at all before this (it was company-wide), so a "My conversations only"
+  toggle was added to give requirements #8/#9 ("remove/add from the
+  agent's inbox immediately") an actual UI surface to apply to. A
+  correctness edge case found and fixed while building that toggle: a
+  pure Owner with no `Agent` record now sees a distinct "No agent profile"
+  empty state, instead of either a 422 (a bogus filter value) or silently
+  falling back to showing every conversation.
+
+  15 new backend tests (agent-target and department-target transfer
+  including cross-clearing, note + full history — using set-membership
+  assertions for a same-second pair, plus a dedicated ordering test with
+  explicit DB-manipulated timestamps to sidestep SQLite's second-resolution
+  clock —, 403 for a plain Agent, audit-log creation, 422 for a mismatched
+  target, 404 for a nonexistent agent/department, SLA-timer and message-
+  history preservation, `recipient_was_online` correctness for both an
+  offline and a since-brought-online agent, inbox `assigned_agent_id`
+  filtering, and confirmation the generic PATCH no longer reassigns an
+  agent) plus 2 new notification-consumer tests (agent-target fanout,
+  department-target fanout to every member with a control agent outside
+  the department proving no false-positive). 583 backend tests total (was
+  568), ruff/mypy clean. 5 new frontend tests (transfer flow end-to-end,
+  permission-gated button visibility, the "My conversations only" filter,
+  and the "no agent profile" empty state) — 83 frontend tests total (was
+  81), tsc/eslint clean.
+
+  Verified live against the production Docker stack: migration applied
+  cleanly against real Postgres, and the permission backfill was
+  confirmed correct against this sandbox's 10 pre-existing companies
+  (Owner+Admin gained `conversations.transfer`, Agent did not). End-to-end
+  with two real logged-in sessions: an Owner and an Agent (via a live
+  WebSocket connection on `/ws/agent`, the same gateway the frontend
+  uses) — transferring the conversation to that agent delivered a
+  `conversation.transferred` notification frame over the agent's live
+  socket within the same request, with `recipient_was_online: true`
+  correctly recorded; a follow-up department transfer correctly cleared
+  the agent assignment, recorded `from_agent_id`, and (with no agent yet
+  in that department) correctly recorded `recipient_was_online: false`.
+  Also confirmed live: both transfers appear in `GET /audit-logs` with
+  full detail, a plain Agent gets 403 attempting a transfer, a
+  nonexistent agent/department target 404s, a mismatched
+  target-type/target-id pair 422s, the generic `PATCH` endpoint silently
+  ignores an `assigned_agent_id` payload instead of reassigning, and the
+  inbox's `assigned_agent_id` filter correctly reflects the post-transfer
+  state.
+
 ---
 
 ## Working agreement

@@ -9,6 +9,7 @@ export interface Conversation {
   status: ConversationStatus
   queue_id: string | null
   assigned_agent_id: string | null
+  department_id: string | null
   last_message_at: string | null
   first_response_at: string | null
   sla_first_response_breached_at: string | null
@@ -19,8 +20,31 @@ export interface Conversation {
 
 export interface ConversationUpdateRequest {
   status?: ConversationStatus
-  assigned_agent_id?: string | null
   queue_id?: string | null
+}
+
+export type TransferTargetType = 'agent' | 'department' | 'queue'
+
+export interface ConversationTransferRequest {
+  target_type: TransferTargetType
+  to_agent_id?: string | null
+  to_department_id?: string | null
+  note?: string | null
+}
+
+/** Matches the backend's `ConversationTransferResponse`. */
+export interface ConversationTransfer {
+  id: string
+  conversation_id: string
+  target_type: TransferTargetType
+  from_agent_id: string | null
+  to_agent_id: string | null
+  to_department_id: string | null
+  to_queue_id: string | null
+  note: string | null
+  transferred_by_user_id: string | null
+  recipient_was_online: boolean
+  created_at: string
 }
 
 export type MessageDirection = 'inbound' | 'outbound'

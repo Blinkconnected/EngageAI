@@ -28,12 +28,17 @@ from blinkengage.domain.exceptions import (
 )
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
+from blinkengage.infrastructure.database.models.agent import AgentStatus
 from blinkengage.infrastructure.database.models.channel_connection_log import (
     ChannelConnectionLog,
 )
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
+)
+from blinkengage.infrastructure.database.models.conversation_transfer import (
+    ConversationTransfer,
+    TransferTargetType,
 )
 from blinkengage.infrastructure.database.models.message import (
     AttachmentValidationStatus,
@@ -43,6 +48,7 @@ from blinkengage.infrastructure.database.models.message import (
     MessageStatus,
     MessageType,
 )
+from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -52,7 +58,11 @@ from blinkengage.infrastructure.repositories.channel_connection_log_repository i
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.conversation_transfer_repository import (
+    ConversationTransferRepository,
+)
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
+from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.message_attachment_repository import (
     MessageAttachmentRepository,
 )
@@ -85,6 +95,9 @@ class ConversationService:
         provider_factory: ChannelProviderFactory,
         events: DomainEventPublisher,
         settings: Settings,
+        transfers: ConversationTransferRepository,
+        agents: AgentRepository,
+        departments: DepartmentRepository,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -96,6 +109,9 @@ class ConversationService:
         self._provider_factory = provider_factory
         self._events = events
         self._settings = settings
+        self._transfers = transfers
+        self._agents = agents
+        self._departments = departments
 
     async def get(self, *, company_id: UUID, conversation_id: UUID) -> Conversation:
         conversation = await self._conversations.get_by_id(
@@ -113,6 +129,7 @@ class ConversationService:
         limit: int,
         status: ConversationStatus | None,
         customer_id: UUID | None = None,
+        assigned_agent_id: UUID | None = None,
     ) -> tuple[list[Conversation], int]:
         return await self._conversations.list_for_company(
             company_id=company_id,
@@ -120,6 +137,7 @@ class ConversationService:
             limit=limit,
             status=status,
             customer_id=customer_id,
+            assigned_agent_id=assigned_agent_id,
         )
 
     async def update(
@@ -192,6 +210,114 @@ class ConversationService:
                 )
             )
         return conversation
+
+    async def transfer(
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        target_type: TransferTargetType,
+        to_agent_id: UUID | None,
+        to_department_id: UUID | None,
+        note: str | None,
+        actor_user_id: UUID | None,
+    ) -> ConversationTransfer:
+        """Reassigns a conversation to another agent or department,
+        recording a permanent history row (``ConversationTransfer``) and
+        publishing ``conversation.transferred`` — which both lands an
+        ``AuditLog`` row for free (the audit-log consumer binds every
+        event) and drives the recipient notification/realtime push (see
+        ``infrastructure/events/consumers/notification_consumer.py``).
+
+        Unlike ``update()``'s ``assigned_agent_id``/``queue_id`` params
+        (which only ever *set* a field, never clear one — ``None`` means
+        "leave unchanged" there), a transfer always fully replaces the
+        conversation's current routing: transferring to an agent clears
+        any department routing, and transferring to a department clears
+        the direct agent assignment — the conversation has exactly one
+        "current owner" at a time, never both.
+
+        SLA timers (``first_response_at``, ``sla_*_breached_at``) and
+        conversation history (messages, notes) are untouched — this only
+        ever writes ``assigned_agent_id``/``department_id``/``queue_id``.
+        """
+        conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+        from_agent_id = conversation.assigned_agent_id
+
+        recipient_was_online = False
+        if target_type is TransferTargetType.AGENT:
+            if to_agent_id is None:
+                raise EntityNotFoundError("Agent", None)
+            agent = await self._agents.get_by_id(company_id=company_id, agent_id=to_agent_id)
+            if agent is None:
+                raise EntityNotFoundError("Agent", to_agent_id)
+            conversation.assigned_agent_id = to_agent_id
+            conversation.department_id = None
+            recipient_was_online = agent.status != AgentStatus.OFFLINE
+        elif target_type is TransferTargetType.DEPARTMENT:
+            if to_department_id is None:
+                raise EntityNotFoundError("Department", None)
+            department = await self._departments.get_by_id(
+                company_id=company_id, department_id=to_department_id
+            )
+            if department is None:
+                raise EntityNotFoundError("Department", to_department_id)
+            conversation.assigned_agent_id = None
+            conversation.department_id = to_department_id
+            department_agents = await self._agents.list_for_department(
+                company_id=company_id, department_id=to_department_id
+            )
+            recipient_was_online = any(a.status != AgentStatus.OFFLINE for a in department_agents)
+        else:
+            # QUEUE — future-ready architecture only, not reachable via
+            # the API schema today (see ConversationTransferRequest).
+            conversation.assigned_agent_id = None
+            conversation.department_id = None
+
+        transfer = await self._transfers.add(
+            ConversationTransfer(
+                company_id=company_id,
+                conversation_id=conversation.id,
+                target_type=target_type,
+                from_agent_id=from_agent_id,
+                to_agent_id=to_agent_id if target_type is TransferTargetType.AGENT else None,
+                to_department_id=(
+                    to_department_id if target_type is TransferTargetType.DEPARTMENT else None
+                ),
+                note=note,
+                transferred_by_user_id=actor_user_id,
+                recipient_was_online=recipient_was_online,
+            )
+        )
+        await self._events.publish(
+            DomainEvent(
+                event_type="conversation.transferred",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                actor_user_id=actor_user_id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "target_type": target_type.value,
+                    "from_agent_id": str(from_agent_id) if from_agent_id else None,
+                    "to_agent_id": str(to_agent_id) if to_agent_id else None,
+                    "to_department_id": str(to_department_id) if to_department_id else None,
+                    "note": note,
+                },
+            )
+        )
+        return transfer
+
+    async def list_transfers(
+        self, *, company_id: UUID, conversation_id: UUID, offset: int, limit: int
+    ) -> tuple[list[ConversationTransfer], int]:
+        # Confirms the conversation exists (and belongs to this company)
+        # before exposing its transfer history — 404s consistently with
+        # every other per-conversation sub-resource (e.g. messages).
+        await self.get(company_id=company_id, conversation_id=conversation_id)
+        return await self._transfers.list_for_conversation(
+            conversation_id=conversation_id, offset=offset, limit=limit
+        )
 
     async def delete(
         self, *, company_id: UUID, conversation_id: UUID, actor_user_id: UUID | None = None

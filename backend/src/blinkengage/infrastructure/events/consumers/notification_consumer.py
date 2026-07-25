@@ -7,8 +7,9 @@ company configures) and creates in-app ``Notification`` rows. See
 Companies can layer *additional*, custom notifications on top via the
 Workflow Engine's ``create_notification`` action (M19's ``publish_event``
 escape hatch made concrete) — this consumer only covers the built-in
-baseline: an agent being assigned a conversation, and an SLA breach on
-one they're handling.
+baseline: an agent being assigned a conversation, an SLA breach on one
+they're handling, and a conversation being transferred to them or their
+department.
 """
 
 import asyncio
@@ -40,7 +41,11 @@ from blinkengage.infrastructure.repositories.notification_repository import (
 logger = get_logger(__name__)
 
 QUEUE_NAME = "notifications"
-ROUTING_KEYS = ["conversation.assignment_changed", "conversation.sla_breached"]
+ROUTING_KEYS = [
+    "conversation.assignment_changed",
+    "conversation.sla_breached",
+    "conversation.transferred",
+]
 
 
 async def handle_event(
@@ -81,6 +86,48 @@ async def handle_event(
             body="A conversation has been assigned to you.",
             payload={"conversation_id": str(conversation.id)},
         )
+        return
+
+    if event_type == "conversation.transferred":
+        target_type = payload.get("target_type")
+        note = payload.get("note")
+        note_suffix = f' Note: "{note}"' if note else ""
+
+        if target_type == "agent":
+            agent_id_raw = payload.get("to_agent_id")
+            if not agent_id_raw:
+                return
+            agent = await AgentRepository(session).get_by_id(
+                company_id=company_id, agent_id=UUID(agent_id_raw)
+            )
+            if agent is None:
+                return
+            await notifications.create(
+                company_id=company_id,
+                user_id=agent.user_id,
+                notification_type=event_type,
+                title="A conversation was transferred to you",
+                body=f"A conversation was transferred to you.{note_suffix}",
+                payload={"conversation_id": str(conversation.id)},
+            )
+        elif target_type == "department":
+            department_id_raw = payload.get("to_department_id")
+            if not department_id_raw:
+                return
+            department_agents = await AgentRepository(session).list_for_department(
+                company_id=company_id, department_id=UUID(department_id_raw)
+            )
+            for agent in department_agents:
+                await notifications.create(
+                    company_id=company_id,
+                    user_id=agent.user_id,
+                    notification_type=event_type,
+                    title="A conversation was transferred to your department",
+                    body=f"A conversation was transferred to your department.{note_suffix}",
+                    payload={"conversation_id": str(conversation.id)},
+                )
+        # target_type == "queue": future-ready only, no recipient to
+        # notify yet — see ConversationTransfer.target_type's docstring.
         return
 
     if event_type == "conversation.sla_breached":

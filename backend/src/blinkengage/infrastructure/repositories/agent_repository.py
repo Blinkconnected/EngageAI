@@ -31,6 +31,22 @@ class AgentRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_for_department(
+        self, *, company_id: UUID, department_id: UUID
+    ) -> list[Agent]:
+        """Every active agent in a department — used to fan out a
+        "conversation transferred to your department" notification to
+        everyone eligible to pick it up, since a department-target
+        transfer (unlike an agent-target one) has no single recipient."""
+        result = await self._session.execute(
+            select(Agent).where(
+                Agent.company_id == company_id,
+                Agent.department_id == department_id,
+                Agent.deleted_at.is_(None),
+            )
+        )
+        return list(result.scalars().all())
+
     async def list_for_company(
         self, *, company_id: UUID, offset: int, limit: int
     ) -> tuple[list[Agent], int]:

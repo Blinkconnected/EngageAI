@@ -191,6 +191,112 @@ async def test_sla_breached_with_no_assigned_agent_creates_no_notification(
         assert result.scalar_one().assigned_agent_id is None
 
 
+async def test_transfer_to_agent_notifies_the_new_agent(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    agent_id, user_id = await _create_agent(client, owner_headers, "transfer-target@acme.example")
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.transferred",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "target_type": "agent",
+                    "to_agent_id": agent_id,
+                    "to_department_id": None,
+                    "note": "Please handle this one, it's urgent",
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        notifications, total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert total == 1
+    assert notifications[0].notification_type == "conversation.transferred"
+    assert "urgent" in notifications[0].body
+    assert notifications[0].payload["conversation_id"] == conversation_id
+
+
+async def test_transfer_to_department_notifies_every_agent_in_it(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    department_response = await client.post(
+        "/api/v1/departments", json={"name": "Billing"}, headers=owner_headers
+    )
+    department_id = department_response.json()["id"]
+
+    _, user_id_1 = await _create_agent(client, owner_headers, "billing1@acme.example")
+    _, user_id_2 = await _create_agent(client, owner_headers, "billing2@acme.example")
+    # A third agent not in this department must not be notified.
+    _, user_id_other = await _create_agent(client, owner_headers, "other-dept@acme.example")
+
+    agents_response = await client.get("/api/v1/agents", headers=owner_headers)
+    for agent in agents_response.json()["items"]:
+        if agent["user_id"] in (user_id_1, user_id_2):
+            await client.patch(
+                f"/api/v1/agents/{agent['id']}",
+                json={"department_id": department_id},
+                headers=owner_headers,
+            )
+
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.transferred",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "target_type": "department",
+                    "to_agent_id": None,
+                    "to_department_id": department_id,
+                    "note": None,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        notifications_repo = NotificationRepository(session)
+        for user_id in (user_id_1, user_id_2):
+            notifications, total = await notifications_repo.list_for_user(
+                company_id=UUID(company_id), user_id=UUID(user_id), offset=0, limit=10,
+                unread_only=False,
+            )
+            assert total == 1
+            assert notifications[0].notification_type == "conversation.transferred"
+
+        other_notifications, other_total = await notifications_repo.list_for_user(
+            company_id=UUID(company_id), user_id=UUID(user_id_other), offset=0, limit=10,
+            unread_only=False,
+        )
+        assert other_total == 0
+
+
 async def test_unrelated_event_type_is_ignored(app: Any) -> None:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:

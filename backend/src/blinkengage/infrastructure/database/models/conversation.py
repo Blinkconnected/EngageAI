@@ -89,6 +89,18 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     assigned_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("agents.id", ondelete="SET NULL"), default=None, index=True
     )
+    # Set when a transfer targets a department rather than a specific
+    # agent (see ConversationService.transfer(), Sprint 2 "Pilot
+    # Feedback & UX Improvements" Item 4) — the conversation is then
+    # unassigned (assigned_agent_id=None) and "owned" by the department's
+    # shared pool until some agent in it picks it up. Independent of
+    # Queue.department_id (an organizational label on a queue, not an
+    # eligibility filter — see docs/architecture/queues-routing.md):
+    # this column is the conversation's own current routing target, set
+    # directly by a transfer, not derived through a queue.
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("departments.id", ondelete="SET NULL"), default=None, index=True
+    )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     # --- M14: queues, assignment, SLA (see docs/architecture/queues-routing.md) ---

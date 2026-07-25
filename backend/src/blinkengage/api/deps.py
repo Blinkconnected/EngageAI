@@ -66,6 +66,9 @@ from blinkengage.infrastructure.repositories.company_repository import CompanyRe
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
+from blinkengage.infrastructure.repositories.conversation_transfer_repository import (
+    ConversationTransferRepository,
+)
 from blinkengage.infrastructure.repositories.csat_repository import CsatResponseRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
@@ -401,6 +404,9 @@ def get_conversation_service(
         provider_factory=provider_factory,
         events=events,
         settings=settings,
+        transfers=ConversationTransferRepository(session),
+        agents=AgentRepository(session),
+        departments=DepartmentRepository(session),
     )
 
 
@@ -422,6 +428,9 @@ def get_conversation_service_ws(
         provider_factory=provider_factory,
         events=events,
         settings=settings,
+        transfers=ConversationTransferRepository(session),
+        agents=AgentRepository(session),
+        departments=DepartmentRepository(session),
     )
 
 

@@ -12,6 +12,8 @@ from blinkengage.api.deps import (
 from blinkengage.api.schemas.conversation import (
     AttachmentResponse,
     ConversationResponse,
+    ConversationTransferRequest,
+    ConversationTransferResponse,
     ConversationUpdateRequest,
     MessageResponse,
     SendMessageRequest,
@@ -49,6 +51,7 @@ async def list_conversations(
     page_params: Annotated[PageParams, Depends()],
     status_filter: ConversationStatus | None = None,
     customer_id: UUID | None = None,
+    assigned_agent_id: UUID | None = None,
 ) -> Page[ConversationResponse]:
     items, total = await service.list_conversations(
         company_id=auth.company_id,
@@ -56,6 +59,7 @@ async def list_conversations(
         limit=page_params.page_size,
         status=status_filter,
         customer_id=customer_id,
+        assigned_agent_id=assigned_agent_id,
     )
     return Page(
         items=[ConversationResponse.model_validate(item) for item in items],
@@ -86,11 +90,57 @@ async def update_conversation(
         company_id=auth.company_id,
         conversation_id=conversation_id,
         status=payload.status,
-        assigned_agent_id=payload.assigned_agent_id,
+        assigned_agent_id=None,
         queue_id=payload.queue_id,
         actor_user_id=auth.user_id,
     )
     return ConversationResponse.model_validate(conversation)
+
+
+@router.post(
+    "/{conversation_id}/transfer",
+    response_model=ConversationTransferResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def transfer_conversation(
+    conversation_id: UUID,
+    payload: ConversationTransferRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.transfer"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> ConversationTransferResponse:
+    transfer = await service.transfer(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        target_type=payload.target_type,
+        to_agent_id=payload.to_agent_id,
+        to_department_id=payload.to_department_id,
+        note=payload.note,
+        actor_user_id=auth.user_id,
+    )
+    return ConversationTransferResponse.model_validate(transfer)
+
+
+@router.get(
+    "/{conversation_id}/transfers", response_model=Page[ConversationTransferResponse]
+)
+async def list_conversation_transfers(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    page_params: Annotated[PageParams, Depends()],
+) -> Page[ConversationTransferResponse]:
+    items, total = await service.list_transfers(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        offset=page_params.offset,
+        limit=page_params.page_size,
+    )
+    return Page(
+        items=[ConversationTransferResponse.model_validate(item) for item in items],
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+    )
 
 
 @router.post("/{conversation_id}/csat-survey-link", response_model=CsatSurveyLinkResponse)

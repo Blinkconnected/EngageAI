@@ -57,6 +57,7 @@ class ConversationRepository:
         limit: int,
         status: ConversationStatus | None = None,
         customer_id: UUID | None = None,
+        assigned_agent_id: UUID | None = None,
     ) -> tuple[list[Conversation], int]:
         base = select(Conversation).where(
             Conversation.company_id == company_id, Conversation.deleted_at.is_(None)
@@ -65,6 +66,8 @@ class ConversationRepository:
             base = base.where(Conversation.status == status)
         if customer_id is not None:
             base = base.where(Conversation.customer_id == customer_id)
+        if assigned_agent_id is not None:
+            base = base.where(Conversation.assigned_agent_id == assigned_agent_id)
         total = (
             await self._session.execute(
                 select(func.count()).select_from(base.with_only_columns(Conversation.id).subquery())
