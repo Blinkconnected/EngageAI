@@ -21,7 +21,7 @@ import asyncpg
 
 from blinkengage.application.services.permission_sync_service import PermissionSyncService
 from blinkengage.core.config import get_settings
-from blinkengage.core.migrate import _ADVISORY_LOCK_KEY
+from blinkengage.core.migrate import acquire_advisory_lock, release_advisory_lock
 from blinkengage.infrastructure.database.session import (
     create_engine,
     create_session_factory,
@@ -34,7 +34,7 @@ async def main() -> int:
     lock_url = settings.database_url.replace("postgresql+asyncpg", "postgresql")
     lock_conn = await asyncpg.connect(lock_url)
     try:
-        await lock_conn.execute("SELECT pg_advisory_lock($1)", _ADVISORY_LOCK_KEY)
+        await acquire_advisory_lock(lock_conn)
         engine = create_engine(settings)
         try:
             session_factory = create_session_factory(engine)
@@ -43,7 +43,7 @@ async def main() -> int:
         finally:
             await engine.dispose()
     finally:
-        await lock_conn.execute("SELECT pg_advisory_unlock($1)", _ADVISORY_LOCK_KEY)
+        await release_advisory_lock(lock_conn)
         await lock_conn.close()
 
     print(

@@ -141,6 +141,7 @@ class CreateNotificationAction(WorkflowAction):
         if conversation_id and "conversation_id" not in notification_payload:
             notification_payload["conversation_id"] = conversation_id
 
+        event_id_raw = context.event.get("id")
         notification = await context.notifications.create(
             company_id=context.company_id,
             user_id=user_id,
@@ -148,6 +149,7 @@ class CreateNotificationAction(WorkflowAction):
             title=title,
             body=body,
             payload=notification_payload,
+            source_event_id=UUID(event_id_raw) if event_id_raw else None,
         )
         return {"notification_id": str(notification.id), "user_id": str(user_id)}
 

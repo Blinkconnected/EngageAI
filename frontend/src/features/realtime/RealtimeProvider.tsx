@@ -3,11 +3,40 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAppSelector } from '../../app/hooks'
 import { selectIsAuthenticated } from '../auth/authSlice'
 import { store } from '../../app/store'
-import { NOTIFICATIONS_KEY, UNREAD_COUNT_KEY } from '../notifications/api'
+import { playNotificationSound, showBrowserNotification } from '../notifications/deliveryEffects'
+import {
+  NOTIFICATIONS_KEY,
+  PREFERENCES_KEY,
+  UNREAD_COUNT_KEY,
+  useNotificationPreferencesQuery,
+} from '../notifications/api'
+import type { NotificationChannel, NotificationPreference } from '../notifications/types'
 import { RealtimeContext } from './context'
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL ?? '/api/v1/ws'
 const RECONNECT_DELAY_MS = 3000
+
+interface NotificationFrame {
+  type?: string
+  notification_type?: string
+  title?: string
+  body?: string
+}
+
+/** Absence of a cached preference (not yet fetched, or never
+ * overridden) means enabled — same "opt-out, default-on" behavior the
+ * backend itself uses when no preference row exists. */
+function isChannelEnabled(
+  queryClient: ReturnType<typeof useQueryClient>,
+  notificationType: string,
+  channel: NotificationChannel,
+): boolean {
+  const preferences = queryClient.getQueryData<NotificationPreference[]>(PREFERENCES_KEY)
+  const preference = preferences?.find(
+    (item) => item.notification_type === notificationType && item.channel === channel,
+  )
+  return preference?.enabled ?? true
+}
 
 /**
  * One WebSocket connection per authenticated session, mounted once in
@@ -17,10 +46,25 @@ const RECONNECT_DELAY_MS = 3000
  * convenience that invalidates the notifications/unread-count queries;
  * GET /notifications remains the durable source of truth those queries
  * poll independently either way.
+ *
+ * Two frame types drive this: `notification` (a brand-new notification —
+ * also triggers the browser-notification/sound delivery effects, each
+ * gated by that notification_type's cached preference) and
+ * `notifications_changed` (read-state changed on *this* user's inbox
+ * from some other connection — a mark-read/mark-all-read in another
+ * browser tab or device — which only needs a cache refresh, never a
+ * sound/popup for something that isn't new).
  */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
   const queryClient = useQueryClient()
+  // Subscribing here (not just relying on NotificationPreferencesPanel's
+  // own query) is what keeps PREFERENCES_KEY populated for the entire
+  // authenticated session, in every tab — otherwise a tab that never
+  // opened Settings > Notifications > Preferences would read an empty
+  // cache in isChannelEnabled() below and silently ignore every saved
+  // opt-out (the `?? true` fallback firing unconditionally).
+  useNotificationPreferencesQuery()
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const closedIntentionallyRef = useRef(false)
@@ -39,10 +83,18 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       socket.onmessage = (event) => {
         try {
-          const frame = JSON.parse(event.data as string) as { type?: string }
-          if (frame.type === 'notification') {
+          const frame = JSON.parse(event.data as string) as NotificationFrame
+          if (frame.type === 'notification' || frame.type === 'notifications_changed') {
             void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY })
             void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY })
+          }
+          if (frame.type === 'notification' && frame.notification_type && frame.title) {
+            if (isChannelEnabled(queryClient, frame.notification_type, 'browser')) {
+              showBrowserNotification(frame.title, frame.body ?? '')
+            }
+            if (isChannelEnabled(queryClient, frame.notification_type, 'sound')) {
+              playNotificationSound()
+            }
           }
         } catch {
           // Malformed frame — ignore, matches the backend's own

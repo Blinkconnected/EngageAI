@@ -48,6 +48,9 @@ from blinkengage.infrastructure.database.models.message import (
     ReadStatus,
 )
 from blinkengage.infrastructure.database.models.notification import Notification
+from blinkengage.infrastructure.database.models.notification_preference import (
+    NotificationPreference,
+)
 from blinkengage.infrastructure.database.models.queue import (
     AgentSkill,
     AgentSkillAssignment,
@@ -116,6 +119,7 @@ __all__ = [
     "MessageStatus",
     "MessageType",
     "Notification",
+    "NotificationPreference",
     "Permission",
     "Queue",
     "QueueAssignmentStrategy",

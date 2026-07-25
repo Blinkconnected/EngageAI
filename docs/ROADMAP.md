@@ -1462,6 +1462,87 @@ its own commit.
   registration and the standalone script were both re-confirmed working
   against the live stack afterward.
 
+- [x] **Item 5: Inbox Notifications — built as a generic platform
+  notification framework, not a conversation-specific feature
+  (2026-07-25)** — explicit requirement: build a reusable notification
+  service usable by conversations, transfers, SLA alerts, AI events,
+  system events, and future modules; store in the database; deliver in
+  real time over WebSockets; support future push/email without a core
+  redesign; a Notification Center in the header with unread badge, mark
+  (all) read, history, browser notifications, optional sound, and
+  per-type preferences; real-time delivery with no duplicates,
+  persistence across logout/login, correct unread counts across tabs,
+  multi-tenant isolation, and RBAC-aware delivery.
+
+  Much of the underlying infrastructure already existed from Item 4
+  (Conversation Transfer): `NotificationService`/`Notification`
+  model/REST API/`RealtimeProvider`/`NotificationBell` were all real,
+  tested, and in production — this item generalized and extended that,
+  rather than building from scratch. See
+  `docs/architecture/notifications.md` for the full design (this entry
+  summarizes what changed and the verification chain).
+
+  **Generalized**: `NotificationRuleRegistry` replaces
+  `notification_consumer.py`'s hardcoded if/elif chain and hand-maintained
+  routing-key list — a future module adds its own trigger by registering
+  one `NotificationRule` class, zero changes to the consumer, mirroring
+  the exact "generic registry over a hand-maintained list" fix this
+  session already applied once for RBAC permission sync. New built-in
+  trigger: `message.persisted` → "New message received", for the
+  conversation's assigned agent.
+
+  **New**: per-user delivery preferences (email/browser/sound,
+  opt-out-by-default) with a settings UI; a duplicate-prevention
+  mechanism (`source_event_id` + a unique constraint) for RabbitMQ's
+  at-least-once redelivery; a cross-tab/cross-device realtime signal on
+  mark-read so every open session converges immediately, not just its
+  own 30s poll; a full Notification Center page (history + preferences)
+  alongside the existing header dropdown; browser desktop notifications
+  and a synthesized (Web Audio API, no bundled asset) notification
+  sound — capabilities this app never had before.
+
+  **Adversarial review before shipping** (27 sub-agent calls, 5
+  dimensions, each finding independently re-verified by 2 more agents)
+  found 11 real issues, all fixed except one deliberately-accepted low-
+  severity, no-impact redundant index: a critical unhandled-`IntegrityError`
+  race in the dedup path (the exact crash-loop anti-pattern
+  `audit_log_consumer.py` had already been fixed for once, reintroduced
+  in a new place — fixed via a `SAVEPOINT`-based insert-or-recover), a
+  cross-tenant conversation-scoping gap in the new notification rules, a
+  frontend bug where a saved "disable this notification's sound/popup"
+  preference was silently ignored in any browser tab that hadn't visited
+  the preferences panel, and several real test-coverage gaps.
+
+  **Live Docker verification then found a second, unrelated critical bug**
+  the review couldn't have caught (the test suite never runs Alembic
+  migrations at all): building the new migration's `UNIQUE` constraint
+  via `CREATE INDEX CONCURRENTLY` to avoid locking the live
+  `notifications` table — correct in isolation — deadlocked outright the
+  moment this codebase's own multi-container startup lock
+  (`core/migrate.py`) was involved, since a *blocking*
+  `pg_advisory_lock` holds a waiting container's transaction open for
+  its whole wait, and `CONCURRENTLY` must wait for every other open
+  transaction in the database to finish before it can complete. Fixed
+  by polling `pg_try_advisory_lock` instead (genuinely idle between
+  attempts), plus making the migration resumable from the partial state
+  a mid-migration container kill can now leave behind. Full detail in
+  `docs/architecture/notifications.md`.
+
+  Backend: 616 passed (was 593), ruff/mypy clean. Frontend: 110 passed
+  (was 83), tsc/eslint clean, production build succeeds. Live-verified
+  against the real production Docker stack with two real logged-in
+  sessions (an Owner and an Agent connected over `/ws/agent`): the full
+  real async pipeline for a new message (outbox → relay → ingest
+  consumer → notification consumer, not a direct function call)
+  delivering a live notification within seconds; the cross-tab
+  read-state signal; preference persistence; the dedup fix, replayed
+  through two genuinely separate transactions with zero duplicates and
+  zero consumer crashes; and — discovered and fixed during this same
+  pass — the migration deadlock, with the full 9-container concurrent
+  startup re-verified clean afterward and the migration re-verified to
+  converge correctly both from empty and from the exact partial-failure
+  state the deadlock had left behind.
+
 ---
 
 ## Working agreement

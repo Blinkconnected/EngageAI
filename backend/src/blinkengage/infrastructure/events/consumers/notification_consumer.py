@@ -1,15 +1,18 @@
-"""The built-in Notifications consumer — binds a fixed, code-defined set
-of routing keys (unlike the Workflow Engine's ``#``, since these are
-first-party lifecycle notifications every company gets, not something a
-company configures) and creates in-app ``Notification`` rows. See
+"""The built-in Notifications consumer — a thin dispatcher over
+``NotificationRuleRegistry``. Binds whatever event types are registered
+there (unlike the Workflow Engine's ``#``, since these are first-party
+lifecycle notifications every company gets, not something a company
+configures) and turns each into ``Notification`` row(s). See
 ``docs/architecture/notifications.md``.
 
 Companies can layer *additional*, custom notifications on top via the
 Workflow Engine's ``create_notification`` action (M19's ``publish_event``
 escape hatch made concrete) — this consumer only covers the built-in
-baseline: an agent being assigned a conversation, an SLA breach on one
-they're handling, and a conversation being transferred to them or their
-department.
+baseline registered in ``application/notification_rules/builtin.py``.
+
+Adding a new built-in notification trigger is registering one more
+``NotificationRule`` there — this file needs no changes: ``ROUTING_KEYS``
+is derived from the registry, not hand-maintained.
 """
 
 import asyncio
@@ -20,12 +23,15 @@ import orjson
 from aio_pika.abc import AbstractIncomingMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Registers the built-in rules (decorator side effects at import time) —
+# must happen before ROUTING_KEYS is computed below.
+import blinkengage.application.notification_rules.builtin  # noqa: F401
+from blinkengage.application.notification_rules.base import NotificationRuleContext
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.core.config import get_settings
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.events import RealtimeSignalPublisher
 from blinkengage.infrastructure.cache.redis import create_redis_client
-from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.session import (
     create_engine,
     create_session_factory,
@@ -33,7 +39,7 @@ from blinkengage.infrastructure.database.session import (
 )
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
-from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.notifications.rule_registry import NotificationRuleRegistry
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -41,11 +47,7 @@ from blinkengage.infrastructure.repositories.notification_repository import (
 logger = get_logger(__name__)
 
 QUEUE_NAME = "notifications"
-ROUTING_KEYS = [
-    "conversation.assignment_changed",
-    "conversation.sla_breached",
-    "conversation.transferred",
-]
+ROUTING_KEYS = NotificationRuleRegistry.registered_event_types()
 
 
 async def handle_event(
@@ -54,97 +56,38 @@ async def handle_event(
     company_id_raw = event.get("company_id")
     if company_id_raw is None:
         return
-    company_id = UUID(company_id_raw)
-    payload = event.get("payload", {})
     event_type = event.get("event_type")
-
-    conversation_id_raw = payload.get("conversation_id")
-    if not conversation_id_raw:
+    if not event_type:
         return
-    conversation = await session.get(Conversation, UUID(conversation_id_raw))
-    if conversation is None:
+    rule = NotificationRuleRegistry.get(event_type)
+    if rule is None:
         return
 
+    company_id = UUID(company_id_raw)
+    context = NotificationRuleContext(
+        event_type=event_type,
+        company_id=company_id,
+        payload=event.get("payload", {}),
+        session=session,
+    )
+    drafts = await rule.resolve(context=context)
+    if not drafts:
+        return
+
+    event_id_raw = event.get("id")
+    source_event_id = UUID(event_id_raw) if event_id_raw else None
     notifications = NotificationService(
         notifications=NotificationRepository(session), realtime=realtime
     )
-
-    if event_type == "conversation.assignment_changed":
-        agent_id_raw = payload.get("agent_id")
-        if not agent_id_raw:
-            return
-        agent = await AgentRepository(session).get_by_id(
-            company_id=company_id, agent_id=UUID(agent_id_raw)
-        )
-        if agent is None:
-            return
+    for draft in drafts:
         await notifications.create(
             company_id=company_id,
-            user_id=agent.user_id,
-            notification_type=event_type,
-            title="You've been assigned a conversation",
-            body="A conversation has been assigned to you.",
-            payload={"conversation_id": str(conversation.id)},
-        )
-        return
-
-    if event_type == "conversation.transferred":
-        target_type = payload.get("target_type")
-        note = payload.get("note")
-        note_suffix = f' Note: "{note}"' if note else ""
-
-        if target_type == "agent":
-            agent_id_raw = payload.get("to_agent_id")
-            if not agent_id_raw:
-                return
-            agent = await AgentRepository(session).get_by_id(
-                company_id=company_id, agent_id=UUID(agent_id_raw)
-            )
-            if agent is None:
-                return
-            await notifications.create(
-                company_id=company_id,
-                user_id=agent.user_id,
-                notification_type=event_type,
-                title="A conversation was transferred to you",
-                body=f"A conversation was transferred to you.{note_suffix}",
-                payload={"conversation_id": str(conversation.id)},
-            )
-        elif target_type == "department":
-            department_id_raw = payload.get("to_department_id")
-            if not department_id_raw:
-                return
-            department_agents = await AgentRepository(session).list_for_department(
-                company_id=company_id, department_id=UUID(department_id_raw)
-            )
-            for agent in department_agents:
-                await notifications.create(
-                    company_id=company_id,
-                    user_id=agent.user_id,
-                    notification_type=event_type,
-                    title="A conversation was transferred to your department",
-                    body=f"A conversation was transferred to your department.{note_suffix}",
-                    payload={"conversation_id": str(conversation.id)},
-                )
-        # target_type == "queue": future-ready only, no recipient to
-        # notify yet — see ConversationTransfer.target_type's docstring.
-        return
-
-    if event_type == "conversation.sla_breached":
-        if conversation.assigned_agent_id is None:
-            return
-        agent = await AgentRepository(session).get_by_id(
-            company_id=company_id, agent_id=conversation.assigned_agent_id
-        )
-        if agent is None:
-            return
-        await notifications.create(
-            company_id=company_id,
-            user_id=agent.user_id,
-            notification_type=event_type,
-            title="SLA breached",
-            body="One of your conversations has breached its SLA target.",
-            payload={"conversation_id": str(conversation.id)},
+            user_id=draft.user_id,
+            notification_type=draft.notification_type,
+            title=draft.title,
+            body=draft.body,
+            payload=draft.payload,
+            source_event_id=source_event_id,
         )
 
 

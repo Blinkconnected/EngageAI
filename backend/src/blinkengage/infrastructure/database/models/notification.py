@@ -11,7 +11,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blinkengage.infrastructure.database.base import GUID, Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -27,6 +37,23 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             postgresql_where=text("email_dispatched_at IS NULL"),
             sqlite_where=text("email_dispatched_at IS NULL"),
         ),
+        # Standard SQL treats NULL as distinct from NULL for uniqueness,
+        # so any number of rows with source_event_id=NULL (a notification
+        # with no triggering event, e.g. a hypothetical future direct
+        # call site) coexist freely — this only ever rejects a genuine
+        # duplicate (the same event redelivered to the same recipient).
+        # notification_type is part of the key (not just source_event_id
+        # + user_id) so a built-in rule and a company's own
+        # create_notification workflow action never collide just because
+        # they target the same user for the same event — see
+        # docs/architecture/notifications.md for the one narrower
+        # collision this still doesn't cover.
+        UniqueConstraint(
+            "source_event_id",
+            "user_id",
+            "notification_type",
+            name="uq_notifications_source_event_user",
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,6 +67,14 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # possible, so notification types and event types stay one vocabulary
     # instead of two.
     notification_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    # The EventOutbox row id that triggered this notification, when there
+    # is one — see NotificationService.create()'s docstring for why: it's
+    # the idempotency key that prevents a duplicate row on RabbitMQ
+    # at-least-once redelivery of the same event. Nullable because not
+    # every notification is event-triggered (e.g. today's
+    # create_notification workflow action still passes one, but a future
+    # direct/synchronous call site might not).
+    source_event_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True, default=None)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # Deep-linking data (e.g. {"conversation_id": "..."}) — portable JSON,

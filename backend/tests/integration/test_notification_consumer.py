@@ -1,16 +1,17 @@
-"""Tests for the built-in notification consumer — a fixed, code-defined
-set of routing keys (unlike the Workflow Engine's ``#``), since these are
-first-party lifecycle notifications every company gets. See
-``docs/architecture/notifications.md``.
+"""Tests for the built-in notification consumer — routing keys derived
+from ``NotificationRuleRegistry`` (unlike the Workflow Engine's ``#``),
+since these are first-party lifecycle notifications every company gets.
+See ``docs/architecture/notifications.md``.
 """
 
 from typing import Any
 from uuid import UUID, uuid4
 
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from blinkengage.infrastructure.database.models.conversation import Conversation
+from blinkengage.infrastructure.database.models.notification import Notification
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
 )
@@ -284,14 +285,20 @@ async def test_transfer_to_department_notifies_every_agent_in_it(
         notifications_repo = NotificationRepository(session)
         for user_id in (user_id_1, user_id_2):
             notifications, total = await notifications_repo.list_for_user(
-                company_id=UUID(company_id), user_id=UUID(user_id), offset=0, limit=10,
+                company_id=UUID(company_id),
+                user_id=UUID(user_id),
+                offset=0,
+                limit=10,
                 unread_only=False,
             )
             assert total == 1
             assert notifications[0].notification_type == "conversation.transferred"
 
         other_notifications, other_total = await notifications_repo.list_for_user(
-            company_id=UUID(company_id), user_id=UUID(user_id_other), offset=0, limit=10,
+            company_id=UUID(company_id),
+            user_id=UUID(user_id_other),
+            offset=0,
+            limit=10,
             unread_only=False,
         )
         assert other_total == 0
@@ -301,9 +308,312 @@ async def test_unrelated_event_type_is_ignored(app: Any) -> None:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
         realtime = RealtimePublisher(app.state.container.redis())
-        # Should simply return without error — no conversation_id in payload.
+        # Should simply return without error — no rule registered for it.
         await handle_event(
             _event(event_type="customer.created", company_id=str(uuid4()), payload={}),
             session,
             realtime,
         )
+
+
+async def test_message_persisted_notifies_the_assigned_agent(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    agent_id, user_id = await _create_agent(client, owner_headers, "agent3@acme.example")
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, UUID(conversation_id))
+        assert conversation is not None
+        conversation.assigned_agent_id = UUID(agent_id)
+        await session.commit()
+
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="message.persisted",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "message_id": str(uuid4()),
+                    "customer_id": str(uuid4()),
+                    "channel_type": "web_chat",
+                    "body": "Are you still there?",
+                    "direction": "inbound",
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        notifications, total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert total == 1
+    assert notifications[0].notification_type == "message.persisted"
+    assert "Are you still there?" in notifications[0].body
+    assert notifications[0].payload["conversation_id"] == conversation_id
+
+
+async def test_message_persisted_with_no_assigned_agent_creates_no_notification(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="message.persisted",
+                company_id=company_id,
+                payload={"conversation_id": conversation_id, "body": "Hello?"},
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        total_notifications = (
+            await session.execute(select(func.count()).select_from(Notification))
+        ).scalar_one()
+
+    assert total_notifications == 0
+
+
+async def test_redelivery_of_the_same_event_does_not_create_a_duplicate_notification(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """RabbitMQ's at-least-once delivery can redeliver the same event —
+    e.g. a consumer crash between creating the row and acking the
+    message. handle_event must be safe to call twice for the same event
+    id without doubling up the recipient's notifications."""
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    agent_id, user_id = await _create_agent(client, owner_headers, "redelivery@acme.example")
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    event = _event(
+        event_type="conversation.assignment_changed",
+        company_id=company_id,
+        payload={
+            "conversation_id": conversation_id,
+            "agent_id": agent_id,
+            "previous_agent_id": None,
+        },
+    )
+    event["id"] = str(uuid4())
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(event, session, realtime)
+        await handle_event(event, session, realtime)  # redelivered
+        await session.commit()
+
+        notifications, total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert total == 1
+
+
+async def test_add_or_get_existing_recovers_from_a_genuine_unique_violation_without_crashing(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """Unlike the redelivery test above (which drives both handle_event()
+    calls through one shared, uncommitted session and so only proves the
+    application-level pre-check works), this exercises the actual DB-level
+    uq_notifications_source_event_user constraint: a second, independent
+    attempt to insert for the same (source_event_id, user_id) after the
+    first has already committed is a real unique-violation, not merely a
+    read-your-own-writes short-circuit. NotificationRepository.add_or_get_existing()
+    must recover from that via its SAVEPOINT, not let IntegrityError
+    propagate and crash the consumer — and a sibling insert flushed in the
+    same transaction must survive the loser's rollback."""
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    _, user_id = await _create_agent(client, owner_headers, "race-target@acme.example")
+    _, other_user_id = await _create_agent(client, owner_headers, "race-sibling@acme.example")
+    source_event_id = uuid4()
+
+    session_factory = app.state.container.session_factory()
+
+    async with session_factory() as session:
+        repo = NotificationRepository(session)
+        first = Notification(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            notification_type="conversation.assignment_changed",
+            title="First",
+            body="Winner of the race.",
+            source_event_id=source_event_id,
+        )
+        await repo.add(first)
+        await session.commit()
+        first_id = first.id
+
+    async with session_factory() as session:
+        repo = NotificationRepository(session)
+        # Unrelated work flushed in the same transaction as the losing
+        # insert below — must survive the SAVEPOINT rollback.
+        sibling = Notification(
+            company_id=UUID(company_id),
+            user_id=UUID(other_user_id),
+            notification_type="conversation.assignment_changed",
+            title="Sibling",
+            body="Unrelated notification in the same transaction.",
+        )
+        await repo.add(sibling)
+
+        duplicate = Notification(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            notification_type="conversation.assignment_changed",
+            title="Second — should never persist",
+            body="Loser of the race.",
+            source_event_id=source_event_id,
+        )
+        result, created = await repo.add_or_get_existing(duplicate)
+
+        assert created is False
+        assert result.id == first_id
+        assert result.title == "First"
+
+        await session.commit()
+        sibling_id = sibling.id
+
+    async with session_factory() as session:
+        reloaded_sibling = await session.get(Notification, sibling_id)
+        assert reloaded_sibling is not None  # survived the loser's savepoint rollback
+
+        total_for_user = (
+            await session.execute(
+                select(func.count())
+                .select_from(Notification)
+                .where(Notification.user_id == UUID(user_id))
+            )
+        ).scalar_one()
+        assert total_for_user == 1  # the duplicate never persisted
+
+
+async def test_a_mismatched_company_id_and_conversation_id_creates_no_notification(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """The event's company_id and payload.conversation_id are two
+    independent, unvalidated fields (see handle_event) — nothing upstream
+    actually guarantees they refer to the same tenant (a company's own
+    publish_event workflow action sets payload freely). _load_conversation
+    must look the conversation up scoped to the event's company_id, not
+    trust the two fields already agree — otherwise a same-company agent_id
+    lookup succeeding while a foreign conversation loads unscoped would
+    leak that conversation's real id into this company's notification."""
+    owner_a_company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()[
+        "company"
+    ]["id"]
+    conversation_id = await _create_web_chat_conversation(
+        client, owner_headers, app, owner_a_company_id
+    )
+
+    other = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "company_name": "Other Corp",
+            "owner_full_name": "Bea Owner",
+            "owner_email": "bea-notif-tenant@other.example",
+            "owner_password": "correct-horse-battery-9",
+        },
+    )
+    other_headers = {"Authorization": f"Bearer {other.json()['tokens']['access_token']}"}
+    other_company_id = other.json()["user"]["company"]["id"]
+    other_agent_id, other_user_id = await _create_agent(
+        client, other_headers, "cross-tenant-agent@other.example"
+    )
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.assignment_changed",
+                company_id=other_company_id,  # Other Corp's own event...
+                payload={
+                    "conversation_id": conversation_id,  # ...but Acme's conversation.
+                    "agent_id": other_agent_id,
+                    "previous_agent_id": None,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        total_notifications = (
+            await session.execute(select(func.count()).select_from(Notification))
+        ).scalar_one()
+
+    assert total_notifications == 0
+
+
+async def test_same_event_and_user_but_different_notification_type_are_not_deduped(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """The dedup key is (source_event_id, user_id, notification_type), not
+    just (source_event_id, user_id) — two genuinely distinct
+    notifications for the same user from the same event (e.g. a built-in
+    rule and a company's own create_notification workflow action both
+    targeting the same user) must both persist, not collapse into one."""
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    _, user_id = await _create_agent(client, owner_headers, "dual-notify@acme.example")
+    source_event_id = uuid4()
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        repo = NotificationRepository(session)
+        first, first_created = await repo.add_or_get_existing(
+            Notification(
+                company_id=UUID(company_id),
+                user_id=UUID(user_id),
+                notification_type="conversation.assignment_changed",
+                title="Built-in notification",
+                body="From the built-in rule.",
+                source_event_id=source_event_id,
+            )
+        )
+        second, second_created = await repo.add_or_get_existing(
+            Notification(
+                company_id=UUID(company_id),
+                user_id=UUID(user_id),
+                notification_type="workflow.notification",
+                title="Workflow notification",
+                body="From a company-configured workflow.",
+                source_event_id=source_event_id,
+            )
+        )
+        await session.commit()
+
+    assert first_created is True
+    assert second_created is True
+    assert first.id != second.id

@@ -34,6 +34,33 @@ from blinkengage.infrastructure.database.session import (
 
 # Arbitrary fixed constant identifying this application's migration lock.
 _ADVISORY_LOCK_KEY = 875_193_001
+_LOCK_POLL_INTERVAL_SECONDS = 0.5
+
+
+async def acquire_advisory_lock(conn: asyncpg.Connection) -> None:
+    """Blocks until this process holds the cross-container migration
+    lock — via polling ``pg_try_advisory_lock`` (non-blocking), never a
+    single blocking ``pg_advisory_lock`` call.
+
+    That distinction matters, confirmed live: a blocking
+    ``pg_advisory_lock`` leaves the waiting connection's implicit
+    single-statement transaction open for the *entire* wait. Any
+    migration that also runs a ``CREATE INDEX CONCURRENTLY`` (which must
+    wait for every other transaction in the database — not just ones
+    touching its own table — to finish before it can complete) then
+    deadlocks outright the moment more than one container starts at
+    once: the index build can't finish until the waiters' transactions
+    end, and the waiters can't end theirs until the lock holder finishes
+    (which is waiting on them). Polling means a waiting connection is
+    genuinely idle — no open transaction — between attempts, so it never
+    holds back a concurrent index build happening elsewhere.
+    """
+    while not await conn.fetchval("SELECT pg_try_advisory_lock($1)", _ADVISORY_LOCK_KEY):
+        await asyncio.sleep(_LOCK_POLL_INTERVAL_SECONDS)
+
+
+async def release_advisory_lock(conn: asyncpg.Connection) -> None:
+    await conn.execute("SELECT pg_advisory_unlock($1)", _ADVISORY_LOCK_KEY)
 
 
 async def run_migrations_with_lock() -> int:
@@ -41,14 +68,14 @@ async def run_migrations_with_lock() -> int:
     url = settings.database_url.replace("postgresql+asyncpg", "postgresql")
     conn = await asyncpg.connect(url)
     try:
-        await conn.execute("SELECT pg_advisory_lock($1)", _ADVISORY_LOCK_KEY)
+        await acquire_advisory_lock(conn)
         result = subprocess.run(["alembic", "upgrade", "head"], check=False)
         if result.returncode != 0:
             return result.returncode
         await _sync_permissions(settings)
         return 0
     finally:
-        await conn.execute("SELECT pg_advisory_unlock($1)", _ADVISORY_LOCK_KEY)
+        await release_advisory_lock(conn)
         await conn.close()
 
 

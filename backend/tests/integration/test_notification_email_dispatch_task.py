@@ -10,7 +10,11 @@ import pytest
 from httpx import AsyncClient
 
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.domain.notification_types import NotificationChannel
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
+from blinkengage.infrastructure.repositories.notification_preference_repository import (
+    NotificationPreferenceRepository,
+)
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -137,3 +141,50 @@ async def test_dispatch_failure_leaves_notification_undispatched_for_retry(
 
     assert dispatched == 0
     assert notifications[0].email_dispatched_at is None
+
+
+async def test_a_disabled_email_preference_marks_dispatched_without_sending(
+    client: AsyncClient, owner_headers: dict, app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    company_id, user_id = await _owner_ids(client, owner_headers)
+    await _seed_notification(app, company_id=company_id, user_id=user_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        await NotificationPreferenceRepository(session).upsert(
+            user_id=UUID(user_id),
+            notification_type="conversation.assignment_changed",
+            channel=NotificationChannel.EMAIL,
+            enabled=False,
+        )
+        await session.commit()
+
+    call_count = 0
+
+    async def fake_send(message: Any, **kwargs: Any) -> tuple[Any, Any]:
+        nonlocal call_count
+        call_count += 1
+        return None, None
+
+    monkeypatch.setattr(
+        "blinkengage.infrastructure.tasks.notification_email_dispatch_task.aiosmtplib.send",
+        fake_send,
+    )
+
+    async with session_factory() as session:
+        dispatched = await dispatch_pending(session, app.state.container.settings())
+        await session.commit()
+
+        notifications, _ = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert call_count == 0
+    assert dispatched == 0  # not counted as "dispatched" since no email was actually sent
+    assert (
+        notifications[0].email_dispatched_at is not None
+    )  # but marked, so it's not retried forever

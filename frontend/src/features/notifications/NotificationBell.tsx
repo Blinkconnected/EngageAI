@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Badge,
   Box,
@@ -19,13 +20,22 @@ import {
   useNotificationsQuery,
   useUnreadCountQuery,
 } from './api'
+import type { Notification } from './types'
 
 export function NotificationBell() {
+  const navigate = useNavigate()
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const unreadCountQuery = useUnreadCountQuery()
   const notificationsQuery = useNotificationsQuery({ page: 1, page_size: 10 })
   const markReadMutation = useMarkNotificationReadMutation()
   const markAllReadMutation = useMarkAllNotificationsReadMutation()
+
+  function handleItemClick(notification: Notification) {
+    if (!notification.is_read) markReadMutation.mutate(notification.id)
+    setAnchorEl(null)
+    const conversationId = notification.payload.conversation_id
+    if (typeof conversationId === 'string') navigate(`/conversations/${conversationId}`)
+  }
 
   return (
     <>
@@ -72,9 +82,7 @@ export function NotificationBell() {
         {notificationsQuery.data?.items.map((notification) => (
           <ListItemButton
             key={notification.id}
-            onClick={() => {
-              if (!notification.is_read) markReadMutation.mutate(notification.id)
-            }}
+            onClick={() => handleItemClick(notification)}
             sx={{
               alignItems: 'flex-start',
               bgcolor: notification.is_read ? 'transparent' : 'action.hover',
@@ -95,6 +103,19 @@ export function NotificationBell() {
             />
           </ListItemButton>
         ))}
+        <Divider />
+        <Box sx={{ p: 1, textAlign: 'center' }}>
+          <Button
+            size="small"
+            fullWidth
+            onClick={() => {
+              setAnchorEl(null)
+              navigate('/notifications')
+            }}
+          >
+            View all notifications
+          </Button>
+        </Box>
       </Menu>
     </>
   )

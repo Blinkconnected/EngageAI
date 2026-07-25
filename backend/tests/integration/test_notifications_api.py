@@ -4,12 +4,17 @@ the system (a consumer or a workflow action) — there's no POST endpoint
 ``docs/architecture/notifications.md``.
 """
 
+import asyncio
 from typing import Any
 from uuid import UUID
 
+import orjson
 from httpx import AsyncClient
 
-from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.notification_service import (
+    NotificationService,
+    notification_channel_name,
+)
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
@@ -157,3 +162,61 @@ async def test_mark_read_for_someone_elses_notification_404s(
         f"/api/v1/notifications/{notification_id}/read", headers=other_headers
     )
     assert response.status_code == 404
+
+
+async def test_mark_read_publishes_a_realtime_signal_for_cross_tab_consistency(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """Every open tab/device for this user shares the same
+    ``notification_channel_name(user_id)`` Redis channel — marking a
+    notification read in one must push a signal every other one can
+    invalidate on, not just wait for their next 30s poll."""
+    company_id, user_id = await _owner_ids(client, owner_headers)
+    notification_id = await _seed_notification(app, company_id=company_id, user_id=user_id)
+
+    realtime = RealtimePublisher(app.state.container.redis())
+    received: list[dict] = []
+
+    async def _collect() -> None:
+        async with realtime.subscribe(notification_channel_name(UUID(user_id))) as pubsub:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    received.append(orjson.loads(message["data"]))
+                    return
+
+    collector = asyncio.create_task(_collect())
+    await asyncio.sleep(0.05)  # let the subscribe establish before the mark-read publishes
+
+    response = await client.post(
+        f"/api/v1/notifications/{notification_id}/read", headers=owner_headers
+    )
+    assert response.status_code == 204
+
+    await asyncio.wait_for(collector, timeout=2)
+    assert received == [{"type": "notifications_changed"}]
+
+
+async def test_mark_all_read_publishes_a_realtime_signal(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id, user_id = await _owner_ids(client, owner_headers)
+    await _seed_notification(app, company_id=company_id, user_id=user_id)
+
+    realtime = RealtimePublisher(app.state.container.redis())
+    received: list[dict] = []
+
+    async def _collect() -> None:
+        async with realtime.subscribe(notification_channel_name(UUID(user_id))) as pubsub:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    received.append(orjson.loads(message["data"]))
+                    return
+
+    collector = asyncio.create_task(_collect())
+    await asyncio.sleep(0.05)
+
+    response = await client.post("/api/v1/notifications/read-all", headers=owner_headers)
+    assert response.status_code == 204
+
+    await asyncio.wait_for(collector, timeout=2)
+    assert received == [{"type": "notifications_changed"}]

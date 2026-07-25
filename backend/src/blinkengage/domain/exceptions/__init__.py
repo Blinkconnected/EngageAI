@@ -109,6 +109,17 @@ class AiNotConfiguredError(DomainError):
         super().__init__("AI features are not configured on this platform")
 
 
+class InvalidNotificationPreferenceError(DomainError):
+    """Raised when a preference update names a ``notification_type`` not
+    in ``domain.notification_types.NOTIFICATION_TYPES`` or a ``channel``
+    not in ``NotificationChannel`` — a client-input validation failure,
+    not a missing resource, so it falls through to the generic 400 like
+    ``InvalidChannelTypeError``."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
 class ErpNotConfiguredError(DomainError):
     """Raised when an ERPNext-dependent action is requested for a company
     with no active ``ErpConfig`` — a deployment/configuration state, not

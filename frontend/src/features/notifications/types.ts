@@ -9,3 +9,14 @@ export interface Notification {
   read_at: string | null
   created_at: string
 }
+
+export const NOTIFICATION_CHANNELS = ['email', 'browser', 'sound'] as const
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
+
+/** Matches the backend's `NotificationPreferenceItem`. */
+export interface NotificationPreference {
+  notification_type: string
+  label: string
+  channel: NotificationChannel
+  enabled: boolean
+}

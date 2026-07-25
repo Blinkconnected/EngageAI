@@ -9,9 +9,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from blinkengage.api.deps import get_current_auth, get_notification_service
-from blinkengage.api.schemas.notification import NotificationResponse, UnreadCountResponse
+from blinkengage.api.deps import (
+    get_current_auth,
+    get_notification_preference_service,
+    get_notification_service,
+)
+from blinkengage.api.schemas.notification import (
+    NotificationPreferencesResponse,
+    NotificationPreferenceUpdateRequest,
+    NotificationResponse,
+    UnreadCountResponse,
+)
 from blinkengage.api.schemas.pagination import Page, PageParams
+from blinkengage.application.services.notification_preference_service import (
+    NotificationPreferenceService,
+)
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.core.auth_context import AuthContext
 
@@ -76,4 +88,37 @@ async def delete_notification(
 ) -> None:
     await service.delete(
         company_id=auth.company_id, user_id=auth.user_id, notification_id=notification_id
+    )
+
+
+@router.get("/preferences", response_model=NotificationPreferencesResponse)
+async def get_notification_preferences(
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    service: Annotated[NotificationPreferenceService, Depends(get_notification_preference_service)],
+) -> NotificationPreferencesResponse:
+    entries = await service.get_matrix(user_id=auth.user_id)
+    return NotificationPreferencesResponse(
+        items=[
+            {
+                "notification_type": entry.notification_type,
+                "label": entry.label,
+                "channel": entry.channel.value,
+                "enabled": entry.enabled,
+            }
+            for entry in entries
+        ]
+    )
+
+
+@router.put("/preferences", status_code=status.HTTP_204_NO_CONTENT)
+async def update_notification_preference(
+    payload: NotificationPreferenceUpdateRequest,
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    service: Annotated[NotificationPreferenceService, Depends(get_notification_preference_service)],
+) -> None:
+    await service.set_preference(
+        user_id=auth.user_id,
+        notification_type=payload.notification_type,
+        channel=payload.channel,
+        enabled=payload.enabled,
     )

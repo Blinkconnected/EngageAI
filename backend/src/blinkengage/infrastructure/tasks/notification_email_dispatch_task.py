@@ -21,12 +21,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from blinkengage.core.celery_app import celery_app
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.notification_types import NotificationChannel
 from blinkengage.infrastructure.database.models.notification import Notification
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.database.session import (
     create_engine,
     create_session_factory,
     session_scope,
+)
+from blinkengage.infrastructure.repositories.notification_preference_repository import (
+    NotificationPreferenceRepository,
 )
 
 logger = get_logger(__name__)
@@ -77,9 +81,22 @@ async def dispatch_pending(session: AsyncSession, settings: Settings) -> int:
     )
     pending = list(result.scalars().all())
 
+    preferences = NotificationPreferenceRepository(session)
     for notification in pending:
         user = await session.get(User, notification.user_id)
         if user is None or not user.email:
+            notification.email_dispatched_at = datetime.now(UTC)
+            continue
+        preference = await preferences.get(
+            user_id=notification.user_id,
+            notification_type=notification.notification_type,
+            channel=NotificationChannel.EMAIL,
+        )
+        if preference is not None and not preference.enabled:
+            # The user opted out of email for this notification type —
+            # "dispatched" means "we decided what to do with it," not
+            # necessarily "we sent an email," so this still marks the row
+            # rather than leaving it to be re-checked every sweep forever.
             notification.email_dispatched_at = datetime.now(UTC)
             continue
         try:

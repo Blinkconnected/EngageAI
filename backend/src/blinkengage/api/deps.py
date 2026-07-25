@@ -30,6 +30,9 @@ from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.knowledge_service import KnowledgeService
+from blinkengage.application.services.notification_preference_service import (
+    NotificationPreferenceService,
+)
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
@@ -93,6 +96,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.notification_preference_repository import (
+    NotificationPreferenceRepository,
+)
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -483,6 +489,12 @@ def get_notification_service_ws(
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
 ) -> NotificationService:
     return NotificationService(notifications=NotificationRepository(session), realtime=realtime)
+
+
+def get_notification_preference_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> NotificationPreferenceService:
+    return NotificationPreferenceService(preferences=NotificationPreferenceRepository(session))
 
 
 def get_ai_provider(settings: Annotated[Settings, Depends(get_settings_dep)]) -> AiProvider | None:

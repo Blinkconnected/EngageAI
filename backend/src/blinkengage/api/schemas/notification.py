@@ -20,3 +20,20 @@ class NotificationResponse(BaseModel):
 
 class UnreadCountResponse(BaseModel):
     unread_count: int
+
+
+class NotificationPreferenceItem(BaseModel):
+    notification_type: str
+    label: str
+    channel: str
+    enabled: bool
+
+
+class NotificationPreferencesResponse(BaseModel):
+    items: list[NotificationPreferenceItem]
+
+
+class NotificationPreferenceUpdateRequest(BaseModel):
+    notification_type: str
+    channel: str
+    enabled: bool
