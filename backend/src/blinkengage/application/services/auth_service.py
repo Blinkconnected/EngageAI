@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.application.services.permission_sync_service import PermissionSyncService
 from blinkengage.core.config import Settings
 from blinkengage.core.security import (
     InvalidTokenError,
@@ -25,10 +26,10 @@ from blinkengage.core.security import (
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import AuthenticationError, EntityAlreadyExistsError
-from blinkengage.domain.rbac import DEFAULT_ROLE_PERMISSIONS, SystemRole
+from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
-from blinkengage.infrastructure.database.models.rbac import Role, RolePermission, UserRole
+from blinkengage.infrastructure.database.models.rbac import Role, UserRole
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
@@ -253,15 +254,17 @@ class AuthService:
         return candidate
 
     async def _seed_default_roles(self, *, company_id: uuid.UUID) -> Role:
-        owner_role: Role | None = None
-        for system_role, permission_codes in DEFAULT_ROLE_PERMISSIONS.items():
-            role = await self._roles.add(
-                Role(company_id=company_id, name=system_role.value, is_system=True)
-            )
-            for code in permission_codes:
-                self._session.add(RolePermission(role_id=role.id, permission_code=code))
-            if system_role is SystemRole.OWNER:
-                owner_role = role
-        await self._session.flush()
-        assert owner_role is not None  # OWNER is always present in DEFAULT_ROLE_PERMISSIONS
+        """Delegates to the same generic sync used to backfill existing
+        companies (``PermissionSyncService`` /
+        ``infrastructure.database.permission_sync``) rather than a
+        second, hand-rolled "create a role per ``DEFAULT_ROLE_PERMISSIONS``
+        entry" loop — a brand-new company with zero roles is just the
+        sync's "everything is missing" case. One implementation for
+        both "seed a new company" and "backfill an existing one" means
+        they can never drift apart again."""
+        await PermissionSyncService(self._session).sync(company_id=company_id)
+        owner_role = await self._roles.get_by_name(
+            company_id=company_id, name=SystemRole.OWNER.value
+        )
+        assert owner_role is not None  # sync_permissions always creates every SystemRole's row
         return owner_role

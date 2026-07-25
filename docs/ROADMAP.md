@@ -1403,6 +1403,65 @@ its own commit.
   inbox's `assigned_agent_id` filter correctly reflects the post-transfer
   state.
 
+- [x] **RBAC technical debt cleanup: generic permission synchronization
+  (2026-07-25)** — requested explicitly, before Item 5, to eliminate the
+  permission-backfill gap Item 4 discovered and only partially fixed
+  (see Item 4's own entry above and `docs/architecture/auth-rbac.md`).
+  Not itself a numbered sprint item.
+
+  Replaced the old pattern of hand-writing a bespoke backfill in every
+  "seed a new permission" migration with one reusable, generic mechanism:
+  `infrastructure.database.permission_sync.sync_permissions()` diffs
+  every company's granted RBAC permissions against `domain/rbac.py`'s
+  *current* `DEFAULT_ROLE_PERMISSIONS`, additively — insert-only, never
+  updates or deletes a row, so a role's extra grants beyond its defaults
+  and every non-system (custom) role are always left completely
+  untouched. Runs from three call sites sharing this one implementation:
+  a migration (`3000cabd1c86`, this task's one-time reconciliation of
+  every company that existed when it ran), the async application layer
+  (`PermissionSyncService`, which `AuthService._seed_default_roles` now
+  also uses — seeding a brand-new company's roles and backfilling an
+  existing one are the same code path now, so they can never drift
+  apart again), and a new standalone script
+  (`python -m blinkengage.core.sync_permissions`) for on-demand ops use.
+  `core/migrate.py` now also runs it automatically after every
+  `alembic upgrade head`, on every container startup — meaning a future
+  permission added to `domain/rbac.py` needs **no migration at all** to
+  reach every existing company; the next deploy's restart does it.
+
+  Per the explicit requirement to keep Owner/Admin/Agent as the only
+  system roles for now (a "Supervisor" role was raised but deliberately
+  not added — see Item 4's entry — and this task didn't revisit that),
+  the mechanism is still built generically over whatever `SystemRole`
+  values exist: it can create a missing system-role row for a company
+  (not just missing permission grants on an existing one), so a future
+  fourth role needs no "create it for every existing company" migration
+  either.
+
+  10 new tests directly against `sync_permissions()` (fresh-company
+  seeding, idempotency, targeted backfill, extra-permission preservation,
+  custom-role isolation, company-scoped vs. global reconciliation,
+  catalog-row seeding, missing-role recreation) plus 2 more proving the
+  async bridge and the refactored registration flow — 593 backend tests
+  total (was 583), ruff/mypy clean.
+
+  Verified live against a throwaway Postgres instance: the full migration
+  chain applies clean on an empty database; then, simulating a company
+  that predates every permission-seeding migration in this codebase's
+  history (an Owner role with only the first migration's 4 permissions,
+  plus a custom non-system role with one unrelated grant), re-running the
+  new migration brought Owner from 4/30 to the full 30/30, Admin and
+  Agent up to their exact current defaults (28 and 13), and left the
+  custom role's grant completely untouched; re-running the standalone
+  script afterward made zero further changes (idempotent). Also verified
+  against this sandbox's real production Docker stack — 12 real,
+  pre-existing companies accumulated across every prior milestone's
+  testing — confirming zero missing system-role grants anywhere after
+  the migration: the historical gap is now fully closed for every
+  permission, not just `conversations.transfer`. A brand-new company
+  registration and the standalone script were both re-confirmed working
+  against the live stack afterward.
+
 ---
 
 ## Working agreement

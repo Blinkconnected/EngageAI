@@ -119,26 +119,26 @@ current NIST guidance.
   itself), but no API surface exists yet to create/edit custom roles.
   Lands with Core CRM (Phase 3) or later, once there's a real admin UI
   consuming it.
-- **New permissions are not retroactively backfilled onto existing
-  companies, except where fixed one-off.** "Owner always holds the full
-  catalog" (above) is only actually true *at company-creation time* —
-  every "seed a new permission" migration before Sprint 2 Item 4
-  (Conversation Transfer, 2026-07-25) inserted the new `Permission` row
-  into the catalog but never inserted the corresponding `role_permissions`
-  rows for companies that already existed. That means `domain/rbac.py`'s
-  own docstring claim that Owner holds every permission "unconditionally"
-  has not been true in practice for any permission added after a
-  company's creation — an Owner at an older company can be missing a
-  permission a brand-new company's Owner has by default, with no code
-  path that surfaces or corrects the gap. Item 4's own migration
-  (`8a08ed1c4d83`) backfills `conversations.transfer` for every existing
-  company's Owner/Admin roles, fixing it for that one permission only —
-  every earlier permission migration remains unfixed. A proper fix needs
-  a dedicated migration (or a one-time reconciliation script) that
-  diffs each company's granted permissions against
-  `DEFAULT_ROLE_PERMISSIONS` and backfills the difference; not done here
-  since it's out of scope for a single feature's migration and deserves
-  its own review given it touches every company's role grants at once.
+- ~~New permissions are not retroactively backfilled onto existing
+  companies~~ — **fixed 2026-07-25** by the generic permission sync (see
+  "Permission synchronization" below). This was real, demonstrated
+  technical debt: every "seed a new permission" migration before Sprint 2
+  Item 4 (Conversation Transfer)'s own (`8a08ed1c4d83`) inserted the new
+  `Permission` catalog row but never the corresponding `role_permissions`
+  rows for companies that already existed, so `domain/rbac.py`'s
+  docstring claim that Owner holds every permission "unconditionally"
+  was never actually true in practice for any permission added after a
+  company's creation. `8a08ed1c4d83` fixed it for `conversations.transfer`
+  alone, as a one-off, explicitly leaving every earlier permission
+  migration unfixed. The generic sync fully closes that gap — one
+  reconciling pass brings *every* company's *every* system role up to
+  date with *every* current default permission, not just the newest one
+  (verified live: a simulated pre-existing company missing everything
+  from every historical permission migration went from 4/28/13 granted
+  Owner/Admin/Agent permissions to the full 30/28/13 in one pass — see
+  `docs/ROADMAP.md`'s entry for the full verification). See below for the
+  mechanism and its one honestly-documented remaining limit, which is a
+  different limitation from this one.
 - **A Postgres-backed test run.** The test suite runs against SQLite
   in-memory for speed and hermeticity (`tests/conftest.py`). This is a
   real, demonstrated blind spot: a `DateTime` column declared without
@@ -150,6 +150,89 @@ current NIST guidance.
   (even just the auth integration tests) in CI once GitHub Actions is
   wired up (Phase 6), specifically to catch this class of bug
   automatically instead of relying on manual verification each phase.
+
+## Permission synchronization
+
+The generic mechanism (added 2026-07-25, replacing the per-permission
+backfill-migration pattern above) that keeps every company's RBAC grants
+in sync with `domain/rbac.py`'s current `PERMISSIONS`/
+`DEFAULT_ROLE_PERMISSIONS` — no matter how old the company or how long
+ago the permission was added.
+
+**Core function**: `infrastructure.database.permission_sync.
+sync_permissions(session, *, company_id=None)` — takes a plain *sync*
+SQLAlchemy `Session` (not `AsyncSession`), so the identical function runs
+unmodified in three different contexts:
+
+1. **Inside an Alembic migration** — `Session(bind=op.get_bind())`. See
+   `alembic/versions/3000cabd1c86_generic_rbac_permission_sync.py`, the
+   one-time migration that reconciled every company that existed at the
+   time it was written.
+2. **From async application code**, via `AsyncSession.run_sync()` —
+   `application/services/permission_sync_service.py`'s
+   `PermissionSyncService.sync()`, a thin bridge with no logic of its
+   own. `AuthService._seed_default_roles` calls this scoped to the
+   brand-new company it just created — seeding a new company's roles and
+   backfilling an existing one are now the exact same code path (a new
+   company is just the "everything is missing" case), which is what
+   guarantees they can never drift apart again the way the old
+   hand-rolled seeding loop and the old hand-written migrations did.
+3. **A standalone script**, `core/sync_permissions.py`
+   (`python -m blinkengage.core.sync_permissions`) — for an operator to
+   run on demand, e.g. right after deploying code that added a permission
+   without waiting for a migration or a restart.
+
+**Runs automatically on every deploy, too**: `core/migrate.py` — already
+responsible for serializing `alembic upgrade head` across
+concurrently-starting containers via a Postgres advisory lock — now also
+runs the sync immediately after, under the same lock. In practice this
+means: add a permission to `domain/rbac.py`, deploy, and every company
+already has it correctly granted the moment the containers finish
+restarting. No migration is required at all for the common case (a
+migration is still reasonable when the permission ships bundled with
+other schema work, or when the change should be visible in migration
+history) — this is the literal fulfillment of "automatically detects
+newly introduced permissions."
+
+**What it does, concretely, each run** (all three layers purely
+additive — insert-only, never update or delete an existing row):
+
+1. Seeds the `permissions` catalog table from `domain.rbac.PERMISSIONS`.
+2. For every targeted company (`company_id=None` means every company),
+   for every `SystemRole`, ensures a `Role` row exists — creating one if
+   a `SystemRole` value was introduced after that company was created.
+   (Today there are only three — Owner/Admin/Agent — but this means a
+   future fourth system role needs no "create it for every existing
+   company" migration either, just the enum/default-set change itself.)
+3. For every such role, grants every permission code in
+   `DEFAULT_ROLE_PERMISSIONS[role]` that isn't already granted.
+
+Never touches non-system (`is_system=False`) roles — company-defined
+custom roles are completely out of scope. Never removes a grant, so a
+role's *extra* permissions beyond its defaults (however they got there)
+always survive a sync untouched.
+
+**One honestly-documented limit**: because this is a stateless diff
+against the *current* default set, it cannot distinguish "this default
+permission was never granted yet" from "this default permission was
+deliberately revoked from this company's role" — both look identical (a
+missing row) and both get (re-)granted. This is a non-issue *today*
+because no API/UI exists anywhere in this codebase to revoke a default
+permission from a system role in the first place (the custom-roles/
+role-editor item above is still deferred) — but if that ever ships,
+telling an explicit revocation apart from a not-yet-synced gap will need
+an explicit marker (e.g. a revocation record), not a rework of this
+mechanism. This is a *different* limitation from the one this mechanism
+replaced: the old per-permission migrations could simply be forgotten;
+this one is honest about a genuine, narrow ambiguity that doesn't yet
+have a way to arise.
+
+**Idempotent and safe to run concurrently**: every insert is preceded by
+reading current state within the same transaction, so re-running it (or
+running it from two containers starting at once, serialized by the
+advisory lock in `core/migrate.py`/`core/sync_permissions.py`) produces
+identical results — verified directly (see `docs/ROADMAP.md`'s
+verification entry).
 
 ## Verification performed
 
@@ -166,3 +249,29 @@ current NIST guidance.
   volume and starting `backend`+`celery-worker`+`celery-beat`
   simultaneously: only one container's log shows `Running upgrade ...`;
   the other two show a clean no-op.
+
+**Permission synchronization (2026-07-25)**: 10 new tests directly
+against `sync_permissions()` (fresh-company seeding, idempotency,
+backfilling one missing grant without touching others, preserving an
+extra permission beyond a role's defaults, never touching a custom
+non-system role, company-scoped vs. global reconciliation, seeding a
+missing catalog row, recreating a missing system-role row) plus 2 more
+proving the async `PermissionSyncService` bridge and the refactored
+registration flow — 593 backend tests total (was 583). Live-verified
+against a throwaway Postgres instance: applied the full migration chain
+clean on an empty database; then, simulating a company that predates
+every permission-seeding migration in this codebase's history (an Owner
+role with only the very first migration's 4 permissions, plus a custom
+non-system role with one unrelated grant), re-ran the new migration and
+confirmed Owner went from 4/30 to the full 30/30, Admin and Agent came up
+to their exact current default sets (28 and 13 respectively), and the
+custom role's single grant was completely untouched. Re-ran the
+standalone script against the same database afterward and confirmed zero
+further changes (idempotent). Separately, against this sandbox's real
+production Docker stack (12 real, pre-existing companies accumulated
+across every prior milestone's live verification), confirmed after
+applying the migration that zero system-role grants are missing anywhere
+relative to the current `DEFAULT_ROLE_PERMISSIONS` — the historical gap
+is fully closed, not just for `conversations.transfer`. Also confirmed
+the standalone script and a brand-new company registration both still
+work correctly against the live stack post-migration.
