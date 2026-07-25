@@ -196,6 +196,32 @@ class AuthService:
         await self._refresh_tokens.revoke(user_id=user_id, jti=jti)
         return await self.issue_tokens(user)
 
+    async def change_password(
+        self, *, user: User, current_password: str, new_password: str
+    ) -> None:
+        """Self-service password change from the agent's own profile —
+        unlike ``AgentService.reset_password`` (an Owner/Admin action on
+        someone else's account), this always requires the current
+        password. Revokes every refresh token issued under the old
+        password, including the session making this request — the client
+        is expected to log in again with the new password, same as after
+        any other password change."""
+        if not verify_password(current_password, user.hashed_password):
+            raise AuthenticationError("Current password is incorrect")
+
+        user.hashed_password = hash_password(new_password)
+        await self._refresh_tokens.revoke_all_for_user(user_id=user.id)
+        await self._events.publish(
+            DomainEvent(
+                event_type="user.password_changed",
+                company_id=user.company_id,
+                aggregate_type="user",
+                aggregate_id=user.id,
+                actor_user_id=user.id,
+                payload={},
+            )
+        )
+
     async def logout(self, *, refresh_token: str) -> None:
         try:
             payload = decode_token(

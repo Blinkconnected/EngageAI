@@ -160,6 +160,108 @@ async def test_logout_revokes_refresh_token(client: AsyncClient) -> None:
     assert refresh_response.status_code == 401
 
 
+async def test_change_password_with_correct_current_password_succeeds(
+    client: AsyncClient,
+) -> None:
+    registered = await _register(client)
+    access_token = registered["tokens"]["access_token"]
+
+    response = await client.post(
+        "/api/v1/auth/me/password",
+        json={
+            "current_password": REGISTER_PAYLOAD["owner_password"],
+            "new_password": "a-brand-new-password-9",
+        },
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert response.status_code == 204
+
+    # The new password works...
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": REGISTER_PAYLOAD["owner_email"],
+            "password": "a-brand-new-password-9",
+        },
+    )
+    assert login_response.status_code == 200
+
+    # ...and the old one no longer does.
+    old_login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": REGISTER_PAYLOAD["owner_email"],
+            "password": REGISTER_PAYLOAD["owner_password"],
+        },
+    )
+    assert old_login_response.status_code == 401
+
+
+async def test_change_password_revokes_existing_refresh_tokens(client: AsyncClient) -> None:
+    registered = await _register(client)
+    access_token = registered["tokens"]["access_token"]
+    refresh_token = registered["tokens"]["refresh_token"]
+
+    change_response = await client.post(
+        "/api/v1/auth/me/password",
+        json={
+            "current_password": REGISTER_PAYLOAD["owner_password"],
+            "new_password": "a-brand-new-password-9",
+        },
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert change_response.status_code == 204
+
+    refresh_response = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+    )
+    assert refresh_response.status_code == 401
+
+
+async def test_change_password_with_wrong_current_password_is_rejected(
+    client: AsyncClient,
+) -> None:
+    registered = await _register(client)
+    access_token = registered["tokens"]["access_token"]
+
+    response = await client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": "totally-wrong-password", "new_password": "a-new-password-9"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert response.status_code == 401
+
+    # Original password still works — nothing was changed.
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": REGISTER_PAYLOAD["owner_email"],
+            "password": REGISTER_PAYLOAD["owner_password"],
+        },
+    )
+    assert login_response.status_code == 200
+
+
+async def test_change_password_rejects_weak_new_password(client: AsyncClient) -> None:
+    registered = await _register(client)
+    access_token = registered["tokens"]["access_token"]
+
+    response = await client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": REGISTER_PAYLOAD["owner_password"], "new_password": "short1"},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert response.status_code == 422
+
+
+async def test_change_password_requires_authentication(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/auth/me/password",
+        json={"current_password": "whatever-1", "new_password": "a-new-password-9"},
+    )
+    assert response.status_code in (401, 403)
+
+
 async def test_multi_tenant_isolation_between_companies(client: AsyncClient) -> None:
     company_a = await _register(
         client, company_name="Company A", owner_email="owner-a@test.example"

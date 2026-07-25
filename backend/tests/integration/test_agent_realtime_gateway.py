@@ -17,6 +17,7 @@ from blinkengage.api.v1.endpoints.realtime import agent_gateway
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.channels.providers.web_chat import session_channel_name
 from blinkengage.infrastructure.database.models.agent import AgentStatus
@@ -173,6 +174,7 @@ def _build_services(session, container):
         users=UserRepository(session),
         roles=RoleRepository(session),
         events=events,
+        refresh_tokens=RefreshTokenStore(container.redis()),
     )
     return settings, realtime, conversation_service, agent_service
 

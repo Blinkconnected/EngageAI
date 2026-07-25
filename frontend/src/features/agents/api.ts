@@ -24,6 +24,10 @@ async function deleteAgent(agentId: string): Promise<void> {
   await apiClient.delete(`/agents/${agentId}`)
 }
 
+async function resetAgentPassword(agentId: string, newPassword: string): Promise<void> {
+  await apiClient.post(`/agents/${agentId}/password`, { new_password: newPassword })
+}
+
 export function useAgentsQuery(params: PageParams) {
   return useQuery({
     queryKey: [...AGENTS_LIST_KEY, params],
@@ -67,5 +71,15 @@ export function useDeleteAgentMutation() {
   return useMutation({
     mutationFn: deleteAgent,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: AGENTS_LIST_KEY }),
+  })
+}
+
+/** Owner/Admin resets an agent's password directly (``agents.manage``) —
+ * no current password required. The agent's existing sessions are
+ * revoked server-side; nothing in this client's own session changes. */
+export function useResetAgentPasswordMutation() {
+  return useMutation({
+    mutationFn: ({ agentId, newPassword }: { agentId: string; newPassword: string }) =>
+      resetAgentPassword(agentId, newPassword),
   })
 }

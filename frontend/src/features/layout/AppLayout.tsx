@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import {
   AppBar,
   Avatar,
@@ -22,6 +22,7 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import TranslateIcon from '@mui/icons-material/Translate'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
+import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { setDirection, toggleThemeMode } from '../ui/uiSlice'
 import { useLogout } from '../auth/api'
@@ -43,6 +44,7 @@ export function AppLayout() {
   const direction = useAppSelector((state) => state.ui.direction)
   const { data: currentUser } = useCurrentUserQuery()
   const logout = useLogout()
+  const navigate = useNavigate()
 
   const drawerContent = <SideNav onNavigate={() => setMobileNavOpen(false)} />
 
@@ -146,6 +148,17 @@ export function AppLayout() {
                   </Box>
                 )}
                 <Divider />
+                <MenuItem
+                  onClick={() => {
+                    setUserMenuAnchor(null)
+                    navigate('/profile')
+                  }}
+                >
+                  <ListItemIcon>
+                    <PersonOutlineIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>My Profile</ListItemText>
+                </MenuItem>
                 <MenuItem
                   onClick={() => {
                     setUserMenuAnchor(null)

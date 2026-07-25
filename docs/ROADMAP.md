@@ -1130,6 +1130,53 @@ and implemented as Phase 1 below.
 
 ---
 
+## Sprint 2 — Pilot Feedback & UX Improvements
+
+Started 2026-07-25. Explicit scope: polish the existing product for real
+customer use — no new major features. Ten items in priority order, each
+its own commit.
+
+- [x] **Item 1: Password Management (2026-07-25)**
+  Owner/Admin can reset any agent's password directly
+  (`POST /agents/{id}/password`, gated by the existing `agents.manage`
+  permission — no new "Owner-only" concept invented); every agent can
+  change their own password from a new **My Profile** page
+  (`POST /auth/me/password`, always requires the current password).
+  Both flows revoke every one of the affected user's refresh tokens via
+  the existing `RefreshTokenStore.revoke_all_for_user` (self-service also
+  revokes the session making the request — the client logs out and
+  redirects to `/login` with a flash message). Both publish a
+  `DomainEvent` (`agent.password_reset` / `user.password_changed`), so
+  both land in the audit log for free via the existing outbox → audit-log
+  consumer pipeline, per the milestone's requirement — no new
+  audit-writing code needed.
+
+  Backend: `AuthService.change_password`, `AgentService.reset_password`,
+  reused the existing `validate_password_strength` schema validator (same
+  10-char/letter/digit rule as registration and agent creation — no new
+  policy invented). Frontend: `ProfilePage` (routed at `/profile`, linked
+  from the account menu), `AgentResetPasswordDialog` wired into the
+  Agents grid's row actions, and a flash-message banner on `LoginPage`
+  for the post-change redirect.
+
+  10 new backend tests (self-service success/wrong-current-password/
+  weak-password/unauthenticated, admin reset success/cross-agent-403/
+  weak-password, refresh-token revocation for both flows, audit-log
+  entries for both event types) plus 5 new frontend tests (profile
+  display, accessibility, change-password success/redirect, mismatch
+  validation, agent-grid reset-password flow). No migration needed — both
+  flows write to `users.hashed_password`, which already existed.
+
+  Backend: 567 passed, ruff/mypy clean. Frontend: 70 passed, tsc/eslint
+  clean. Verified live against the production Docker stack: created a
+  test agent, logged in with its initial password, had the Owner reset
+  it, confirmed the old password now 401s and the new one works, then
+  self-service-changed it again as the agent and confirmed the same,
+  and confirmed both `agent.password_reset` and `user.password_changed`
+  rows appear in `GET /audit-logs` with the correct actor.
+
+---
+
 ## Working agreement
 
 1. One milestone in progress at a time; mark `[~]` here when started.

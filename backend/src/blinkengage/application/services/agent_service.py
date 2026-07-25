@@ -17,6 +17,7 @@ from blinkengage.core.security import hash_password
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.domain.rbac import SystemRole
+from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.rbac import UserRole
 from blinkengage.infrastructure.database.models.user import User
@@ -34,12 +35,14 @@ class AgentService:
         users: UserRepository,
         roles: RoleRepository,
         events: DomainEventPublisher,
+        refresh_tokens: RefreshTokenStore,
     ) -> None:
         self._session = session
         self._agents = agents
         self._users = users
         self._roles = roles
         self._events = events
+        self._refresh_tokens = refresh_tokens
 
     async def create(
         self,
@@ -137,6 +140,34 @@ class AgentService:
             )
         )
         return agent
+
+    async def reset_password(
+        self,
+        *,
+        company_id: UUID,
+        agent_id: UUID,
+        new_password: str,
+        actor_user_id: UUID | None = None,
+    ) -> None:
+        """Owner/Admin-initiated reset (``agents.manage``) — no current
+        password required, unlike the agent's own self-service change
+        (``AuthService.change_password``). All of the agent's existing
+        sessions are revoked: their password just changed without their
+        involvement, so any refresh token issued under the old one
+        shouldn't outlive it."""
+        agent = await self.get(company_id=company_id, agent_id=agent_id)
+        agent.user.hashed_password = hash_password(new_password)
+        await self._refresh_tokens.revoke_all_for_user(user_id=agent.user_id)
+        await self._events.publish(
+            DomainEvent(
+                event_type="agent.password_reset",
+                company_id=company_id,
+                aggregate_type="agent",
+                aggregate_id=agent.id,
+                actor_user_id=actor_user_id,
+                payload={},
+            )
+        )
 
     async def delete(
         self, *, company_id: UUID, agent_id: UUID, actor_user_id: UUID | None = None

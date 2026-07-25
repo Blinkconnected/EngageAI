@@ -4,7 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from blinkengage.api.deps import get_agent_service, get_agent_skill_service, require_permission
-from blinkengage.api.schemas.agent import AgentCreateRequest, AgentResponse, AgentUpdateRequest
+from blinkengage.api.schemas.agent import (
+    AgentCreateRequest,
+    AgentPasswordResetRequest,
+    AgentResponse,
+    AgentUpdateRequest,
+)
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.api.schemas.queue import AgentSkillResponse, RequiredSkillRequest
 from blinkengage.application.services.agent_service import AgentService
@@ -90,6 +95,23 @@ async def update_agent(
         actor_user_id=auth.user_id,
     )
     return _to_response(agent)
+
+
+@router.post("/{agent_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_agent_password(
+    agent_id: UUID,
+    payload: AgentPasswordResetRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("agents.manage"))],
+    service: Annotated[AgentService, Depends(get_agent_service)],
+) -> None:
+    """Owner/Admin resets an agent's password directly — no current
+    password required. All of the agent's existing sessions are revoked."""
+    await service.reset_password(
+        company_id=auth.company_id,
+        agent_id=agent_id,
+        new_password=payload.new_password,
+        actor_user_id=auth.user_id,
+    )
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)

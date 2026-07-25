@@ -47,4 +47,6 @@ export const authHandlers = [
   http.post(`${API_BASE_URL}/auth/logout`, () => new HttpResponse(null, { status: 204 })),
 
   http.get(`${API_BASE_URL}/auth/me`, () => HttpResponse.json(MOCK_USER)),
+
+  http.post(`${API_BASE_URL}/auth/me/password`, () => new HttpResponse(null, { status: 204 })),
 ]

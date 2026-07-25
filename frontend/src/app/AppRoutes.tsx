@@ -13,6 +13,7 @@ import { CustomersPage } from '../features/customers/CustomersPage'
 import { CustomerProfilePage } from '../features/customers/CustomerProfilePage'
 import { ErpConfigSettingsPage } from '../features/erp/ErpConfigSettingsPage'
 import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
+import { ProfilePage } from '../features/profile/ProfilePage'
 import { ReportsPage } from '../features/reports/ReportsPage'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
@@ -31,6 +32,7 @@ export function AppRoutes() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route
           path="agents"
           element={

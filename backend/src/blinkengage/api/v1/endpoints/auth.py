@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, status
 
 from blinkengage.api.deps import get_auth_service, get_current_user
 from blinkengage.api.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
@@ -108,3 +109,23 @@ async def logout(
 @router.get("/me", response_model=UserProfileResponse)
 async def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserProfileResponse:
     return _user_to_profile(current_user)
+
+
+@router.post(
+    "/me/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_auth_rate_limit)],
+)
+async def change_my_password(
+    payload: ChangePasswordRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> None:
+    """Self-service password change from the agent's own profile — requires
+    the current password. Every session (including this one) is logged
+    out; the client re-authenticates with the new password."""
+    await auth_service.change_password(
+        user=current_user,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+    )

@@ -72,4 +72,10 @@ export const agentsHandlers = [
     agents = agents.filter((agent) => agent.id !== params.agentId)
     return new HttpResponse(null, { status: 204 })
   }),
+
+  http.post(`${API_BASE_URL}/agents/:agentId/password`, ({ params }) => {
+    const exists = agents.some((agent) => agent.id === params.agentId)
+    if (!exists) return HttpResponse.json({ detail: 'Not found' }, { status: 404 })
+    return new HttpResponse(null, { status: 204 })
+  }),
 ]

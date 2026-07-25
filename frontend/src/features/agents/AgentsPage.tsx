@@ -3,6 +3,7 @@ import { Button, Chip } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
+import LockResetOutlinedIcon from '@mui/icons-material/LockResetOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
@@ -13,6 +14,7 @@ import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useAllDepartmentsQuery } from '../departments/api'
 import { AgentCreateDialog } from './AgentCreateDialog'
 import { AgentEditDialog } from './AgentEditDialog'
+import { AgentResetPasswordDialog } from './AgentResetPasswordDialog'
 import { useAgentsQuery, useDeleteAgentMutation } from './api'
 import type { Agent, AgentStatus } from './types'
 
@@ -33,6 +35,7 @@ export function AgentsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
   const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null)
+  const [resettingPasswordAgent, setResettingPasswordAgent] = useState<Agent | null>(null)
   const deleteMutation = useDeleteAgentMutation()
 
   const departmentNameById = useMemo(() => {
@@ -85,6 +88,12 @@ export function AgentsPage() {
                   icon={<EditOutlinedIcon fontSize="small" />}
                   label="Edit"
                   onClick={() => setEditingAgent(params.row)}
+                />,
+                <GridActionsCellItem
+                  key="reset-password"
+                  icon={<LockResetOutlinedIcon fontSize="small" />}
+                  label="Reset password"
+                  onClick={() => setResettingPasswordAgent(params.row)}
                 />,
                 <GridActionsCellItem
                   key="delete"
@@ -145,6 +154,10 @@ export function AgentsPage() {
         <>
           <AgentCreateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
           <AgentEditDialog agent={editingAgent} onClose={() => setEditingAgent(null)} />
+          <AgentResetPasswordDialog
+            agent={resettingPasswordAgent}
+            onClose={() => setResettingPasswordAgent(null)}
+          />
           <ConfirmDialog
             open={Boolean(deletingAgent)}
             title="Remove agent"

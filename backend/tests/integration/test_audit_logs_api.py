@@ -115,6 +115,48 @@ async def test_team_membership_changes_are_audited(
     assert response.json()["total"] == 1
 
 
+async def test_password_management_is_audited(
+    client: AsyncClient,
+    owner_headers: dict,
+    registered_owner: dict,
+    drain_outbox: Callable[[], Awaitable[int]],
+) -> None:
+    agent = await _create_agent(client, owner_headers, "agent1@acme.example")
+
+    owner_access_token = registered_owner["tokens"]["access_token"]
+    await client.post(
+        "/api/v1/auth/me/password",
+        json={
+            "current_password": "correct-horse-battery-9",
+            "new_password": "a-brand-new-password-9",
+        },
+        headers={"Authorization": f"Bearer {owner_access_token}"},
+    )
+    await client.post(
+        f"/api/v1/agents/{agent['id']}/password",
+        json={"new_password": "a-reset-password-9"},
+        headers=owner_headers,
+    )
+    await drain_outbox()
+
+    changed_response = await client.get(
+        "/api/v1/audit-logs",
+        params={"action": "user.password_changed"},
+        headers=owner_headers,
+    )
+    assert changed_response.json()["total"] == 1
+
+    reset_response = await client.get(
+        "/api/v1/audit-logs",
+        params={"action": "agent.password_reset"},
+        headers=owner_headers,
+    )
+    reset_body = reset_response.json()
+    assert reset_body["total"] == 1
+    assert reset_body["items"][0]["entity_id"] == agent["id"]
+    assert reset_body["items"][0]["actor_user_id"] == registered_owner["user"]["id"]
+
+
 async def test_audit_logs_are_paginated(
     client: AsyncClient, owner_headers: dict, drain_outbox: Callable[[], Awaitable[int]]
 ) -> None:

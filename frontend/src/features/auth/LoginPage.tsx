@@ -18,6 +18,8 @@ export function LoginPage() {
     return <Navigate to={from} replace />
   }
 
+  const flashMessage = (location.state as { message?: string } | null)?.message
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     loginMutation.mutate({ email, password })
@@ -42,6 +44,12 @@ export function LoginPage() {
           <Typography variant="body2" color="text.secondary">
             Sign in to your workspace
           </Typography>
+
+          {!loginMutation.isError && flashMessage && (
+            <Alert severity="info" data-testid="login-flash-message">
+              {flashMessage}
+            </Alert>
+          )}
 
           {loginMutation.isError && (
             <Alert severity="error" data-testid="login-error">

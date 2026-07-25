@@ -179,6 +179,12 @@ def get_refresh_token_store(
     return RefreshTokenStore(redis)
 
 
+def get_refresh_token_store_ws(
+    redis: Annotated[Redis, Depends(get_redis_ws)],
+) -> RefreshTokenStore:
+    return RefreshTokenStore(redis)
+
+
 def get_chat_session_store(redis: Annotated[Redis, Depends(get_redis)]) -> ChatSessionStore:
     return ChatSessionStore(redis)
 
@@ -305,6 +311,7 @@ def get_team_service(
 def get_agent_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store)],
 ) -> AgentService:
     return AgentService(
         session=session,
@@ -312,12 +319,14 @@ def get_agent_service(
         users=UserRepository(session),
         roles=RoleRepository(session),
         events=events,
+        refresh_tokens=refresh_tokens,
     )
 
 
 def get_agent_service_ws(
     session: Annotated[AsyncSession, Depends(get_db_session_ws)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher_ws)],
+    refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store_ws)],
 ) -> AgentService:
     return AgentService(
         session=session,
@@ -325,6 +334,7 @@ def get_agent_service_ws(
         users=UserRepository(session),
         roles=RoleRepository(session),
         events=events,
+        refresh_tokens=refresh_tokens,
     )
 
 

@@ -57,6 +57,22 @@ describe('AgentsPage', () => {
     await waitFor(() => expect(screen.getByText('Principal Agent')).toBeInTheDocument())
   })
 
+  it('resets an agent password through the dialog', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<AgentsPage />)
+    const row = (await screen.findByText('Grace Hopper')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    await user.click(within(row as HTMLElement).getByLabelText('Reset password'))
+    expect(await screen.findByText(/reset password for grace hopper/i)).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/new password/i), 'a-reset-password-9')
+    await user.click(screen.getByRole('button', { name: /^reset password$/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByText(/reset password for grace hopper/i)).not.toBeInTheDocument(),
+    )
+  })
+
   it('deletes an agent after confirming', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<AgentsPage />)

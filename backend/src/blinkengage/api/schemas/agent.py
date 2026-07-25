@@ -26,6 +26,18 @@ class AgentUpdateRequest(BaseModel):
     status: AgentStatus | None = None
 
 
+class AgentPasswordResetRequest(BaseModel):
+    """Owner/Admin-initiated reset — no current password required, unlike
+    the agent's own self-service change (``ChangePasswordRequest``)."""
+
+    new_password: str = Field(..., min_length=10, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _check_password_strength(cls, value: str) -> str:
+        return validate_password_strength(value)
+
+
 class AgentResponse(BaseModel):
     id: UUID
     user_id: UUID
