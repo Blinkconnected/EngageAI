@@ -17,6 +17,8 @@ export const MOCK_USER: UserProfile = {
     'company.manage',
     'agents.read',
     'agents.manage',
+    'departments.read',
+    'departments.manage',
     'channels.read',
     'channels.manage',
     'conversations.read',

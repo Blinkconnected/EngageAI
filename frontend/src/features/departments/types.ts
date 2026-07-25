@@ -7,3 +7,14 @@ export interface Department {
   created_at: string
   updated_at: string
 }
+
+export interface DepartmentCreateRequest {
+  name: string
+  description?: string | null
+}
+
+export interface DepartmentUpdateRequest {
+  name?: string
+  description?: string | null
+  is_active?: boolean
+}

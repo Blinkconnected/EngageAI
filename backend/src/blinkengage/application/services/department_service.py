@@ -3,12 +3,20 @@ from uuid import UUID
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
 from blinkengage.infrastructure.database.models.department import Department
+from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 
 
 class DepartmentService:
-    def __init__(self, *, departments: DepartmentRepository, events: DomainEventPublisher) -> None:
+    def __init__(
+        self,
+        *,
+        departments: DepartmentRepository,
+        agents: AgentRepository,
+        events: DomainEventPublisher,
+    ) -> None:
         self._departments = departments
+        self._agents = agents
         self._events = events
 
     async def create(
@@ -86,6 +94,7 @@ class DepartmentService:
         self, *, company_id: UUID, department_id: UUID, actor_user_id: UUID | None = None
     ) -> None:
         department = await self.get(company_id=company_id, department_id=department_id)
+        await self._agents.clear_department(company_id=company_id, department_id=department_id)
         await self._departments.soft_delete(department)
         await self._events.publish(
             DomainEvent(

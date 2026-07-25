@@ -296,7 +296,11 @@ def get_department_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> DepartmentService:
-    return DepartmentService(departments=DepartmentRepository(session), events=events)
+    return DepartmentService(
+        departments=DepartmentRepository(session),
+        agents=AgentRepository(session),
+        events=events,
+    )
 
 
 def get_team_service(

@@ -78,6 +78,36 @@ async def test_delete_department_is_soft_delete(client: AsyncClient, owner_heade
     assert recreate_response.status_code == 201
 
 
+async def test_delete_department_unassigns_its_agents(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    department_response = await client.post(
+        "/api/v1/departments", json={"name": "Support"}, headers=owner_headers
+    )
+    department_id = department_response.json()["id"]
+
+    agent_response = await client.post(
+        "/api/v1/agents",
+        json={
+            "email": "agent-in-department@acme.example",
+            "full_name": "Departed Agent",
+            "password": "correct-horse-battery-9",
+            "department_id": department_id,
+        },
+        headers=owner_headers,
+    )
+    agent_id = agent_response.json()["id"]
+    assert agent_response.json()["department_id"] == department_id
+
+    delete_response = await client.delete(
+        f"/api/v1/departments/{department_id}", headers=owner_headers
+    )
+    assert delete_response.status_code == 204
+
+    get_agent_response = await client.get(f"/api/v1/agents/{agent_id}", headers=owner_headers)
+    assert get_agent_response.json()["department_id"] is None
+
+
 async def test_departments_require_authentication(client: AsyncClient) -> None:
     response = await client.get("/api/v1/departments")
     assert response.status_code in (401, 403)

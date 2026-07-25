@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
+import ApartmentOutlinedIcon from '@mui/icons-material/ApartmentOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
@@ -36,6 +37,12 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'customers.read',
   },
   { label: 'Agents', path: '/agents', icon: GroupOutlinedIcon, permission: 'agents.read' },
+  {
+    label: 'Departments',
+    path: '/departments',
+    icon: ApartmentOutlinedIcon,
+    permission: 'departments.read',
+  },
   { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
   {
     label: 'Reports',

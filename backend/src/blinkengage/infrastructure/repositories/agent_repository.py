@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -59,4 +59,26 @@ class AgentRepository:
 
     async def soft_delete(self, agent: Agent) -> None:
         agent.deleted_at = datetime.now(UTC)
+        await self._session.flush()
+
+    async def clear_department(self, *, company_id: UUID, department_id: UUID) -> None:
+        """Bulk-unassigns every agent from a department being deleted.
+
+        ``Agent.department_id``'s FK declares ``ondelete="SET NULL"``, but
+        department deletion is a *soft* delete (an ``UPDATE ... SET
+        deleted_at`` on the department row, never a real ``DELETE``), so
+        that database-level trigger never fires on its own — left alone,
+        agents would keep pointing at a department that's now invisible
+        everywhere else. This makes the soft-delete path honor the same
+        "unassign on delete" intent the FK already declares.
+        """
+        await self._session.execute(
+            update(Agent)
+            .where(
+                Agent.company_id == company_id,
+                Agent.department_id == department_id,
+                Agent.deleted_at.is_(None),
+            )
+            .values(department_id=None)
+        )
         await self._session.flush()

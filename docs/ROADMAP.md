@@ -1175,6 +1175,57 @@ its own commit.
   and confirmed both `agent.password_reset` and `user.password_changed`
   rows appear in `GET /audit-logs` with the correct actor.
 
+- [x] **Item 2: Departments (2026-07-25)**
+  A complete Departments management page — the backend CRUD API, RBAC
+  permissions (`departments.read`/`departments.manage`) and audit events
+  already existed from an earlier milestone (only the frontend page was
+  ever missing, deliberately deferred at the time). New: `DepartmentsPage`
+  (routed at `/departments`, linked from the sidebar) with full
+  create/edit/(soft-)delete, an Active/Inactive toggle, and a
+  per-department agent-count chip that opens a read-only membership list.
+  Assignment itself stays on the existing Agent form's "Department"
+  picker (the one place that already writes `Agent.department_id`)
+  rather than building a second, divergent mutation path for the same
+  relationship — the Departments page's job is visibility and lifecycle
+  management, not duplicating assignment UI.
+
+  Live verification surfaced a real backend bug: `Agent.department_id`'s
+  FK declares `ondelete="SET NULL"`, but department deletion is a *soft*
+  delete (`UPDATE ... SET deleted_at`, never a real `DELETE`), so that
+  trigger never actually fired — agents kept pointing at a department
+  that had just become invisible everywhere else, silently. Worse, the
+  new delete-confirmation dialog's own copy claimed "N agent(s) will be
+  unassigned," which was false until this was fixed. Fixed with a new
+  `AgentRepository.clear_department()` (bulk `UPDATE`) called from
+  `DepartmentService.delete()` before the soft-delete, wired through a
+  new `agents: AgentRepository` dependency on `DepartmentService` (same
+  pattern `TeamService` already uses) — no migration needed, this is a
+  service-layer fix, not a schema change.
+
+  "Prepare departments for routing, queues and reporting" is satisfied by
+  what already exists — `Agent.department_id` and the full CRUD API are
+  already there for those future features to build on — no speculative
+  schema or integration work was added ahead of an actual routing/queues/
+  reporting milestone actually needing it.
+
+  Frontend: `departments/api.ts` expanded from a single read-all hook to
+  full CRUD mutations; `DepartmentCreateDialog`, `DepartmentEditDialog`,
+  `DepartmentAgentsDialog`. 5 new frontend tests (list, accessibility,
+  create, edit, delete) plus a 6th covering the agent-membership view.
+  Also fixed a test-fixture gap surfaced while writing these: the shared
+  MSW mock user was missing `departments.read`/`departments.manage`
+  entirely (present for every other resource), which would have silently
+  hidden every permission-gated control on this and any future
+  Departments-page test. Backend: 1 new integration test proving delete
+  actually clears `department_id` on assigned agents.
+
+  Backend: 568 passed (was 567). Frontend: 76 passed (was 70), tsc/eslint
+  clean. Verified live against the production Docker stack: created a
+  department, assigned an agent to it via the Agent form, confirmed the
+  department page's agent count and membership list reflected it, edited
+  and deactivated the department, then deleted it and confirmed (after
+  the fix above) the agent's `department_id` was actually cleared.
+
 ---
 
 ## Working agreement
