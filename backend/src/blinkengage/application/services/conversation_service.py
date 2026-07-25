@@ -217,6 +217,25 @@ class ConversationService:
             conversation_id=conversation_id, offset=offset, limit=limit
         )
 
+    async def list_attachments_for_messages(
+        self, *, company_id: UUID, conversation_id: UUID, message_ids: list[UUID]
+    ) -> dict[UUID, list[MessageAttachment]]:
+        """Batch-fetches attachments for a page of messages (or a single
+        just-sent one) and groups them by ``message_id`` — kept separate
+        from ``list_messages``/``send_reply`` rather than an ORM
+        relationship, since ``Message`` deliberately has none (see
+        message.py's docstring on staying join-free at this table's
+        scale)."""
+        await self.get(company_id=company_id, conversation_id=conversation_id)
+        attachments = await self._attachments.list_for_messages(
+            conversation_id=conversation_id, message_ids=message_ids
+        )
+        grouped: dict[UUID, list[MessageAttachment]] = {}
+        for attachment in attachments:
+            if attachment.message_id is not None:
+                grouped.setdefault(attachment.message_id, []).append(attachment)
+        return grouped
+
     async def upload_attachment(
         self,
         *,

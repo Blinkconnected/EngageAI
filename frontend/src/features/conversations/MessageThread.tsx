@@ -4,6 +4,7 @@ import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { formatRelativeTime } from '../../shared/utils/formatRelativeTime'
+import { AttachmentList } from './AttachmentList'
 import { useMessagesQuery } from './api'
 import type { Message } from './types'
 
@@ -15,7 +16,7 @@ const PAGE_STEP = 20
 // documented, honest limit rather than silently missing history.
 const MAX_VISIBLE = 100
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, conversationId }: { message: Message; conversationId: string }) {
   const isOutbound = message.direction === 'outbound'
   return (
     <Box sx={{ display: 'flex', justifyContent: isOutbound ? 'flex-end' : 'flex-start' }}>
@@ -33,9 +34,14 @@ function MessageBubble({ message }: { message: Message }) {
             {message.body}
           </Typography>
         ) : (
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-            {message.body}
-          </Typography>
+          <>
+            {message.body && (
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                {message.body}
+              </Typography>
+            )}
+            <AttachmentList conversationId={conversationId} attachments={message.attachments} />
+          </>
         )}
         <Stack direction="row" spacing={1} sx={{ mt: 0.5, alignItems: 'center' }}>
           <Typography variant="caption" sx={{ opacity: 0.8 }}>
@@ -104,7 +110,7 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
         </Button>
       )}
       {orderedMessages.map((message) => (
-        <MessageBubble key={message.id} message={message} />
+        <MessageBubble key={message.id} message={message} conversationId={conversationId} />
       ))}
       <div ref={bottomRef} />
     </Stack>

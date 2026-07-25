@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { API_BASE_URL } from '../apiBaseUrl'
 import { MOCK_CUSTOMER } from './customers'
 import type {
+  Attachment,
   Conversation,
   ConversationUpdateRequest,
   InternalNote,
@@ -42,20 +43,25 @@ const SEED_MESSAGES: Message[] = [
     delivered_at: null,
     read_at: null,
     created_at: '2026-01-01T00:05:00Z',
+    attachments: [],
   },
 ]
 
 let conversation: Conversation = { ...SEED_CONVERSATION }
 let messages: Message[] = [...SEED_MESSAGES]
+let attachments: Attachment[] = []
 let notes: InternalNote[] = []
 let nextMessageId = 100
+let nextAttachmentId = 100
 let nextNoteId = 100
 
 export function resetConversationsMock() {
   conversation = { ...SEED_CONVERSATION }
   messages = [...SEED_MESSAGES]
+  attachments = []
   notes = []
   nextMessageId = 100
+  nextAttachmentId = 100
   nextNoteId = 100
 }
 
@@ -93,11 +99,14 @@ export const conversationsHandlers = [
     // error — see conversation_service.py's send_reply. This magic body
     // lets tests exercise that path without a real provider.
     const simulateFailure = payload.body === 'TRIGGER_SEND_FAILURE'
+    const linkedAttachments = attachments.filter((a) =>
+      (payload.attachment_ids ?? []).includes(a.id),
+    )
     const created: Message = {
       id: `msg-${nextMessageId}`,
       conversation_id: conversation.id,
       direction: 'outbound',
-      message_type: 'text',
+      message_type: linkedAttachments.length > 0 ? 'media' : 'text',
       status: simulateFailure ? 'failed' : 'sent',
       delivery_status: simulateFailure ? 'not_applicable' : 'delivered',
       read_status: 'unread',
@@ -109,25 +118,44 @@ export const conversationsHandlers = [
       delivered_at: simulateFailure ? null : '2026-01-01T00:10:01Z',
       read_at: null,
       created_at: '2026-01-01T00:10:00Z',
+      attachments: linkedAttachments,
     }
     nextMessageId += 1
     messages = [...messages, created]
+    attachments = attachments.map((a) =>
+      linkedAttachments.some((linked) => linked.id === a.id) ? { ...a, message_id: created.id } : a,
+    )
     return HttpResponse.json(created, { status: 201 })
   }),
 
-  http.post(`${API_BASE_URL}/conversations/:conversationId/attachments`, () =>
-    HttpResponse.json(
-      {
-        id: 'att-1',
-        filename: 'file.png',
-        content_type: 'image/png',
-        size_bytes: 123,
-        validation_status: 'approved',
-        message_id: null,
-        created_at: '2026-01-01T00:00:00Z',
-      },
-      { status: 201 },
-    ),
+  http.post(`${API_BASE_URL}/conversations/:conversationId/attachments`, async ({ request }) => {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const created: Attachment = {
+      id: `att-${nextAttachmentId}`,
+      filename: file?.name ?? 'file.png',
+      content_type: file?.type || 'image/png',
+      size_bytes: file?.size ?? 123,
+      validation_status: 'approved',
+      message_id: null,
+      created_at: '2026-01-01T00:00:00Z',
+    }
+    nextAttachmentId += 1
+    attachments = [...attachments, created]
+    return HttpResponse.json(created, { status: 201 })
+  }),
+
+  http.get(
+    `${API_BASE_URL}/conversations/:conversationId/attachments/:attachmentId/download`,
+    ({ params }) => {
+      const attachment = attachments.find((a) => a.id === params.attachmentId)
+      return new HttpResponse(new Blob(['fake-file-bytes']), {
+        headers: {
+          'Content-Type': attachment?.content_type ?? 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${attachment?.filename ?? 'file'}"`,
+        },
+      })
+    },
   ),
 
   http.get(`${API_BASE_URL}/conversations/:conversationId/notes`, () =>

@@ -46,6 +46,7 @@ export interface Message {
   delivered_at: string | null
   read_at: string | null
   created_at: string
+  attachments: Attachment[]
 }
 
 export interface SendMessageRequest {

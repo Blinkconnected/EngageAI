@@ -39,6 +39,18 @@ class ConversationUpdateRequest(BaseModel):
     queue_id: UUID | None = None
 
 
+class AttachmentResponse(BaseModel):
+    id: UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    validation_status: AttachmentValidationStatus
+    message_id: UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class MessageResponse(BaseModel):
     id: UUID
     conversation_id: UUID
@@ -55,6 +67,13 @@ class MessageResponse(BaseModel):
     delivered_at: datetime | None
     read_at: datetime | None
     created_at: datetime
+    # Not populated by plain `model_validate(message)` — Message has no ORM
+    # relationship to MessageAttachment (deliberately, see message.py's own
+    # docstring on keeping this table join-free at scale). Endpoints that
+    # return messages must explicitly attach these via
+    # ConversationService.list_attachments_for_messages(); every other
+    # caller gets the empty-list default.
+    attachments: list[AttachmentResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -62,15 +81,3 @@ class MessageResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     body: str | None = Field(default=None, max_length=10_000)
     attachment_ids: list[UUID] = Field(default_factory=list)
-
-
-class AttachmentResponse(BaseModel):
-    id: UUID
-    filename: str
-    content_type: str
-    size_bytes: int
-    validation_status: AttachmentValidationStatus
-    message_id: UUID | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}

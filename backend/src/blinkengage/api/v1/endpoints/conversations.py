@@ -28,8 +28,18 @@ from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.conversation import ConversationStatus
+from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+
+def _to_message_response(
+    message: Message, attachments: list[MessageAttachment]
+) -> MessageResponse:
+    response = MessageResponse.model_validate(message)
+    return response.model_copy(
+        update={"attachments": [AttachmentResponse.model_validate(a) for a in attachments]}
+    )
 
 
 @router.get("", response_model=Page[ConversationResponse])
@@ -119,8 +129,15 @@ async def list_messages(
         offset=page_params.offset,
         limit=page_params.page_size,
     )
+    attachments_by_message = await service.list_attachments_for_messages(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        message_ids=[item.id for item in items],
+    )
     return Page(
-        items=[MessageResponse.model_validate(item) for item in items],
+        items=[
+            _to_message_response(item, attachments_by_message.get(item.id, [])) for item in items
+        ],
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
@@ -145,7 +162,12 @@ async def send_message(
         attachment_ids=payload.attachment_ids,
         actor_user_id=auth.user_id,
     )
-    return MessageResponse.model_validate(message)
+    attachments_by_message = await service.list_attachments_for_messages(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        message_ids=[message.id],
+    )
+    return _to_message_response(message, attachments_by_message.get(message.id, []))
 
 
 @router.post(

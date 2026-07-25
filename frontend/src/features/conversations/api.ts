@@ -54,12 +54,53 @@ async function sendMessage(conversationId: string, payload: SendMessageRequest):
 async function uploadAttachment(conversationId: string, file: File): Promise<Attachment> {
   const formData = new FormData()
   formData.append('file', file)
+  // `apiClient`'s instance default is `Content-Type: application/json` —
+  // axios's transformRequest checks that *before* checking whether the
+  // body is FormData, so left as-is it JSON-stringifies the FormData
+  // instead of sending it as a real multipart body (the request never
+  // even reaches the server as a file upload). Explicitly clearing it
+  // per-request (not setting it to 'multipart/form-data', which would
+  // omit the required boundary parameter and break parsing a different
+  // way) lets axios/XHR generate the correct `multipart/form-data;
+  // boundary=...` header itself from the FormData body.
   const { data } = await apiClient.post<Attachment>(
     `/conversations/${conversationId}/attachments`,
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } },
+    { headers: { 'Content-Type': undefined } },
   )
   return data
+}
+
+/**
+ * The download endpoint needs the same Authorization header as every
+ * other API call, so a plain `<img>`/`<a href>` can't hit it directly —
+ * fetched as a blob instead, same pattern as the Reports PDF/Excel
+ * export (`features/reports/api.ts`). Returns an object URL the caller
+ * is responsible for revoking (`URL.revokeObjectURL`) once done with it.
+ */
+export async function fetchAttachmentBlobUrl(
+  conversationId: string,
+  attachmentId: string,
+): Promise<string> {
+  const response = await apiClient.get<Blob>(
+    `/conversations/${conversationId}/attachments/${attachmentId}/download`,
+    { responseType: 'blob' },
+  )
+  return URL.createObjectURL(response.data)
+}
+
+export async function downloadAttachment(
+  conversationId: string,
+  attachment: Attachment,
+): Promise<void> {
+  const url = await fetchAttachmentBlobUrl(conversationId, attachment.id)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = attachment.filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 async function fetchNotes(conversationId: string, params: PageParams): Promise<Page<InternalNote>> {

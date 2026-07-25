@@ -1226,6 +1226,77 @@ its own commit.
   and deactivated the department, then deleted it and confirmed (after
   the fix above) the agent's `department_id` was actually cleared.
 
+- [x] **Item 3: Chat Attachments (2026-07-25)**
+  Attachments now render inside the conversation thread: images as a
+  clickable inline preview, documents as a file-type icon + filename +
+  formatted size + download button (`AttachmentList.tsx`). Both are
+  click-to-download via a blob-fetch helper (`fetchAttachmentBlobUrl`/
+  `downloadAttachment` in `conversations/api.ts`), matching the existing
+  Reports PDF/Excel export's pattern for hitting an auth-protected binary
+  endpoint from the frontend.
+
+  This exposed two real, independent, pre-existing bugs -- not something
+  the new UI introduced, both present since attachments/messaging first
+  shipped:
+
+  1. **`MessageResponse` never carried attachment data at all.**
+     `GET .../messages` and `POST .../messages` returned messages with no
+     way to know which had attachments -- the data was always correctly
+     linked and stored (`MessageAttachment.message_id`), just never
+     surfaced. Fixed with a new `MessageAttachmentRepository.
+     list_for_messages()` (batch query, not N+1) and `ConversationService.
+     list_attachments_for_messages()`, wired into both endpoints via a new
+     `attachments: list[AttachmentResponse]` field on `MessageResponse`.
+     Kept as an explicit endpoint-layer join rather than an ORM
+     relationship, matching `message.py`'s own documented reasoning for
+     staying join-free at this table's scale.
+
+  2. **The frontend's attachment upload was completely broken** --
+     confirmed live against the real backend, not assumed: `uploadAttachment`
+     explicitly set `Content-Type: multipart/form-data` with no `boundary`
+     parameter. Per the XHR/Fetch spec (verified directly in axios's
+     installed source -- `xhr.js` calls `setRequestHeader` for every header
+     already present, and browsers only auto-generate the boundary when
+     Content-Type is *not* explicitly set), this reaches the browser
+     exactly as an explicit, boundary-less header. Reproduced the precise
+     byte pattern against the live production backend: it rejects the
+     request outright with `400 Missing boundary in multipart` -- this
+     was not a filename-corruption edge case, file upload from the
+     browser could not have worked at all. Fixed by clearing the header
+     per-request (`Content-Type: undefined`) rather than setting it to
+     `multipart/form-data` (still boundary-less) or leaving the instance's
+     `application/json` default in place (axios's own `transformRequest`
+     would then JSON-stringify the FormData instead of sending it, per
+     `defaults/index.js`) -- letting axios/XHR generate the correct
+     `multipart/form-data; boundary=...` header itself, the only one of
+     the three options that actually works.
+
+  No real browser is available in this sandbox to click through by hand,
+  so this fix was verified to the strongest standard available: direct
+  inspection of the exact installed axios version's request pipeline
+  (not assumed from memory or docs), plus reproducing both the broken and
+  fixed byte patterns as raw multipart requests against the live
+  production backend -- the broken pattern 400s, the fixed one uploads,
+  links to a message, downloads back byte-for-byte, and surfaces correctly
+  through both `list_messages` and the immediate `send_message` response,
+  including for a pre-existing historical message from seeded demo data
+  (`conversation-report.pdf`), proving the fix isn't limited to
+  newly-sent messages.
+
+  Backend: 2 new/extended integration tests (attachments on `send_message`
+  response and on `list_messages`, including a text-only message getting
+  an empty list, not a missing field) -- 568 passed unchanged (the
+  attachment fix is additive, no prior test touched this). Frontend: a
+  dedicated `AttachmentList.test.tsx` (image/document rendering, size
+  formatting, download wiring) with the network layer mocked -- jsdom's
+  `Blob` doesn't implement `.stream()`, which breaks MSW's Response
+  construction for any blob-typed response in this environment, an
+  unrelated tooling gap confirmed independent of this app's code via a
+  minimal reproduction (`new Request(..., {body}).formData()` alone loses
+  fidelity here) -- so the actual network fetch-and-render path is covered
+  by the live-backend verification above instead. 81 frontend tests total
+  (was 76), tsc/eslint clean.
+
 ---
 
 ## Working agreement

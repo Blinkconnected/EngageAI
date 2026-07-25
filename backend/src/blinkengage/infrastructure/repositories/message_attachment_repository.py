@@ -37,3 +37,16 @@ class MessageAttachmentRepository:
         self._session.add(attachment)
         await self._session.flush()
         return attachment
+
+    async def list_for_messages(
+        self, *, conversation_id: UUID, message_ids: list[UUID]
+    ) -> list[MessageAttachment]:
+        if not message_ids:
+            return []
+        result = await self._session.execute(
+            select(MessageAttachment).where(
+                MessageAttachment.conversation_id == conversation_id,
+                MessageAttachment.message_id.in_(message_ids),
+            )
+        )
+        return list(result.scalars().all())

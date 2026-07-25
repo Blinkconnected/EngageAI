@@ -169,7 +169,28 @@ async def test_send_reply_with_attachment_links_it_to_the_message(
         headers=owner_headers,
     )
     assert response.status_code == 201, response.text
-    assert response.json()["message_type"] == "media"
+    body = response.json()
+    assert body["message_type"] == "media"
+    # The send response itself carries the attachment — no extra round
+    # trip needed before the sender's own UI can render it.
+    assert len(body["attachments"]) == 1
+    assert body["attachments"][0]["id"] == attachment_id
+    assert body["attachments"][0]["filename"] == "photo.png"
+    assert body["attachments"][0]["content_type"] == "image/png"
+
+    list_response = await client.get(
+        f"/api/v1/conversations/{conversation['id']}/messages", headers=owner_headers
+    )
+    assert list_response.status_code == 200
+    messages_with_attachments = [
+        m for m in list_response.json()["items"] if m["attachments"]
+    ]
+    assert len(messages_with_attachments) == 1
+    assert messages_with_attachments[0]["attachments"][0]["id"] == attachment_id
+
+    # A message with no attachments still gets an empty (not missing) list.
+    text_only = next(m for m in list_response.json()["items"] if m["body"] == "Hello, I need help")
+    assert text_only["attachments"] == []
 
 
 async def test_send_reply_rejects_an_already_linked_attachment(

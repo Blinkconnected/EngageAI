@@ -131,6 +131,13 @@ new permissions needed). `GET /conversations/{id}/messages` (paginated),
 (`conversations.read`). `DELETE /conversations/{id}` uses the existing
 `conversations.delete` permission (soft-delete).
 
+`MessageResponse.attachments` (Sprint 2 "Pilot Feedback & UX
+Improvements", Item 3) — populated by both `GET .../messages` and
+`POST .../messages` via `ConversationService.list_attachments_for_messages()`,
+a batch query (not N+1) grouped by `message_id` at the endpoint layer.
+Deliberately not an ORM relationship on `Message` itself — see this
+file's own reasoning above on staying join-free at this table's scale.
+
 Status transitions are validated (`open → pending → resolved → closed`,
 plus reopening a `resolved`/`closed` conversation back to `open`) —
 illegal transitions (e.g. `closed → pending` directly) raise a domain
@@ -161,3 +168,15 @@ subscribed `fakeredis` pubsub handle, a `message.sent` event landing in
 the outbox, and an attachment correctly linked to (and rejected from
 double-linking onto) an outbound message. 146 tests total passing across
 the whole suite; `ruff check`/`mypy` clean.
+
+**Sprint 2 "Pilot Feedback & UX Improvements", Item 3 (2026-07-25)**:
+2 new/extended tests proving `attachments` is populated correctly on
+both `send_message`'s immediate response and `list_messages` (including
+a text-only message getting an empty list, not a missing field) — 568
+backend tests total. Also fixed, on the frontend side: attachment
+upload explicitly set `Content-Type: multipart/form-data` with no
+`boundary`, which — verified directly against axios's installed source
+and reproduced as a raw request against the live backend — the server
+flatly rejects with `400 Missing boundary in multipart`. Upload from a
+real browser could not have worked at all before this fix. See
+`docs/ROADMAP.md`'s Item 3 entry for the full verification chain.
