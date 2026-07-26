@@ -15,7 +15,28 @@ for more detail on how this page is put together.
 ## [Unreleased]
 
 ### Added
-- (nothing yet)
+
+- Manual pickup and release for queued conversations, so agents can claim
+  or hand back work directly from the Inbox, with a new "Busy" status
+  agents can set for themselves.
+- A live queue dashboard showing waiting and assigned counts, average and
+  longest wait times, average pickup time, SLA breaches, abandoned
+  conversations, and throughput for every queue.
+- A system logo and favicon across the app, and a footer showing the
+  current year automatically.
+- A public Changelog page (linked from the sign-in page) showing what's
+  new in each release — no sign-in required.
+
+### Fixed
+
+- The live queue dashboard was missing two of its numbers (assigned count
+  and throughput), even though the underlying data was already being
+  calculated correctly.
+- The company logo on the sign-in and company-creation pages was
+  stretched out of proportion.
+- Changelog entries with a bolded label (for example, "**Conversations**:
+  ...") were showing the literal `**` characters instead of real bold
+  text.
 
 ## [1.0.0-beta.1] - 2026-07-26
 
