@@ -423,6 +423,8 @@ def get_conversation_service(
         transfers=ConversationTransferRepository(session),
         agents=AgentRepository(session),
         departments=DepartmentRepository(session),
+        queues=QueueRepository(session),
+        agent_skills=AgentSkillRepository(session),
     )
 
 
@@ -447,6 +449,8 @@ def get_conversation_service_ws(
         transfers=ConversationTransferRepository(session),
         agents=AgentRepository(session),
         departments=DepartmentRepository(session),
+        queues=QueueRepository(session),
+        agent_skills=AgentSkillRepository(session),
     )
 
 

@@ -140,6 +140,7 @@ async def live_dashboard(
         agents=LiveAgentCountsResponse(
             online=dashboard.agents.online,
             away=dashboard.agents.away,
+            busy=dashboard.agents.busy,
             offline=dashboard.agents.offline,
         ),
         conversations=LiveConversationCountsResponse(
@@ -152,7 +153,17 @@ async def live_dashboard(
             LiveQueueDepthResponse(
                 queue_id=row.queue_id,
                 queue_name=row.queue_name,
+                department_id=row.department_id,
+                department_name=row.department_name,
                 open_conversations=row.open_conversations,
+                waiting_count=row.waiting_count,
+                assigned_count=row.assigned_count,
+                avg_wait_seconds=row.avg_wait_seconds,
+                longest_wait_seconds=row.longest_wait_seconds,
+                pickup_avg_seconds_24h=row.pickup_avg_seconds_24h,
+                abandoned_count_24h=row.abandoned_count_24h,
+                sla_breached_count=row.sla_breached_count,
+                throughput_24h=row.throughput_24h,
             )
             for row in dashboard.queues
         ],

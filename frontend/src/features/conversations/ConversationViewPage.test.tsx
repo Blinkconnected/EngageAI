@@ -1,12 +1,20 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { axe } from 'vitest-axe'
 import { store } from '../../app/store'
 import { queryClient } from '../../app/queryClient'
+import { apiClient } from '../../shared/api/client'
 import { loggedOut } from '../auth/authSlice'
 import { renderAuthenticated } from '../../test/renderAuthenticated'
+import { server } from '../../mocks/server'
+import { API_BASE_URL } from '../../mocks/apiBaseUrl'
+import { MOCK_USER } from '../../mocks/handlers/auth'
+import { MOCK_CUSTOMER } from '../../mocks/handlers/customers'
+import { CONVERSATION_KEY } from './api'
+import type { Conversation } from './types'
 import { ConversationViewPage } from './ConversationViewPage'
 
 function renderConversationView() {
@@ -130,5 +138,166 @@ describe('ConversationViewPage', () => {
     await user.click(screen.getByRole('button', { name: /add note/i }))
 
     expect(await screen.findByText('Customer seems frustrated.')).toBeInTheDocument()
+  })
+
+  // The seeded conversation (see mocks/handlers/conversations.ts) starts
+  // queued and unassigned — these exercise the Release button, which only
+  // ever appears once *something* has assigned it. Picking it directly
+  // through the mock's real /pick endpoint (rather than reaching into the
+  // mock module's internal state) keeps these tests exercising the same
+  // request path InboxPage.test.tsx's Pick-flow tests do.
+  describe('Release', () => {
+    async function pickTheConversation() {
+      await apiClient.post('/conversations/conv-1/pick')
+      await queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY('conv-1') })
+    }
+
+    it('is hidden while the conversation is unassigned', async () => {
+      renderConversationView()
+      await waitForLoaded()
+      expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
+    })
+
+    it('appears once assigned, and releasing it clears the assignment', async () => {
+      const user = userEvent.setup()
+      renderConversationView()
+      await waitForLoaded()
+
+      await pickTheConversation()
+      expect(await screen.findByText('Mock Self Agent')).toBeInTheDocument()
+      const releaseButton = await screen.findByRole('button', { name: /^release$/i })
+
+      await user.click(releaseButton)
+
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument(),
+      )
+      expect(await screen.findByText('Unassigned')).toBeInTheDocument()
+    })
+
+    it('has no detectable accessibility violations once shown', async () => {
+      const { container } = renderConversationView()
+      await waitForLoaded()
+      await pickTheConversation()
+      await screen.findByRole('button', { name: /^release$/i })
+
+      expect(await axe(container)).toHaveNoViolations()
+    })
+
+    it('is hidden without the conversations.release permission even when assigned', async () => {
+      server.use(
+        http.get(`${API_BASE_URL}/auth/me`, () =>
+          HttpResponse.json({
+            ...MOCK_USER,
+            permissions: MOCK_USER.permissions.filter((code) => code !== 'conversations.release'),
+          }),
+        ),
+      )
+      queryClient.clear()
+      renderConversationView()
+      await waitForLoaded()
+
+      await pickTheConversation()
+      await screen.findByText('Mock Self Agent')
+
+      expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
+    })
+
+    it('is hidden for a conversation assigned to someone else without conversations.transfer', async () => {
+      // Mirrors the backend's own authorization rule
+      // (ConversationService.release()): conversations.release alone
+      // only lets you release your OWN conversation. Assigned here to
+      // "a1" (Grace Hopper, an unrelated seeded agent — see
+      // mocks/handlers/agents.ts) rather than "a-self" (MOCK_USER's own
+      // agent profile), with conversations.transfer removed, so neither
+      // half of the ownership-or-override check is satisfied.
+      server.use(
+        http.get(`${API_BASE_URL}/auth/me`, () =>
+          HttpResponse.json({
+            ...MOCK_USER,
+            permissions: MOCK_USER.permissions.filter(
+              (code) => code !== 'conversations.transfer',
+            ),
+          }),
+        ),
+        http.get(`${API_BASE_URL}/conversations/:conversationId`, () =>
+          HttpResponse.json({
+            id: 'conv-1',
+            customer_id: MOCK_CUSTOMER.id,
+            channel_config_id: 'c1',
+            external_thread_id: 'ext-thread-1',
+            status: 'open',
+            queue_id: 'q1',
+            assigned_agent_id: 'a1',
+            department_id: null,
+            last_message_at: '2026-01-01T00:05:00Z',
+            first_response_at: null,
+            sla_first_response_breached_at: null,
+            sla_resolution_breached_at: null,
+            queue_entered_at: '2026-01-01T00:00:00Z',
+            picked_up_at: '2026-01-02T00:00:00Z',
+            closed_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          } satisfies Conversation),
+        ),
+      )
+      queryClient.clear()
+      renderConversationView()
+      await waitForLoaded()
+
+      expect(await screen.findByText('Grace Hopper')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
+    })
+
+    it('a 409 conflict shows an error and immediately refetches the conversation', async () => {
+      const user = userEvent.setup()
+      renderConversationView()
+      await waitForLoaded()
+
+      await pickTheConversation()
+      const releaseButton = await screen.findByRole('button', { name: /^release$/i })
+
+      server.use(
+        http.post(`${API_BASE_URL}/conversations/:conversationId/release`, () =>
+          HttpResponse.json(
+            { detail: 'Conversation was already transferred elsewhere.' },
+            { status: 409 },
+          ),
+        ),
+        // Only reachable if the 409 handler forces an immediate refetch of
+        // the conversation detail query — useConversationQuery has no
+        // polling interval of its own, so without that forced refetch this
+        // response would never be fetched and the test below would time
+        // out rather than pass.
+        http.get(`${API_BASE_URL}/conversations/:conversationId`, () =>
+          HttpResponse.json({
+            id: 'conv-1',
+            customer_id: MOCK_CUSTOMER.id,
+            channel_config_id: 'c1',
+            external_thread_id: 'ext-thread-1',
+            status: 'open',
+            queue_id: 'q1',
+            assigned_agent_id: null,
+            department_id: null,
+            last_message_at: '2026-01-01T00:05:00Z',
+            first_response_at: null,
+            sla_first_response_breached_at: null,
+            sla_resolution_breached_at: null,
+            queue_entered_at: '2026-01-01T00:00:00Z',
+            picked_up_at: null,
+            closed_at: null,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          } satisfies Conversation),
+        ),
+      )
+      await user.click(releaseButton)
+
+      expect(await screen.findByText(/already transferred elsewhere/i)).toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument(),
+      )
+    })
   })
 })

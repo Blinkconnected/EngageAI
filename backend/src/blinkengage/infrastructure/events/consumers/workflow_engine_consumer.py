@@ -35,6 +35,7 @@ from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublis
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -60,6 +61,7 @@ from blinkengage.infrastructure.repositories.message_repository import MessageRe
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.workflow_repository import (
     WorkflowDefinitionRepository,
 )
@@ -132,6 +134,8 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         transfers=ConversationTransferRepository(session),
         agents=AgentRepository(session),
         departments=DepartmentRepository(session),
+        queues=QueueRepository(session),
+        agent_skills=AgentSkillRepository(session),
     )
     notifications = NotificationService(
         notifications=NotificationRepository(session),

@@ -10,7 +10,7 @@ class QueueCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     department_id: UUID | None = None
-    assignment_strategy: QueueAssignmentStrategy = QueueAssignmentStrategy.ROUND_ROBIN
+    assignment_strategy: QueueAssignmentStrategy = QueueAssignmentStrategy.MANUAL
     first_response_target_minutes: int | None = Field(default=None, gt=0)
     resolution_target_minutes: int | None = Field(default=None, gt=0)
 

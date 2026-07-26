@@ -39,3 +39,12 @@ def test_resolve_effective_permissions_unions_role_sets() -> None:
 def test_permission_codes_are_unique() -> None:
     codes = [p.code for p in PERMISSIONS]
     assert len(codes) == len(set(codes))
+
+
+def test_agent_role_can_pick_and_release_conversations() -> None:
+    # Unlike conversations.transfer (Owner/Admin-only by default), pick
+    # and release are routine agent work and must be granted to the
+    # Agent role out of the box.
+    agent_permissions = DEFAULT_ROLE_PERMISSIONS[SystemRole.AGENT]
+    assert "conversations.pick" in agent_permissions
+    assert "conversations.release" in agent_permissions

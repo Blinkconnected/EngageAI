@@ -9,9 +9,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from blinkengage.domain.exceptions import (
+    AgentMissingRequiredSkillError,
     AiNotConfiguredError,
     AuthenticationError,
     AuthorizationError,
+    ConversationAlreadyClaimedError,
     DomainError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
@@ -25,6 +27,8 @@ _STATUS_MAP: dict[type[Exception], int] = {
     AuthorizationError: status.HTTP_403_FORBIDDEN,
     AiNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErpNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ConversationAlreadyClaimedError: status.HTTP_409_CONFLICT,
+    AgentMissingRequiredSkillError: status.HTTP_403_FORBIDDEN,
 }
 
 

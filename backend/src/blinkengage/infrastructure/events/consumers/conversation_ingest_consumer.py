@@ -321,6 +321,7 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
     conversation.last_message_at = datetime.now(UTC)
     if conversation.status in _REOPEN_ON_NEW_MESSAGE:
         conversation.status = ConversationStatus.OPEN
+        conversation.closed_at = None
 
     await events.publish(
         DomainEvent(
@@ -373,6 +374,20 @@ async def _route_and_assign(
     if queue_id is None:
         return
     conversation.queue_id = queue_id
+    conversation.queue_entered_at = datetime.now(UTC)
+    # Fires unconditionally on entering a queue, whether or not
+    # auto-assignment below then also succeeds — the sole "this
+    # conversation is now waiting in a queue" signal (see
+    # docs/architecture/queues-routing.md's domain event catalog).
+    await events.publish(
+        DomainEvent(
+            event_type="conversation.queued",
+            company_id=company_id,
+            aggregate_type="conversation",
+            aggregate_id=conversation.id,
+            payload={"conversation_id": str(conversation.id), "queue_id": str(queue_id)},
+        )
+    )
 
     queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
     if queue is None or not queue.is_active:
@@ -382,6 +397,16 @@ async def _route_and_assign(
     agent_id = await assignment_engine.select_agent(queue=queue, session=session)
     if agent_id is not None:
         conversation.assigned_agent_id = agent_id
+        conversation.picked_up_at = datetime.now(UTC)
+        # first_picked_up_at must also be stamped here, not only inside
+        # ConversationRepository.claim() (used by pick()) — this direct
+        # auto-assignment path (Round Robin/Least Load queues) is the
+        # other place a conversation's assignment is ever first set, and
+        # ReportingRepository.queue_metrics()'s abandoned_count_24h relies
+        # on first_picked_up_at being populated by *every* such path, or
+        # an auto-assigned conversation later released() and re-picked
+        # would be misclassified as "never handled."
+        conversation.first_picked_up_at = conversation.picked_up_at
         # Fills the "assignment changed" gap named in the original
         # event-bus mandate — this initial auto-assignment previously
         # published nothing; see docs/architecture/workflow-engine.md.

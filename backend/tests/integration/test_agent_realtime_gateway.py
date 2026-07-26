@@ -29,6 +29,7 @@ from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer im
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -54,6 +55,7 @@ from blinkengage.infrastructure.repositories.message_repository import MessageRe
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
@@ -176,6 +178,8 @@ def _build_services(session, container):
         transfers=ConversationTransferRepository(session),
         agents=AgentRepository(session),
         departments=DepartmentRepository(session),
+        queues=QueueRepository(session),
+        agent_skills=AgentSkillRepository(session),
     )
     agent_service = AgentService(
         session=session,

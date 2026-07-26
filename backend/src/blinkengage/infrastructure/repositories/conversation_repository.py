@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.conversation import (
@@ -58,6 +58,8 @@ class ConversationRepository:
         status: ConversationStatus | None = None,
         customer_id: UUID | None = None,
         assigned_agent_id: UUID | None = None,
+        queue_id: UUID | None = None,
+        unassigned_only: bool = False,
     ) -> tuple[list[Conversation], int]:
         base = select(Conversation).where(
             Conversation.company_id == company_id, Conversation.deleted_at.is_(None)
@@ -68,6 +70,10 @@ class ConversationRepository:
             base = base.where(Conversation.customer_id == customer_id)
         if assigned_agent_id is not None:
             base = base.where(Conversation.assigned_agent_id == assigned_agent_id)
+        if queue_id is not None:
+            base = base.where(Conversation.queue_id == queue_id)
+        if unassigned_only:
+            base = base.where(Conversation.assigned_agent_id.is_(None))
         total = (
             await self._session.execute(
                 select(func.count()).select_from(base.with_only_columns(Conversation.id).subquery())
@@ -82,6 +88,36 @@ class ConversationRepository:
             .limit(limit)
         )
         return list(result.scalars().all()), total
+
+    async def claim(self, *, conversation_id: UUID, agent_id: UUID, now: datetime) -> bool:
+        """Atomically assigns an unassigned conversation to ``agent_id``
+        via a single conditional ``UPDATE`` — not a read-then-write —
+        so two agents racing to pick the same conversation can't both
+        succeed. Returns ``True`` iff this call actually claimed it
+        (exactly one row matched); ``False`` means someone else (or a
+        soft-delete) got there first, and the caller (``ConversationService
+        .pick()``) turns that into ``ConversationAlreadyClaimedError``.
+
+        ``first_picked_up_at`` is only ever written once — ``COALESCE``
+        keeps whatever value it already holds from an earlier claim, so a
+        conversation that's been picked, released, and picked again still
+        reports the time of its *first* claim ever (see the column's own
+        docstring on ``Conversation`` and ``ReportingRepository
+        .queue_metrics()``'s ``abandoned_count_24h``)."""
+        result = await self._session.execute(
+            update(Conversation)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.assigned_agent_id.is_(None),
+                Conversation.deleted_at.is_(None),
+            )
+            .values(
+                assigned_agent_id=agent_id,
+                picked_up_at=now,
+                first_picked_up_at=func.coalesce(Conversation.first_picked_up_at, now),
+            )
+        )
+        return result.rowcount == 1
 
     async def add(self, conversation: Conversation) -> Conversation:
         self._session.add(conversation)

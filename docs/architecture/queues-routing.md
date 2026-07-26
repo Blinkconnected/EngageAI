@@ -6,6 +6,15 @@ and *whether it's late* (SLA/escalation) — all triggered from the same
 seam M13 already built: the conversation-ingest consumer, on a
 newly-created conversation only, never on a conversation's later messages.
 
+Sprint 2 ("Queue & Routing Engine — manual pickup, queue metrics and
+dashboard") extends this without touching the shape above: manual queues
+that never auto-assign, self-service pick()/release() so an agent can
+claim/give back a conversation, a `busy` self-service agent status, and
+a Live Dashboard metrics upgrade (per-queue assigned/pickup/abandonment/
+throughput, not just open/waiting counts). See decisions #6–#10 and the
+new sections below for what changed; everything under "Key architectural
+decisions #1–#5" and "Scope boundary" is unchanged and still accurate.
+
 ## Scope boundary: this is not the Workflow Engine
 
 M19 (Phase 4) is a general trigger/condition/action engine with a JSON
@@ -33,7 +42,8 @@ name                        unique per company among active rows
 department_id (FK, SET NULL, nullable)   organizational label only —
                                           NOT an eligibility filter (see
                                           decision #2)
-assignment_strategy         round_robin | least_load
+assignment_strategy         round_robin | least_load | manual
+                             default: manual (see decision #6)
 first_response_target_minutes (nullable) — null = no SLA on this queue
 resolution_target_minutes (nullable)
 is_active
@@ -67,7 +77,35 @@ conversations  (altered)
                                              message — see decision #3
 + sla_first_response_breached_at (nullable) idempotency marker
 + sla_resolution_breached_at (nullable)     idempotency marker
++ queue_entered_at (nullable)                set when routed into a queue;
+                                             feeds avg/longest wait
++ picked_up_at (nullable)                   set on every claim (auto- or
+                                             manually-assigned); cleared
+                                             back to null by release()
++ first_picked_up_at (nullable)             set once, on the FIRST ever
+                                             claim, and never cleared or
+                                             overwritten again — see
+                                             decision #7
++ closed_at (nullable)                      set on RESOLVED/CLOSED;
+                                             feeds throughput_24h
+
+agents  (altered)
+-----------------
+status: online | away | busy | offline     BUSY is new — see decision #10
 ```
+
+Both `assignment_strategy`'s and `status`'s columns are
+`Enum(..., native_enum=False)` (an application-level `VARCHAR` check, not
+a Postgres native enum type) — adding `manual`/`busy` as new valid values
+was a pure application-code change, **no schema migration needed for
+either**. The two migrations Sprint 2 *did* add
+(`8bf1eb4aad4e_add_conversation_queue_pickup_timestamps`,
+`1f2a3b4c5d6e_add_conversation_first_picked_up_at`) are exclusively for
+the four new `conversations` timestamp columns above, the last of which
+also backfills `first_picked_up_at` from the pre-existing `picked_up_at`
+for any conversation already claimed before the column existed — without
+that backfill, `abandoned_count_24h` would momentarily misclassify every
+already-claimed conversation as "never handled" until its next `pick()`.
 
 ## Key architectural decisions
 
@@ -120,6 +158,167 @@ conversations  (altered)
    registration, scaled down to two implementations because that's all
    this milestone needs.
 
+6. **A third strategy, `ManualPickupStrategy`, always returns `None` and
+   is the default for new queues.** Not every queue should auto-assign —
+   a "VIP" or triage queue often needs a conversation to sit visible to
+   every eligible agent until one of them actively claims it, rather than
+   being silently handed to whoever round-robin/least-load picks next.
+   Making this a third `AssignmentStrategy` implementation (not a
+   separate `if queue.assignment_strategy is None` branch bypassing the
+   strategy dict) keeps `AssignmentEngine.select_agent` itself
+   unmodified — see the OCP confirmation below. Manual is the *default*
+   for newly-created queues specifically so that "add a queue" doesn't
+   silently start auto-assigning until an operator deliberately opts in
+   to round-robin/least-load.
+
+7. **`first_picked_up_at` is a distinct column from `picked_up_at`,
+   written once and never cleared.** `picked_up_at` reflects the
+   *current* assignment (set on claim, cleared back to `null` by
+   `release()`, so it can cycle many times over a conversation's life);
+   `first_picked_up_at` answers "was this conversation *ever* handled by
+   anyone, even once, even if later released?" — the distinction
+   `ReportingRepository.queue_metrics()`'s `abandoned_count_24h` needs.
+   Without a separate column, a conversation claimed and then released
+   (e.g. an agent picks it up, realizes it's not for them, and releases
+   it back to the queue) would look identical to one nobody ever touched
+   if it were then abandoned — collapsing two different failure modes
+   ("nobody ever engaged" vs. "someone engaged, then it stalled anyway")
+   into one number. Written from two places — `ConversationRepository
+   .claim()` (manual `pick()`) and the ingest consumer's initial
+   auto-assignment — both via `func.coalesce(first_picked_up_at, now)`,
+   so whichever path claims a conversation first is the one that sticks.
+
+8. **The Live Dashboard's per-queue metrics are computed entirely from
+   columns that already exist for other reasons — no new tracking
+   infrastructure, no new tables.** `queue_entered_at`/`picked_up_at`/
+   `closed_at`/`first_picked_up_at` were each added because some other
+   metric or business rule needed them (decision #7 above); the 8 Live
+   Dashboard metrics (see the dedicated section below) are all derived
+   from these four columns plus the pre-existing SLA breach timestamps —
+   a single indexed query per queue, not a background aggregation job or
+   a new event-sourced metrics table. This mirrors decision #4's
+   preference for "cheap to compute from what's already there" over
+   speculative new infrastructure.
+
+9. **The event catalog reuses `conversation.assignment_changed` and
+   `conversation.sla_breached` rather than adding `conversation.assigned`/
+   `queue.sla_breached` as separate, redundant events.**
+   `assignment_changed` already fires on *every* assignment change —
+   the ingest consumer's initial auto-assignment (`previous_agent_id:
+   null`) and `ConversationService.update()`'s later reassignment
+   (`previous_agent_id` set) both publish it with the same shape, so a
+   consumer that cares about "this conversation now has an assigned
+   agent" already has exactly one event name to subscribe to regardless
+   of whether it's the first assignment or the fifth. `conversation
+   .sla_breached` already carries `queue_id` in its payload (see
+   `SlaMonitorService._publish`), so a queue-scoped consumer doesn't need
+   a second, queue-namespaced event to filter on the same information a
+   third time. See the full domain event catalog below for the complete
+   mapping.
+
+10. **`AgentStatus.BUSY` is self-service-only — never set automatically
+    by the WebSocket gateway's connect/disconnect lifecycle, unlike
+    `ONLINE`/`OFFLINE`.** An agent already mid-conversation and not ready
+    for a new auto-assigned pickup can mark themselves `busy` via
+    `PATCH /agents/me/status`; this excludes them from
+    `AssignmentEngine.select_agent`'s auto-assignment candidate pool
+    (alongside `OFFLINE`) without the system ever guessing "busy" on
+    their behalf from connection state — that would require inferring
+    workload/attention from a signal (a live WebSocket connection) that
+    doesn't actually indicate either. `AWAY` is unaffected and stays
+    eligible, unchanged from before this sprint.
+
+## Manual pickup: `pick()` / `release()`
+
+The self-service half of decision #6 — how a conversation sitting in a
+`manual` queue (or any queue nobody happened to auto-claim) actually gets
+handled:
+
+- **`ConversationService.pick(company_id, conversation_id, actor_agent_id)`**
+  — looks the conversation up via the caller's own `company_id` (tenant
+  isolation: a cross-tenant call 404s here before anything else runs, not
+  403s), confirms it's still queued and unassigned, narrows eligibility
+  through the same `filter_by_required_skills` helper
+  `AssignmentEngine.select_agent` uses (so manual pickup and
+  auto-assignment can never disagree about who's allowed into a skill-
+  gated queue), then claims it via `ConversationRepository.claim()` — a
+  single atomic conditional `UPDATE ... WHERE assigned_agent_id IS NULL`
+  (`rowcount == 1` or the claim is rejected) rather than a
+  read-then-write, so two agents clicking "Pick" on the same row at the
+  same instant can't both win. Publishes `conversation.picked`.
+- **`ConversationService.release(company_id, conversation_id, actor)`** —
+  clears `assigned_agent_id`/`picked_up_at` back to `null` (never
+  `first_picked_up_at`, per decision #7), returning the conversation to
+  its queue's shared pool. Ownership rule: the currently-assigned agent
+  may always release their own conversation; releasing *someone else's*
+  requires `conversations.transfer` — otherwise `conversations.release`
+  (granted to every Agent by default, since releasing your own work is
+  routine) would let anyone bypass the supervisory
+  `conversations.transfer` gate via release-then-pick. Publishes
+  `conversation.released`.
+- **RBAC**: `conversations.pick`/`conversations.release` are routine
+  agent actions (pick only ever assigns *the caller*, release only ever
+  clears back to the shared queue pool — neither can hand a conversation
+  to a specific other agent or department), granted to Owner/Admin/Agent
+  by default; `conversations.transfer` stays Owner/Admin-only.
+- **Frontend**: the Inbox has a "Status | Queue" filter toggle — Queue
+  mode lists conversations by `queue_id`/unassigned-only, polls every 10s
+  (faster than the Inbox's default 30s, since an agent in this mode is
+  actively hunting for work), and shows a "Pick" row action for anyone
+  holding `conversations.pick`; a 409 (someone else claimed it first)
+  triggers an immediate refetch instead of leaving a stale row visible.
+  `ConversationSidebar` gets a matching "Release" button, shown only when
+  the viewer is the assignee or holds `conversations.transfer`, mirroring
+  the backend rule exactly.
+
+## Live Dashboard metrics
+
+`GET /reports/live-dashboard` returns, per active queue, all 8 metrics
+below in one query per queue (`ReportingRepository.queue_metrics()`) —
+see decision #8 for why no new tracking infrastructure was needed:
+
+| # | Metric | Field | Computed as |
+|---|--------|-------|-------------|
+| 1 | Waiting Count | `waiting_count` | open/pending, this queue, `assigned_agent_id IS NULL` |
+| 2 | Assigned Count | `assigned_count` | open/pending, this queue, `assigned_agent_id IS NOT NULL` (the other half of `open_conversations`) |
+| 3 | Average Wait | `avg_wait_seconds` | `AVG(now - queue_entered_at)` over the current waiting set; `null` if `waiting_count` is 0 |
+| 4 | Longest Wait | `longest_wait_seconds` | `MAX(now - queue_entered_at)` over the same waiting set |
+| 5 | Average Pickup Time | `pickup_avg_seconds_24h` | `AVG(picked_up_at - queue_entered_at)` for conversations picked up in the last 24h; `null` if none were |
+| 6 | SLA Breaches | `sla_breached_count` | open/pending in this queue with either SLA breach timestamp set (reuses the existing M14 columns) |
+| 7 | Abandoned Count | `abandoned_count_24h` | queued in the last 24h, now closed, **and `first_picked_up_at IS NULL`** — a heuristic proxy for "never handled," not a tracked "abandoned" state (see decision #7 and the repository's own docstring for the known limitation of this proxy) |
+| 8 | Throughput | `throughput_24h` | conversations that reached RESOLVED/CLOSED in the last 24h for this queue, regardless of pickup history — a raw completion-rate signal, independent of #7's narrower "never handled" definition |
+
+`LiveQueueMetrics` (the dataclass backing all 8 fields) is a strict
+superset of the older `LiveQueueDepth`/`live_queue_depth()` pair, which
+is kept as-is (unused but valid) rather than removed, per this project's
+"never remove existing functionality without replacing it" rule — the
+live dashboard endpoint now composes from `LiveQueueMetrics` instead.
+The dashboard's queue-depth table currently surfaces metrics #1, #3, #4,
+#6 as columns (Waiting/Avg wait/Longest waiting/SLA breached), alongside
+Open and Department; metrics #2/#5/#7/#8 are computed and returned by the
+API today but not yet given their own table columns — a frontend-only,
+additive follow-up, not a backend gap.
+
+## Domain event catalog
+
+Every queue/routing/assignment/pickup operation is event-driven — no
+step silently mutates state without a corresponding `DomainEvent` through
+the existing M10 outbox → consumer pipeline (audit-log, notification,
+reporting, workflow-engine, erp-sync all subscribe to what's relevant to
+each).
+
+| Event | Literal `event_type` | Published from | Notes |
+|---|---|---|---|
+| Conversation queued | `conversation.queued` | `conversation_ingest_consumer` (routing step) | Fires whenever a new conversation is routed into a queue, whether or not auto-assignment then also succeeds |
+| Conversation picked | `conversation.picked` | `ConversationService.pick()` | Manual, self-service claim |
+| Conversation released | `conversation.released` | `ConversationService.release()` | Back to the queue's shared pool |
+| Conversation assigned | `conversation.assignment_changed` | `conversation_ingest_consumer` (initial auto-assign) **and** `ConversationService.update()` (reassignment) | Reused rather than a separate `conversation.assigned` — see decision #9. `previous_agent_id` in the payload is `null` on first assignment, set on reassignment |
+| Conversation transferred | `conversation.transferred` | `ConversationService.transfer()` | Distinct from assignment_changed — carries transfer history (note, department-vs-agent target) |
+| Conversation resolved | `conversation.resolved` | `ConversationService.update()` | Dynamically constructed as `f"conversation.{status.value}"` when transitioning into `RESOLVED` — not a literal string in the source, but a real, tested event |
+| Conversation closed | `conversation.closed` | `ConversationService.update()` | Same dynamic construction, `status.value == "closed"` |
+| Agent status changed | `agent.status_changed` | `AgentService.update()` | Fires only when status actually changes; payload carries `previous_status`/`status`. Includes the WS gateway's connect→`online`/disconnect→`offline` transitions and the self-service `online`/`away`/`busy` toggle — all go through the same service method |
+| Queue SLA breached | `conversation.sla_breached` | `SlaMonitorService` | Reused rather than a separate `queue.sla_breached` — payload already carries `queue_id`; published exactly once per breach type via the idempotency markers in decision #4 |
+
 ## API
 
 `GET/POST /queues`, `GET/PATCH/DELETE /queues/{id}` (`queues.read`/
@@ -130,22 +329,92 @@ conversations  (altered)
 side), `GET/POST /routing-rules`, `GET/PATCH/DELETE /routing-rules/{id}`
 (`queues.manage`).
 
+Sprint 2 additions: `POST /conversations/{id}/pick` (`conversations
+.pick`), `POST /conversations/{id}/release` (`conversations.release`),
+`PATCH /agents/me/status` (self-service, any authenticated agent — see
+decision #10). `GET /reports/live-dashboard` (`reports.read`) is
+unchanged in shape at the endpoint level but now returns all 8 metrics
+above per queue instead of just open/waiting counts.
+
+## Extension points
+
+- **A new assignment strategy** is one new `AssignmentStrategy` subclass
+  plus one `_STRATEGIES` dict entry (see the OCP confirmation below) —
+  e.g. business-hours-aware or priority-customer-aware assignment, named
+  as a future refinement in decision #5, remains exactly this shape after
+  Sprint 2's `ManualPickupStrategy` addition.
+- **Queue eligibility via team membership** (decision #2's documented
+  follow-up) would extend `filter_by_required_skills`'s sibling-function
+  shape with a second, analogous narrowing function, not a rewrite of
+  `AssignmentEngine`/`ConversationService.pick()`.
+- **A new Live Dashboard metric** derived from existing columns is a new
+  field on `LiveQueueMetrics` plus one more `SELECT` expression in
+  `queue_metrics()` — no new tables needed unless the metric requires
+  tracking something no existing column captures.
+- **A new domain event consumer** (e.g. a future analytics or ERP
+  sync need) subscribes to the existing outbox with a new routing-key
+  binding, per M10's established pattern — no changes to any publisher
+  in the table above.
+
+## Open/Closed Principle confirmation
+
+`AssignmentEngine.select_agent()` and its `_STRATEGIES` registry were
+**not modified** to add `ManualPickupStrategy` — the diff that
+introduced it is purely additive: one new class implementing the
+existing `AssignmentStrategy` ABC, one new dict entry mapping
+`QueueAssignmentStrategy.MANUAL` to an instance of it, and one new
+`_INELIGIBLE_FOR_AUTO_ASSIGNMENT` tuple entry (`BUSY`, alongside the
+pre-existing `OFFLINE`) consumed by the same unchanged eligibility query
+`select_agent()` already ran. `RoundRobinStrategy`/`LeastLoadStrategy`
+and the method bodies that call into the strategy dict are untouched.
+This is the same shape decision #5 committed to at M14: a new assignment
+policy is closed for modification, open for extension.
+
 ## Verification performed
 
-25 new tests. `RoutingEngine`: priority-order evaluation, `channel_type`/
-`body_contains` matching (case-insensitively), inactive rules ignored,
-and no-match returns `None` rather than a default queue. Queue/routing-
-rule/agent-skill CRUD APIs: creation, duplicate-name conflicts, SLA
-target updates, soft-delete, required-skill add/remove, tenant isolation,
-unauthenticated rejection, skill-assignment idempotency. Assignment/
-routing end-to-end: a brand-new conversation is both routed to the
-matching rule's queue and assigned to the (only) eligible online agent;
-a second message on the same thread does not re-route or re-assign;
-`LeastLoadStrategy` prefers the agent with fewer open conversations over
-one with two already assigned; a queue's required skill correctly
-excludes an unskilled agent and selects the skilled one; a queue whose
-required skill nobody has leaves the selection `None` rather than
-falling back to an ineligible agent. `SlaMonitorService`: a conversation
-past its first-response deadline publishes `conversation.sla_breached`
-exactly once — a second sweep run does not re-publish. 171 tests total
-passing across the whole suite; `ruff check`/`mypy` clean.
+M14 baseline: 25 new tests. `RoutingEngine`: priority-order evaluation,
+`channel_type`/`body_contains` matching (case-insensitively), inactive
+rules ignored, and no-match returns `None` rather than a default queue.
+Queue/routing-rule/agent-skill CRUD APIs: creation, duplicate-name
+conflicts, SLA target updates, soft-delete, required-skill add/remove,
+tenant isolation, unauthenticated rejection, skill-assignment
+idempotency. Assignment/routing end-to-end: a brand-new conversation is
+both routed to the matching rule's queue and assigned to the (only)
+eligible online agent; a second message on the same thread does not
+re-route or re-assign; `LeastLoadStrategy` prefers the agent with fewer
+open conversations over one with two already assigned; a queue's
+required skill correctly excludes an unskilled agent and selects the
+skilled one; a queue whose required skill nobody has leaves the
+selection `None` rather than falling back to an ineligible agent.
+`SlaMonitorService`: a conversation past its first-response deadline
+publishes `conversation.sla_breached` exactly once — a second sweep run
+does not re-publish.
+
+Sprint 2 additions: `pick()`/`release()` success, ownership/
+authorization (assignee-or-transfer-holder release rule), atomic-claim
+race safety, skill-gated pickup eligibility parity with auto-assignment,
+and — added this pass to close a verification gap with no prior
+dedicated test — explicit cross-tenant `pick()`/`release()` checks
+(`test_pick_404s_for_a_conversation_belonging_to_another_company`,
+`test_release_404s_for_a_conversation_belonging_to_another_company`),
+confirming a Company B caller (even one holding `conversations.transfer`
+in their own company) gets a 404 against Company A's conversation, not a
+403 or a successful bypass. `busy` status exclusion from
+auto-assignment. Live Dashboard: all 8 metrics computed correctly
+against seeded data, including the `assigned_count`/`throughput_24h`
+endpoint-wiring gap found and fixed this pass (see the Sprint 2 Queue
+Ops release report). Full domain-event audit: all 9 named events
+confirmed present and correctly triggered (2 of the 9 intentionally
+reuse existing, broader events — `assignment_changed`/`sla_breached` —
+per decision #9, not gaps). `AssignmentEngine` OCP compliance confirmed
+by diff inspection (no existing strategy class or registry-consuming
+method modified).
+
+762 backend tests passing (up from the M14-era 171), `ruff check`/
+`ruff format --check`/`mypy` clean. 161 frontend tests passing, `tsc -b`/
+`eslint` clean. Verified live against the full 9-container Docker stack
+(all services rebuilt from the shared `docker/backend/Dockerfile`):
+created a queue, confirmed `GET /reports/live-dashboard` returns
+`assigned_count`/`throughput_24h` correctly (previously a
+`ValidationError` — see the release report) against the real running
+Postgres-backed stack, not just the test suite.

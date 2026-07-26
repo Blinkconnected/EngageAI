@@ -1,12 +1,21 @@
 import { useState } from 'react'
-import { Button, Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import { useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
+import { Alert, Button, Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+import { extractErrorMessage } from '../../shared/api/errors'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useAllAgentsQuery } from '../agents/api'
 import { useAllChannelsQuery } from '../channels/api'
 import { useAllDepartmentsQuery } from '../departments/api'
 import { useAllQueuesQuery } from '../queues/api'
-import { useUpdateConversationMutation } from './api'
+import { useCurrentUserQuery } from '../session/api'
+import {
+  CONVERSATION_KEY,
+  CONVERSATIONS_LIST_KEY,
+  useReleaseConversationMutation,
+  useUpdateConversationMutation,
+} from './api'
 import { TransferDialog } from './TransferDialog'
 import { CONVERSATION_STATUSES, type Conversation } from './types'
 
@@ -20,12 +29,46 @@ export function ConversationSidebar({
   const { hasPermission } = usePermissions()
   const canTransfer = hasPermission('conversations.transfer')
   const [transferOpen, setTransferOpen] = useState(false)
+  const [releaseError, setReleaseError] = useState<string | null>(null)
 
+  const { data: currentUser } = useCurrentUserQuery()
   const channelsQuery = useAllChannelsQuery()
   const agentsQuery = useAllAgentsQuery()
   const departmentsQuery = useAllDepartmentsQuery()
   const queuesQuery = useAllQueuesQuery()
   const updateMutation = useUpdateConversationMutation(conversation.id)
+  const releaseMutation = useReleaseConversationMutation()
+  const queryClient = useQueryClient()
+
+  const myAgentId = agentsQuery.data?.find((agent) => agent.user_id === currentUser?.id)?.id
+  // Mirrors the backend's own authorization rule (ConversationService
+  // .release()): releasing your own actively-assigned conversation only
+  // needs the routine conversations.release permission, but releasing a
+  // colleague's is a reassignment, which requires the supervisory
+  // conversations.transfer permission (same gate as the Transfer button
+  // above) — otherwise any Agent-role principal (conversations.release is
+  // granted to every Agent by default) could re-home someone else's
+  // conversation to themselves via Release-then-Pick.
+  const isAssignedToSelf =
+    conversation.assigned_agent_id != null && conversation.assigned_agent_id === myAgentId
+  const canRelease = hasPermission('conversations.release') && (canTransfer || isAssignedToSelf)
+
+  function handleRelease() {
+    setReleaseError(null)
+    releaseMutation.mutate(conversation.id, {
+      onError: (error) => {
+        setReleaseError(extractErrorMessage(error, 'Could not release this conversation.'))
+        // A 409 means the conversation's assignment already changed
+        // server-side (e.g. transferred away) since this sidebar last
+        // loaded it — refetch immediately rather than leaving the stale
+        // "assigned to" state on screen.
+        if (isAxiosError(error) && error.response?.status === 409) {
+          void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversation.id) })
+          void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+        }
+      },
+    })
+  }
 
   const channel = channelsQuery.data?.find((c) => c.id === conversation.channel_config_id)
   const assignedAgent = agentsQuery.data?.find((a) => a.id === conversation.assigned_agent_id)
@@ -35,6 +78,8 @@ export function ConversationSidebar({
 
   return (
     <Stack spacing={2} sx={{ p: 2, width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
+      {releaseError && <Alert severity="error">{releaseError}</Alert>}
+
       <div>
         <Typography variant="overline" color="text.secondary">
           Customer
@@ -84,11 +129,29 @@ export function ConversationSidebar({
             entirely (not just disabled) for anyone without
             conversations.transfer, matching this feature's RBAC
             requirement rather than only cosmetically discouraging it. */}
-        {canTransfer && (
-          <Button size="small" sx={{ mt: 0.5 }} onClick={() => setTransferOpen(true)}>
-            Transfer…
-          </Button>
-        )}
+        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+          {canTransfer && (
+            <Button size="small" onClick={() => setTransferOpen(true)}>
+              Transfer…
+            </Button>
+          )}
+          {/* Only offered once someone actually holds the conversation —
+              releasing an already-unassigned one is a no-op the backend
+              400s on, not a real action to expose. `canRelease` above
+              already folds in the "is this my own conversation, or do I
+              hold conversations.transfer" check, so this second
+              condition only needs to confirm *something* is assigned. */}
+          {canRelease && conversation.assigned_agent_id && (
+            <Button
+              size="small"
+              color="warning"
+              disabled={releaseMutation.isPending}
+              onClick={handleRelease}
+            >
+              {releaseMutation.isPending ? 'Releasing…' : 'Release'}
+            </Button>
+          )}
+        </Stack>
       </div>
 
       <TextField

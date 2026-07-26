@@ -35,9 +35,7 @@ from blinkengage.infrastructure.database.models.message import Message, MessageA
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
-def _to_message_response(
-    message: Message, attachments: list[MessageAttachment]
-) -> MessageResponse:
+def _to_message_response(message: Message, attachments: list[MessageAttachment]) -> MessageResponse:
     response = MessageResponse.model_validate(message)
     return response.model_copy(
         update={"attachments": [AttachmentResponse.model_validate(a) for a in attachments]}
@@ -52,6 +50,8 @@ async def list_conversations(
     status_filter: ConversationStatus | None = None,
     customer_id: UUID | None = None,
     assigned_agent_id: UUID | None = None,
+    queue_id: UUID | None = None,
+    unassigned_only: bool = False,
 ) -> Page[ConversationResponse]:
     items, total = await service.list_conversations(
         company_id=auth.company_id,
@@ -60,6 +60,8 @@ async def list_conversations(
         status=status_filter,
         customer_id=customer_id,
         assigned_agent_id=assigned_agent_id,
+        queue_id=queue_id,
+        unassigned_only=unassigned_only,
     )
     return Page(
         items=[ConversationResponse.model_validate(item) for item in items],
@@ -120,9 +122,36 @@ async def transfer_conversation(
     return ConversationTransferResponse.model_validate(transfer)
 
 
-@router.get(
-    "/{conversation_id}/transfers", response_model=Page[ConversationTransferResponse]
-)
+@router.post("/{conversation_id}/pick", response_model=ConversationResponse)
+async def pick_conversation(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.pick"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> ConversationResponse:
+    conversation = await service.pick(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        actor_user_id=auth.user_id,
+    )
+    return ConversationResponse.model_validate(conversation)
+
+
+@router.post("/{conversation_id}/release", response_model=ConversationResponse)
+async def release_conversation(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.release"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> ConversationResponse:
+    conversation = await service.release(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        actor_user_id=auth.user_id,
+        actor_has_transfer_permission=auth.has_permission("conversations.transfer"),
+    )
+    return ConversationResponse.model_validate(conversation)
+
+
+@router.get("/{conversation_id}/transfers", response_model=Page[ConversationTransferResponse])
 async def list_conversation_transfers(
     conversation_id: UUID,
     auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],

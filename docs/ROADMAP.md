@@ -1543,6 +1543,100 @@ its own commit.
   converge correctly both from empty and from the exact partial-failure
   state the deadlock had left behind.
 
+- [x] **Item 7: Queue & Routing Engine — Manual Pickup, Metrics & Dashboard
+  (2026-07-26)** — refines M14's Queues/Assignment/Routing Engine rather
+  than replacing it: a `manual` assignment strategy (new default for
+  queues) that deliberately never auto-assigns, so a conversation waits
+  visible to every eligible agent until one claims it; self-service
+  `POST /conversations/{id}/pick`/`/release` (`ConversationService.pick`/
+  `.release`, gated by new `conversations.pick`/`conversations.release`
+  permissions, granted to Owner/Admin/Agent by default since neither can
+  move a conversation to anyone other than the caller or back to the
+  shared pool — only `release()` of *someone else's* conversation needs
+  the existing supervisory `conversations.transfer` permission); a new
+  self-service `busy` agent status excluded from auto-assignment like
+  `offline` but, unlike `offline`, never set automatically by the
+  WebSocket gateway's connect/disconnect lifecycle; and a Live Dashboard
+  metrics upgrade from 2 basic counts to the full 8-metric catalog
+  (Waiting/Assigned/Avg Wait/Longest Wait/Avg Pickup Time/SLA
+  Breaches/Abandoned/Throughput). Full design, the 3 new architecture
+  decisions this closes out (#6–#10 that were already forward-referenced
+  in the code from an earlier pass), the complete domain event catalog,
+  and the OCP confirmation for the new assignment strategy are in
+  `docs/architecture/queues-routing.md`.
+
+  This session's work was almost entirely **verification and defect
+  resolution** against an already-substantially-built feature (the bulk
+  of the implementation — models, migrations, services, endpoints, and
+  frontend UI — predated this pass); the explicit brief was "fix
+  confirmed findings, verify it's fully event-driven, verify production
+  readiness, document, then commit" rather than build from scratch.
+
+  **Fixed**: the Live Dashboard endpoint (`GET /reports/live-dashboard`)
+  constructed its response without passing through `assigned_count`/
+  `throughput_24h`, even though both already existed on the source
+  `LiveQueueMetrics` dataclass and were required by the response schema —
+  every `TestLiveDashboard` test was failing with a Pydantic
+  `ValidationError` until this was wired through. The frontend's
+  `LiveQueueDepth` TypeScript interface had the identical gap (missing
+  the same two fields despite its own comment claiming full
+  backend-response parity) — fixed alongside matching MSW fixture
+  updates. Both are two-line, additive fixes at the composition layer; no
+  new columns or schema changes were needed since both fields already
+  existed upstream.
+
+  **Re-verified, not just re-asserted**: `pick()`/`release()`'s ownership
+  and tenant-isolation rules were read end-to-end against 16 existing
+  passing tests, then closed a real gap — no test named specifically
+  "cross-tenant pick/release" existed — with two new ones confirming a
+  Company B caller (even one holding `conversations.transfer` in their
+  *own* company) gets a 404 against Company A's conversation, never a
+  403 or a silent bypass.
+
+  **Domain event audit**: all 9 required events (`conversation.queued`/
+  `.picked`/`.released`/`.transferred`, `agent.status_changed`, plus 2
+  intentionally reused rather than duplicated — `assignment_changed` for
+  "assigned" and the pre-existing `conversation.sla_breached` for "queue
+  SLA breached," both already carrying the relevant payload) confirmed
+  present and correctly triggered. `conversation.resolved`/`.closed` are
+  constructed dynamically (`f"conversation.{status.value}"`) rather than
+  as literal strings — an initial literal-string `grep` sweep missed both
+  as a false negative, corrected by reading `ConversationService.update()`
+  directly; both are real and already covered by existing passing tests.
+
+  **OCP confirmation**: `ManualPickupStrategy`'s addition to
+  `AssignmentEngine` was verified by diff inspection to be purely
+  additive — no existing strategy class or the method that consumes the
+  strategy registry was modified.
+
+  No new Alembic migrations were required for the `manual` strategy value
+  or the `busy` status (both columns are `Enum(..., native_enum=False)` —
+  an application-level check, not a native Postgres enum — so new valid
+  values are a pure code change). Two migrations already existed for the
+  four new `conversations` timestamp columns
+  (`queue_entered_at`/`picked_up_at`/`first_picked_up_at`/`closed_at`)
+  that back the metrics catalog and the `abandoned_count_24h` heuristic.
+
+  Backend: 762 passed (2 new cross-tenant tests added this pass), `ruff
+  check`/`ruff format --check`/`mypy` clean. Frontend: 161 passed, `tsc
+  -b`/`eslint` clean. Verified live against the full 9-container Docker
+  stack (rebuilt from the shared `docker/backend/Dockerfile`): created a
+  queue via the real API and confirmed `GET /reports/live-dashboard`
+  returns `assigned_count`/`throughput_24h` correctly against the actual
+  running Postgres-backed stack, not only the test suite.
+
+  **Known limitation, documented not fixed**: `abandoned_count_24h`
+  remains a heuristic proxy ("queued, then closed, `first_picked_up_at`
+  still null") rather than a tracked "abandoned" state — see
+  `queues-routing.md`'s own documented caveat, unchanged by this pass.
+  The Live Dashboard's queue-depth table surfaces 4 of the 8 metrics as
+  columns today (Waiting/Avg Wait/Longest Wait/SLA Breached); the other
+  4 (Assigned/Avg Pickup Time/Abandoned/Throughput) are computed and
+  returned by the API but not yet given dedicated table columns — an
+  additive, frontend-only follow-up, not a backend gap, and out of scope
+  for this pass per "no architectural changes unless required to fix
+  defects."
+
 ---
 
 ## Working agreement

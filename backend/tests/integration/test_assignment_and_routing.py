@@ -115,6 +115,198 @@ async def test_new_conversation_is_routed_and_assigned(
     assert assignment_events[0].payload["previous_agent_id"] is None
     assert assignment_events[0].payload["conversation_id"] == str(conversation.id)
 
+    queued_events = [e for e in batch if e.event_type == "conversation.queued"]
+    assert len(queued_events) == 1
+    assert queued_events[0].payload["conversation_id"] == str(conversation.id)
+    assert queued_events[0].payload["queue_id"] == queue_id
+
+
+async def test_auto_assigned_conversation_sets_first_picked_up_at(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    company_id = registered_owner["user"]["company"]["id"]
+    await _create_online_agent(client, owner_headers, "agent1@acme.example")
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={"name": "Billing", "assignment_strategy": "round_robin"},
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+
+    # Not just picked_up_at — first_picked_up_at must also be stamped on
+    # this direct auto-assignment path (not only inside
+    # ConversationRepository.claim(), used by manual pick()), or
+    # ReportingRepository.queue_metrics()'s abandoned_count_24h would
+    # misclassify this conversation as "never handled" once released.
+    assert conversation.picked_up_at is not None
+    assert conversation.first_picked_up_at == conversation.picked_up_at
+
+
+async def test_new_conversation_sets_queue_entered_at_and_picked_up_at(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    company_id = registered_owner["user"]["company"]["id"]
+    await _create_online_agent(client, owner_headers, "agent1@acme.example")
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={"name": "Billing", "assignment_strategy": "round_robin"},
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+
+    assert conversation.queue_entered_at is not None
+    assert conversation.picked_up_at is not None
+
+
+async def test_manual_strategy_leaves_conversation_unassigned_but_queued(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    company_id = registered_owner["user"]["company"]["id"]
+    await _create_online_agent(client, owner_headers, "agent1@acme.example")
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={"name": "Manual Queue", "assignment_strategy": "manual"},
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+        batch = await EventOutboxRepository(db_session).claim_batch(
+            limit=50, max_attempts=1_000_000
+        )
+
+    assert str(conversation.queue_id) == queue_id
+    assert conversation.assigned_agent_id is None
+    assert conversation.queue_entered_at is not None
+
+    # conversation.queued must fire even when ManualPickupStrategy leaves
+    # the conversation unassigned — it's the "entered a queue" signal,
+    # independent of whether auto-assignment then also succeeds.
+    queued_events = [e for e in batch if e.event_type == "conversation.queued"]
+    assert len(queued_events) == 1
+    assert queued_events[0].payload["conversation_id"] == str(conversation.id)
+    assert queued_events[0].payload["queue_id"] == queue_id
+    assert conversation.picked_up_at is None
+
+
+async def test_busy_agent_excluded_while_away_agent_stays_eligible(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    busy_agent_id = await _create_online_agent(client, owner_headers, "busy@acme.example")
+    away_agent_id = await _create_online_agent(client, owner_headers, "away@acme.example")
+    await client.patch(
+        f"/api/v1/agents/{busy_agent_id}", json={"status": "busy"}, headers=owner_headers
+    )
+    await client.patch(
+        f"/api/v1/agents/{away_agent_id}", json={"status": "away"}, headers=owner_headers
+    )
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={"name": "Support", "assignment_strategy": "round_robin"},
+        headers=owner_headers,
+    )
+    queue_id = UUID(queue_response.json()["id"])
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        queue = await db_session.get(Queue, queue_id)
+        assert queue is not None
+        engine = AssignmentEngine(
+            queues=QueueRepository(db_session), agent_skills=AgentSkillRepository(db_session)
+        )
+        selected = await engine.select_agent(queue=queue, session=db_session)
+
+    assert str(selected) == away_agent_id
+
 
 async def test_second_message_does_not_reroute_or_reassign(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
@@ -227,7 +419,9 @@ async def test_skill_based_eligibility_filters_out_unskilled_agents(
     )
 
     queue_response = await client.post(
-        "/api/v1/queues", json={"name": "Spanish Support"}, headers=owner_headers
+        "/api/v1/queues",
+        json={"name": "Spanish Support", "assignment_strategy": "round_robin"},
+        headers=owner_headers,
     )
     queue_id = queue_response.json()["id"]
     await client.post(

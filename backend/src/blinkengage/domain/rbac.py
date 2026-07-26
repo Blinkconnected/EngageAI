@@ -64,6 +64,17 @@ PERMISSIONS: tuple[Permission, ...] = (
     # permission-catalog mechanism every other permission already uses,
     # not a bespoke new setting.
     Permission("conversations.transfer", "Transfer conversations to another agent or department"),
+    # Unlike conversations.transfer above, these two are routine agent
+    # work, not supervisory actions: pick() only ever assigns the caller
+    # to a conversation *as their own owner* (never to anyone else), and
+    # release() only ever clears a conversation back to its queue's
+    # shared pool (never hands it to another specific agent or
+    # department) — neither can be used to move a conversation to
+    # someone else, so neither needs the same Owner/Admin-only default
+    # transfer gets. Granted to Agent by default (see
+    # DEFAULT_ROLE_PERMISSIONS below).
+    Permission("conversations.pick", "Pick up a queued, unassigned conversation as its own owner"),
+    Permission("conversations.release", "Release a conversation back to its queue, unassigning it"),
     # --- Reporting ---
     Permission("reports.read", "View reports and dashboards"),
     # --- Audit ---
@@ -124,6 +135,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.read",
             "conversations.manage",
             "conversations.transfer",
+            "conversations.pick",
+            "conversations.release",
             "reports.read",
             "audit_logs.read",
             "channels.read",
@@ -149,6 +162,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "customers.manage",
             "conversations.read",
             "conversations.manage",
+            "conversations.pick",
+            "conversations.release",
             "reports.read",
             "queues.read",
             "workflows.read",

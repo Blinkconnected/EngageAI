@@ -1,4 +1,8 @@
-export type AgentStatus = 'online' | 'away' | 'offline'
+export type AgentStatus = 'online' | 'away' | 'busy' | 'offline'
+
+/** Statuses an agent can set for themselves via `PATCH /agents/me/status`
+ * — excludes `offline`, which stays connection-derived only. */
+export type SelfAvailabilityStatus = 'online' | 'away' | 'busy'
 
 /** Matches the backend's `AgentResponse`. */
 export interface Agent {

@@ -25,6 +25,8 @@ export const MOCK_USER: UserProfile = {
     'conversations.manage',
     'conversations.delete',
     'conversations.transfer',
+    'conversations.pick',
+    'conversations.release',
     'customers.read',
     'customers.manage',
     'erp.manage',

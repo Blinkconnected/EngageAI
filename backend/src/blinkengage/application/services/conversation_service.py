@@ -16,13 +16,20 @@ import contextlib
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from blinkengage.application.services.assignment_engine import filter_by_required_skills
 from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.core.config import Settings
 from blinkengage.domain.channels import AttachmentRef, OutboundMessage
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
+    AgentMissingRequiredSkillError,
     AttachmentNotLinkableError,
     AttachmentValidationError,
+    AuthorizationError,
+    ConversationAlreadyClaimedError,
+    ConversationNotAssignedError,
+    ConversationNotInQueueError,
+    ConversationNotPickableError,
     EntityNotFoundError,
     InvalidConversationStatusTransitionError,
 )
@@ -49,6 +56,7 @@ from blinkengage.infrastructure.database.models.message import (
     MessageType,
 )
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -67,6 +75,7 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 
 _ALLOWED_TRANSITIONS: dict[ConversationStatus, frozenset[ConversationStatus]] = {
@@ -98,6 +107,8 @@ class ConversationService:
         transfers: ConversationTransferRepository,
         agents: AgentRepository,
         departments: DepartmentRepository,
+        queues: QueueRepository,
+        agent_skills: AgentSkillRepository,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -112,6 +123,8 @@ class ConversationService:
         self._transfers = transfers
         self._agents = agents
         self._departments = departments
+        self._queues = queues
+        self._agent_skills = agent_skills
 
     async def get(self, *, company_id: UUID, conversation_id: UUID) -> Conversation:
         conversation = await self._conversations.get_by_id(
@@ -130,6 +143,8 @@ class ConversationService:
         status: ConversationStatus | None,
         customer_id: UUID | None = None,
         assigned_agent_id: UUID | None = None,
+        queue_id: UUID | None = None,
+        unassigned_only: bool = False,
     ) -> tuple[list[Conversation], int]:
         return await self._conversations.list_for_company(
             company_id=company_id,
@@ -138,6 +153,8 @@ class ConversationService:
             status=status,
             customer_id=customer_id,
             assigned_agent_id=assigned_agent_id,
+            queue_id=queue_id,
+            unassigned_only=unassigned_only,
         )
 
     async def update(
@@ -152,6 +169,7 @@ class ConversationService:
     ) -> Conversation:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         previous_status = conversation.status
+        status_transitioned = False
         if status is not None and status != conversation.status:
             allowed = _ALLOWED_TRANSITIONS.get(conversation.status, frozenset())
             if status not in allowed:
@@ -159,11 +177,37 @@ class ConversationService:
                     conversation.status.value, status.value
                 )
             conversation.status = status
+            status_transitioned = True
+            if status in (ConversationStatus.CLOSED, ConversationStatus.RESOLVED):
+                # Also refreshed on entering RESOLVED, not just CLOSED —
+                # ReportingRepository.queue_metrics()'s abandoned_count_24h
+                # filters on `status IN (RESOLVED, CLOSED) AND closed_at >=
+                # cutoff`, so a conversation that resolves directly without
+                # ever being CLOSED needs this populated too, or it would
+                # never be countable. Unconditionally overwriting (rather
+                # than only-if-None) also means a stale closed_at left over
+                # from an earlier close/reopen cycle gets refreshed to the
+                # instant of *this* terminal transition rather than lying
+                # about when the conversation actually reached its current
+                # terminal state.
+                conversation.closed_at = datetime.now(UTC)
         previous_agent_id = conversation.assigned_agent_id
         if assigned_agent_id is not None:
             conversation.assigned_agent_id = assigned_agent_id
-        if queue_id is not None:
+        if queue_id is not None and queue_id != conversation.queue_id:
+            # Must belong to this same company — otherwise a client could
+            # point queue_id at another tenant's Queue row (the FK alone
+            # only requires it to exist *somewhere*), which would silently
+            # leak this conversation into that other company's Live
+            # Dashboard / queue-metrics counts (see
+            # ReportingRepository.live_queue_depth()/queue_metrics()) and
+            # let pick()'s required-skill check evaluate against a
+            # queue config this company doesn't own.
+            queue = await self._queues.get_by_id(company_id=company_id, queue_id=queue_id)
+            if queue is None:
+                raise EntityNotFoundError("Queue", queue_id)
             conversation.queue_id = queue_id
+            conversation.queue_entered_at = datetime.now(UTC)
 
         await self._events.publish(
             DomainEvent(
@@ -206,6 +250,26 @@ class ConversationService:
                         "conversation_id": str(conversation.id),
                         "agent_id": str(assigned_agent_id),
                         "previous_agent_id": str(previous_agent_id) if previous_agent_id else None,
+                    },
+                )
+            )
+        terminal_statuses = (ConversationStatus.RESOLVED, ConversationStatus.CLOSED)
+        if status_transitioned and status in terminal_statuses:
+            # Same reasoning as conversation.assignment_changed above: a
+            # dedicated event per terminal transition so a consumer that
+            # only cares about "resolved" (e.g. a CSAT survey trigger) or
+            # "closed" (e.g. archival) doesn't have to diff
+            # conversation.updated's previous_status/status payload.
+            await self._events.publish(
+                DomainEvent(
+                    event_type=f"conversation.{status.value}",
+                    company_id=company_id,
+                    aggregate_type="conversation",
+                    aggregate_id=conversation.id,
+                    actor_user_id=actor_user_id,
+                    payload={
+                        "conversation_id": str(conversation.id),
+                        "previous_status": previous_status.value,
                     },
                 )
             )
@@ -318,6 +382,163 @@ class ConversationService:
         return await self._transfers.list_for_conversation(
             conversation_id=conversation_id, offset=offset, limit=limit
         )
+
+    async def pick(
+        self, *, company_id: UUID, conversation_id: UUID, actor_user_id: UUID
+    ) -> Conversation:
+        """Self-service claim of a queued, unassigned conversation — the
+        counterpart to a ``ManualPickupStrategy`` queue (see
+        ``assignment_engine.py``), where auto-assignment deliberately
+        never happens and a conversation instead waits, visible to every
+        eligible agent, until one of them calls this. Unlike
+        ``transfer()``, the target is always the caller themselves —
+        there is no ``to_agent_id`` — so this only ever needs
+        ``conversations.pick``, a routine-agent-work permission, not the
+        supervisory ``conversations.transfer``.
+
+        ``queue_id``/``department_id`` are untouched: ``queue_id`` is a
+        permanent tag on the conversation (see ``Conversation``'s own
+        docstring and ``ReportingRepository.live_queue_depth``), never
+        cleared by a pickup. Only an ``OPEN``/``PENDING`` conversation can
+        be picked — a ``RESOLVED``/``CLOSED`` one retains its ``queue_id``
+        forever (same permanent-tag reasoning) but is no longer "in
+        progress", so claiming it would leave a stale, already-finished
+        conversation looking actively worked.
+        """
+        conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+        if conversation.queue_id is None:
+            raise ConversationNotInQueueError()
+        if conversation.status in (ConversationStatus.RESOLVED, ConversationStatus.CLOSED):
+            raise ConversationNotPickableError(conversation.status.value)
+
+        agent = await self._agents.get_by_user_id(company_id=company_id, user_id=actor_user_id)
+        if agent is None:
+            raise EntityNotFoundError("Agent", actor_user_id)
+
+        eligible_agent_ids = await filter_by_required_skills(
+            candidate_ids=[agent.id],
+            queue_id=conversation.queue_id,
+            company_id=company_id,
+            queues=self._queues,
+            agent_skills=self._agent_skills,
+        )
+        if not eligible_agent_ids:
+            raise AgentMissingRequiredSkillError(agent.id, conversation.queue_id)
+
+        now = datetime.now(UTC)
+        claimed = await self._conversations.claim(
+            conversation_id=conversation.id, agent_id=agent.id, now=now
+        )
+        if not claimed:
+            raise ConversationAlreadyClaimedError(conversation.id)
+
+        # claim() is a raw UPDATE, bypassing the ORM-tracked `conversation`
+        # instance loaded above — reload so the returned object (and the
+        # wait_seconds computation below) reflects the just-applied claim.
+        conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+
+        wait_seconds = 0
+        if conversation.queue_entered_at is not None:
+            # queue_entered_at was very likely written by an earlier,
+            # already-closed request's own session (e.g. the PATCH that
+            # set queue_id, or a prior release()) — reloaded fresh here
+            # in this request's session, SQLite (test-only; asyncpg
+            # round-trips tz-aware Postgres timestamptz columns fine)
+            # silently drops tzinfo even though the value is still
+            # semantically UTC (same driver quirk documented in
+            # ``ReportingRepository.queue_metrics``'s ``_as_utc``).
+            # Normalized before subtracting from tz-aware `now`, or this
+            # raises "can't subtract offset-naive and offset-aware
+            # datetimes".
+            queue_entered_at = conversation.queue_entered_at
+            if queue_entered_at.tzinfo is None:
+                queue_entered_at = queue_entered_at.replace(tzinfo=UTC)
+            wait_seconds = int((now - queue_entered_at).total_seconds())
+
+        await self._events.publish(
+            DomainEvent(
+                event_type="conversation.picked",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                actor_user_id=actor_user_id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "queue_id": str(conversation.queue_id),
+                    "agent_id": str(agent.id),
+                    "wait_seconds": wait_seconds,
+                },
+            )
+        )
+        return conversation
+
+    async def release(
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        actor_user_id: UUID,
+        actor_has_transfer_permission: bool = False,
+    ) -> Conversation:
+        """Releases a conversation back to its queue's shared pool —
+        clears the assignment and starts a fresh wait clock
+        (``queue_entered_at``), so a later ``pick()`` measures only the
+        time since *this* release, not the conversation's entire
+        lifetime. ``queue_id`` is left untouched (same permanent-tag
+        invariant as ``pick()``).
+
+        Releasing an unassigned conversation is rejected outright (raises
+        ``ConversationNotAssignedError``) — there is nothing to release,
+        and silently succeeding would reset ``queue_entered_at`` for no
+        reason.
+
+        Unlike ``pick()``, the caller here isn't always releasing their
+        own work: ``conversations.release`` alone (granted to every Agent
+        by default, same as ``conversations.pick``) only lets a caller
+        release a conversation currently assigned to *their own* agent
+        profile. Releasing someone else's actively-assigned conversation
+        is a reassignment, and the only sanctioned path for that is
+        ``transfer()`` — gated by the narrower, supervisory
+        ``conversations.transfer`` permission (see that method's
+        docstring) — so a caller who holds it is allowed to release
+        anyone's conversation here too, but one who doesn't is rejected
+        with ``AuthorizationError`` rather than being able to silently
+        re-home a colleague's conversation to themselves via
+        release()+pick()."""
+        conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+        previous_agent_id = conversation.assigned_agent_id
+        if previous_agent_id is None:
+            raise ConversationNotAssignedError()
+
+        if not actor_has_transfer_permission:
+            actor_agent = await self._agents.get_by_user_id(
+                company_id=company_id, user_id=actor_user_id
+            )
+            if actor_agent is None or actor_agent.id != previous_agent_id:
+                raise AuthorizationError(
+                    "Only the assigned agent (or a conversations.transfer holder) "
+                    "may release this conversation"
+                )
+
+        conversation.assigned_agent_id = None
+        conversation.picked_up_at = None
+        conversation.queue_entered_at = datetime.now(UTC)
+
+        await self._events.publish(
+            DomainEvent(
+                event_type="conversation.released",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                actor_user_id=actor_user_id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "queue_id": str(conversation.queue_id) if conversation.queue_id else None,
+                    "previous_agent_id": str(previous_agent_id) if previous_agent_id else None,
+                },
+            )
+        )
+        return conversation
 
     async def delete(
         self, *, company_id: UUID, conversation_id: UUID, actor_user_id: UUID | None = None

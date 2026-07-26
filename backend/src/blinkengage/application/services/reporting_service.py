@@ -24,7 +24,7 @@ from blinkengage.infrastructure.repositories.reporting_repository import (
     CsatDailyRow,
     LiveAgentCounts,
     LiveConversationCounts,
-    LiveQueueDepth,
+    LiveQueueMetrics,
     QueueStatsRow,
     ReportingRepository,
 )
@@ -60,7 +60,7 @@ class AgentDashboard:
 class LiveDashboard:
     agents: LiveAgentCounts
     conversations: LiveConversationCounts
-    queues: list[LiveQueueDepth]
+    queues: list[LiveQueueMetrics]
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +142,7 @@ class ReportingService:
         return LiveDashboard(
             agents=await self._reporting.live_agent_counts(company_id=company_id),
             conversations=await self._reporting.live_conversation_counts(company_id=company_id),
-            queues=await self._reporting.live_queue_depth(company_id=company_id),
+            queues=await self._reporting.queue_metrics(company_id=company_id),
         )
 
     async def conversation_report(

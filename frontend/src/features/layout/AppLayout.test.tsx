@@ -81,4 +81,51 @@ describe('AppLayout', () => {
       expect(screen.getByText('Onboarding wizard content')).toBeInTheDocument(),
     )
   })
+
+  describe('account menu availability picker', () => {
+    async function openAccountMenu(user: ReturnType<typeof userEvent.setup>) {
+      renderLayout()
+      await user.click(await screen.findByRole('button', { name: /account/i }))
+      return screen.findByRole('button', { name: 'Online' })
+    }
+
+    it("highlights the agent's current status", async () => {
+      const user = userEvent.setup()
+      const onlineButton = await openAccountMenu(user)
+      // Matches the "Mock Self Agent" seed's status (agents.ts) — proves
+      // the picker actually reads the caller's own agent record rather
+      // than always defaulting to the first option.
+      expect(onlineButton).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'Away' })).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('round-trips a status change through PATCH /agents/me/status', async () => {
+      const user = userEvent.setup()
+      await openAccountMenu(user)
+
+      await user.click(screen.getByRole('button', { name: 'Busy' }))
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Busy' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        ),
+      )
+      expect(screen.getByRole('button', { name: 'Online' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      )
+    })
+
+    // No open-menu axe pass here (unlike InboxPage/ConversationSidebar's
+    // new controls, which do get one): this account Menu already renders
+    // non-`menuitem` content as direct children of its `role="menu"` list
+    // (the currentUser name/email/roles Box, present before this change) —
+    // opening it and running axe flags `aria-required-children` on that
+    // pre-existing structure, not on anything this milestone added.
+    // Restructuring the account menu's ARIA semantics to satisfy that rule
+    // is out of scope here. This matches this codebase's existing
+    // precedent of only axe-checking Menu-owning components in their
+    // closed state (see NotificationBell.test.tsx).
+  })
 })

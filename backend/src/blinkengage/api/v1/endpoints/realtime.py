@@ -86,9 +86,7 @@ async def agent_gateway(
     # mid-session settings change takes effect on the connection's next
     # reconnect, not instantly.
     company = await CompanyRepository(session).get_by_id(company_id)
-    typing_indicator_enabled = company is not None and is_typing_indicator_enabled(
-        company.settings
-    )
+    typing_indicator_enabled = company is not None and is_typing_indicator_enabled(company.settings)
 
     agent = await AgentRepository(session).get_by_user_id(company_id=company_id, user_id=user_id)
     if agent is not None and agent.status == AgentStatus.OFFLINE:

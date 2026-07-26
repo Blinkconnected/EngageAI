@@ -133,6 +133,71 @@ class ErpNotConfiguredError(DomainError):
         super().__init__("ERPNext is not configured for this company")
 
 
+class ConversationNotInQueueError(DomainError):
+    """Raised when ``ConversationService.pick()`` is called on a
+    conversation with no ``queue_id`` — picking only makes sense for a
+    conversation currently sitting in a queue's shared pool. A plain
+    precondition failure, not a missing resource, so — like
+    ``AttachmentValidationError`` — it falls through to the generic 400
+    in ``core/exceptions.py`` rather than getting its own mapping."""
+
+    def __init__(self) -> None:
+        super().__init__("Conversation is not in a queue")
+
+
+class AgentMissingRequiredSkillError(DomainError):
+    """Raised when ``ConversationService.pick()`` finds that the calling
+    agent doesn't satisfy the target queue's required skills (any-of
+    match — see ``application.services.assignment_engine.
+    filter_by_required_skills``). This is an authorization failure (this
+    specific agent isn't allowed to take this specific conversation),
+    not a missing resource, so it maps to 403 like ``AuthorizationError``
+    rather than 404."""
+
+    def __init__(self, agent_id: object, queue_id: object) -> None:
+        self.agent_id = agent_id
+        self.queue_id = queue_id
+        super().__init__(f"Agent {agent_id!r} lacks a required skill for queue {queue_id!r}")
+
+
+class ConversationNotAssignedError(DomainError):
+    """Raised when ``ConversationService.release()`` is called on a
+    conversation with no ``assigned_agent_id`` — there is nothing to
+    release. A plain precondition failure, not a missing resource, so —
+    like ``ConversationNotInQueueError`` — it falls through to the
+    generic 400 in ``core/exceptions.py`` rather than getting its own
+    mapping."""
+
+    def __init__(self) -> None:
+        super().__init__("Conversation is not currently assigned to anyone")
+
+
+class ConversationNotPickableError(DomainError):
+    """Raised when ``ConversationService.pick()`` is called on a
+    conversation whose status is ``RESOLVED`` or ``CLOSED`` — picking
+    only makes sense for a conversation still actively in progress
+    (``OPEN``/``PENDING``). A plain precondition failure, not a missing
+    resource, so it falls through to the generic 400 like
+    ``ConversationNotInQueueError``."""
+
+    def __init__(self, status: str) -> None:
+        self.status = status
+        super().__init__(f"Cannot pick a conversation with status {status!r}")
+
+
+class ConversationAlreadyClaimedError(DomainError):
+    """Raised when ``ConversationRepository.claim()``'s atomic conditional
+    UPDATE affects zero rows — the conversation was already claimed
+    (by another agent, or by this same agent's own request racing
+    itself) between the caller's initial load and the atomic claim
+    attempt. A genuine conflict with concurrent state, not a missing
+    resource, so it maps to 409 like ``EntityAlreadyExistsError``."""
+
+    def __init__(self, conversation_id: object) -> None:
+        self.conversation_id = conversation_id
+        super().__init__(f"Conversation with id={conversation_id!r} was already claimed")
+
+
 class WeakPasswordError(DomainError):
     """Raised when a password satisfies the platform-wide floor
     (``validate_password_strength`` — at least 10 characters with a

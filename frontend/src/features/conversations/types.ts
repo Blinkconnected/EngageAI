@@ -14,6 +14,9 @@ export interface Conversation {
   first_response_at: string | null
   sla_first_response_breached_at: string | null
   sla_resolution_breached_at: string | null
+  queue_entered_at: string | null
+  picked_up_at: string | null
+  closed_at: string | null
   created_at: string
   updated_at: string
 }

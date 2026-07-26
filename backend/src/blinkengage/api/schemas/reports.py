@@ -41,6 +41,7 @@ class AgentDashboardResponse(BaseModel):
 class LiveAgentCountsResponse(BaseModel):
     online: int
     away: int
+    busy: int
     offline: int
 
 
@@ -54,7 +55,17 @@ class LiveConversationCountsResponse(BaseModel):
 class LiveQueueDepthResponse(BaseModel):
     queue_id: UUID
     queue_name: str
+    department_id: UUID | None
+    department_name: str | None
     open_conversations: int
+    waiting_count: int
+    assigned_count: int
+    avg_wait_seconds: float | None
+    longest_wait_seconds: float | None
+    pickup_avg_seconds_24h: float | None
+    abandoned_count_24h: int
+    sla_breached_count: int
+    throughput_24h: int
 
 
 class LiveDashboardResponse(BaseModel):

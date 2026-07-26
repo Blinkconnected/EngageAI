@@ -12,19 +12,28 @@ import type {
   SendMessageRequest,
 } from '../../features/conversations/types'
 
+// Seeded as already queued and unassigned (queue_id set, assigned_agent_id
+// null, queue_entered_at populated) rather than queue-less — this is the
+// only conversation the single-conversation mock "database" below ever
+// serves, and the Inbox's Queue-filter-mode / Pick-action tests need a
+// queued-and-unassigned row to exercise against, same as every other test
+// in this file that reads/mutates this same seed.
 const SEED_CONVERSATION: Conversation = {
   id: 'conv-1',
   customer_id: MOCK_CUSTOMER.id,
   channel_config_id: 'c1',
   external_thread_id: 'ext-thread-1',
   status: 'open',
-  queue_id: null,
+  queue_id: 'q1',
   assigned_agent_id: null,
   department_id: null,
   last_message_at: '2026-01-01T00:05:00Z',
   first_response_at: null,
   sla_first_response_breached_at: null,
   sla_resolution_breached_at: null,
+  queue_entered_at: '2026-01-01T00:00:00Z',
+  picked_up_at: null,
+  closed_at: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -78,11 +87,15 @@ export const conversationsHandlers = [
     const statusFilter = url.searchParams.get('status_filter')
     const customerIdFilter = url.searchParams.get('customer_id')
     const assignedAgentIdFilter = url.searchParams.get('assigned_agent_id')
+    const queueIdFilter = url.searchParams.get('queue_id')
+    const unassignedOnly = url.searchParams.get('unassigned_only') === 'true'
     let items = !statusFilter || statusFilter === conversation.status ? [conversation] : []
     if (customerIdFilter && conversation.customer_id !== customerIdFilter) items = []
     if (assignedAgentIdFilter && conversation.assigned_agent_id !== assignedAgentIdFilter) {
       items = []
     }
+    if (queueIdFilter && conversation.queue_id !== queueIdFilter) items = []
+    if (unassignedOnly && conversation.assigned_agent_id !== null) items = []
     return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 })
   }),
 
@@ -91,6 +104,30 @@ export const conversationsHandlers = [
   http.patch(`${API_BASE_URL}/conversations/:conversationId`, async ({ request }) => {
     const payload = (await request.json()) as ConversationUpdateRequest
     conversation = { ...conversation, ...payload }
+    return HttpResponse.json(conversation)
+  }),
+
+  http.post(`${API_BASE_URL}/conversations/:conversationId/pick`, () => {
+    // Mirrors the real backend's 409 on a conversation someone else
+    // already holds — tests override this handler's response to
+    // exercise that path (see InboxPage.test.tsx's 409-conflict case)
+    // rather than needing a second conversation in this single-seed mock.
+    if (conversation.assigned_agent_id) {
+      return HttpResponse.json(
+        { detail: 'This conversation has already been picked up by another agent.' },
+        { status: 409 },
+      )
+    }
+    conversation = {
+      ...conversation,
+      assigned_agent_id: 'a-self',
+      picked_up_at: '2026-01-02T00:00:00Z',
+    }
+    return HttpResponse.json(conversation)
+  }),
+
+  http.post(`${API_BASE_URL}/conversations/:conversationId/release`, () => {
+    conversation = { ...conversation, assigned_agent_id: null, picked_up_at: null }
     return HttpResponse.json(conversation)
   }),
 

@@ -2,6 +2,9 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 
 AGENT_PAYLOAD = {
     "email": "agent1@acme.example",
@@ -54,6 +57,99 @@ async def test_update_agent_status_and_title(client: AsyncClient, owner_headers:
     body = update_response.json()
     assert body["status"] == "online"
     assert body["title"] == "Senior Agent"
+
+
+async def test_update_agent_status_publishes_a_dedicated_event(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    create_response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+    agent_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/agents/{agent_id}", json={"status": "online"}, headers=owner_headers
+    )
+    assert response.status_code == 200
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(EventOutbox).where(EventOutbox.event_type == "agent.status_changed")
+        )
+        events = list(result.scalars().all())
+    assert len(events) == 1
+    assert events[0].payload["agent_id"] == agent_id
+    assert events[0].payload["previous_status"] == "offline"
+    assert events[0].payload["status"] == "online"
+
+
+async def test_update_agent_title_only_does_not_publish_status_changed(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    create_response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+    agent_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/agents/{agent_id}", json={"title": "Senior Agent"}, headers=owner_headers
+    )
+    assert response.status_code == 200
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(EventOutbox).where(EventOutbox.event_type == "agent.status_changed")
+        )
+        events = list(result.scalars().all())
+    assert len(events) == 0
+
+
+class TestSelfServiceAvailability:
+    """``PATCH /agents/me/status`` — no ``agents.manage`` permission
+    required, unlike ``PATCH /agents/{agent_id}`` (see
+    docs/architecture/queues-routing.md decision #10)."""
+
+    async def _agent_headers(self, client: AsyncClient, owner_headers: dict) -> dict:
+        await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": AGENT_PAYLOAD["email"], "password": AGENT_PAYLOAD["password"]},
+        )
+        return {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+
+    @pytest.mark.parametrize("status_value", ["online", "away", "busy"])
+    async def test_updates_own_status_with_no_special_permission(
+        self, client: AsyncClient, owner_headers: dict, status_value: str
+    ) -> None:
+        agent_headers = await self._agent_headers(client, owner_headers)
+
+        response = await client.patch(
+            "/api/v1/agents/me/status", json={"status": status_value}, headers=agent_headers
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == status_value
+
+    async def test_rejects_offline_as_a_self_service_value(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        agent_headers = await self._agent_headers(client, owner_headers)
+
+        response = await client.patch(
+            "/api/v1/agents/me/status", json={"status": "offline"}, headers=agent_headers
+        )
+        assert response.status_code == 422
+
+    async def test_404s_for_a_caller_with_no_agent_profile(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        # The Owner who registered the company never automatically became
+        # an Agent — a real, common "no profile" case, not a contrived one.
+        response = await client.patch(
+            "/api/v1/agents/me/status", json={"status": "online"}, headers=owner_headers
+        )
+        assert response.status_code == 404
+
+    async def test_requires_authentication(self, client: AsyncClient) -> None:
+        response = await client.patch("/api/v1/agents/me/status", json={"status": "online"})
+        assert response.status_code in (401, 403)
 
 
 async def test_delete_agent_is_soft_delete(client: AsyncClient, owner_headers: dict) -> None:
@@ -249,9 +345,7 @@ class TestInviteByEmail:
         async def failing_send(message: Any, **kwargs: Any) -> tuple[Any, Any]:
             raise ConnectionError("smtp unreachable")
 
-        monkeypatch.setattr(
-            "blinkengage.infrastructure.email.mailer.aiosmtplib.send", failing_send
-        )
+        monkeypatch.setattr("blinkengage.infrastructure.email.mailer.aiosmtplib.send", failing_send)
 
         response = await client.post(
             "/api/v1/agents",

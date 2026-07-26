@@ -21,6 +21,7 @@ import type { Agent, AgentStatus } from './types'
 const STATUS_COLOR: Record<AgentStatus, 'success' | 'warning' | 'default'> = {
   online: 'success',
   away: 'warning',
+  busy: 'warning',
   offline: 'default',
 }
 

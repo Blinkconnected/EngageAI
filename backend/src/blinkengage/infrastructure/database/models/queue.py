@@ -20,6 +20,11 @@ from blinkengage.infrastructure.database.base import (
 class QueueAssignmentStrategy(StrEnum):
     ROUND_ROBIN = "round_robin"
     LEAST_LOAD = "least_load"
+    #: Never auto-assigns — see ManualPickupStrategy in assignment_engine.py.
+    #: The default for new queues (see queues-routing.md decision #6): a
+    #: conversation waits, visible to every eligible agent, until one
+    #: claims it via ConversationService.pick().
+    MANUAL = "manual"
 
 
 class Queue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -48,7 +53,7 @@ class Queue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     assignment_strategy: Mapped[QueueAssignmentStrategy] = mapped_column(
         Enum(QueueAssignmentStrategy, native_enum=False, length=20),
         nullable=False,
-        default=QueueAssignmentStrategy.ROUND_ROBIN,
+        default=QueueAssignmentStrategy.MANUAL,
     )
     first_response_target_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
     resolution_target_minutes: Mapped[int | None] = mapped_column(Integer, default=None)

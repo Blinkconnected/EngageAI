@@ -15,6 +15,23 @@ export const MOCK_QUEUES: Queue[] = [
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
+  // A second queue with no conversations routed to it — lets tests prove
+  // the Inbox's Queue-filter-mode picker (see InboxPage.tsx) actually
+  // threads the selected queue's id through to the request (selecting
+  // this one should show nothing, unlike "General" which the seeded
+  // conversation belongs to — see mocks/handlers/conversations.ts).
+  {
+    id: 'q2',
+    name: 'VIP',
+    description: null,
+    department_id: null,
+    assignment_strategy: 'round_robin',
+    first_response_target_minutes: null,
+    resolution_target_minutes: null,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
 ]
 
 export const queuesHandlers = [

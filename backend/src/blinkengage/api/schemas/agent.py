@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -30,6 +31,16 @@ class AgentUpdateRequest(BaseModel):
     title: str | None = None
     department_id: UUID | None = None
     status: AgentStatus | None = None
+
+
+class SelfAvailabilityUpdateRequest(BaseModel):
+    """The self-service counterpart of ``AgentUpdateRequest.status`` (see
+    ``PATCH /agents/me/status``) — deliberately excludes ``OFFLINE``, which
+    stays connection-derived only (set exclusively by the ``/ws/agent``
+    connect/disconnect lifecycle), not something an agent declares
+    themselves while still connected."""
+
+    status: Literal[AgentStatus.ONLINE, AgentStatus.AWAY, AgentStatus.BUSY]
 
 
 class AgentPasswordResetRequest(BaseModel):

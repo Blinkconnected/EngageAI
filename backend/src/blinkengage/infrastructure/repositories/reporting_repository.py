@@ -7,10 +7,10 @@ cost. See ``docs/architecture/reports-analytics.md``.
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
@@ -18,6 +18,7 @@ from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
 )
+from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.database.models.queue import Queue
 from blinkengage.infrastructure.database.models.reporting import (
     AgentDailyStats,
@@ -102,6 +103,7 @@ class CsatAgentRow:
 class LiveAgentCounts:
     online: int
     away: int
+    busy: int
     offline: int
 
 
@@ -118,6 +120,50 @@ class LiveQueueDepth:
     queue_id: UUID
     queue_name: str
     open_conversations: int
+
+
+@dataclass(frozen=True, slots=True)
+class LiveQueueMetrics:
+    """Per-queue Live Dashboard metrics — a strict superset of
+    ``LiveQueueDepth``'s fields (see ``ReportingService.live_dashboard``,
+    which uses this in place of ``live_queue_depth`` at the composition
+    layer; the older method/dataclass are kept as-is, unused but valid,
+    rather than removed)."""
+
+    queue_id: UUID
+    queue_name: str
+    department_id: UUID | None
+    department_name: str | None
+    #: Assigned + unassigned combined, status open/pending — same
+    #: meaning as ``LiveQueueDepth.open_conversations``.
+    open_conversations: int
+    #: Unassigned-only subset of ``open_conversations`` — what an agent
+    #: picking up work would actually see waiting.
+    waiting_count: int
+    #: Assigned subset of ``open_conversations`` — the same set minus
+    #: ``waiting_count``, exposed as its own field so a consumer never
+    #: has to derive it by subtraction.
+    assigned_count: int
+    #: Computed over the SAME waiting set as ``waiting_count``, via
+    #: ``queue_entered_at``. ``None`` when ``waiting_count`` is 0.
+    avg_wait_seconds: float | None
+    longest_wait_seconds: float | None
+    #: AVG(picked_up_at - queue_entered_at) in seconds, over conversations
+    #: picked up in the last 24h. ``None`` if none were picked up in that
+    #: window.
+    pickup_avg_seconds_24h: float | None
+    #: Heuristic proxy for "queued, then closed without ever being
+    #: handled" — see ``queue_metrics()`` for the full rationale and its
+    #: documented, known limitation.
+    abandoned_count_24h: int
+    #: status IN (open, pending) AND either SLA breach timestamp is set —
+    #: reuses the existing M14 SLA columns, no new columns needed.
+    sla_breached_count: int
+    #: Conversations that reached RESOLVED or CLOSED in the last 24h for
+    #: this queue — a raw completion-rate signal, independent of
+    #: ``abandoned_count_24h``'s narrower "never handled" heuristic (a
+    #: conversation counts here whether or not it was ever picked up).
+    throughput_24h: int
 
 
 class ReportingRepository:
@@ -344,6 +390,7 @@ class ReportingRepository:
         return LiveAgentCounts(
             online=counts[AgentStatus.ONLINE],
             away=counts[AgentStatus.AWAY],
+            busy=counts[AgentStatus.BUSY],
             offline=counts[AgentStatus.OFFLINE],
         )
 
@@ -369,6 +416,17 @@ class ReportingRepository:
             .join(
                 Conversation,
                 (Conversation.queue_id == Queue.id)
+                # A Conversation's queue_id is only supposed to ever
+                # reference a Queue owned by that same company (see
+                # ConversationService.update()'s ownership check), but this
+                # predicate defends this cross-tenant aggregate query
+                # itself against any row that violates that invariant
+                # (e.g. pre-existing data) — without it, such a row would
+                # be inner-joined into *this* company's queue purely
+                # because it happens to share a queue_id, leaking another
+                # tenant's conversation into this company's Live Dashboard
+                # count.
+                & (Conversation.company_id == company_id)
                 & (Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]))
                 & Conversation.deleted_at.is_(None),
                 isouter=True,
@@ -381,3 +439,218 @@ class ReportingRepository:
             LiveQueueDepth(queue_id=row[0], queue_name=row[1], open_conversations=row[2])
             for row in result.all()
         ]
+
+    async def queue_metrics(self, *, company_id: UUID) -> list[LiveQueueMetrics]:
+        """Per-queue Live Dashboard metrics — same current-tables-not-a-
+        rollup approach as ``live_queue_depth`` (which this supersedes at
+        the ``ReportingService`` composition layer, since it's a strict
+        superset of its fields; kept alongside it here unmodified). Split
+        into four focused queries — depth/waiting-count/SLA grouped by
+        queue via LEFT JOIN (same join style as ``live_queue_depth``), the
+        raw ``queue_entered_at`` of every currently-waiting conversation,
+        a 24h pickup-time window, and a 24h abandoned-count window —
+        merged in Python, rather than one mega-query, matching this
+        file's existing style of separate focused methods.
+
+        No ``EXTRACT(EPOCH ...)``/interval-arithmetic precedent exists
+        elsewhere in this codebase's repositories, and it turns out not
+        to be portable here either: this codebase's *test* dialect is
+        SQLite (see ``pyproject.toml``'s ``DATABASE_URL`` override to
+        ``sqlite+aiosqlite`` under pytest), which has no native
+        interval/epoch arithmetic — ``func.now() - a_datetime_column`` or
+        ``EXTRACT(EPOCH FROM ...)`` silently produces garbage numbers on
+        SQLite instead of an error (confirmed empirically). So
+        ``avg_wait_seconds``/``longest_wait_seconds``/
+        ``pickup_avg_seconds_24h`` fetch the raw timestamp columns and
+        compute the seconds-since delta in Python instead — this matches
+        this codebase's existing convention for datetime-sensitive logic
+        (see ``SlaMonitorService._check_first_response``/
+        ``_check_resolution``, which fetch a timestamp column and compute
+        the delta against ``datetime.now(UTC)`` in Python rather than in
+        SQL). ``case()``-based boolean counts (``waiting_count``,
+        ``sla_breached_count``, ``abandoned_count_24h``) stay pure SQL —
+        only arithmetic on datetimes is the portability hazard, not
+        comparisons/``IS NULL`` checks, which both dialects handle
+        identically.
+
+        One more SQLite-specific wrinkle applies to the Python-side
+        arithmetic itself: this codebase has no custom timezone-preserving
+        ``TypeDecorator`` for ``DateTime(timezone=True)`` (unlike e.g.
+        ``GUID`` in ``infrastructure.database.base``), and SQLite's
+        driver-level round-trip silently drops tzinfo — a value written
+        as ``datetime.now(UTC)`` (as every writer of these columns does;
+        see ``ConversationService``/``conversation_ingest_consumer``)
+        comes back *naive* from a fresh query against SQLite, even though
+        it's still semantically UTC (confirmed empirically). Subtracting
+        that naive value from this method's tz-aware ``now`` raises
+        ``TypeError: can't subtract offset-naive and offset-aware
+        datetimes`` — ``_as_utc`` below normalizes every raw timestamp
+        pulled back from the DB before any arithmetic touches it. This
+        only bites here (not ``SlaMonitorService``) because that service
+        always runs its check in the same, still-open session that wrote
+        the timestamp, so SQLAlchemy's identity map hands back the
+        original Python object rather than a fresh round-trip from
+        SQLite; ``queue_metrics()`` here is invoked from a separate
+        request/session than whatever wrote the row, so it always sees
+        the driver's round-tripped (naive, on SQLite) value.
+        """
+        now = datetime.now(UTC)
+        cutoff_24h = now - timedelta(hours=24)
+
+        def _as_utc(value: datetime) -> datetime:
+            return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+        is_waiting = Conversation.assigned_agent_id.is_(None)
+        is_sla_breached = Conversation.sla_first_response_breached_at.is_not(None) | (
+            Conversation.sla_resolution_breached_at.is_not(None)
+        )
+
+        base_result = await self._session.execute(
+            select(
+                Queue.id,
+                Queue.name,
+                Queue.department_id,
+                Department.name,
+                func.count(Conversation.id),
+                func.count(case((is_waiting, Conversation.id))),
+                func.count(case((is_sla_breached, Conversation.id))),
+            )
+            .join(
+                Department,
+                (Department.id == Queue.department_id) & Department.deleted_at.is_(None),
+                isouter=True,
+            )
+            .join(
+                Conversation,
+                (Conversation.queue_id == Queue.id)
+                # Same cross-tenant defense as live_queue_depth() above —
+                # a Conversation whose queue_id happens to reference this
+                # company's Queue but who itself belongs to another
+                # company must not be aggregated in here.
+                & (Conversation.company_id == company_id)
+                & (Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]))
+                & Conversation.deleted_at.is_(None),
+                isouter=True,
+            )
+            .where(Queue.company_id == company_id, Queue.deleted_at.is_(None))
+            .group_by(Queue.id, Queue.name, Queue.department_id, Department.name)
+            .order_by(Queue.name)
+        )
+        base_rows = base_result.all()
+
+        waiting_result = await self._session.execute(
+            select(Conversation.queue_id, Conversation.queue_entered_at).where(
+                Conversation.company_id == company_id,
+                Conversation.deleted_at.is_(None),
+                Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
+                Conversation.assigned_agent_id.is_(None),
+            )
+        )
+        wait_seconds_by_queue: dict[UUID, list[float]] = {}
+        for queue_id, queue_entered_at in waiting_result.all():
+            if queue_id is None or queue_entered_at is None:
+                continue
+            wait_seconds_by_queue.setdefault(queue_id, []).append(
+                (now - _as_utc(queue_entered_at)).total_seconds()
+            )
+
+        pickup_result = await self._session.execute(
+            select(
+                Conversation.queue_id,
+                Conversation.picked_up_at,
+                Conversation.queue_entered_at,
+            ).where(
+                Conversation.company_id == company_id,
+                Conversation.deleted_at.is_(None),
+                Conversation.picked_up_at.is_not(None),
+                Conversation.picked_up_at >= cutoff_24h,
+            )
+        )
+        pickup_seconds_by_queue: dict[UUID, list[float]] = {}
+        for queue_id, picked_up_at, queue_entered_at in pickup_result.all():
+            if queue_id is None or picked_up_at is None or queue_entered_at is None:
+                continue
+            pickup_seconds_by_queue.setdefault(queue_id, []).append(
+                (_as_utc(picked_up_at) - _as_utc(queue_entered_at)).total_seconds()
+            )
+
+        # abandoned_count_24h is a heuristic proxy for "queued, then closed
+        # without ever being handled" — this codebase has no genuine
+        # "customer walked away" signal. `picked_up_at` tracks only the
+        # *current*/most-recent claim and IS cleared back to NULL by
+        # ConversationService.release(), so it can't answer "was this ever
+        # claimed by anyone, at any point" on its own — a conversation
+        # that was picked up and later released (not merely transferred
+        # to a department pool) would otherwise look identical to one
+        # that was never claimed at all. `first_picked_up_at` is the
+        # dedicated column for exactly this: set once by
+        # ConversationRepository.claim() and never cleared afterwards
+        # (see its own docstring on ``Conversation``), so
+        # "first_picked_up_at IS NULL" reliably means "never claimed,
+        # ever", regardless of how many pick()/release() cycles it's been
+        # through since.
+        abandoned_result = await self._session.execute(
+            select(Conversation.queue_id, func.count(Conversation.id))
+            .where(
+                Conversation.company_id == company_id,
+                Conversation.deleted_at.is_(None),
+                Conversation.status.in_([ConversationStatus.RESOLVED, ConversationStatus.CLOSED]),
+                Conversation.assigned_agent_id.is_(None),
+                Conversation.first_picked_up_at.is_(None),
+                Conversation.closed_at >= cutoff_24h,
+            )
+            .group_by(Conversation.queue_id)
+        )
+        abandoned_by_queue = {
+            row[0]: row[1] for row in abandoned_result.all() if row[0] is not None
+        }
+
+        # Throughput: every conversation that reached a terminal status in
+        # the last 24h, regardless of whether it was ever picked up (unlike
+        # abandoned_count_24h, which specifically excludes ever-claimed
+        # conversations) — a raw completion-rate count.
+        throughput_result = await self._session.execute(
+            select(Conversation.queue_id, func.count(Conversation.id))
+            .where(
+                Conversation.company_id == company_id,
+                Conversation.deleted_at.is_(None),
+                Conversation.status.in_([ConversationStatus.RESOLVED, ConversationStatus.CLOSED]),
+                Conversation.closed_at >= cutoff_24h,
+            )
+            .group_by(Conversation.queue_id)
+        )
+        throughput_by_queue = {
+            row[0]: row[1] for row in throughput_result.all() if row[0] is not None
+        }
+
+        metrics: list[LiveQueueMetrics] = []
+        for row in base_rows:
+            queue_id = row[0]
+            wait_seconds = wait_seconds_by_queue.get(queue_id, [])
+            pickup_seconds = pickup_seconds_by_queue.get(queue_id, [])
+            open_conversations = row[4]
+            waiting_count = row[5]
+            metrics.append(
+                LiveQueueMetrics(
+                    queue_id=queue_id,
+                    queue_name=row[1],
+                    department_id=row[2],
+                    department_name=row[3],
+                    open_conversations=open_conversations,
+                    waiting_count=waiting_count,
+                    assigned_count=open_conversations - waiting_count,
+                    avg_wait_seconds=(
+                        round(sum(wait_seconds) / len(wait_seconds), 2) if wait_seconds else None
+                    ),
+                    longest_wait_seconds=(round(max(wait_seconds), 2) if wait_seconds else None),
+                    pickup_avg_seconds_24h=(
+                        round(sum(pickup_seconds) / len(pickup_seconds), 2)
+                        if pickup_seconds
+                        else None
+                    ),
+                    abandoned_count_24h=abandoned_by_queue.get(queue_id, 0),
+                    sla_breached_count=row[6],
+                    throughput_24h=throughput_by_queue.get(queue_id, 0),
+                )
+            )
+        return metrics

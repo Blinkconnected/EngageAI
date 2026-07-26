@@ -13,18 +13,22 @@ import type {
   SendMessageRequest,
 } from './types'
 
-const CONVERSATIONS_LIST_KEY = ['conversations', 'list']
-const CONVERSATION_KEY = (id: string) => ['conversations', 'detail', id]
+export const CONVERSATIONS_LIST_KEY = ['conversations', 'list']
+export const CONVERSATION_KEY = (id: string) => ['conversations', 'detail', id]
 const MESSAGES_KEY = (conversationId: string) => ['conversations', conversationId, 'messages']
 const NOTES_KEY = (conversationId: string) => ['conversations', conversationId, 'notes']
 const TRANSFERS_KEY = (conversationId: string) => ['conversations', conversationId, 'transfers']
 
+export interface ConversationListParams {
+  status_filter?: ConversationStatus
+  customer_id?: string
+  assigned_agent_id?: string
+  queue_id?: string
+  unassigned_only?: boolean
+}
+
 async function fetchConversations(
-  params: PageParams & {
-    status_filter?: ConversationStatus
-    customer_id?: string
-    assigned_agent_id?: string
-  },
+  params: PageParams & ConversationListParams,
 ): Promise<Page<Conversation>> {
   const { data } = await apiClient.get<Page<Conversation>>('/conversations', { params })
   return data
@@ -125,6 +129,16 @@ async function createNote(conversationId: string, body: string): Promise<Interna
   return data
 }
 
+async function pickConversation(conversationId: string): Promise<Conversation> {
+  const { data } = await apiClient.post<Conversation>(`/conversations/${conversationId}/pick`)
+  return data
+}
+
+async function releaseConversation(conversationId: string): Promise<Conversation> {
+  const { data } = await apiClient.post<Conversation>(`/conversations/${conversationId}/release`)
+  return data
+}
+
 async function transferConversation(
   conversationId: string,
   payload: ConversationTransferRequest,
@@ -148,17 +162,20 @@ async function fetchTransfers(
 }
 
 export function useConversationsQuery(
-  params: PageParams & {
-    status_filter?: ConversationStatus
-    customer_id?: string
-    assigned_agent_id?: string
-  },
+  params: PageParams & ConversationListParams,
+  options?: { refetchInterval?: number },
 ) {
   return useQuery({
     queryKey: [...CONVERSATIONS_LIST_KEY, params],
     queryFn: () => fetchConversations(params),
     placeholderData: (previousData) => previousData,
-    refetchInterval: 30_000,
+    // A more actively-watched surface (e.g. the Inbox's queue-filter mode —
+    // see InboxPage.tsx) can pass a shorter interval than the Inbox's
+    // default 30s; no shorter-than-30s precedent existed for a *list*
+    // query elsewhere in this codebase (messages polls at 15s, but that's
+    // a different query/surface — see useMessagesQuery below), so 10_000
+    // was chosen for that caller rather than matched from prior art.
+    refetchInterval: options?.refetchInterval ?? 30_000,
   })
 }
 
@@ -221,6 +238,40 @@ export function useCreateNoteMutation(conversationId: string) {
   return useMutation({
     mutationFn: (body: string) => createNote(conversationId, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: NOTES_KEY(conversationId) }),
+  })
+}
+
+/** Claims a queued, unassigned conversation as the caller's own — see
+ * InboxPage.tsx's "Pick" row action (`conversations.pick`). Same
+ * invalidation shape as `useUpdateConversationMutation`: the mutated
+ * conversation's own detail cache is written directly (no need to wait on
+ * a refetch) and the list is invalidated so any "unassigned only" /
+ * queue-filtered view stops showing it immediately. Takes the target
+ * conversation's id as the mutate variable rather than a hook argument,
+ * since a single Inbox render acts on whichever row was clicked, not one
+ * conversation known up front. */
+export function usePickConversationMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => pickConversation(conversationId),
+    onSuccess: (data, conversationId) => {
+      queryClient.setQueryData(CONVERSATION_KEY(conversationId), data)
+      void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+    },
+  })
+}
+
+/** Releases a conversation back to its queue's shared pool, unassigning it
+ * — see ConversationSidebar.tsx's "Release" button (`conversations.release`).
+ * Same shape as `usePickConversationMutation` above. */
+export function useReleaseConversationMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => releaseConversation(conversationId),
+    onSuccess: (data, conversationId) => {
+      queryClient.setQueryData(CONVERSATION_KEY(conversationId), data)
+      void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+    },
   })
 }
 

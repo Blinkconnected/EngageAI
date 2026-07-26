@@ -1,7 +1,13 @@
 import { http, HttpResponse } from 'msw'
 import { API_BASE_URL } from '../apiBaseUrl'
-import type { Agent, AgentCreateRequest, AgentUpdateRequest } from '../../features/agents/types'
+import type {
+  Agent,
+  AgentCreateRequest,
+  AgentUpdateRequest,
+  SelfAvailabilityStatus,
+} from '../../features/agents/types'
 import type { Page } from '../../shared/api/pagination'
+import { MOCK_USER } from './auth'
 
 const SEED_AGENTS: Agent[] = [
   {
@@ -76,6 +82,19 @@ export const agentsHandlers = [
     nextId += 1
     agents = [...agents, created]
     return HttpResponse.json(created, { status: 201 })
+  }),
+
+  // Registered before `/agents/:agentId` below for readability — MSW
+  // matches by path-segment count, not declaration order, so "me/status"
+  // (two segments after /agents) never actually collides with the
+  // single-segment `:agentId` pattern regardless of ordering.
+  http.patch(`${API_BASE_URL}/agents/me/status`, async ({ request }) => {
+    const payload = (await request.json()) as { status: SelfAvailabilityStatus }
+    const index = agents.findIndex((agent) => agent.user_id === MOCK_USER.id)
+    if (index === -1) return HttpResponse.json({ detail: 'Not found' }, { status: 404 })
+    const updated = { ...agents[index], status: payload.status }
+    agents = [...agents.slice(0, index), updated, ...agents.slice(index + 1)]
+    return HttpResponse.json(updated)
   }),
 
   http.patch(`${API_BASE_URL}/agents/:agentId`, async ({ request, params }) => {

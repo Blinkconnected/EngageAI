@@ -29,6 +29,9 @@ class ConversationResponse(BaseModel):
     first_response_at: datetime | None
     sla_first_response_breached_at: datetime | None
     sla_resolution_breached_at: datetime | None
+    queue_entered_at: datetime | None
+    picked_up_at: datetime | None
+    closed_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

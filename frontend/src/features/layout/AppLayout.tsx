@@ -14,6 +14,8 @@ import {
   Menu,
   MenuItem,
   Toolbar,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -28,6 +30,8 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { setDirection, toggleThemeMode } from '../ui/uiSlice'
+import { useAllAgentsQuery, useUpdateOwnAvailabilityMutation } from '../agents/api'
+import type { SelfAvailabilityStatus } from '../agents/types'
 import { useLogout } from '../auth/api'
 import { useCurrentUserQuery } from '../session/api'
 import { useCompanyQuery, useIsOnboardingIncomplete } from '../company/api'
@@ -56,6 +60,15 @@ export function AppLayout() {
   const location = useLocation()
   const showSetupBanner =
     onboardingIncomplete && hasPermission('company.manage') && location.pathname !== '/onboarding'
+
+  // Self-service availability (Online/Away/Busy) — deliberately not gated
+  // by any permission (see useUpdateOwnAvailabilityMutation's docstring):
+  // any authenticated agent may set their own status. Gated only by
+  // actually *having* an Agent profile (a pure Owner who never became one
+  // has nothing to set — PATCH /agents/me/status would 404).
+  const myAgentsQuery = useAllAgentsQuery()
+  const myAgent = myAgentsQuery.data?.find((agent) => agent.user_id === currentUser?.id)
+  const updateAvailabilityMutation = useUpdateOwnAvailabilityMutation()
 
   const drawerContent = <SideNav onNavigate={() => setMobileNavOpen(false)} />
   const logoUrl = company?.settings.branding?.logo_url
@@ -166,6 +179,33 @@ export function AppLayout() {
                       <Typography variant="caption" color="text.secondary">
                         {currentUser.roles.join(', ')}
                       </Typography>
+                    </Box>
+                  )}
+                  {myAgent && (
+                    <Box sx={{ px: 2, pb: 1 }}>
+                      <Typography
+                        id="availability-status-label"
+                        variant="caption"
+                        color="text.secondary"
+                        component="div"
+                        sx={{ mb: 0.5 }}
+                      >
+                        Status
+                      </Typography>
+                      <ToggleButtonGroup
+                        size="small"
+                        fullWidth
+                        exclusive
+                        aria-labelledby="availability-status-label"
+                        value={myAgent.status === 'offline' ? null : myAgent.status}
+                        onChange={(_event, value: SelfAvailabilityStatus | null) => {
+                          if (value) updateAvailabilityMutation.mutate(value)
+                        }}
+                      >
+                        <ToggleButton value="online">Online</ToggleButton>
+                        <ToggleButton value="away">Away</ToggleButton>
+                        <ToggleButton value="busy">Busy</ToggleButton>
+                      </ToggleButtonGroup>
                     </Box>
                   )}
                   <Divider />

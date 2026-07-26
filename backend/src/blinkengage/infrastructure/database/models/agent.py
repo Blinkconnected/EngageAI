@@ -31,6 +31,11 @@ if TYPE_CHECKING:
 class AgentStatus(StrEnum):
     ONLINE = "online"
     AWAY = "away"
+    #: Self-service only (see PATCH /agents/me/status) — excluded from
+    #: auto-assignment eligibility like OFFLINE, but unlike OFFLINE it is
+    #: never set automatically by the WS gateway's connect/disconnect
+    #: lifecycle. See queues-routing.md decision #10.
+    BUSY = "busy"
     OFFLINE = "offline"
 
 

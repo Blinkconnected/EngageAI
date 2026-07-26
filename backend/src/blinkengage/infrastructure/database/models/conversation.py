@@ -116,3 +116,27 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     sla_resolution_breached_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+
+    # --- Queue Operations: pickup/release/metrics (see queues-routing.md
+    # decisions 6-10). queue_id itself is never cleared once set (a
+    # permanent "which queue routed this" tag — see live_queue_depth); these
+    # three columns track *when* the conversation entered its current
+    # unowned wait, was last claimed, and was last closed, since that
+    # cannot be recovered from queue_id/assigned_agent_id's current values
+    # alone once a conversation cycles through pick/release more than once.
+    queue_entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # Set exactly once, the first time ``ConversationRepository.claim()``
+    # ever succeeds for this conversation, and never cleared afterwards —
+    # unlike ``picked_up_at`` above, which tracks the *current*/most-recent
+    # claim and IS cleared back to ``None`` by ``ConversationService
+    # .release()``. ``ReportingRepository.queue_metrics()``'s
+    # ``abandoned_count_24h`` heuristic needs a "was this conversation
+    # EVER handled by anyone, at any point in its history" signal that
+    # survives a pick() -> release() -> close() cycle, which
+    # ``picked_up_at`` alone can no longer provide now that release()
+    # clears it.
+    first_picked_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )

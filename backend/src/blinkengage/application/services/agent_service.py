@@ -177,6 +177,27 @@ class AgentService:
             company_id=company_id, offset=offset, limit=limit
         )
 
+    async def update_own_status(
+        self, *, company_id: UUID, user_id: UUID, status: AgentStatus
+    ) -> Agent:
+        """Self-service availability toggle (``PATCH /agents/me/status``) —
+        no ``agents.manage`` permission required, unlike ``update()``,
+        since an agent declaring their own availability (Online/Away/Busy)
+        is routine self-service, not an administrative action on someone
+        else's profile. Reuses ``update()``'s existing event/audit
+        plumbing rather than duplicating it."""
+        agent = await self._agents.get_by_user_id(company_id=company_id, user_id=user_id)
+        if agent is None:
+            raise EntityNotFoundError("Agent", user_id)
+        return await self.update(
+            company_id=company_id,
+            agent_id=agent.id,
+            title=None,
+            department_id=None,
+            status=status,
+            actor_user_id=user_id,
+        )
+
     async def update(
         self,
         *,
@@ -188,6 +209,7 @@ class AgentService:
         actor_user_id: UUID | None = None,
     ) -> Agent:
         agent = await self.get(company_id=company_id, agent_id=agent_id)
+        previous_status = agent.status
         if title is not None:
             agent.title = title
         if department_id is not None:
@@ -204,6 +226,27 @@ class AgentService:
                 payload={"status": agent.status.value},
             )
         )
+        if status is not None and status != previous_status:
+            # Dedicated event (alongside the generic agent.updated above),
+            # same reasoning as conversation.assignment_changed — a
+            # consumer that only cares about availability (e.g. a live
+            # presence dashboard, or future skill/least-active routing)
+            # shouldn't have to diff agent.updated's payload to notice a
+            # genuine status transition vs. a title/department edit.
+            await self._events.publish(
+                DomainEvent(
+                    event_type="agent.status_changed",
+                    company_id=company_id,
+                    aggregate_type="agent",
+                    aggregate_id=agent.id,
+                    actor_user_id=actor_user_id,
+                    payload={
+                        "agent_id": str(agent.id),
+                        "previous_status": previous_status.value,
+                        "status": status.value,
+                    },
+                )
+            )
         return agent
 
     async def reset_password(

@@ -1,9 +1,13 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from blinkengage.infrastructure.database.models.conversation import Conversation
+from blinkengage.infrastructure.database.models.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from blinkengage.infrastructure.database.models.customer import Customer
 from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
@@ -275,6 +279,57 @@ async def test_second_message_on_same_thread_reuses_the_conversation(
 
     assert len(conversations) == 1
     assert len(messages) == 2
+
+
+async def test_new_message_on_a_closed_conversation_reopens_it_and_clears_closed_at(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-0",
+                    "body": "first message",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+        conversation.status = ConversationStatus.CLOSED
+        conversation.closed_at = datetime.now(UTC)
+        await db_session.commit()
+
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "second message",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        await db_session.refresh(conversation)
+
+    assert conversation.status == ConversationStatus.OPEN
+    assert conversation.closed_at is None
 
 
 async def test_duplicate_external_message_id_is_ignored(

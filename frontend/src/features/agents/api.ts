@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page, PageParams } from '../../shared/api/pagination'
-import type { Agent, AgentCreateRequest, AgentUpdateRequest } from './types'
+import type {
+  Agent,
+  AgentCreateRequest,
+  AgentUpdateRequest,
+  SelfAvailabilityStatus,
+} from './types'
 
 const AGENTS_LIST_KEY = ['agents', 'list']
 
@@ -26,6 +31,11 @@ async function deleteAgent(agentId: string): Promise<void> {
 
 async function resetAgentPassword(agentId: string, newPassword: string): Promise<void> {
   await apiClient.post(`/agents/${agentId}/password`, { new_password: newPassword })
+}
+
+async function updateOwnAvailability(status: SelfAvailabilityStatus): Promise<Agent> {
+  const { data } = await apiClient.patch<Agent>('/agents/me/status', { status })
+  return data
 }
 
 export function useAgentsQuery(params: PageParams) {
@@ -87,5 +97,24 @@ export function useResetAgentPasswordMutation() {
   return useMutation({
     mutationFn: ({ agentId, newPassword }: { agentId: string; newPassword: string }) =>
       resetAgentPassword(agentId, newPassword),
+  })
+}
+
+/** Self-service availability toggle — any authenticated agent may set
+ * their own status to Online/Away/Busy via `PATCH /agents/me/status`, no
+ * `agents.manage` permission required (unlike `useUpdateAgentMutation`
+ * above, which lets an Owner/Admin change *anyone's* and does require
+ * it) — see AppLayout.tsx's account menu. Invalidates both agent-list
+ * query keys (the paginated AgentsPage list and the unpaginated lookup
+ * list this same picker and the Inbox both read from) so the new status
+ * shows up everywhere immediately. */
+export function useUpdateOwnAvailabilityMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: updateOwnAvailability,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: AGENTS_LIST_KEY })
+      queryClient.invalidateQueries({ queryKey: ['agents', 'all'] })
+    },
   })
 }

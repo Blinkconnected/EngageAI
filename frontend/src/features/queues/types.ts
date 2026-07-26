@@ -1,4 +1,4 @@
-export type QueueAssignmentStrategy = 'round_robin' | 'least_load'
+export type QueueAssignmentStrategy = 'round_robin' | 'least_load' | 'manual'
 
 /** Matches the backend's `QueueResponse`. */
 export interface Queue {

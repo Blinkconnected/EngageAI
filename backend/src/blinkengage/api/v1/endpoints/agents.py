@@ -3,12 +3,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
-from blinkengage.api.deps import get_agent_service, get_agent_skill_service, require_permission
+from blinkengage.api.deps import (
+    get_agent_service,
+    get_agent_skill_service,
+    get_current_auth,
+    require_permission,
+)
 from blinkengage.api.schemas.agent import (
     AgentCreateRequest,
     AgentPasswordResetRequest,
     AgentResponse,
     AgentUpdateRequest,
+    SelfAvailabilityUpdateRequest,
 )
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.api.schemas.queue import AgentSkillResponse, RequiredSkillRequest
@@ -65,6 +71,25 @@ async def create_agent(
         title=payload.title,
         department_id=payload.department_id,
         actor_user_id=auth.user_id,
+    )
+    return _to_response(agent)
+
+
+@router.patch("/me/status", response_model=AgentResponse)
+async def update_own_availability(
+    payload: SelfAvailabilityUpdateRequest,
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    service: Annotated[AgentService, Depends(get_agent_service)],
+) -> AgentResponse:
+    """Self-service availability toggle — any authenticated agent may set
+    their own status to Online/Away/Busy, no ``agents.manage`` permission
+    required (unlike ``PATCH /agents/{agent_id}``, which lets an Owner/
+    Admin change *anyone's*). Registered before ``/{agent_id}`` so the
+    literal path always wins by declaration order, not by relying on the
+    UUID converter to reject "me". 404s if the caller has no Agent profile
+    (e.g. a company Owner who never became an agent)."""
+    agent = await service.update_own_status(
+        company_id=auth.company_id, user_id=auth.user_id, status=payload.status
     )
     return _to_response(agent)
 
