@@ -45,9 +45,9 @@ export function LoginPage() {
             component="img"
             src={logoLight}
             alt="Blink Engage"
-            sx={{ height: 40, width: 'auto', display: 'block', mx: 'auto' }}
+            sx={{ height: 80, width: 'auto', display: 'block', mx: 'auto', alignSelf: 'center' }}
           />
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
             Sign in to your workspace
           </Typography>
 
@@ -94,6 +94,11 @@ export function LoginPage() {
             New to Blink Engage?{' '}
             <Link component={RouterLink} to="/register">
               Create your company
+            </Link>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            <Link component={RouterLink} to="/changelog">
+              What's new in this release
             </Link>
           </Typography>
         </Stack>

@@ -52,7 +52,7 @@ export function RegisterPage() {
             component="img"
             src={logoLight}
             alt="Blink Engage"
-            sx={{ height: 40, width: 'auto', display: 'block', mx: 'auto' }}
+            sx={{ height: 80, width: 'auto', display: 'block', mx: 'auto', alignSelf: 'center' }}
           />
           <Typography variant="h5" component="h1" sx={{ fontWeight: 600, textAlign: 'center' }}>
             Create your company

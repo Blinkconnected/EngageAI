@@ -28,6 +28,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/changelog" element={<ChangelogPage />} />
       <Route
         path="/"
         element={
@@ -39,7 +40,6 @@ export function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="changelog" element={<ChangelogPage />} />
         <Route
           path="onboarding"
           element={
