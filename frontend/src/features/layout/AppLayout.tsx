@@ -38,6 +38,7 @@ import { useCompanyQuery, useIsOnboardingIncomplete } from '../company/api'
 import { NotificationBell } from '../notifications/NotificationBell'
 import { NotificationToastProvider } from '../notifications/NotificationToastProvider'
 import { RealtimeProvider } from '../realtime/RealtimeProvider'
+import { Footer } from '../../shared/components/Footer'
 import { SideNav } from './SideNav'
 
 const DRAWER_WIDTH = 260
@@ -245,6 +246,7 @@ export function AppLayout() {
               )}
               <Outlet />
             </Box>
+            <Footer />
           </Box>
         </Box>
       </RealtimeProvider>

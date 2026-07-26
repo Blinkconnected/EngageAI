@@ -1,20 +1,17 @@
-import {
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Toolbar,
-  Typography,
-} from '@mui/material'
+import { Box, List, ListItemButton, ListItemIcon, ListItemText, Toolbar } from '@mui/material'
 import { NavLink, useLocation } from 'react-router-dom'
+import { useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useIsErpEnabled } from '../company/api'
+import logoLight from '../../assets/logo-light.png'
+import logoDark from '../../assets/logo-dark.png'
 import { NAV_ITEMS } from './navConfig'
 
 export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   const { hasPermission } = usePermissions()
   const location = useLocation()
   const isErpEnabled = useIsErpEnabled()
+  const themeMode = useAppSelector((state) => state.ui.themeMode)
 
   const visibleItems = NAV_ITEMS.filter(
     (item) =>
@@ -25,12 +22,12 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <>
       <Toolbar>
-        <Typography
-          variant="h6"
-          sx={{ fontWeight: 700, fontFamily: '"Baloo 2", system-ui, sans-serif' }}
-        >
-          Blink Engage
-        </Typography>
+        <Box
+          component="img"
+          src={themeMode === 'dark' ? logoDark : logoLight}
+          alt="Blink Engage"
+          sx={{ height: 28, width: 'auto' }}
+        />
       </Toolbar>
       <List component="nav" aria-label="Main navigation" sx={{ px: 1 }}>
         {visibleItems.map((item) => {

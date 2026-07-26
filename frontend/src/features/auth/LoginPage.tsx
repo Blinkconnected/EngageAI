@@ -3,6 +3,8 @@ import { Link as RouterLink, Navigate, useLocation } from 'react-router-dom'
 import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material'
 import { useAppSelector } from '../../app/hooks'
 import { extractErrorMessage } from '../../shared/api/errors'
+import { Footer } from '../../shared/components/Footer'
+import logoLight from '../../assets/logo-light.png'
 import { selectIsAuthenticated } from './authSlice'
 import { useLoginMutation } from './api'
 
@@ -30,6 +32,7 @@ export function LoginPage() {
       sx={{
         minHeight: '100%',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         bgcolor: 'background.default',
@@ -38,9 +41,12 @@ export function LoginPage() {
     >
       <Paper component="form" onSubmit={handleSubmit} elevation={2} sx={{ p: 4, width: 400 }}>
         <Stack spacing={2}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
-            Blink Engage
-          </Typography>
+          <Box
+            component="img"
+            src={logoLight}
+            alt="Blink Engage"
+            sx={{ height: 40, width: 'auto', display: 'block', mx: 'auto' }}
+          />
           <Typography variant="body2" color="text.secondary">
             Sign in to your workspace
           </Typography>
@@ -92,6 +98,7 @@ export function LoginPage() {
           </Typography>
         </Stack>
       </Paper>
+      <Footer />
     </Box>
   )
 }
