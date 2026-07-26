@@ -5,9 +5,10 @@ provider (WhatsApp, Web Chat, etc.) is implemented until the architecture
 itself is signed off. See docs/architecture/channels.md.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 import orjson
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
@@ -35,7 +36,11 @@ class FakeChannelProvider(ChannelProvider):
     verification, payload parsing, event publishing) without talking to
     any real third-party API."""
 
+    # Class-level, not instance-level — see configure_webhook_calls below.
+    sent_messages: ClassVar[list[OutboundMessage]] = []
+
     async def send_message(self, message: OutboundMessage) -> SendResult:
+        FakeChannelProvider.sent_messages.append(message)
         if self._credentials.get("fail_send"):
             raise ValueError("simulated provider send failure")
         return SendResult(external_message_id="fake-sent-1", raw_response={})
@@ -80,6 +85,27 @@ class FakeChannelProvider(ChannelProvider):
         if self._credentials.get("fail_health_check"):
             return HealthStatus(healthy=False, detail="simulated failure")
         return HealthStatus(healthy=True)
+
+    # Class-level, not instance-level: ChannelProviderFactory builds a
+    # fresh provider per request, so there's no other seam to observe
+    # ChannelConfigService's webhook lifecycle calls from a test.
+    configure_webhook_calls: ClassVar[list[str]] = []
+    deregister_webhook_calls: ClassVar[int] = 0
+
+    async def configure_webhook(self, *, webhook_url: str) -> None:
+        FakeChannelProvider.configure_webhook_calls.append(webhook_url)
+        if self._credentials.get("fail_configure_webhook"):
+            raise RuntimeError("simulated webhook registration failure")
+
+    async def deregister_webhook(self) -> None:
+        FakeChannelProvider.deregister_webhook_calls += 1
+
+
+@pytest.fixture(autouse=True)
+def _reset_webhook_lifecycle_calls() -> None:
+    FakeChannelProvider.configure_webhook_calls = []
+    FakeChannelProvider.deregister_webhook_calls = 0
+    FakeChannelProvider.sent_messages = []
 
 
 async def _create_channel_config(
@@ -510,6 +536,85 @@ async def test_connection_logs_record_lifecycle_events(
     # back to back fast enough that SQLite's second-resolution timestamps
     # (unlike Postgres's microsecond resolution in production) can tie,
     # making strict ordering untestable at this level.
+
+
+async def test_create_registers_the_webhook_with_the_provider(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    created = await _create_channel_config(client, owner_headers)
+
+    assert len(FakeChannelProvider.configure_webhook_calls) == 1
+    assert FakeChannelProvider.configure_webhook_calls[0].endswith(
+        f"/webhooks/{created['id']}"
+    )
+
+
+async def test_webhook_registration_failure_does_not_fail_channel_creation(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    response = await client.post(
+        "/api/v1/channel-configs",
+        json={
+            "channel_type": "test_fake",
+            "display_name": "Flaky Webhook Channel",
+            "credentials": {"fail_configure_webhook": True},
+            "webhook_secret": "shh",
+        },
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 201, response.text
+    channel_config_id = response.json()["id"]
+
+    logs_response = await client.get(
+        f"/api/v1/channel-configs/{channel_config_id}/connection-logs", headers=owner_headers
+    )
+    event_types = {item["event_type"] for item in logs_response.json()["items"]}
+    assert "webhook_registration_failed" in event_types
+
+
+async def test_deactivating_and_reactivating_a_channel_toggles_the_webhook(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    created = await _create_channel_config(client, owner_headers)
+    assert len(FakeChannelProvider.configure_webhook_calls) == 1
+
+    await client.patch(
+        f"/api/v1/channel-configs/{created['id']}", json={"is_active": False}, headers=owner_headers
+    )
+    assert FakeChannelProvider.deregister_webhook_calls == 1
+    assert len(FakeChannelProvider.configure_webhook_calls) == 1  # unchanged
+
+    await client.patch(
+        f"/api/v1/channel-configs/{created['id']}", json={"is_active": True}, headers=owner_headers
+    )
+    assert len(FakeChannelProvider.configure_webhook_calls) == 2
+    assert FakeChannelProvider.deregister_webhook_calls == 1  # unchanged
+
+
+async def test_rotating_credentials_re_registers_the_webhook(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    created = await _create_channel_config(client, owner_headers)
+    assert len(FakeChannelProvider.configure_webhook_calls) == 1
+
+    await client.patch(
+        f"/api/v1/channel-configs/{created['id']}",
+        json={"credentials": {"api_key": "rotated-value"}},
+        headers=owner_headers,
+    )
+
+    assert len(FakeChannelProvider.configure_webhook_calls) == 2
+
+
+async def test_deleting_a_channel_deregisters_the_webhook(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    created = await _create_channel_config(client, owner_headers)
+
+    await client.delete(f"/api/v1/channel-configs/{created['id']}", headers=owner_headers)
+
+    assert FakeChannelProvider.deregister_webhook_calls == 1
 
 
 async def test_connection_logs_are_scoped_to_channel_and_company(

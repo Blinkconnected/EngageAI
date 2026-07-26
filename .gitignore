@@ -35,6 +35,7 @@ pnpm-debug.log*
 !.env.example
 *.pem
 *.key
+*.crt
 !docker/**/*.example
 
 # --- Docker / data volumes ---

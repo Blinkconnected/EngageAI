@@ -7,6 +7,8 @@ import type {
   ErpConfigUpdateRequest,
   ErpCustomerLink,
   ErpSyncedRecord,
+  ErpTestConnectionRequest,
+  ErpTestConnectionResult,
 } from './types'
 
 const ERP_CONFIGS_KEY = ['erp-configs']
@@ -32,6 +34,23 @@ async function updateErpConfig(
 
 async function deleteErpConfig(erpConfigId: string): Promise<void> {
   await apiClient.delete(`/erp-configs/${erpConfigId}`)
+}
+
+async function testErpConnectionEphemeral(
+  payload: ErpTestConnectionRequest,
+): Promise<ErpTestConnectionResult> {
+  const { data } = await apiClient.post<ErpTestConnectionResult>(
+    '/erp-configs/test-connection',
+    payload,
+  )
+  return data
+}
+
+async function testErpConnection(erpConfigId: string): Promise<ErpTestConnectionResult> {
+  const { data } = await apiClient.post<ErpTestConnectionResult>(
+    `/erp-configs/${erpConfigId}/test-connection`,
+  )
+  return data
 }
 
 async function fetchErpRecords(customerId: string): Promise<ErpSyncedRecord[]> {
@@ -87,6 +106,17 @@ export function useDeleteErpConfigMutation() {
     mutationFn: deleteErpConfig,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ERP_CONFIGS_KEY }),
   })
+}
+
+/** Test connection details typed but not saved yet — the wizard/settings
+ * "Test Connection" step. */
+export function useTestErpConnectionEphemeralMutation() {
+  return useMutation({ mutationFn: testErpConnectionEphemeral })
+}
+
+/** Re-check an already-saved ERP connection on demand. */
+export function useTestErpConnectionMutation() {
+  return useMutation({ mutationFn: testErpConnection })
 }
 
 export function useErpRecordsQuery(customerId: string) {

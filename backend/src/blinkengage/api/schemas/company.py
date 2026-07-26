@@ -4,12 +4,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from blinkengage.api.schemas.company_settings import CompanySettingsUpdate
 from blinkengage.infrastructure.database.models.company import CompanyStatus
 
 
 class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
-    settings: dict[str, Any] | None = None
+    # Only the top-level section(s) actually included get merged into the
+    # stored settings blob — see CompanyService.update and
+    # docs/architecture/company-onboarding.md.
+    settings: CompanySettingsUpdate | None = None
 
 
 class CompanyResponse(BaseModel):

@@ -26,8 +26,8 @@ class FakeErpClient:
     async def list_records(self, *, doctype: str, customer_name: str) -> list[dict[str, Any]]:
         return []
 
-    async def health_check(self) -> bool:
-        return True
+    async def health_check(self) -> tuple[bool, str | None]:
+        return True, None
 
 
 def _event(*, company_id: str, customer_id: str) -> dict[str, Any]:
@@ -47,7 +47,17 @@ async def _company_id(client: AsyncClient, owner_headers: dict) -> str:
     return str(me.json()["company"]["id"])
 
 
+async def _enable_erp(client: AsyncClient, owner_headers: dict) -> None:
+    response = await client.patch(
+        "/api/v1/company",
+        json={"settings": {"erp": {"enabled": True}}},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200, response.text
+
+
 async def _create_erp_config(client: AsyncClient, owner_headers: dict) -> None:
+    await _enable_erp(client, owner_headers)
     response = await client.post(
         "/api/v1/erp-configs",
         json={

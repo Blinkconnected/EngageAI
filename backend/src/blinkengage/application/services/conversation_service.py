@@ -433,6 +433,7 @@ class ConversationService:
                     external_id=attachment.storage_key,
                     content_type=attachment.content_type,
                     size_bytes=attachment.size_bytes,
+                    filename=attachment.filename,
                 )
             )
 
@@ -446,17 +447,26 @@ class ConversationService:
         if customer is not None and customer.email is not None:
             metadata["customer_email"] = customer.email
 
+        provider = self._provider_factory.build(config)
+
         # Reference the most recent message in the thread (whichever
         # direction) so channels with native threading (email's
-        # In-Reply-To/References) chain correctly in the customer's client.
-        previous_messages, _ = await self._messages.list_for_conversation(
-            conversation_id=conversation.id, offset=0, limit=1
-        )
-        reply_to_external_message_id = (
-            previous_messages[0].external_message_id if previous_messages else None
-        )
+        # In-Reply-To/References) chain correctly in the customer's
+        # client. Only for providers where that reference is invisible
+        # transport metadata — WhatsApp/Telegram render this as a visible
+        # quoted-reply bubble, so auto-chaining it there would make every
+        # single agent reply look like it's "replying to" whatever
+        # message happened to come before it, with no such intent from
+        # the agent.
+        reply_to_external_message_id = None
+        if provider.supports_invisible_reply_threading:
+            previous_messages, _ = await self._messages.list_for_conversation(
+                conversation_id=conversation.id, offset=0, limit=1
+            )
+            reply_to_external_message_id = (
+                previous_messages[0].external_message_id if previous_messages else None
+            )
 
-        provider = self._provider_factory.build(config)
         thread_id = conversation.external_thread_id or str(conversation.id)
         outbound = OutboundMessage(
             external_thread_id=thread_id,

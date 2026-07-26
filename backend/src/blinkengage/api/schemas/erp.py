@@ -11,6 +11,20 @@ class ErpConfigCreateRequest(BaseModel):
     webhook_secret: str | None = None
 
 
+class ErpTestConnectionRequest(BaseModel):
+    """Ephemeral pre-save test — same shape as Channels'
+    ``TestConnectionRequest``, minus a channel type (there's only one ERP
+    integration)."""
+
+    base_url: str = Field(..., min_length=1, max_length=500)
+    credentials: dict[str, Any] = Field(default_factory=dict)
+
+
+class ErpTestConnectionResponse(BaseModel):
+    healthy: bool
+    detail: str | None = None
+
+
 class ErpConfigUpdateRequest(BaseModel):
     base_url: str | None = Field(default=None, min_length=1, max_length=500)
     credentials: dict[str, Any] | None = None

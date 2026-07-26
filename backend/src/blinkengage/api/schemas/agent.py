@@ -10,13 +10,19 @@ from blinkengage.infrastructure.database.models.agent import AgentStatus
 class AgentCreateRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=255)
-    password: str = Field(..., min_length=10, max_length=128)
+    # Omit to invite the agent by email instead: a random password is
+    # generated and emailed to them (see AgentService.create /
+    # docs/architecture/company-onboarding.md) rather than the caller
+    # choosing one directly.
+    password: str | None = Field(default=None, min_length=10, max_length=128)
     title: str | None = None
     department_id: UUID | None = None
 
     @field_validator("password")
     @classmethod
-    def _check_password_strength(cls, value: str) -> str:
+    def _check_password_strength(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         return validate_password_strength(value)
 
 

@@ -32,6 +32,7 @@ from blinkengage.infrastructure.repositories.channel_config_repository import (
 from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
     ChannelConnectionLogRepository,
 )
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -169,6 +170,7 @@ async def _run_engine(app: Any, event: dict) -> None:
             conversation_service=conversation_service,
             notifications=NotificationService(
                 notifications=NotificationRepository(session),
+                companies=CompanyRepository(session),
                 realtime=RealtimePublisher(app.state.container.redis()),
             ),
         )

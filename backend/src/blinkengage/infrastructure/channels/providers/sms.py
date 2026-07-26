@@ -91,7 +91,10 @@ class SmsProvider(ChannelProvider):
             key=key, data=attachment.data, content_type=attachment.content_type
         )
         return AttachmentRef(
-            external_id=key, content_type=attachment.content_type, size_bytes=len(attachment.data)
+            external_id=key,
+            content_type=attachment.content_type,
+            size_bytes=len(attachment.data),
+            filename=attachment.filename,
         )
 
     async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:

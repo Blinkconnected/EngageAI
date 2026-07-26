@@ -4,6 +4,7 @@ import { RegisterPage } from '../features/auth/RegisterPage'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { AppLayout } from '../features/layout/AppLayout'
 import { RequirePermission } from '../features/layout/RequirePermission'
+import { RequireErpEnabled } from '../features/layout/RequireErpEnabled'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AgentsPage } from '../features/agents/AgentsPage'
 import { DepartmentsPage } from '../features/departments/DepartmentsPage'
@@ -14,6 +15,7 @@ import { CustomersPage } from '../features/customers/CustomersPage'
 import { CustomerProfilePage } from '../features/customers/CustomerProfilePage'
 import { ErpConfigSettingsPage } from '../features/erp/ErpConfigSettingsPage'
 import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
+import { OnboardingWizardPage } from '../features/onboarding/OnboardingWizardPage'
 import { ProfilePage } from '../features/profile/ProfilePage'
 import { NotificationsPage } from '../features/notifications/NotificationsPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
@@ -36,6 +38,14 @@ export function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route
+          path="onboarding"
+          element={
+            <RequirePermission permission="company.manage">
+              <OnboardingWizardPage />
+            </RequirePermission>
+          }
+        />
         <Route
           path="agents"
           element={
@@ -88,7 +98,9 @@ export function AppRoutes() {
           path="erp-configs"
           element={
             <RequirePermission permission="erp.manage">
-              <ErpConfigSettingsPage />
+              <RequireErpEnabled>
+                <ErpConfigSettingsPage />
+              </RequireErpEnabled>
             </RequirePermission>
           }
         />
@@ -101,7 +113,7 @@ export function AppRoutes() {
           }
         />
         <Route
-          path="settings/company"
+          path="settings/company/:tab?"
           element={
             <RequirePermission permission="company.manage">
               <CompanySettingsPage />

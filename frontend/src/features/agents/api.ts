@@ -53,7 +53,13 @@ export function useCreateAgentMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createAgent,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: AGENTS_LIST_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: AGENTS_LIST_KEY })
+      // Distinct query key from AGENTS_LIST_KEY above — the Company
+      // Onboarding Wizard's Team Setup step relies on this unpaginated
+      // list to show newly-invited agents immediately.
+      queryClient.invalidateQueries({ queryKey: ['agents', 'all'] })
+    },
   })
 }
 

@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from blinkengage.core.config import Settings
+from blinkengage.core.logging import get_logger
 from blinkengage.domain.channels import HealthStatus
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityNotFoundError, InvalidChannelTypeError
@@ -17,7 +19,10 @@ from blinkengage.infrastructure.channels.credential_schemas import (
     AUTO_GENERATED_CREDENTIAL_FIELDS,
     validate_channel_credentials,
 )
-from blinkengage.infrastructure.channels.error_sanitizer import safe_health_check
+from blinkengage.infrastructure.channels.error_sanitizer import (
+    redact_credentials,
+    safe_health_check,
+)
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.channels.registry import ChannelRegistry
 from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
@@ -31,6 +36,8 @@ from blinkengage.infrastructure.repositories.channel_connection_log_repository i
     ChannelConnectionLogRepository,
 )
 
+logger = get_logger(__name__)
+
 
 class ChannelConfigService:
     def __init__(
@@ -40,11 +47,13 @@ class ChannelConfigService:
         connection_logs: ChannelConnectionLogRepository,
         provider_factory: ChannelProviderFactory,
         events: DomainEventPublisher,
+        settings: Settings,
     ) -> None:
         self._channel_configs = channel_configs
         self._connection_logs = connection_logs
         self._provider_factory = provider_factory
         self._events = events
+        self._settings = settings
 
     async def create(
         self,
@@ -86,6 +95,7 @@ class ChannelConfigService:
             level="info",
             message=f"Channel {display_name!r} ({channel_type}) connected.",
         )
+        await self._register_webhook(channel_config)
         await self._events.publish(
             DomainEvent(
                 event_type="channel_config.created",
@@ -127,6 +137,7 @@ class ChannelConfigService:
         channel_config = await self.get(company_id=company_id, channel_config_id=channel_config_id)
         if credentials is not None:
             validate_channel_credentials(channel_config.channel_type, credentials)
+        credentials_changed = credentials is not None or webhook_secret is not None
         if display_name is not None:
             channel_config.display_name = display_name
         if credentials is not None:
@@ -139,7 +150,8 @@ class ChannelConfigService:
             )
         if webhook_secret is not None:
             channel_config.webhook_secret = webhook_secret
-        if is_active is not None and is_active != channel_config.is_active:
+        activation_changed = is_active is not None and is_active != channel_config.is_active
+        if activation_changed and is_active is not None:
             channel_config.is_active = is_active
             await self._log(
                 channel_config,
@@ -147,6 +159,12 @@ class ChannelConfigService:
                 level="info",
                 message=f"Channel {'activated' if is_active else 'deactivated'}.",
             )
+
+        if channel_config.is_active and (credentials_changed or activation_changed):
+            await self._register_webhook(channel_config)
+        elif not channel_config.is_active and activation_changed:
+            await self._deregister_webhook(channel_config)
+
         await self._events.publish(
             DomainEvent(
                 event_type="channel_config.updated",
@@ -166,6 +184,7 @@ class ChannelConfigService:
         self, *, company_id: UUID, channel_config_id: UUID, actor_user_id: UUID | None = None
     ) -> None:
         channel_config = await self.get(company_id=company_id, channel_config_id=channel_config_id)
+        await self._deregister_webhook(channel_config)
         await self._channel_configs.soft_delete(channel_config)
         await self._events.publish(
             DomainEvent(
@@ -247,6 +266,51 @@ class ChannelConfigService:
         return await self._connection_logs.list_for_channel(
             channel_config_id=channel_config_id, offset=offset, limit=limit
         )
+
+    def _webhook_url(self, channel_config: ChannelConfig) -> str:
+        # Same reconstruction as api/v1/endpoints/webhooks.py's
+        # _reconstructed_url — settings.public_base_url must be the
+        # provider-reachable HTTPS origin in a real deployment.
+        return (
+            f"{self._settings.public_base_url}{self._settings.api_v1_prefix}"
+            f"/webhooks/{channel_config.id}"
+        )
+
+    async def _register_webhook(self, channel_config: ChannelConfig) -> None:
+        """Best-effort: a provider whose webhook registration call fails
+        (e.g. Telegram) must not fail the whole create/update — the
+        channel is still saved, and the failure is visible in its
+        connection logs (surfaced the same way a failed "Test Connection"
+        already is) rather than a raised 500."""
+        provider = self._provider_factory.build(channel_config)
+        try:
+            await provider.configure_webhook(webhook_url=self._webhook_url(channel_config))
+        except Exception as exc:
+            message = redact_credentials(str(exc), channel_config.credentials)
+            logger.warning(
+                "channel_webhook_registration_failed",
+                channel_config_id=str(channel_config.id),
+                channel_type=channel_config.channel_type,
+                exc_info=True,
+            )
+            await self._log(
+                channel_config,
+                event_type="webhook_registration_failed",
+                level="error",
+                message=message,
+            )
+
+    async def _deregister_webhook(self, channel_config: ChannelConfig) -> None:
+        provider = self._provider_factory.build(channel_config)
+        try:
+            await provider.deregister_webhook()
+        except Exception:
+            logger.warning(
+                "channel_webhook_deregistration_failed",
+                channel_config_id=str(channel_config.id),
+                channel_type=channel_config.channel_type,
+                exc_info=True,
+            )
 
     def _apply_health_status(self, channel_config: ChannelConfig, status: HealthStatus) -> None:
         channel_config.last_health_status = "healthy" if status.healthy else "unhealthy"

@@ -10,9 +10,14 @@ class ErpCustomerLinkRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_customer(self, customer_id: UUID) -> ErpCustomerLink | None:
+    async def get_by_customer(
+        self, *, company_id: UUID, customer_id: UUID
+    ) -> ErpCustomerLink | None:
         result = await self._session.execute(
-            select(ErpCustomerLink).where(ErpCustomerLink.customer_id == customer_id)
+            select(ErpCustomerLink).where(
+                ErpCustomerLink.company_id == company_id,
+                ErpCustomerLink.customer_id == customer_id,
+            )
         )
         return result.scalar_one_or_none()
 

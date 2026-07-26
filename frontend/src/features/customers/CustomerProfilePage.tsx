@@ -5,6 +5,7 @@ import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { usePermissions } from '../../shared/hooks/usePermissions'
+import { useIsErpEnabled } from '../company/api'
 import { CustomerErpPanel } from '../erp/CustomerErpPanel'
 import { useCustomerQuery } from './api'
 import { CustomerEditDialog } from './CustomerEditDialog'
@@ -15,6 +16,7 @@ export function CustomerProfilePage() {
   const [tab, setTab] = useState<'timeline' | 'erp'>('timeline')
   const [editing, setEditing] = useState(false)
   const { hasPermission } = usePermissions()
+  const isErpEnabled = useIsErpEnabled()
 
   const customerQuery = useCustomerQuery(customerId)
 
@@ -59,13 +61,13 @@ export function CustomerProfilePage() {
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab label="Timeline" value="timeline" />
-        <Tab label="ERPNext" value="erp" />
+        {isErpEnabled && <Tab label="ERPNext" value="erp" />}
       </Tabs>
 
-      {tab === 'timeline' ? (
-        <CustomerTimelinePanel customerId={customer.id} />
-      ) : (
+      {tab === 'erp' && isErpEnabled ? (
         <CustomerErpPanel customerId={customer.id} />
+      ) : (
+        <CustomerTimelinePanel customerId={customer.id} />
       )}
 
       {hasPermission('customers.manage') && (

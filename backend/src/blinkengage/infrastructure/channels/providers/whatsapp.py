@@ -88,6 +88,11 @@ class WhatsAppProvider(ChannelProvider):
             media_object: dict[str, Any] = {"id": media_id}
             if index == 0 and message.body:
                 media_object["caption"] = message.body
+            # "filename" is only a meaningful field for the "document"
+            # type — WhatsApp doesn't display a filename for images/
+            # video/audio bubbles.
+            if media_type == "document" and attachment.filename:
+                media_object["filename"] = attachment.filename
             payload: dict[str, Any] = {
                 "messaging_product": "whatsapp",
                 "to": message.external_thread_id,
@@ -225,7 +230,10 @@ class WhatsAppProvider(ChannelProvider):
             key=key, data=attachment.data, content_type=attachment.content_type
         )
         return AttachmentRef(
-            external_id=key, content_type=attachment.content_type, size_bytes=len(attachment.data)
+            external_id=key,
+            content_type=attachment.content_type,
+            size_bytes=len(attachment.data),
+            filename=attachment.filename,
         )
 
     async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:

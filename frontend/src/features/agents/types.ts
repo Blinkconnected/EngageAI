@@ -16,7 +16,10 @@ export interface Agent {
 export interface AgentCreateRequest {
   email: string
   full_name: string
-  password: string
+  /** Omit to invite the agent by email instead — a random password is
+   * generated and emailed to them (see AgentCreateDialog vs. the
+   * Company Onboarding Wizard's Team Setup step, which omits this). */
+  password?: string
   title?: string | null
   department_id?: string | null
 }

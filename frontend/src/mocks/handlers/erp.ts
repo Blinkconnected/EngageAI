@@ -48,6 +48,14 @@ export const erpHandlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
+  http.post(`${API_BASE_URL}/erp-configs/test-connection`, () =>
+    HttpResponse.json({ healthy: true, detail: null }),
+  ),
+
+  http.post(`${API_BASE_URL}/erp-configs/:erpConfigId/test-connection`, () =>
+    HttpResponse.json({ healthy: true, detail: null }),
+  ),
+
   http.get(`${API_BASE_URL}/customers/:customerId/erp-records`, () => HttpResponse.json(records)),
 
   http.post(`${API_BASE_URL}/customers/:customerId/erp-sync`, ({ params }) =>

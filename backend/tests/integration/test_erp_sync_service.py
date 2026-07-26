@@ -20,6 +20,7 @@ from blinkengage.domain.exceptions import (
     ErpNotConfiguredError,
 )
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.erp_config_repository import ErpConfigRepository
 from blinkengage.infrastructure.repositories.erp_customer_link_repository import (
@@ -48,8 +49,8 @@ class FakeErpClient:
     async def list_records(self, *, doctype: str, customer_name: str) -> list[dict[str, Any]]:
         return self.records
 
-    async def health_check(self) -> bool:
-        return True
+    async def health_check(self) -> tuple[bool, str | None]:
+        return True, None
 
 
 def _service(app: Any, session: Any) -> ErpSyncService:
@@ -58,6 +59,7 @@ def _service(app: Any, session: Any) -> ErpSyncService:
         customer_links=ErpCustomerLinkRepository(session),
         synced_records=ErpSyncedRecordRepository(session),
         customers=CustomerRepository(session),
+        companies=CompanyRepository(session),
         events=OutboxEventPublisher(EventOutboxRepository(session)),
     )
 
@@ -67,7 +69,17 @@ async def _company_id(client: AsyncClient, owner_headers: dict) -> str:
     return str(me.json()["company"]["id"])
 
 
+async def _enable_erp(client: AsyncClient, owner_headers: dict) -> None:
+    response = await client.patch(
+        "/api/v1/company",
+        json={"settings": {"erp": {"enabled": True}}},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200, response.text
+
+
 async def _create_erp_config(client: AsyncClient, owner_headers: dict) -> str:
+    await _enable_erp(client, owner_headers)
     response = await client.post(
         "/api/v1/erp-configs",
         json={

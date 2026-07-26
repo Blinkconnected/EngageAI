@@ -15,6 +15,10 @@ export interface NavItem {
   icon: ComponentType<{ fontSize?: 'small' | 'medium' | 'large' | 'inherit' }>
   /** Permission required to see this item; omit for "any authenticated user". */
   permission?: string
+  /** Also requires the company to have ERP enabled (see
+   * docs/architecture/company-onboarding.md) — completely hidden
+   * otherwise, not just permission-gated. */
+  requiresErpEnabled?: boolean
 }
 
 /**
@@ -55,10 +59,11 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/erp-configs',
     icon: SyncOutlinedIcon,
     permission: 'erp.manage',
+    requiresErpEnabled: true,
   },
   {
     label: 'Company settings',
-    path: '/settings/company',
+    path: '/settings/company/general',
     icon: BusinessOutlinedIcon,
     permission: 'company.manage',
   },

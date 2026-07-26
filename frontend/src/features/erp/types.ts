@@ -21,6 +21,17 @@ export interface ErpConfigUpdateRequest {
   is_active?: boolean
 }
 
+export interface ErpTestConnectionRequest {
+  base_url: string
+  credentials: Record<string, unknown>
+}
+
+/** Matches the backend's `ErpTestConnectionResponse`. */
+export interface ErpTestConnectionResult {
+  healthy: boolean
+  detail: string | null
+}
+
 /** Matches the backend's `ErpSyncedRecordResponse` — doctype-agnostic by
  * design, `data` is the raw ERPNext document JSON with no fixed schema. */
 export interface ErpSyncedRecord {

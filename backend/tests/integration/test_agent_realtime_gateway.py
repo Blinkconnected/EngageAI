@@ -9,6 +9,7 @@ import asyncio
 from uuid import UUID
 
 import orjson
+import pytest
 from fastapi import WebSocketDisconnect
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -34,6 +35,7 @@ from blinkengage.infrastructure.repositories.channel_config_repository import (
 from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
     ChannelConnectionLogRepository,
 )
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -177,9 +179,11 @@ def _build_services(session, container):
     )
     agent_service = AgentService(
         session=session,
+        settings=settings,
         agents=AgentRepository(session),
         users=UserRepository(session),
         roles=RoleRepository(session),
+        companies=CompanyRepository(session),
         events=events,
         refresh_tokens=RefreshTokenStore(container.redis()),
     )
@@ -302,6 +306,61 @@ async def test_typing_frame_invokes_provider_typing_indicator(
     assert pubsub_messages[0]["is_typing"] is True
 
 
+async def test_typing_frame_is_suppressed_when_company_disables_typing_indicator(
+    client: AsyncClient, owner_headers: dict, app
+) -> None:
+    """A company can turn off the typing indicator (Company Settings'
+    Messaging tab) — the gateway must not forward it at all, not just
+    hide it client-side. See ``docs/architecture/company-onboarding.md``.
+    """
+    settings_response = await client.patch(
+        "/api/v1/company",
+        json={"settings": {"messaging": {"typing_indicator_enabled": False}}},
+        headers=owner_headers,
+    )
+    assert settings_response.status_code == 200, settings_response.text
+
+    agent_id, token = await _create_agent_with_token(client, owner_headers)
+    conversation_id, session_token = await _create_web_chat_conversation(client, owner_headers, app)
+
+    container = app.state.container
+    session_factory = container.session_factory()
+    async with session_factory() as session:
+        settings, realtime, conversation_service, agent_service = _build_services(
+            session, container
+        )
+        frame = orjson.dumps(
+            {"type": "typing", "conversation_id": conversation_id, "is_typing": True}
+        ).decode()
+        ws = _FakeWebSocket(query_params={"token": token}, frames=[frame])
+
+        pubsub_messages: list[dict] = []
+
+        async def _collect() -> None:
+            async with realtime.subscribe(session_channel_name(session_token)) as pubsub:
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        pubsub_messages.append(orjson.loads(message["data"]))
+                        return
+
+        collector = asyncio.create_task(_collect())
+        await asyncio.sleep(0.05)
+        await agent_gateway(
+            ws,  # type: ignore[arg-type]
+            settings,
+            session,
+            realtime,
+            conversation_service,
+            agent_service,
+        )
+        await session.commit()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(collector, timeout=0.5)
+        collector.cancel()
+
+    assert pubsub_messages == []
+
+
 async def test_notification_is_forwarded_over_the_socket(
     client: AsyncClient, owner_headers: dict, app
 ) -> None:
@@ -331,7 +390,9 @@ async def test_notification_is_forwarded_over_the_socket(
         async def _publish_after_delay() -> None:
             await asyncio.sleep(0.05)
             notifications = NotificationService(
-                notifications=NotificationRepository(session), realtime=realtime
+                notifications=NotificationRepository(session),
+                companies=CompanyRepository(session),
+                realtime=realtime,
             )
             await notifications.create(
                 company_id=company_id,

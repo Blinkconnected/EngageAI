@@ -31,6 +31,10 @@ from blinkengage.infrastructure.channels.registry import ChannelRegistry
 
 @ChannelRegistry.register("email")
 class EmailProvider(ChannelProvider):
+    # In-Reply-To/References are transport-level headers, invisible to
+    # the reader — unlike WhatsApp/Telegram's visible quote-reply UI.
+    supports_invisible_reply_threading = True
+
     async def send_message(self, message: OutboundMessage) -> SendResult:
         to_address = message.metadata.get("customer_email")
         if not to_address:
@@ -58,7 +62,10 @@ class EmailProvider(ChannelProvider):
             content_type = attachment.content_type or "application/octet-stream"
             maintype, _, subtype = content_type.partition("/")
             email_message.add_attachment(
-                data, maintype=maintype or "application", subtype=subtype or "octet-stream"
+                data,
+                maintype=maintype or "application",
+                subtype=subtype or "octet-stream",
+                filename=attachment.filename or "attachment",
             )
 
         await aiosmtplib.send(
@@ -97,7 +104,12 @@ class EmailProvider(ChannelProvider):
                 key = f"email-inbound/{uuid4()}/{filename}"
                 await self._attachments.upload(key=key, data=data, content_type=content_type)
                 attachments.append(
-                    AttachmentRef(external_id=key, content_type=content_type, size_bytes=len(data))
+                    AttachmentRef(
+                        external_id=key,
+                        content_type=content_type,
+                        size_bytes=len(data),
+                        filename=filename,
+                    )
                 )
             elif part.get_content_type() == "text/plain" and body is None:
                 content = part.get_content()
@@ -137,7 +149,10 @@ class EmailProvider(ChannelProvider):
             key=key, data=attachment.data, content_type=attachment.content_type
         )
         return AttachmentRef(
-            external_id=key, content_type=attachment.content_type, size_bytes=len(attachment.data)
+            external_id=key,
+            content_type=attachment.content_type,
+            size_bytes=len(attachment.data),
+            filename=attachment.filename,
         )
 
     async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:

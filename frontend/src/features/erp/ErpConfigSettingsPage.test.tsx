@@ -43,4 +43,30 @@ describe('ErpConfigSettingsPage', () => {
       expect(screen.queryByText('https://acme.erpnext.com')).not.toBeInTheDocument(),
     )
   })
+
+  it('tests the connection before saving', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ErpConfigSettingsPage />)
+
+    await user.type(await screen.findByLabelText(/erpnext site url/i), 'https://acme.erpnext.com')
+    await user.type(screen.getByLabelText(/^api key/i), 'key-123')
+    await user.type(screen.getByLabelText(/^api secret/i), 'secret-456')
+    await user.click(screen.getByRole('button', { name: /test connection/i }))
+
+    expect(await screen.findByText(/connection successful/i)).toBeInTheDocument()
+  })
+
+  it('tests the connection of an already-saved config', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<ErpConfigSettingsPage />)
+
+    await user.type(await screen.findByLabelText(/erpnext site url/i), 'https://acme.erpnext.com')
+    await user.type(screen.getByLabelText(/^api key/i), 'key-123')
+    await user.type(screen.getByLabelText(/^api secret/i), 'secret-456')
+    await user.click(screen.getByRole('button', { name: /connect erpnext/i }))
+    await screen.findByText('https://acme.erpnext.com')
+
+    await user.click(screen.getByRole('button', { name: /test connection/i }))
+    expect(await screen.findByText(/connection successful/i)).toBeInTheDocument()
+  })
 })

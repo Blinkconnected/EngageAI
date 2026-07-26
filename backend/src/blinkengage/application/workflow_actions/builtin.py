@@ -151,6 +151,11 @@ class CreateNotificationAction(WorkflowAction):
             payload=notification_payload,
             source_event_id=UUID(event_id_raw) if event_id_raw else None,
         )
+        if notification is None:
+            # The company disabled "workflow.notification" company-wide
+            # (Company Settings' Notifications tab) — not an error, just
+            # nothing to report back.
+            return {"notification_id": None, "user_id": str(user_id), "suppressed": True}
         return {"notification_id": str(notification.id), "user_id": str(user_id)}
 
 

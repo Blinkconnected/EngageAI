@@ -101,7 +101,11 @@ class MetaMessagingProvider(ChannelProvider):
             content_type = attachment.content_type or "application/octet-stream"
             attachment_type = _attachment_type_for(content_type)
             attachment_id = await self._upload_attachment_to_meta(
-                client, data=data, content_type=content_type, attachment_type=attachment_type
+                client,
+                data=data,
+                content_type=content_type,
+                attachment_type=attachment_type,
+                filename=attachment.filename,
             )
             payload = {
                 "recipient": {"id": message.external_thread_id},
@@ -123,7 +127,13 @@ class MetaMessagingProvider(ChannelProvider):
         return result
 
     async def _upload_attachment_to_meta(
-        self, client: httpx.AsyncClient, *, data: bytes, content_type: str, attachment_type: str
+        self,
+        client: httpx.AsyncClient,
+        *,
+        data: bytes,
+        content_type: str,
+        attachment_type: str,
+        filename: str | None = None,
     ) -> str:
         response = await client.post(
             f"{self._api_base}/message_attachments",
@@ -133,7 +143,7 @@ class MetaMessagingProvider(ChannelProvider):
                     {"attachment": {"type": attachment_type, "payload": {"is_reusable": True}}}
                 ).decode()
             },
-            files={"filedata": ("attachment", data, content_type)},
+            files={"filedata": (filename or "attachment", data, content_type)},
         )
         response.raise_for_status()
         return str(response.json()["attachment_id"])
@@ -224,7 +234,10 @@ class MetaMessagingProvider(ChannelProvider):
             key=key, data=attachment.data, content_type=attachment.content_type
         )
         return AttachmentRef(
-            external_id=key, content_type=attachment.content_type, size_bytes=len(attachment.data)
+            external_id=key,
+            content_type=attachment.content_type,
+            size_bytes=len(attachment.data),
+            filename=attachment.filename,
         )
 
     async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:

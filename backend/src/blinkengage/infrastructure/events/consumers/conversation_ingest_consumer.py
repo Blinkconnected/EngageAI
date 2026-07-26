@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
+from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import get_settings
 from blinkengage.core.logging import get_logger
@@ -28,7 +29,9 @@ from blinkengage.infrastructure.database.models.conversation import (
 )
 from blinkengage.infrastructure.database.models.customer import Customer
 from blinkengage.infrastructure.database.models.message import (
+    AttachmentValidationStatus,
     Message,
+    MessageAttachment,
     MessageDirection,
     MessageType,
 )
@@ -49,6 +52,9 @@ from blinkengage.infrastructure.repositories.customer_channel_identity_repositor
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
+)
+from blinkengage.infrastructure.repositories.message_attachment_repository import (
+    MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
@@ -264,6 +270,24 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
         )
         reply_to_message_id = replied_to.id if replied_to is not None else None
 
+    settings = get_settings()
+    approved_attachments = []
+    for raw_attachment in data.get("attachments", []):
+        content_type = raw_attachment.get("content_type") or "application/octet-stream"
+        size_bytes = raw_attachment.get("size_bytes") or 0
+        result = validate_attachment(
+            content_type=content_type, size_bytes=size_bytes, settings=settings
+        )
+        if not result.approved:
+            logger.warning(
+                "inbound_attachment_rejected",
+                channel_type=channel_type,
+                content_type=content_type,
+                reason=result.reason,
+            )
+            continue
+        approved_attachments.append(raw_attachment)
+
     message = await messages.add(
         Message(
             company_id=company_id,
@@ -273,11 +297,26 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
             customer_id=customer_id,
             external_message_id=external_message_id,
             direction=MessageDirection.INBOUND,
-            message_type=MessageType.TEXT,
+            message_type=MessageType.MEDIA if approved_attachments else MessageType.TEXT,
             body=data.get("body"),
             reply_to_message_id=reply_to_message_id,
         )
     )
+
+    if approved_attachments:
+        attachment_repo = MessageAttachmentRepository(session)
+        for raw_attachment in approved_attachments:
+            await attachment_repo.add(
+                MessageAttachment(
+                    conversation_id=conversation.id,
+                    message_id=message.id,
+                    storage_key=raw_attachment["external_id"],
+                    filename=raw_attachment.get("filename") or "attachment",
+                    content_type=raw_attachment.get("content_type") or "application/octet-stream",
+                    size_bytes=raw_attachment.get("size_bytes") or 0,
+                    validation_status=AttachmentValidationStatus.APPROVED,
+                )
+            )
 
     conversation.last_message_at = datetime.now(UTC)
     if conversation.status in _REOPEN_ON_NEW_MESSAGE:

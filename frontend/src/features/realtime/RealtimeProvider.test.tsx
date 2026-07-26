@@ -9,7 +9,8 @@
 import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { store } from '../../app/store'
@@ -19,6 +20,7 @@ import { server } from '../../mocks/server'
 import { API_BASE_URL } from '../../mocks/apiBaseUrl'
 import { NOTIFICATIONS_KEY, PREFERENCES_KEY, UNREAD_COUNT_KEY } from '../notifications/api'
 import * as deliveryEffects from '../notifications/deliveryEffects'
+import { NotificationToastProvider } from '../notifications/NotificationToastProvider'
 import { RealtimeProvider } from './RealtimeProvider'
 
 class FakeWebSocket {
@@ -54,9 +56,11 @@ function renderProvider() {
   return render(
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <RealtimeProvider>
-          <div />
-        </RealtimeProvider>
+        <NotificationToastProvider>
+          <RealtimeProvider>
+            <div />
+          </RealtimeProvider>
+        </NotificationToastProvider>
       </QueryClientProvider>
     </Provider>,
   )
@@ -189,6 +193,79 @@ describe('RealtimeProvider', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: NOTIFICATIONS_KEY })
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: UNREAD_COUNT_KEY })
     })
+    expect(soundSpy).not.toHaveBeenCalled()
+    expect(browserSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows a dismissible in-app toast for a "notification" frame', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    const user = userEvent.setup()
+    renderProvider()
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    await waitForPreferencesLoaded()
+
+    act(() => {
+      FakeWebSocket.instances[0].emit({
+        type: 'notification',
+        id: 'n3',
+        notification_type: 'conversation.assignment_changed',
+        title: 'New conversation assigned',
+        body: 'Take a look.',
+        payload: {},
+      })
+    })
+
+    expect(await screen.findByText('New conversation assigned')).toBeInTheDocument()
+    expect(screen.getByText('Take a look.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /close/i }))
+    await waitFor(() =>
+      expect(screen.queryByText('New conversation assigned')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('shows the in-app toast even when browser/sound channels are both disabled', async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/notifications/preferences`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              notification_type: 'conversation.assignment_changed',
+              label: 'New conversation assigned',
+              channel: 'sound',
+              enabled: false,
+            },
+            {
+              notification_type: 'conversation.assignment_changed',
+              label: 'New conversation assigned',
+              channel: 'browser',
+              enabled: false,
+            },
+          ],
+        }),
+      ),
+    )
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    const soundSpy = vi.spyOn(deliveryEffects, 'playNotificationSound').mockImplementation(() => {})
+    const browserSpy = vi
+      .spyOn(deliveryEffects, 'showBrowserNotification')
+      .mockImplementation(() => {})
+    renderProvider()
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    await waitForPreferencesLoaded()
+
+    act(() => {
+      FakeWebSocket.instances[0].emit({
+        type: 'notification',
+        id: 'n4',
+        notification_type: 'conversation.assignment_changed',
+        title: 'New conversation assigned',
+        body: 'Take a look.',
+        payload: {},
+      })
+    })
+
+    expect(await screen.findByText('New conversation assigned')).toBeInTheDocument()
     expect(soundSpy).not.toHaveBeenCalled()
     expect(browserSpy).not.toHaveBeenCalled()
   })

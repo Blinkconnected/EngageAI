@@ -93,7 +93,14 @@ export function useCreateChannelMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createChannel,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANNELS_LIST_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNELS_LIST_KEY })
+      // Also invalidate the unpaginated lookup list (e.g. the Company
+      // Onboarding Wizard's Channels step) — a distinct query key from
+      // CHANNELS_LIST_KEY above, so it wouldn't otherwise refresh until
+      // its own 60s staleTime lapsed.
+      queryClient.invalidateQueries({ queryKey: ['channels', 'all'] })
+    },
   })
 }
 

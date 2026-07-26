@@ -24,8 +24,13 @@ from blinkengage.core.security import (
     hash_password,
     verify_password,
 )
+from blinkengage.domain.company_settings import min_password_length
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
-from blinkengage.domain.exceptions import AuthenticationError, EntityAlreadyExistsError
+from blinkengage.domain.exceptions import (
+    AuthenticationError,
+    EntityAlreadyExistsError,
+    WeakPasswordError,
+)
 from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
@@ -209,6 +214,12 @@ class AuthService:
         any other password change."""
         if not verify_password(current_password, user.hashed_password):
             raise AuthenticationError("Current password is incorrect")
+
+        company = await self._companies.get_by_id(user.company_id)
+        if company is not None:
+            required_length = min_password_length(company.settings)
+            if len(new_password) < required_length:
+                raise WeakPasswordError(required_length)
 
         user.hashed_password = hash_password(new_password)
         await self._refresh_tokens.revoke_all_for_user(user_id=user.id)

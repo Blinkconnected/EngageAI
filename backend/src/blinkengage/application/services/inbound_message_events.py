@@ -32,6 +32,15 @@ async def publish_inbound_message_events(
                     "external_customer_name": message.external_customer_name,
                     "body": message.body,
                     "reply_to_external_message_id": message.reply_to_external_message_id,
+                    "attachments": [
+                        {
+                            "external_id": attachment.external_id,
+                            "content_type": attachment.content_type,
+                            "size_bytes": attachment.size_bytes,
+                            "filename": attachment.filename,
+                        }
+                        for attachment in message.attachments
+                    ],
                 },
             )
         )

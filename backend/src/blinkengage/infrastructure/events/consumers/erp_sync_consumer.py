@@ -23,6 +23,7 @@ from blinkengage.infrastructure.database.session import (
 )
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.erp_config_repository import ErpConfigRepository
 from blinkengage.infrastructure.repositories.erp_customer_link_repository import (
@@ -52,6 +53,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession) -> None:
         customer_links=ErpCustomerLinkRepository(session),
         synced_records=ErpSyncedRecordRepository(session),
         customers=CustomerRepository(session),
+        companies=CompanyRepository(session),
         events=OutboxEventPublisher(EventOutboxRepository(session)),
     )
     try:

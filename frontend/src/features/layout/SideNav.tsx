@@ -8,14 +8,18 @@ import {
 } from '@mui/material'
 import { NavLink, useLocation } from 'react-router-dom'
 import { usePermissions } from '../../shared/hooks/usePermissions'
+import { useIsErpEnabled } from '../company/api'
 import { NAV_ITEMS } from './navConfig'
 
 export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   const { hasPermission } = usePermissions()
   const location = useLocation()
+  const isErpEnabled = useIsErpEnabled()
 
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.permission || hasPermission(item.permission),
+    (item) =>
+      (!item.permission || hasPermission(item.permission)) &&
+      (!item.requiresErpEnabled || isErpEnabled),
   )
 
   return (

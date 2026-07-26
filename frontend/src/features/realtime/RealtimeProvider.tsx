@@ -10,6 +10,7 @@ import {
   UNREAD_COUNT_KEY,
   useNotificationPreferencesQuery,
 } from '../notifications/api'
+import { useNotificationToast } from '../notifications/notificationToastContext'
 import type { NotificationChannel, NotificationPreference } from '../notifications/types'
 import { RealtimeContext } from './context'
 
@@ -65,6 +66,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   // cache in isChannelEnabled() below and silently ignore every saved
   // opt-out (the `?? true` fallback firing unconditionally).
   useNotificationPreferencesQuery()
+  const { showToast } = useNotificationToast()
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const closedIntentionallyRef = useRef(false)
@@ -89,6 +91,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY })
           }
           if (frame.type === 'notification' && frame.notification_type && frame.title) {
+            // Always shown — the in-app toast is part of the same
+            // "always delivered" tier as the bell's badge/history list,
+            // not a tunable delivery channel like browser/sound.
+            showToast(frame.title, frame.body ?? '')
             if (isChannelEnabled(queryClient, frame.notification_type, 'browser')) {
               showBrowserNotification(frame.title, frame.body ?? '')
             }
@@ -118,7 +124,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socketRef.current?.close()
       socketRef.current = null
     }
-  }, [isAuthenticated, queryClient])
+  }, [isAuthenticated, queryClient, showToast])
 
   const sendTyping = useCallback((conversationId: string, isTyping: boolean) => {
     const socket = socketRef.current

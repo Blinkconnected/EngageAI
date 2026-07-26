@@ -12,6 +12,7 @@ from httpx import AsyncClient
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.domain.notification_types import NotificationChannel
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.notification_preference_repository import (
     NotificationPreferenceRepository,
 )
@@ -32,6 +33,7 @@ async def _seed_notification(app: Any, *, company_id: str, user_id: str) -> None
     async with session_factory() as session:
         service = NotificationService(
             notifications=NotificationRepository(session),
+            companies=CompanyRepository(session),
             realtime=RealtimePublisher(container.redis()),
         )
         await service.create(
@@ -58,7 +60,7 @@ async def test_dispatch_sends_email_and_marks_dispatched(
         return None, None
 
     monkeypatch.setattr(
-        "blinkengage.infrastructure.tasks.notification_email_dispatch_task.aiosmtplib.send",
+        "blinkengage.infrastructure.email.mailer.aiosmtplib.send",
         fake_send,
     )
 
@@ -95,7 +97,7 @@ async def test_dispatch_is_idempotent_on_second_sweep(
         return None, None
 
     monkeypatch.setattr(
-        "blinkengage.infrastructure.tasks.notification_email_dispatch_task.aiosmtplib.send",
+        "blinkengage.infrastructure.email.mailer.aiosmtplib.send",
         fake_send,
     )
 
@@ -122,7 +124,7 @@ async def test_dispatch_failure_leaves_notification_undispatched_for_retry(
         raise ConnectionError("smtp unreachable")
 
     monkeypatch.setattr(
-        "blinkengage.infrastructure.tasks.notification_email_dispatch_task.aiosmtplib.send",
+        "blinkengage.infrastructure.email.mailer.aiosmtplib.send",
         failing_send,
     )
 
@@ -167,7 +169,7 @@ async def test_a_disabled_email_preference_marks_dispatched_without_sending(
         return None, None
 
     monkeypatch.setattr(
-        "blinkengage.infrastructure.tasks.notification_email_dispatch_task.aiosmtplib.send",
+        "blinkengage.infrastructure.email.mailer.aiosmtplib.send",
         fake_send,
     )
 

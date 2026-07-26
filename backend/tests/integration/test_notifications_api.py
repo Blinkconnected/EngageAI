@@ -16,6 +16,7 @@ from blinkengage.application.services.notification_service import (
     notification_channel_name,
 )
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -29,6 +30,7 @@ async def _seed_notification(
     async with session_factory() as session:
         service = NotificationService(
             notifications=NotificationRepository(session),
+            companies=CompanyRepository(session),
             realtime=RealtimePublisher(container.redis()),
         )
         notification = await service.create(

@@ -1,19 +1,43 @@
-import { useState, type FormEvent } from 'react'
-import { Alert, Button, Card, CardContent, Chip, Stack, TextField, Typography } from '@mui/material'
+import { Box, Stack, Tab, Tabs } from '@mui/material'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
-import { extractErrorMessage } from '../../shared/api/errors'
-import { useCompanyQuery, useUpdateCompanyMutation } from './api'
+import { ErpConnectionPanel } from '../erp/ErpConnectionPanel'
+import { useCompanyQuery } from './api'
+import { AiSettingsPanel } from './panels/AiSettingsPanel'
+import { BrandingSettingsPanel } from './panels/BrandingSettingsPanel'
+import { BusinessHoursSettingsPanel } from './panels/BusinessHoursSettingsPanel'
+import { ErpEnableToggle } from './panels/ErpEnableToggle'
+import { GeneralSettingsPanel } from './panels/GeneralSettingsPanel'
+import { LanguageSettingsPanel } from './panels/LanguageSettingsPanel'
+import { MessagingSettingsPanel } from './panels/MessagingSettingsPanel'
+import { NotificationsSettingsPanel } from './panels/NotificationsSettingsPanel'
+import { SecuritySettingsPanel } from './panels/SecuritySettingsPanel'
+import { TimezoneSettingsPanel } from './panels/TimezoneSettingsPanel'
 import type { Company } from './types'
 
-const STATUS_COLOR = {
-  trial: 'info',
-  active: 'success',
-  suspended: 'error',
-} as const
+const BASE_TABS = [
+  { value: 'general', label: 'General' },
+  { value: 'branding', label: 'Branding' },
+  { value: 'language', label: 'Language' },
+  { value: 'timezone', label: 'Timezone' },
+  { value: 'business-hours', label: 'Business Hours' },
+  { value: 'notifications', label: 'Notifications' },
+  { value: 'messaging', label: 'Messaging' },
+  { value: 'security', label: 'Security' },
+  { value: 'ai', label: 'AI' },
+] as const
+
+const ERP_TAB = { value: 'erp', label: 'ERP' } as const
+
+function visibleTabsFor(company: Company) {
+  return company.settings.erp?.enabled ? [...BASE_TABS, ERP_TAB] : BASE_TABS
+}
 
 export function CompanySettingsPage() {
+  const { tab } = useParams<{ tab?: string }>()
+  const navigate = useNavigate()
   const companyQuery = useCompanyQuery()
 
   return (
@@ -25,55 +49,60 @@ export function CompanySettingsPage() {
         <ErrorState error={companyQuery.error} onRetry={() => companyQuery.refetch()} />
       )}
 
-      {companyQuery.data && <CompanySettingsForm company={companyQuery.data} />}
+      {companyQuery.data && (
+        <CompanySettingsTabs company={companyQuery.data} tab={tab} navigate={navigate} />
+      )}
     </>
   )
 }
 
-function CompanySettingsForm({ company }: { company: Company }) {
-  // Seeded once from the fetched company; the user edits locally from here,
-  // the same pattern any "load then edit" form uses. No effect needed.
-  const [name, setName] = useState(company.name)
-  const updateMutation = useUpdateCompanyMutation()
+function CompanySettingsTabs({
+  company,
+  tab,
+  navigate,
+}: {
+  company: Company
+  tab: string | undefined
+  navigate: (path: string) => void
+}) {
+  const visibleTabs = visibleTabsFor(company)
+  const activeTab = visibleTabs.find((t) => t.value === tab)
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    updateMutation.mutate({ name })
+  if (!activeTab) {
+    return <Navigate to={`/settings/company/${visibleTabs[0].value}`} replace />
   }
 
   return (
-    <Card variant="outlined" sx={{ maxWidth: 520 }}>
-      <CardContent>
-        <Stack spacing={2} component="form" onSubmit={handleSubmit}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
-              {company.slug}
-            </Typography>
-            <Chip label={company.status} size="small" color={STATUS_COLOR[company.status]} />
+    <>
+      <Tabs
+        value={activeTab.value}
+        onChange={(_event, value: string) => navigate(`/settings/company/${value}`)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
+      >
+        {visibleTabs.map((t) => (
+          <Tab key={t.value} value={t.value} label={t.label} id={`company-settings-tab-${t.value}`} />
+        ))}
+      </Tabs>
+
+      <Box role="tabpanel" aria-labelledby={`company-settings-tab-${activeTab.value}`}>
+        {activeTab.value === 'general' && (
+          <Stack spacing={2}>
+            <GeneralSettingsPanel company={company} />
+            <ErpEnableToggle company={company} />
           </Stack>
-
-          {updateMutation.isError && (
-            <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
-          )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
-
-          <TextField
-            label="Company name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            fullWidth
-          />
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={updateMutation.isPending || name === company.name}
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            {updateMutation.isPending ? 'Saving…' : 'Save changes'}
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
+        )}
+        {activeTab.value === 'branding' && <BrandingSettingsPanel company={company} />}
+        {activeTab.value === 'language' && <LanguageSettingsPanel company={company} />}
+        {activeTab.value === 'timezone' && <TimezoneSettingsPanel company={company} />}
+        {activeTab.value === 'business-hours' && <BusinessHoursSettingsPanel company={company} />}
+        {activeTab.value === 'notifications' && <NotificationsSettingsPanel company={company} />}
+        {activeTab.value === 'messaging' && <MessagingSettingsPanel company={company} />}
+        {activeTab.value === 'security' && <SecuritySettingsPanel company={company} />}
+        {activeTab.value === 'ai' && <AiSettingsPanel company={company} />}
+        {activeTab.value === 'erp' && <ErpConnectionPanel />}
+      </Box>
+    </>
   )
 }

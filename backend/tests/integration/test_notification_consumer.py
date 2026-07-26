@@ -67,7 +67,11 @@ async def _create_web_chat_conversation(
             db_session,
         )
         await db_session.commit()
-        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+        conversation = (
+            await db_session.execute(
+                select(Conversation).where(Conversation.channel_config_id == UUID(config_id))
+            )
+        ).scalar_one()
 
     return str(conversation.id)
 
@@ -121,6 +125,146 @@ async def test_assignment_changed_notifies_the_newly_assigned_agent(
     assert total == 1
     assert notifications[0].notification_type == "conversation.assignment_changed"
     assert notifications[0].payload["conversation_id"] == conversation_id
+
+
+async def test_company_disabling_a_notification_type_suppresses_creation(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """A company-wide policy (Company Settings' Notifications tab) sits
+    above the existing per-user preference — either can suppress
+    delivery. See ``docs/architecture/company-onboarding.md``."""
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    settings_response = await client.patch(
+        "/api/v1/company",
+        json={"settings": {"notifications": {"conversation.assignment_changed": False}}},
+        headers=owner_headers,
+    )
+    assert settings_response.status_code == 200, settings_response.text
+
+    agent_id, user_id = await _create_agent(client, owner_headers, "agent1@acme.example")
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.assignment_changed",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "agent_id": agent_id,
+                    "previous_agent_id": None,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        _, total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert total == 0
+
+
+async def test_disabling_a_notification_type_for_one_company_does_not_affect_another(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    """``is_notification_type_enabled`` reads the event's own
+    ``company_id`` off ``Company.settings`` — a single-tenant test can't
+    tell "correctly scoped" from "there's only one company's settings to
+    read anyway." Registers a second company, disables the type only for
+    the first, and proves the second still gets notified for its own
+    identical event."""
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    settings_response = await client.patch(
+        "/api/v1/company",
+        json={"settings": {"notifications": {"conversation.assignment_changed": False}}},
+        headers=owner_headers,
+    )
+    assert settings_response.status_code == 200, settings_response.text
+
+    other_register = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "company_name": "Other Corp",
+            "owner_full_name": "Bea Owner",
+            "owner_email": "bea-notif-type-tenant@other.example",
+            "owner_password": "correct-horse-battery-9",
+        },
+    )
+    assert other_register.status_code == 201, other_register.text
+    other_headers = {"Authorization": f"Bearer {other_register.json()['tokens']['access_token']}"}
+    other_company_id = other_register.json()["user"]["company"]["id"]
+
+    agent_id, user_id = await _create_agent(client, owner_headers, "agent1@acme.example")
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    other_agent_id, other_user_id = await _create_agent(
+        client, other_headers, "agent1@other.example"
+    )
+    other_conversation_id = await _create_web_chat_conversation(
+        client, other_headers, app, other_company_id
+    )
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.assignment_changed",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "agent_id": agent_id,
+                    "previous_agent_id": None,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await handle_event(
+            _event(
+                event_type="conversation.assignment_changed",
+                company_id=other_company_id,
+                payload={
+                    "conversation_id": other_conversation_id,
+                    "agent_id": other_agent_id,
+                    "previous_agent_id": None,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        _, own_total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+        _, other_total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(other_company_id),
+            user_id=UUID(other_user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert own_total == 0
+    assert other_total == 1
 
 
 async def test_sla_breached_notifies_the_assigned_agent(

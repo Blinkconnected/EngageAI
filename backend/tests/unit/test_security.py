@@ -1,13 +1,16 @@
+import re
 from uuid import uuid4
 
 import pytest
 
+from blinkengage.api.schemas.validators import validate_password_strength
 from blinkengage.core.config import get_settings
 from blinkengage.core.security import (
     InvalidTokenError,
     TokenType,
     create_token,
     decode_token,
+    generate_temporary_password,
     hash_password,
     verify_password,
 )
@@ -60,3 +63,30 @@ def test_decode_token_rejects_tampered_token() -> None:
 
     with pytest.raises(InvalidTokenError):
         decode_token(token + "tampered", settings=settings, expected_type=TokenType.ACCESS)
+
+
+def test_generate_temporary_password_always_passes_strength_validation() -> None:
+    # Run many times — the letter/digit guarantee must hold every time,
+    # not just probabilistically.
+    for _ in range(200):
+        password = generate_temporary_password()
+        validate_password_strength(password)  # raises if it doesn't pass
+
+
+def test_generate_temporary_password_respects_requested_length() -> None:
+    assert len(generate_temporary_password(24)) == 24
+
+
+def test_generate_temporary_password_produces_unique_values() -> None:
+    passwords = {generate_temporary_password() for _ in range(50)}
+    assert len(passwords) == 50
+
+
+def test_generate_temporary_password_rejects_too_short_a_length() -> None:
+    with pytest.raises(ValueError):
+        generate_temporary_password(1)
+
+
+def test_generate_temporary_password_only_uses_letters_and_digits() -> None:
+    password = generate_temporary_password()
+    assert re.fullmatch(r"[A-Za-z0-9]+", password)

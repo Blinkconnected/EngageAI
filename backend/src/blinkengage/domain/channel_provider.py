@@ -42,6 +42,18 @@ class ChannelProvider(ABC):
 
     channel_type: str
 
+    #: Whether this channel's native "reply to" reference is invisible
+    #: transport metadata (email's In-Reply-To/References headers) rather
+    #: than a visible UI element (WhatsApp/Telegram render
+    #: ``OutboundMessage.reply_to_external_message_id`` as an on-screen
+    #: quoted-message bubble). ``ConversationService.send_reply`` auto-
+    #: chains every outbound message to the previous one in the thread for
+    #: threading purposes; that's correct and unnoticeable for email, but
+    #: for a visible-quote channel it would make every single reply show
+    #: up as "replying to" whatever came before it, with no such intent
+    #: from the agent. False by default; only ``EmailProvider`` opts in.
+    supports_invisible_reply_threading: bool = False
+
     def __init__(
         self,
         *,
@@ -106,3 +118,20 @@ class ChannelProvider(ABC):
 
     @abstractmethod
     async def health_check(self) -> HealthStatus: ...
+
+    async def configure_webhook(self, *, webhook_url: str) -> None:
+        """Called by ``ChannelConfigService`` right after a channel is
+        created, and again whenever its credentials/``webhook_secret``/
+        active state change, so a provider whose webhook registration is
+        *API-driven* (not a manual step in the provider's own dashboard,
+        unlike WhatsApp/Messenger/Instagram's Meta Developer Console) can
+        register ``webhook_url`` with itself. No-op by default — most
+        providers need no such call. See ``TelegramProvider`` for the one
+        that does, and ``docs/architecture/channels.md``."""
+        return None
+
+    async def deregister_webhook(self) -> None:
+        """The inverse of ``configure_webhook`` — called when a channel
+        is deactivated or deleted, for the same providers that override
+        ``configure_webhook``. No-op by default."""
+        return None

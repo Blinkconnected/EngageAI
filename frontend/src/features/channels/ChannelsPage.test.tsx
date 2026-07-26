@@ -136,6 +136,11 @@ describe('ChannelsPage', () => {
     await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
 
     expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()
+    // Telegram's webhook is registered automatically server-side — there's
+    // no provider dashboard to paste a webhook URL/secret into, unlike
+    // WhatsApp/Messenger/Instagram.
+    expect(screen.getByText(/registered the webhook with your bot automatically/i)).toBeInTheDocument()
+    expect(screen.queryByText(/webhook url/i)).not.toBeInTheDocument()
   })
 
   it(

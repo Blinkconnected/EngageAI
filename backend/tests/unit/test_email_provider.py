@@ -150,13 +150,24 @@ class TestSendMessage:
             OutboundMessage(
                 external_thread_id="thread-1",
                 body="See attached.",
-                attachments=[AttachmentRef(external_id=key, content_type="text/plain")],
+                attachments=[
+                    AttachmentRef(
+                        external_id=key, content_type="text/plain", filename="file.txt"
+                    )
+                ],
                 metadata={"customer_email": "alice@customer.example"},
             )
         )
 
         parts = list(captured["message"].iter_attachments())
         assert len(parts) == 1
+        assert parts[0].get_filename() == "file.txt"
+
+    def test_supports_invisible_reply_threading(self, provider: EmailProvider) -> None:
+        """Unlike WhatsApp/Telegram, email's In-Reply-To/References
+        headers are invisible transport metadata — safe to always chain
+        to the previous message in the thread."""
+        assert provider.supports_invisible_reply_threading is True
 
 
 class TestReceiveMessage:

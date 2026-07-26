@@ -152,6 +152,43 @@ async def test_send_reply_persists_message_and_delivers_over_the_realtime_channe
     assert sent_events[0].payload["conversation_id"] == conversation["id"]
 
 
+async def test_send_reply_never_auto_chains_reply_to_for_a_visible_quote_channel(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """web_chat (like WhatsApp/Telegram) would render reply_to as a
+    visible quoted-reply bubble — auto-chaining every outbound message to
+    whichever one came before it (as is correct for email's invisible
+    In-Reply-To/References headers) would make every single agent reply
+    look like an intentional "reply to" quote with no such intent."""
+    conversation, session = await _create_conversation(client, owner_headers, registered_owner, app)
+
+    redis = app.state.container.redis()
+    pubsub = redis.pubsub()
+    await pubsub.subscribe(session_channel_name(session["session_token"]))
+    await pubsub.get_message(timeout=1)  # subscribe confirmation
+
+    first = await client.post(
+        f"/api/v1/conversations/{conversation['id']}/messages",
+        json={"body": "First reply"},
+        headers=owner_headers,
+    )
+    assert first.status_code == 201, first.text
+    await pubsub.get_message(timeout=1)  # first reply's own delivery
+
+    second = await client.post(
+        f"/api/v1/conversations/{conversation['id']}/messages",
+        json={"body": "Second reply"},
+        headers=owner_headers,
+    )
+    assert second.status_code == 201, second.text
+    delivered = await pubsub.get_message(timeout=1)
+    assert delivered is not None
+    payload = orjson.loads(delivered["data"])
+    assert payload["body"] == "Second reply"
+    assert payload["reply_to_external_message_id"] is None
+    await pubsub.aclose()
+
+
 async def test_send_reply_with_attachment_links_it_to_the_message(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:

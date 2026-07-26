@@ -3,27 +3,49 @@
 Inviting a teammate (as opposed to `AuthService.register_company`, which
 creates a brand-new company) adds a login identity to an *existing*
 company and immediately grants it the company's default "Agent" role.
-There is no email-invite flow yet (no notification infrastructure exists
-until Phase 4) — the admin creating the agent sets an initial password
-directly, which the agent can change later once a password-change
-endpoint exists.
+
+Two ways to set the new agent's password (see
+``docs/architecture/company-onboarding.md``):
+
+- The caller supplies ``password`` directly (the original, still-
+  supported behavior — an Owner/Admin sets it themselves and
+  communicates it out of band).
+- The caller omits ``password`` (the Company Onboarding Wizard's "Invite
+  Agents" step): a random one is generated and emailed to the agent over
+  the platform's own SMTP relay, the same one
+  ``notification_email_dispatch_task`` already uses — reusing existing
+  infrastructure for a new purpose, not a new integration.
+
+Either way the agent can change their password later from their own
+profile once logged in.
 """
 
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blinkengage.core.security import hash_password
+from blinkengage.core.config import Settings
+from blinkengage.core.logging import get_logger
+from blinkengage.core.security import generate_temporary_password, hash_password
+from blinkengage.domain.company_settings import min_password_length
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
-from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFoundError
+from blinkengage.domain.exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    WeakPasswordError,
+)
 from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.rbac import UserRole
 from blinkengage.infrastructure.database.models.user import User
+from blinkengage.infrastructure.email.mailer import send_plain_email
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+
+logger = get_logger(__name__)
 
 
 class AgentService:
@@ -31,16 +53,20 @@ class AgentService:
         self,
         *,
         session: AsyncSession,
+        settings: Settings,
         agents: AgentRepository,
         users: UserRepository,
         roles: RoleRepository,
+        companies: CompanyRepository,
         events: DomainEventPublisher,
         refresh_tokens: RefreshTokenStore,
     ) -> None:
         self._session = session
+        self._settings = settings
         self._agents = agents
         self._users = users
         self._roles = roles
+        self._companies = companies
         self._events = events
         self._refresh_tokens = refresh_tokens
 
@@ -50,7 +76,7 @@ class AgentService:
         company_id: UUID,
         email: str,
         full_name: str,
-        password: str,
+        password: str | None,
         title: str | None,
         department_id: UUID | None,
         actor_user_id: UUID | None = None,
@@ -59,11 +85,23 @@ class AgentService:
         if await self._users.get_by_email(normalized_email) is not None:
             raise EntityAlreadyExistsError("User", "email", normalized_email)
 
+        company = await self._companies.get_by_id(company_id)
+        required_length = min_password_length(company.settings) if company is not None else None
+
+        invited_by_email = password is None
+        resolved_password: str
+        if password is None:
+            resolved_password = generate_temporary_password(max(required_length or 0, 16))
+        else:
+            resolved_password = password
+            if required_length is not None and len(resolved_password) < required_length:
+                raise WeakPasswordError(required_length)
+
         user = await self._users.add(
             User(
                 company_id=company_id,
                 email=normalized_email,
-                hashed_password=hash_password(password),
+                hashed_password=hash_password(resolved_password),
                 full_name=full_name.strip(),
                 is_company_owner=False,
             )
@@ -97,6 +135,33 @@ class AgentService:
                 payload={"email": normalized_email},
             )
         )
+
+        if invited_by_email:
+            company_name = company.name if company is not None else "Blink Engage"
+            try:
+                await send_plain_email(
+                    self._settings,
+                    to_address=normalized_email,
+                    subject=f"You've been added to {company_name} on Blink Engage",
+                    body=(
+                        f"Hi {full_name.strip()},\n\n"
+                        f"You've been added as an agent on {company_name}'s Blink Engage "
+                        "workspace. Sign in with the credentials below, then change your "
+                        "password from your profile.\n\n"
+                        f"Email: {normalized_email}\n"
+                        f"Temporary password: {resolved_password}\n"
+                    ),
+                )
+            except Exception:
+                # Best-effort: the account is created either way — a
+                # down/misconfigured SMTP relay must not prevent adding
+                # the agent, only the welcome email. Same reasoning as
+                # notification_email_dispatch_task's per-recipient
+                # failure handling.
+                logger.warning(
+                    "agent_invite_email_failed", agent_id=str(reloaded.id), exc_info=True
+                )
+
         return reloaded
 
     async def get(self, *, company_id: UUID, agent_id: UUID) -> Agent:
@@ -156,6 +221,11 @@ class AgentService:
         involvement, so any refresh token issued under the old one
         shouldn't outlive it."""
         agent = await self.get(company_id=company_id, agent_id=agent_id)
+        company = await self._companies.get_by_id(company_id)
+        if company is not None:
+            required_length = min_password_length(company.settings)
+            if len(new_password) < required_length:
+                raise WeakPasswordError(required_length)
         agent.user.hashed_password = hash_password(new_password)
         await self._refresh_tokens.revoke_all_for_user(user_id=agent.user_id)
         await self._events.publish(

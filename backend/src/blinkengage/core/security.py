@@ -1,5 +1,7 @@
 """Password hashing and JWT token issuance/verification."""
 
+import secrets
+import string
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -11,6 +13,10 @@ from passlib.context import CryptContext
 from blinkengage.core.config import Settings
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+_TEMP_PASSWORD_LETTERS = string.ascii_letters
+_TEMP_PASSWORD_DIGITS = string.digits
+_TEMP_PASSWORD_ALPHABET = _TEMP_PASSWORD_LETTERS + _TEMP_PASSWORD_DIGITS
 
 
 class TokenType(StrEnum):
@@ -33,6 +39,29 @@ def hash_password(plain_password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bool(_pwd_context.verify(plain_password, hashed_password))
+
+
+def generate_temporary_password(length: int = 16) -> str:
+    """A cryptographically random password that always satisfies
+    ``validate_password_strength`` (at least one letter, at least one
+    digit) — used for e.g. inviting an agent by email, where nobody
+    types a password in advance. Built from ``secrets.choice`` rather
+    than ``secrets.token_urlsafe`` so the letter/digit guarantee is
+    exact, not probabilistic: one random letter and one random digit are
+    placed first, the rest is drawn from the full alphabet, then the
+    whole string is shuffled so the guaranteed characters aren't always
+    in the same position."""
+    if length < 2:
+        raise ValueError("length must be at least 2")
+    chars = [
+        secrets.choice(_TEMP_PASSWORD_LETTERS),
+        secrets.choice(_TEMP_PASSWORD_DIGITS),
+        *(secrets.choice(_TEMP_PASSWORD_ALPHABET) for _ in range(length - 2)),
+    ]
+    for i in range(len(chars) - 1, 0, -1):
+        j = secrets.randbelow(i + 1)
+        chars[i], chars[j] = chars[j], chars[i]
+    return "".join(chars)
 
 
 def create_token(

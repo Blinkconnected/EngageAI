@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # review), so it gets the same treatment as any other real-network-
     # cost action, not the generic per-IP limit.
     channel_test_connection_rate_limit_per_minute: int = 20
+    # Same reasoning, applied to ERP "Test Connection" (see
+    # docs/architecture/company-onboarding.md).
+    erp_test_connection_rate_limit_per_minute: int = 20
 
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding

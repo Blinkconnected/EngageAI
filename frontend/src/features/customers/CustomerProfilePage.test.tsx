@@ -6,6 +6,7 @@ import { axe } from 'vitest-axe'
 import { store } from '../../app/store'
 import { queryClient } from '../../app/queryClient'
 import { loggedOut } from '../auth/authSlice'
+import { apiClient } from '../../shared/api/client'
 import { renderAuthenticated } from '../../test/renderAuthenticated'
 import { CustomerProfilePage } from './CustomerProfilePage'
 
@@ -36,12 +37,21 @@ describe('CustomerProfilePage', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
-  it('shows ERPNext records on the ERP tab', async () => {
+  it('does not show an ERPNext tab when the company has not enabled ERP', async () => {
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Grace Blake' })
+    expect(screen.queryByRole('tab', { name: /erpnext/i })).not.toBeInTheDocument()
+  })
+
+  it('shows ERPNext records on the ERP tab once the company enables ERP', async () => {
     const user = userEvent.setup()
     renderProfile()
     await screen.findByRole('heading', { name: 'Grace Blake' })
 
-    await user.click(screen.getByRole('tab', { name: /erpnext/i }))
+    await apiClient.patch('/company', { settings: { erp: { enabled: true } } })
+    await queryClient.invalidateQueries({ queryKey: ['company'] })
+
+    await user.click(await screen.findByRole('tab', { name: /erpnext/i }))
     expect(await screen.findByText('SINV-0001')).toBeInTheDocument()
     expect(screen.getByText('Sales Invoice')).toBeInTheDocument()
   })

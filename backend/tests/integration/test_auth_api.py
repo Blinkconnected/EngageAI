@@ -254,6 +254,41 @@ async def test_change_password_rejects_weak_new_password(client: AsyncClient) ->
     assert response.status_code == 422
 
 
+async def test_change_password_rejects_below_company_minimum_length(
+    client: AsyncClient,
+) -> None:
+    registered = await _register(client)
+    access_token = registered["tokens"]["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    settings_response = await client.patch(
+        "/api/v1/company",
+        json={"settings": {"security": {"min_password_length": 16}}},
+        headers=headers,
+    )
+    assert settings_response.status_code == 200, settings_response.text
+
+    response = await client.post(
+        "/api/v1/auth/me/password",
+        json={
+            "current_password": REGISTER_PAYLOAD["owner_password"],
+            "new_password": "short-but-1",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+
+    # Original password still works — nothing was changed.
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": REGISTER_PAYLOAD["owner_email"],
+            "password": REGISTER_PAYLOAD["owner_password"],
+        },
+    )
+    assert login_response.status_code == 200
+
+
 async def test_change_password_requires_authentication(client: AsyncClient) -> None:
     response = await client.post(
         "/api/v1/auth/me/password",

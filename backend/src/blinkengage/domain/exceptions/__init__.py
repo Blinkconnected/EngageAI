@@ -122,9 +122,28 @@ class InvalidNotificationPreferenceError(DomainError):
 
 class ErpNotConfiguredError(DomainError):
     """Raised when an ERPNext-dependent action is requested for a company
-    with no active ``ErpConfig`` — a deployment/configuration state, not
-    a missing resource, so it maps to 503 like ``AiNotConfiguredError``.
-    See ``docs/architecture/erp-integration.md``."""
+    with no active ``ErpConfig``, or whose ERP master switch
+    (``Company.settings["erp"]["enabled"]`` — see
+    ``domain.company_settings.is_erp_enabled``) is off — a deployment/
+    configuration state, not a missing resource, so it maps to 503 like
+    ``AiNotConfiguredError``. See ``docs/architecture/erp-integration.md``
+    and ``docs/architecture/company-onboarding.md``."""
 
     def __init__(self) -> None:
         super().__init__("ERPNext is not configured for this company")
+
+
+class WeakPasswordError(DomainError):
+    """Raised when a password satisfies the platform-wide floor
+    (``validate_password_strength`` — at least 10 characters with a
+    letter and a digit) but not a company's own, higher configurable
+    minimum (``Company.settings["security"]["min_password_length"]`` —
+    see ``domain.company_settings.min_password_length``). Falls through
+    to the generic 400 like ``InvalidChannelTypeError``, since this is a
+    client-input validation failure, not a missing resource. Not applied
+    at company-registration time — a company's policy doesn't exist
+    until the company itself does."""
+
+    def __init__(self, required_length: int) -> None:
+        self.required_length = required_length
+        super().__init__(f"Password must be at least {required_length} characters long")

@@ -41,6 +41,7 @@ from blinkengage.infrastructure.repositories.channel_config_repository import (
 from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
     ChannelConnectionLogRepository,
 )
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -134,6 +135,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
     )
     notifications = NotificationService(
         notifications=NotificationRepository(session),
+        companies=CompanyRepository(session),
         realtime=_get_realtime_publisher(settings),
     )
     context = WorkflowExecutionContext(

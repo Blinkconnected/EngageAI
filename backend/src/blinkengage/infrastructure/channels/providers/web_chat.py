@@ -43,6 +43,7 @@ class WebChatProvider(ChannelProvider):
                         "id": attachment.external_id,
                         "content_type": attachment.content_type,
                         "size_bytes": attachment.size_bytes,
+                        "filename": attachment.filename,
                     }
                     for attachment in message.attachments
                 ],
@@ -85,6 +86,7 @@ class WebChatProvider(ChannelProvider):
             external_id=key,
             content_type=attachment.content_type,
             size_bytes=len(attachment.data),
+            filename=attachment.filename,
         )
 
     async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:

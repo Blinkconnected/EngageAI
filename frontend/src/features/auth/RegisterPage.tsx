@@ -28,7 +28,7 @@ export function RegisterPage() {
         owner_email: ownerEmail,
         owner_password: ownerPassword,
       },
-      { onSuccess: () => navigate('/', { replace: true }) },
+      { onSuccess: () => navigate('/onboarding', { replace: true }) },
     )
   }
 

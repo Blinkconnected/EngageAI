@@ -12,9 +12,7 @@ shape as the outbox relay / IMAP poll.
 
 import asyncio
 from datetime import UTC, datetime
-from email.message import EmailMessage
 
-import aiosmtplib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -29,6 +27,7 @@ from blinkengage.infrastructure.database.session import (
     create_session_factory,
     session_scope,
 )
+from blinkengage.infrastructure.email.mailer import send_plain_email
 from blinkengage.infrastructure.repositories.notification_preference_repository import (
     NotificationPreferenceRepository,
 )
@@ -50,19 +49,8 @@ def _get_session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]
 
 
 async def _send_one(settings: Settings, *, to_address: str, notification: Notification) -> None:
-    message = EmailMessage()
-    message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_address}>"
-    message["To"] = to_address
-    message["Subject"] = notification.title
-    message.set_content(notification.body)
-
-    await aiosmtplib.send(
-        message,
-        hostname=settings.smtp_host,
-        port=settings.smtp_port,
-        username=settings.smtp_username,
-        password=settings.smtp_password,
-        use_tls=settings.smtp_use_tls,
+    await send_plain_email(
+        settings, to_address=to_address, subject=notification.title, body=notification.body
     )
 
 

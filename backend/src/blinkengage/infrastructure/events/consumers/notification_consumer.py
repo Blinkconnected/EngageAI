@@ -40,6 +40,7 @@ from blinkengage.infrastructure.database.session import (
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.notifications.rule_registry import NotificationRuleRegistry
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -77,7 +78,9 @@ async def handle_event(
     event_id_raw = event.get("id")
     source_event_id = UUID(event_id_raw) if event_id_raw else None
     notifications = NotificationService(
-        notifications=NotificationRepository(session), realtime=realtime
+        notifications=NotificationRepository(session),
+        companies=CompanyRepository(session),
+        realtime=realtime,
     )
     for draft in drafts:
         await notifications.create(

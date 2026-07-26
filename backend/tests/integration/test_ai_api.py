@@ -124,6 +124,97 @@ class TestDisabledByDefault:
         assert response.status_code == 503
 
 
+class TestCompanyLevelDisable:
+    """A company can turn AI off entirely (``Company.settings["ai"]
+    ["enabled"]``) even when the platform has a real provider configured —
+    e.g. a compliance-sensitive customer. See
+    ``docs/architecture/company-onboarding.md``."""
+
+    async def test_translate_returns_503_when_company_disables_ai_despite_platform_provider(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        _enable_ai(app, "hola")
+        disable_response = await client.patch(
+            "/api/v1/company",
+            json={"settings": {"ai": {"enabled": False}}},
+            headers=owner_headers,
+        )
+        assert disable_response.status_code == 200, disable_response.text
+
+        response = await client.post(
+            "/api/v1/ai/translate",
+            json={"text": "hello", "target_language": "Spanish"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 503
+
+    async def test_translate_works_again_once_company_re_enables_ai(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        _enable_ai(app, "hola")
+        await client.patch(
+            "/api/v1/company",
+            json={"settings": {"ai": {"enabled": False}}},
+            headers=owner_headers,
+        )
+        await client.patch(
+            "/api/v1/company",
+            json={"settings": {"ai": {"enabled": True}}},
+            headers=owner_headers,
+        )
+
+        response = await client.post(
+            "/api/v1/ai/translate",
+            json={"text": "hello", "target_language": "Spanish"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["translation"] == "hola"
+
+    async def test_disabling_ai_for_one_company_does_not_affect_another(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """``is_ai_enabled`` reads the authenticated request's own company
+        row — proving that with only one tenant in play can't distinguish
+        "scoped correctly" from "coincidentally always true"."""
+        _enable_ai(app, "hola")
+        other_register = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "company_name": "Other Corp",
+                "owner_full_name": "Bea Owner",
+                "owner_email": "bea-ai-tenant@other.example",
+                "owner_password": "correct-horse-battery-9",
+            },
+        )
+        assert other_register.status_code == 201, other_register.text
+        other_headers = {
+            "Authorization": f"Bearer {other_register.json()['tokens']['access_token']}"
+        }
+
+        disable_response = await client.patch(
+            "/api/v1/company",
+            json={"settings": {"ai": {"enabled": False}}},
+            headers=owner_headers,
+        )
+        assert disable_response.status_code == 200, disable_response.text
+
+        own_response = await client.post(
+            "/api/v1/ai/translate",
+            json={"text": "hello", "target_language": "Spanish"},
+            headers=owner_headers,
+        )
+        assert own_response.status_code == 503
+
+        other_response = await client.post(
+            "/api/v1/ai/translate",
+            json={"text": "hello", "target_language": "Spanish"},
+            headers=other_headers,
+        )
+        assert other_response.status_code == 200, other_response.text
+        assert other_response.json()["translation"] == "hola"
+
+
 class TestConversationCapabilities:
     async def test_suggest_reply(self, client: AsyncClient, owner_headers: dict, app: Any) -> None:
         conversation_id = await _seed_conversation_via_message(client, owner_headers, app)

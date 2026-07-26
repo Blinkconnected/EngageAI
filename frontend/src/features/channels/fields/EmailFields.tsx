@@ -23,6 +23,8 @@ export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
         onChange={(event) => onChange({ ...credentials, smtp_host: event.target.value })}
         required
         fullWidth
+        placeholder="smtp.gmail.com"
+        helperText="Your mailbox provider's outbound mail server"
       />
       <Stack direction="row" spacing={2}>
         <TextField
@@ -46,12 +48,14 @@ export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
         value={fieldValue(credentials, 'smtp_username')}
         onChange={(event) => onChange({ ...credentials, smtp_username: event.target.value })}
         fullWidth
+        placeholder="support@yourcompany.com"
       />
       <TextField
         label="SMTP password"
         type="password"
         value={fieldValue(credentials, 'smtp_password')}
         onChange={(event) => onChange({ ...credentials, smtp_password: event.target.value })}
+        helperText="Gmail/Outlook/etc. usually require an app-specific password, not your regular login password"
         fullWidth
       />
       <TextField
@@ -85,6 +89,7 @@ export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
               value={fieldValue(credentials, 'imap_host')}
               onChange={(event) => onChange({ ...credentials, imap_host: event.target.value })}
               fullWidth
+              placeholder="imap.gmail.com"
             />
             <Stack direction="row" spacing={2}>
               <TextField

@@ -64,7 +64,7 @@ class ErpNextClient:
             data = response.json()
             return list(data.get("data", []))
 
-    async def health_check(self) -> bool:
+    async def health_check(self) -> tuple[bool, str | None]:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -73,6 +73,6 @@ class ErpNextClient:
                     timeout=5,
                 )
                 response.raise_for_status()
-        except httpx.HTTPError:
-            return False
-        return True
+        except httpx.HTTPError as exc:
+            return False, str(exc)
+        return True, None

@@ -11,6 +11,7 @@ values into it is a self-contained solution that needs no ABC change.
 """
 
 import hmac
+import mimetypes
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -95,7 +96,7 @@ class TelegramProvider(ChannelProvider):
             response = await client.post(
                 f"{self._api_base}/{method}",
                 data=form,
-                files={field: ("attachment", data, content_type)},
+                files={field: (attachment.filename or "attachment", data, content_type)},
             )
             response.raise_for_status()
             result = self._to_send_result(response.json())
@@ -167,11 +168,25 @@ class TelegramProvider(ChannelProvider):
         file_response = await client.get(f"{self._file_base}/bot{token}/{file_path}")
         file_response.raise_for_status()
         data = file_response.content
-        content_type = file_response.headers.get("content-type", "application/octet-stream")
+        # Telegram's file-serving endpoint always answers with the
+        # generic "application/octet-stream", regardless of the actual
+        # file type — trusting it verbatim would misidentify every photo/
+        # document and fail any downstream content-type allow-list.
+        # file_path (e.g. "photos/file_0.jpg") carries a real extension.
+        header_content_type = file_response.headers.get("content-type", "")
+        guessed_content_type, _ = mimetypes.guess_type(file_path)
+        content_type = (
+            guessed_content_type
+            or (header_content_type if header_content_type != "application/octet-stream" else "")
+            or "application/octet-stream"
+        )
 
-        key = f"telegram-inbound/{uuid4()}/{file_path.rsplit('/', 1)[-1]}"
+        filename = file_path.rsplit("/", 1)[-1]
+        key = f"telegram-inbound/{uuid4()}/{filename}"
         await self._attachments.upload(key=key, data=data, content_type=content_type)
-        return AttachmentRef(external_id=key, content_type=content_type, size_bytes=len(data))
+        return AttachmentRef(
+            external_id=key, content_type=content_type, size_bytes=len(data), filename=filename
+        )
 
     async def edit_message(self, external_message_id: str, new_body: str) -> SendResult:
         chat_id, message_id = _split_composite_id(external_message_id)
@@ -212,7 +227,10 @@ class TelegramProvider(ChannelProvider):
             key=key, data=attachment.data, content_type=attachment.content_type
         )
         return AttachmentRef(
-            external_id=key, content_type=attachment.content_type, size_bytes=len(attachment.data)
+            external_id=key,
+            content_type=attachment.content_type,
+            size_bytes=len(attachment.data),
+            filename=attachment.filename,
         )
 
     async def download_attachment(self, attachment_ref: AttachmentRef) -> bytes:
@@ -238,3 +256,28 @@ class TelegramProvider(ChannelProvider):
         except httpx.HTTPError as exc:
             return HealthStatus(healthy=False, detail=str(exc))
         return HealthStatus(healthy=True)
+
+    async def configure_webhook(self, *, webhook_url: str) -> None:
+        """Unlike WhatsApp/Messenger/Instagram, Telegram has no developer
+        dashboard to paste a webhook URL into — registration is only ever
+        this one API call. Without it, a bot receives messages into its
+        own update queue forever with nowhere to deliver them (visible as
+        a growing ``pending_update_count`` via ``getWebhookInfo``), which
+        is indistinguishable from "everything is broken" to an operator
+        who only pasted credentials into BlinkEngage and expected that to
+        be sufficient, as every other guided channel type is."""
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self._api_base}/setWebhook",
+                json={"url": webhook_url, "secret_token": self._webhook_secret},
+                timeout=10,
+            )
+            response.raise_for_status()
+            body = response.json()
+            if not body.get("ok"):
+                raise RuntimeError(f"Telegram setWebhook failed: {body.get('description')}")
+
+    async def deregister_webhook(self) -> None:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{self._api_base}/deleteWebhook", timeout=10)
+            response.raise_for_status()

@@ -44,10 +44,12 @@ from blinkengage.application.services.notification_service import notification_c
 from blinkengage.core.config import Settings
 from blinkengage.core.logging import get_logger
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
+from blinkengage.domain.company_settings import is_typing_indicator_enabled
 from blinkengage.domain.exceptions import DomainError
 from blinkengage.infrastructure.database.models.agent import AgentStatus
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 
 logger = get_logger(__name__)
 
@@ -78,6 +80,16 @@ async def agent_gateway(
 
     await websocket.accept()
 
+    # Fetched once per connection, not per typing frame: the same
+    # staleness tradeoff this codebase already accepts for permissions
+    # embedded in the access token (docs/architecture/backend.md) — a
+    # mid-session settings change takes effect on the connection's next
+    # reconnect, not instantly.
+    company = await CompanyRepository(session).get_by_id(company_id)
+    typing_indicator_enabled = company is not None and is_typing_indicator_enabled(
+        company.settings
+    )
+
     agent = await AgentRepository(session).get_by_user_id(company_id=company_id, user_id=user_id)
     if agent is not None and agent.status == AgentStatus.OFFLINE:
         await agent_service.update(
@@ -104,12 +116,13 @@ async def agent_gateway(
                 frame = TypingFrameIn.model_validate_json(raw)
             except ValidationError:
                 continue  # an unrecognized/malformed frame — ignore, don't drop the connection
-            await conversation_service.send_typing_indicator(
-                company_id=company_id,
-                conversation_id=frame.conversation_id,
-                is_typing=frame.is_typing,
-            )
-            await session.commit()
+            if typing_indicator_enabled:
+                await conversation_service.send_typing_indicator(
+                    company_id=company_id,
+                    conversation_id=frame.conversation_id,
+                    is_typing=frame.is_typing,
+                )
+                await session.commit()
     except WebSocketDisconnect:
         pass
     except DomainError:

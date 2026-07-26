@@ -56,8 +56,18 @@ function CopyableField({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [channelType, setChannelType] = useState('whatsapp')
+export function ChannelCreateDialog({
+  open,
+  onClose,
+  initialChannelType = 'whatsapp',
+}: {
+  open: boolean
+  onClose: () => void
+  /** Pre-selects a channel type — e.g. the Company Onboarding Wizard's
+   * "Connect WhatsApp"/"Connect Web Chat" shortcut buttons. */
+  initialChannelType?: string
+}) {
+  const [channelType, setChannelType] = useState(initialChannelType)
   const [displayName, setDisplayName] = useState('')
   const [credentials, setCredentials] = useState<Record<string, unknown>>({})
   const [webhookSecret, setWebhookSecret] = useState('')
@@ -69,7 +79,7 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
   const guided = hasGuidedSetup(channelType)
 
   function reset() {
-    setChannelType('whatsapp')
+    setChannelType(initialChannelType)
     setDisplayName('')
     setCredentials({})
     setWebhookSecret('')
@@ -95,16 +105,26 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
   }
 
   if (created) {
+    // Telegram's webhook is registered automatically server-side (see
+    // ChannelConfigService._register_webhook) — unlike WhatsApp/
+    // Messenger/Instagram, Telegram has no dashboard to paste a webhook
+    // URL into, so showing "paste this into your provider's dashboard"
+    // for it would be actively wrong, not just unnecessary.
+    const isTelegram = channelType === 'telegram'
+    const needsManualDashboardStep = channelType !== 'web_chat' && !isTelegram
+
     return (
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
         <DialogTitle>Channel connected</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="success">
-              {created.display_name} is set up. Finish connecting it on the provider's side using
-              the details below.
+              {created.display_name} is set up.{' '}
+              {needsManualDashboardStep
+                ? "Finish connecting it on the provider's side using the details below."
+                : "It's live — no further setup needed."}
             </Alert>
-            {channelType !== 'web_chat' && (
+            {needsManualDashboardStep && (
               <>
                 <CopyableField label="Webhook URL" value={webhookUrlFor(created.id)} />
                 <CopyableField label="Webhook secret" value={created.webhook_secret} />
@@ -114,9 +134,11 @@ export function ChannelCreateDialog({ open, onClose }: { open: boolean; onClose:
               <CopyableField label="Verify token" value={created.verify_token} />
             )}
             <Typography variant="body2" color="text.secondary">
-              {channelType === 'web_chat'
-                ? "There's nothing further to configure — this channel is live immediately."
-                : `Paste the webhook URL, webhook secret${isWhatsapp ? ' and verify token' : ''} into your provider's dashboard to start receiving messages. These values are shown only once — copy them now.`}
+              {needsManualDashboardStep
+                ? `Paste the webhook URL, webhook secret${isWhatsapp ? ' and verify token' : ''} into your provider's dashboard to start receiving messages. These values are shown only once — copy them now.`
+                : isTelegram
+                  ? 'Telegram has no dashboard for this — BlinkEngage already registered the webhook with your bot automatically. Send it a message to try it out.'
+                  : "There's nothing further to configure — this channel is live immediately."}
             </Typography>
           </Stack>
         </DialogContent>

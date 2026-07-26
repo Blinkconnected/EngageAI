@@ -1,3 +1,6 @@
+from typing import Any
+
+import pytest
 from httpx import AsyncClient
 
 AGENT_PAYLOAD = {
@@ -181,3 +184,126 @@ async def test_agent_role_can_read_but_not_manage_other_agents(
         headers=agent_headers,
     )
     assert manage_response.status_code == 403
+
+
+class TestInviteByEmail:
+    """Omitting ``password`` invites the agent instead: a random password
+    is generated and emailed over the platform's SMTP relay. See
+    ``docs/architecture/company-onboarding.md``."""
+
+    async def test_omitting_password_creates_the_agent_and_sends_an_email(
+        self, client: AsyncClient, owner_headers: dict, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sent: list[dict[str, Any]] = []
+
+        async def fake_send(message: Any, **kwargs: Any) -> tuple[Any, Any]:
+            sent.append({"to": message["To"], "subject": message["Subject"]})
+            return None, None
+
+        monkeypatch.setattr("blinkengage.infrastructure.email.mailer.aiosmtplib.send", fake_send)
+
+        response = await client.post(
+            "/api/v1/agents",
+            json={"email": "invited-agent@acme.example", "full_name": "Invited Agent"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["email"] == "invited-agent@acme.example"
+
+        assert len(sent) == 1
+        assert sent[0]["to"] == "invited-agent@acme.example"
+
+    async def test_invited_agent_can_log_in_with_the_emailed_password(
+        self, client: AsyncClient, owner_headers: dict, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, str] = {}
+
+        async def fake_send(message: Any, **kwargs: Any) -> tuple[Any, Any]:
+            captured["body"] = message.get_content()
+            return None, None
+
+        monkeypatch.setattr("blinkengage.infrastructure.email.mailer.aiosmtplib.send", fake_send)
+
+        response = await client.post(
+            "/api/v1/agents",
+            json={"email": "invited-agent2@acme.example", "full_name": "Invited Agent"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 201, response.text
+
+        temp_password = next(
+            line.split(": ", 1)[1].strip()
+            for line in captured["body"].splitlines()
+            if line.startswith("Temporary password: ")
+        )
+
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "invited-agent2@acme.example", "password": temp_password},
+        )
+        assert login_response.status_code == 200, login_response.text
+
+    async def test_agent_creation_still_succeeds_when_smtp_send_fails(
+        self, client: AsyncClient, owner_headers: dict, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def failing_send(message: Any, **kwargs: Any) -> tuple[Any, Any]:
+            raise ConnectionError("smtp unreachable")
+
+        monkeypatch.setattr(
+            "blinkengage.infrastructure.email.mailer.aiosmtplib.send", failing_send
+        )
+
+        response = await client.post(
+            "/api/v1/agents",
+            json={"email": "invited-agent3@acme.example", "full_name": "Invited Agent"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 201, response.text
+
+
+class TestCompanyMinimumPasswordLength:
+    """A company can raise its own minimum password length above the
+    platform floor (10). See ``docs/architecture/company-onboarding.md``.
+    """
+
+    async def test_agent_creation_with_explicit_password_below_company_minimum_is_rejected(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        settings_response = await client.patch(
+            "/api/v1/company",
+            json={"settings": {"security": {"min_password_length": 16}}},
+            headers=owner_headers,
+        )
+        assert settings_response.status_code == 200, settings_response.text
+
+        response = await client.post(
+            "/api/v1/agents",
+            json={
+                "email": "short-pw-agent@acme.example",
+                "full_name": "Agent",
+                "password": "short-but-1",
+            },
+            headers=owner_headers,
+        )
+        assert response.status_code == 400
+
+    async def test_password_reset_below_company_minimum_is_rejected(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        create_response = await client.post(
+            "/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers
+        )
+        agent_id = create_response.json()["id"]
+
+        await client.patch(
+            "/api/v1/company",
+            json={"settings": {"security": {"min_password_length": 16}}},
+            headers=owner_headers,
+        )
+
+        response = await client.post(
+            f"/api/v1/agents/{agent_id}/password",
+            json={"new_password": "short-but-1"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 400

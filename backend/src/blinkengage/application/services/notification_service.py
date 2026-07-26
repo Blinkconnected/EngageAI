@@ -22,9 +22,11 @@ immediately, not just on that tab's next 30s poll.
 
 from uuid import UUID
 
+from blinkengage.domain.company_settings import is_notification_type_enabled
 from blinkengage.domain.events import RealtimeSignalPublisher
 from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.infrastructure.database.models.notification import Notification
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -36,9 +38,14 @@ def notification_channel_name(user_id: UUID) -> str:
 
 class NotificationService:
     def __init__(
-        self, *, notifications: NotificationRepository, realtime: RealtimeSignalPublisher
+        self,
+        *,
+        notifications: NotificationRepository,
+        companies: CompanyRepository,
+        realtime: RealtimeSignalPublisher,
     ) -> None:
         self._notifications = notifications
+        self._companies = companies
         self._realtime = realtime
 
     async def create(
@@ -51,7 +58,7 @@ class NotificationService:
         body: str,
         payload: dict[str, object] | None = None,
         source_event_id: UUID | None = None,
-    ) -> Notification:
+    ) -> Notification | None:
         """``source_event_id`` — the ``EventOutbox`` row id that triggered
         this notification, when there is one (every built-in
         ``notification_consumer.py``/``create_notification`` workflow-
@@ -71,6 +78,15 @@ class NotificationService:
         steps, same hardcoded type, same user, same event — an accepted,
         documented limit, not something this key was designed to solve).
 
+        Returns ``None`` (creating nothing) when the company has disabled
+        this ``notification_type`` company-wide via its Notifications
+        settings (``Company.settings["notifications"][notification_type]``
+        — see ``domain.company_settings.is_notification_type_enabled``
+        and ``docs/architecture/company-onboarding.md``). This is a
+        company-wide policy layered *above* the existing per-user
+        preference (``NotificationPreferenceService``) — either one
+        alone can suppress delivery.
+
         The pre-check SELECT below is a fast path only, not the actual
         guarantee — two sessions can both pass it before either commits
         (a genuine concurrent-transaction race, not just sequential
@@ -82,6 +98,12 @@ class NotificationService:
         crash the consumer process — the exact anti-pattern
         ``audit_log_consumer.py`` already hit and fixed once for a
         different table)."""
+        company = await self._companies.get_by_id(company_id)
+        if company is not None and not is_notification_type_enabled(
+            company.settings, notification_type
+        ):
+            return None
+
         if source_event_id is not None:
             existing = await self._notifications.get_by_source_event(
                 source_event_id=source_event_id,

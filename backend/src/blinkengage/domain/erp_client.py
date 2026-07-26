@@ -38,4 +38,8 @@ class ErpClient(Protocol):
         known limitation this implies."""
         ...
 
-    async def health_check(self) -> bool: ...
+    async def health_check(self) -> tuple[bool, str | None]:
+        """Returns ``(healthy, detail)`` — ``detail`` is a human-readable
+        failure reason when ``healthy`` is ``False`` (surfaced by "Test
+        Connection"), ``None`` when healthy."""
+        ...

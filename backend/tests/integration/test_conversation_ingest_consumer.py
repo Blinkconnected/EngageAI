@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.customer import Customer
-from blinkengage.infrastructure.database.models.message import Message
+from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
 )
@@ -74,6 +74,94 @@ async def test_ingest_creates_a_conversation_and_message(
     assert len(messages) == 1
     assert messages[0].body == "Hello, I need help"
     assert messages[0].direction.value == "inbound"
+
+
+async def test_ingest_persists_an_attachment_and_marks_the_message_as_media(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """A provider (Telegram/WhatsApp/email) already downloaded and stored
+    the file in the attachment store by the time this event is
+    published — this consumer must not silently drop the reference, or
+    the agent inbox shows a blank message with no way to see what the
+    customer actually sent."""
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": None,
+                    "attachments": [
+                        {
+                            "external_id": "telegram-inbound/x/photo.jpg",
+                            "content_type": "image/jpeg",
+                            "size_bytes": 1234,
+                            "filename": "photo.jpg",
+                        }
+                    ],
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        message = (await db_session.execute(select(Message))).scalar_one()
+        attachment = (await db_session.execute(select(MessageAttachment))).scalar_one()
+
+    assert message.message_type.value == "media"
+    assert attachment.message_id == message.id
+    assert attachment.storage_key == "telegram-inbound/x/photo.jpg"
+    assert attachment.filename == "photo.jpg"
+    assert attachment.content_type == "image/jpeg"
+    assert attachment.size_bytes == 1234
+    assert attachment.validation_status.value == "approved"
+
+
+async def test_ingest_rejects_an_attachment_with_a_disallowed_content_type(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": None,
+                    "attachments": [
+                        {
+                            "external_id": "telegram-inbound/x/virus.exe",
+                            "content_type": "application/x-msdownload",
+                            "size_bytes": 10,
+                            "filename": "virus.exe",
+                        }
+                    ],
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        message = (await db_session.execute(select(Message))).scalar_one()
+        attachments = (await db_session.execute(select(MessageAttachment))).scalars().all()
+
+    assert message.message_type.value == "text"
+    assert attachments == []
 
 
 async def test_ingest_publishes_conversation_created_and_message_persisted_events(

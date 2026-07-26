@@ -96,11 +96,15 @@ class TestHealthCheck:
     ) -> None:
         _mock_client(monkeypatch, lambda request: httpx.Response(200, json={"message": "admin"}))
 
-        assert await client.health_check() is True
+        healthy, detail = await client.health_check()
+        assert healthy is True
+        assert detail is None
 
     async def test_unhealthy_on_error(
         self, client: ErpNextClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _mock_client(monkeypatch, lambda request: httpx.Response(403, json={"error": "forbidden"}))
 
-        assert await client.health_check() is False
+        healthy, detail = await client.health_check()
+        assert healthy is False
+        assert detail is not None

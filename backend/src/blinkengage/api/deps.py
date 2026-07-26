@@ -48,6 +48,8 @@ from blinkengage.core.container import Container
 from blinkengage.core.rate_limit import FixedWindowRateLimiter, enforce_rate_limit
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.ai_provider import AiProvider
+from blinkengage.domain.company_settings import is_ai_enabled
+from blinkengage.domain.exceptions import AiNotConfiguredError
 from blinkengage.domain.rbac import is_known_permission
 from blinkengage.infrastructure.ai.factory import build_ai_provider
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
@@ -323,14 +325,17 @@ def get_team_service(
 
 def get_agent_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
     refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store)],
 ) -> AgentService:
     return AgentService(
         session=session,
+        settings=settings,
         agents=AgentRepository(session),
         users=UserRepository(session),
         roles=RoleRepository(session),
+        companies=CompanyRepository(session),
         events=events,
         refresh_tokens=refresh_tokens,
     )
@@ -338,14 +343,17 @@ def get_agent_service(
 
 def get_agent_service_ws(
     session: Annotated[AsyncSession, Depends(get_db_session_ws)],
+    settings: Annotated[Settings, Depends(get_settings_dep_ws)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher_ws)],
     refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store_ws)],
 ) -> AgentService:
     return AgentService(
         session=session,
+        settings=settings,
         agents=AgentRepository(session),
         users=UserRepository(session),
         roles=RoleRepository(session),
+        companies=CompanyRepository(session),
         events=events,
         refresh_tokens=refresh_tokens,
     )
@@ -368,6 +376,7 @@ def get_audit_log_service(
 
 def get_channel_config_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
     provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> ChannelConfigService:
@@ -376,6 +385,7 @@ def get_channel_config_service(
         connection_logs=ChannelConnectionLogRepository(session),
         provider_factory=provider_factory,
         events=events,
+        settings=settings,
     )
 
 
@@ -481,14 +491,22 @@ def get_notification_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
 ) -> NotificationService:
-    return NotificationService(notifications=NotificationRepository(session), realtime=realtime)
+    return NotificationService(
+        notifications=NotificationRepository(session),
+        companies=CompanyRepository(session),
+        realtime=realtime,
+    )
 
 
 def get_notification_service_ws(
     session: Annotated[AsyncSession, Depends(get_db_session_ws)],
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
 ) -> NotificationService:
-    return NotificationService(notifications=NotificationRepository(session), realtime=realtime)
+    return NotificationService(
+        notifications=NotificationRepository(session),
+        companies=CompanyRepository(session),
+        realtime=realtime,
+    )
 
 
 def get_notification_preference_service(
@@ -564,7 +582,11 @@ def get_erp_config_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> ErpConfigService:
-    return ErpConfigService(erp_configs=ErpConfigRepository(session), events=events)
+    return ErpConfigService(
+        erp_configs=ErpConfigRepository(session),
+        companies=CompanyRepository(session),
+        events=events,
+    )
 
 
 def get_erp_sync_service(
@@ -576,6 +598,7 @@ def get_erp_sync_service(
         customer_links=ErpCustomerLinkRepository(session),
         synced_records=ErpSyncedRecordRepository(session),
         customers=CustomerRepository(session),
+        companies=CompanyRepository(session),
         events=events,
     )
 
@@ -625,6 +648,7 @@ async def enforce_ai_rate_limit(
     auth: Annotated[AuthContext, Depends(require_permission("ai.use"))],
     redis: Annotated[Redis, Depends(get_redis)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> AuthContext:
     """Per-*user* (not per-IP) rate limit for every ``/ai/*`` endpoint —
     unlike ``core/rate_limit.py``'s pre-auth limiters (login, register,
@@ -633,7 +657,18 @@ async def enforce_ai_rate_limit(
     (several agents can legitimately share one office IP). Lives here,
     not in ``core/rate_limit.py``, because it needs ``AuthContext`` —
     core/ must not depend on api/.
+
+    Also enforces the company-level AI master switch
+    (``Company.settings["ai"]["enabled"]``, default on) — a company can
+    disable AI features entirely (e.g. a compliance-sensitive customer)
+    even when the platform itself has a provider configured. Every
+    ``/ai/*`` endpoint depends on this one function, so this is the
+    single choke point for that check — see
+    ``docs/architecture/company-onboarding.md``.
     """
+    company = await CompanyRepository(session).get_by_id(auth.company_id)
+    if company is None or not is_ai_enabled(company.settings):
+        raise AiNotConfiguredError()
     limiter = FixedWindowRateLimiter(
         redis, scope="ai", limit=settings.ai_rate_limit_per_minute, window_seconds=60
     )
@@ -656,6 +691,25 @@ async def enforce_channel_test_connection_rate_limit(
         redis,
         scope="channel-test-connection",
         limit=settings.channel_test_connection_rate_limit_per_minute,
+        window_seconds=60,
+    )
+    await enforce_rate_limit(limiter, str(auth.user_id))
+    return auth
+
+
+async def enforce_erp_test_connection_rate_limit(
+    auth: Annotated[AuthContext, Depends(require_permission("erp.manage"))],
+    redis: Annotated[Redis, Depends(get_redis)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> AuthContext:
+    """Same reasoning as ``enforce_channel_test_connection_rate_limit``,
+    applied to ERP's "Test Connection" — the company-level ERP-enabled
+    gate itself lives in ``ErpConfigService``, not here, since that
+    service is also used by every other ``erp-configs`` endpoint."""
+    limiter = FixedWindowRateLimiter(
+        redis,
+        scope="erp-test-connection",
+        limit=settings.erp_test_connection_rate_limit_per_minute,
         window_seconds=60,
     )
     await enforce_rate_limit(limiter, str(auth.user_id))

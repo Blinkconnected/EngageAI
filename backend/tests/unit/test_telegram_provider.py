@@ -172,6 +172,45 @@ class TestSendMessage:
             )
         )
 
+    async def test_document_attachment_keeps_its_real_filename(
+        self,
+        provider: TelegramProvider,
+        attachments: FakeAttachmentStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without a real filename, Telegram (and the recipient's OS) has
+        no extension to identify the file by — a document sent as bare
+        "attachment" isn't reliably openable. See conversation_service.py
+        and channels.md's AttachmentRef.filename."""
+        key = "telegram-outbound/x/quarterly-report.pdf"
+        attachments.uploaded[key] = (b"pdf-bytes", "application/pdf")
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={"ok": True, "result": {"message_id": 57, "chat": {"id": 987654321}}},
+            )
+
+        _mock_client(monkeypatch, handler)
+
+        await provider.send_message(
+            OutboundMessage(
+                external_thread_id="987654321",
+                body=None,
+                attachments=[
+                    AttachmentRef(
+                        external_id=key,
+                        content_type="application/pdf",
+                        filename="quarterly-report.pdf",
+                    )
+                ],
+            )
+        )
+
+        assert b'filename="quarterly-report.pdf"' in requests[0].content
+
 
 class TestReceiveMessage:
     async def test_parses_text_message(self, provider: TelegramProvider) -> None:
@@ -288,6 +327,53 @@ class TestReceiveMessage:
         stored_data, stored_content_type = attachments.uploaded[ref.external_id]
         assert stored_data == b"pdf-bytes"
         assert stored_content_type == "application/pdf"
+
+    async def test_downloaded_photo_gets_a_real_content_type_despite_telegrams_generic_header(
+        self,
+        provider: TelegramProvider,
+        attachments: FakeAttachmentStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Telegram's file-serving endpoint answers every download with
+        "Content-Type: application/octet-stream" regardless of the real
+        file type (confirmed against the live API) — trusting that header
+        verbatim would misidentify every inbound photo/document and fail
+        a downstream content-type allow-list, silently dropping the
+        attachment. The real type must be inferred from file_path's
+        extension instead."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/bot123:ABC/getFile":
+                return httpx.Response(
+                    200, json={"ok": True, "result": {"file_path": "photos/file_2.jpg"}}
+                )
+            if request.url.path == "/file/bot123:ABC/photos/file_2.jpg":
+                return httpx.Response(
+                    200, content=b"jpg-bytes", headers={"content-type": "application/octet-stream"}
+                )
+            raise AssertionError(f"unexpected request to {request.url}")
+
+        _mock_client(monkeypatch, handler)
+
+        raw = orjson.dumps(
+            {
+                "update_id": 1,
+                "message": {
+                    "message_id": 13,
+                    "date": 1700000000,
+                    "chat": {"id": 987654321, "type": "private"},
+                    "from": {"id": 987654321, "first_name": "Alice"},
+                    "photo": [{"file_id": "file-id-2", "file_size": 100}],
+                },
+            }
+        )
+
+        messages = await provider.receive_message(raw)
+
+        ref = messages[0].attachments[0]
+        assert ref.content_type == "image/jpeg"
+        _, stored_content_type = attachments.uploaded[ref.external_id]
+        assert stored_content_type == "image/jpeg"
 
 
 class TestEditAndDeleteMessage:
@@ -412,6 +498,62 @@ class TestAttachmentUploadDownload:
         downloaded = await provider.download_attachment(ref)
 
         assert downloaded == b"hi"
+
+
+class TestConfigureWebhook:
+    async def test_registers_the_webhook_url_and_secret(
+        self, provider: TelegramProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/bot123:ABC/setWebhook"
+            captured["body"] = orjson.loads(request.content)
+            return httpx.Response(200, json={"ok": True, "result": True})
+
+        _mock_client(monkeypatch, handler)
+
+        await provider.configure_webhook(webhook_url="https://example.com/api/v1/webhooks/abc")
+
+        assert captured["body"] == {
+            "url": "https://example.com/api/v1/webhooks/abc",
+            "secret_token": "shh",
+        }
+
+    async def test_raises_when_telegram_reports_ok_false(
+        self, provider: TelegramProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_client(
+            monkeypatch,
+            lambda request: httpx.Response(
+                200, json={"ok": False, "description": "bad webhook url"}
+            ),
+        )
+
+        with pytest.raises(RuntimeError, match="bad webhook url"):
+            await provider.configure_webhook(webhook_url="not-a-url")
+
+    async def test_raises_on_http_error(
+        self, provider: TelegramProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_client(monkeypatch, lambda request: httpx.Response(401, json={"ok": False}))
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await provider.configure_webhook(webhook_url="https://example.com/webhook")
+
+
+class TestDeregisterWebhook:
+    async def test_calls_delete_webhook(
+        self, provider: TelegramProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        requests = _mock_client(
+            monkeypatch, lambda request: httpx.Response(200, json={"ok": True, "result": True})
+        )
+
+        await provider.deregister_webhook()
+
+        assert len(requests) == 1
+        assert requests[0].url.path == "/bot123:ABC/deleteWebhook"
 
 
 class TestHealthCheck:

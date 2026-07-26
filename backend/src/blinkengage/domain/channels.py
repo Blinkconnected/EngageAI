@@ -21,12 +21,22 @@ class OutboundAttachment:
 
 @dataclass(frozen=True, slots=True)
 class AttachmentRef:
-    """A provider-side handle to an attachment, uploaded or received."""
+    """A provider-side handle to an attachment, uploaded or received.
+
+    ``filename`` is the original, human-readable name (e.g.
+    ``"conversation-report.pdf"``) — distinct from ``external_id``, which
+    is a storage key/media id with no meaning to the end user. Providers
+    that physically attach a file (Telegram/WhatsApp documents, Meta
+    Send API attachments, email MIME parts) need this to give the
+    recipient a real, extension-bearing filename; without it the
+    recipient's client can't tell what kind of file it received.
+    """
 
     external_id: str
     url: str | None = None
     content_type: str | None = None
     size_bytes: int | None = None
+    filename: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

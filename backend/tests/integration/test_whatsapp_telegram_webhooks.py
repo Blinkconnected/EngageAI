@@ -10,8 +10,10 @@ needed at this layer — that's covered by the provider unit tests). See
 import hashlib
 import hmac
 from typing import Any
+from unittest.mock import AsyncMock
 
 import orjson
+import pytest
 from httpx import AsyncClient
 
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
@@ -43,7 +45,18 @@ async def _create_whatsapp_channel_config(
     return response.json()
 
 
-async def _create_telegram_channel_config(client: AsyncClient, owner_headers: dict) -> dict:
+async def _create_telegram_channel_config(
+    client: AsyncClient, owner_headers: dict, monkeypatch: pytest.MonkeyPatch
+) -> dict:
+    # Unlike every other provider, TelegramProvider.configure_webhook is a
+    # real override (see channel_config_service.py) rather than the ABC's
+    # no-op default, so creating a channel would otherwise make a real
+    # outbound call to api.telegram.org with this test's fake bot_token —
+    # exactly what this file's own docstring says it avoids.
+    monkeypatch.setattr(
+        "blinkengage.infrastructure.channels.providers.telegram.TelegramProvider.configure_webhook",
+        AsyncMock(return_value=None),
+    )
     response = await client.post(
         "/api/v1/channel-configs",
         json={
@@ -186,9 +199,9 @@ class TestWhatsAppWebhook:
 
 class TestTelegramWebhook:
     async def test_post_with_valid_secret_token_publishes_message_received(
-        self, client: AsyncClient, owner_headers: dict, app: Any
+        self, client: AsyncClient, owner_headers: dict, app: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        config = await _create_telegram_channel_config(client, owner_headers)
+        config = await _create_telegram_channel_config(client, owner_headers, monkeypatch)
         body = _telegram_text_payload(chat_id=987654321, message_id=10, body="Hi", name="Bob")
 
         response = await client.post(
@@ -207,9 +220,9 @@ class TestTelegramWebhook:
         assert received[0].payload["channel_type"] == "telegram"
 
     async def test_post_with_invalid_secret_token_is_rejected(
-        self, client: AsyncClient, owner_headers: dict
+        self, client: AsyncClient, owner_headers: dict, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        config = await _create_telegram_channel_config(client, owner_headers)
+        config = await _create_telegram_channel_config(client, owner_headers, monkeypatch)
         body = _telegram_text_payload(chat_id=987654321, message_id=10, body="Hi", name="Bob")
 
         response = await client.post(
