@@ -5,12 +5,14 @@ Uvicorn entrypoint: ``blinkengage.main:app``.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from blinkengage.api.v1.router import api_router
+from blinkengage.core.changelog import ChangelogFormatError, current_release, load_releases
 from blinkengage.core.config import get_settings
 from blinkengage.core.container import Container
 from blinkengage.core.exceptions import register_exception_handlers
@@ -35,10 +37,25 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings)
 
+    # Fails fast at startup, matching the CORS-wildcard fail-fast check
+    # below: an app whose own version can't be determined is exactly as
+    # misconfigured as one with an unusable CORS policy, and serving
+    # traffic under a wrong/placeholder version silently would make
+    # every downstream consumer of GET /api/v1/version (status pages,
+    # support tooling, this very version-consistency tripwire test) trust
+    # a lie. A missing/malformed CHANGELOG.md is only ever an operator
+    # error, never a client-triggerable condition.
+    current = current_release(load_releases(Path(settings.changelog_path)))
+    if current is None:
+        raise ChangelogFormatError(
+            f"'{settings.changelog_path}' has no published release entries; "
+            "the application version cannot be determined"
+        )
+
     app = FastAPI(
         title=settings.app_name,
         description="Enterprise AI Powered Omnichannel Customer Engagement Platform API",
-        version="0.1.0",
+        version=current.version,
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
         openapi_url=f"{settings.api_v1_prefix}/openapi.json",

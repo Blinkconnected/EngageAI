@@ -155,6 +155,20 @@ class Settings(BaseSettings):
     smtp_from_address: str = "notifications@blinkengage.local"
     smtp_from_name: str = "Blink Engage"
 
+    # --- Release / version metadata (see docs/architecture/release-changelog.md) ---
+    # Path (relative to CWD, or absolute) to the Keep a Changelog file
+    # parsed by ``core.changelog`` to derive the running application's
+    # user-facing version/release-channel — see ``api/v1/endpoints/version.py``.
+    # Overridden in tests to point at a small, stable test fixture instead
+    # of the real, ever-growing repo-root CHANGELOG.md.
+    changelog_path: str = "CHANGELOG.md"
+    # Populated by the CI/CD build pipeline (see .github/workflows/ci.yml);
+    # left at their defaults for local `docker compose` development, where
+    # there is no build pipeline to inject them.
+    git_commit: str = "unknown"
+    build_timestamp: str = "unknown"
+    docker_image_tag: str = "development"
+
     @field_validator("cors_allow_origins", "attachment_allowed_content_types", mode="before")
     @classmethod
     def _split_origins(cls, value: str | list[str]) -> list[str]:

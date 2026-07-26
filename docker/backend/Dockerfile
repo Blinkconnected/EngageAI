@@ -4,10 +4,16 @@
 # docker/backend/entrypoint.sh); all backend sources are under backend/.
 
 FROM python:3.13-slim AS base
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIMESTAMP=unknown
+ARG DOCKER_IMAGE_TAG=development
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    GIT_COMMIT=$GIT_COMMIT \
+    BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+    DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG
 WORKDIR /app
 
 RUN apt-get update \
@@ -42,6 +48,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
+COPY CHANGELOG.md ./CHANGELOG.md
 COPY docker/backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && chown -R blinkengage:blinkengage /app
 

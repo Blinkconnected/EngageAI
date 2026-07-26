@@ -8,6 +8,7 @@ import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
 import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import NewReleasesOutlinedIcon from '@mui/icons-material/NewReleasesOutlined'
 
 export interface NavItem {
   label: string
@@ -61,6 +62,10 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'erp.manage',
     requiresErpEnabled: true,
   },
+  // No `permission` — release/version info isn't sensitive (the backend
+  // doesn't even require authentication for it) — every authenticated
+  // user sees this, like `Dashboard` at the top of this list.
+  { label: 'Changelog', path: '/changelog', icon: NewReleasesOutlinedIcon },
   {
     label: 'Company settings',
     path: '/settings/company/general',

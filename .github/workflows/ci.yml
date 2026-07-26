@@ -179,6 +179,31 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "git_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      # Real registry credentials/push target are out of scope here (see
+      # comments below) — this step still genuinely exercises the
+      # GIT_COMMIT/BUILD_TIMESTAMP/DOCKER_IMAGE_TAG build-arg plumbing
+      # (docker/backend/Dockerfile's `base` stage) with push: false so a
+      # tagged release build is verified without a registry to push to.
+      - name: Build backend (runtime target) with build metadata
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/backend/Dockerfile
+          target: runtime
+          push: false
+          tags: blinkengage-backend:${{ steps.meta.outputs.image_tag }}
+          build-args: |
+            GIT_COMMIT=${{ steps.meta.outputs.git_commit }}
+            BUILD_TIMESTAMP=${{ steps.meta.outputs.build_timestamp }}
+            DOCKER_IMAGE_TAG=${{ steps.meta.outputs.image_tag }}
+          cache-from: type=gha
       - name: Deploy
         run: |
           echo "No deploy target is configured yet."

@@ -18,6 +18,7 @@ import { CompanySettingsPage } from '../features/company/CompanySettingsPage'
 import { OnboardingWizardPage } from '../features/onboarding/OnboardingWizardPage'
 import { ProfilePage } from '../features/profile/ProfilePage'
 import { NotificationsPage } from '../features/notifications/NotificationsPage'
+import { ChangelogPage } from '../features/changelog/ChangelogPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
@@ -38,6 +39,7 @@ export function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="changelog" element={<ChangelogPage />} />
         <Route
           path="onboarding"
           element={

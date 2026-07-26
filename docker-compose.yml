@@ -119,6 +119,13 @@ services:
     environment: *backend-env
     volumes:
       - ./backend:/app
+      - ./CHANGELOG.md:/app/CHANGELOG.md:ro
+      # Not consumed by the running application at all — only read by
+      # backend/tests/unit/test_version_consistency.py, which cross-checks
+      # this repo-root file's version against the backend's own. There is
+      # no other reason the backend container would ever need to know
+      # frontend/package.json exists.
+      - ./frontend/package.json:/frontend/package.json:ro
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

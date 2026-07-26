@@ -16,6 +16,13 @@ coverage.xml
 backend/.env
 backend/alembic/versions/__pycache__/
 backend/celerybeat-schedule*
+# Docker mount-point artifact, not a real file: docker-compose.yml binds
+# the real repo-root CHANGELOG.md onto /app/CHANGELOG.md inside the
+# `backend`/celery containers — a nested target under the ./backend:/app
+# bind mount — and on first container creation the container runtime
+# creates an empty placeholder at this exact host path (the mount's
+# underlying inode) before mounting the real file over it in-container.
+backend/CHANGELOG.md
 
 # --- Node / frontend ---
 node_modules/
