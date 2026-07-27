@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Box, Button, Chip, IconButton, Stack, Tab, Tabs, Typography } from '@mui/material'
+import { Box, Button, Chip, IconButton, Rating, Stack, Tab, Tabs, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
@@ -11,13 +11,14 @@ import { useIsErpEnabled } from '../company/api'
 import { CustomerErpPanel } from '../erp/CustomerErpPanel'
 import { useCustomerQuery } from './api'
 import { CustomerEditDialog } from './CustomerEditDialog'
+import { CustomerRatingsPanel } from './CustomerRatingsPanel'
 import { CustomerTimelinePanel } from './CustomerTimelinePanel'
 
 export function CustomerProfilePage() {
   const { t } = useTranslation('customers')
   const { customerId } = useParams<{ customerId: string }>()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'timeline' | 'erp'>('timeline')
+  const [tab, setTab] = useState<'timeline' | 'erp' | 'rating'>('timeline')
   const [editing, setEditing] = useState(false)
   const { hasPermission } = usePermissions()
   const isErpEnabled = useIsErpEnabled()
@@ -56,6 +57,18 @@ export function CustomerProfilePage() {
         </Box>
       </Stack>
 
+      {customer.rating_count > 0 && (
+        <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: 'center' }}>
+          <Rating value={customer.rating_average} precision={0.5} readOnly size="small" />
+          <Typography variant="body2" color="text.secondary">
+            {t('CustomerProfilePage.ratingSummary', {
+              average: customer.rating_average,
+              count: customer.rating_count,
+            })}
+          </Typography>
+        </Stack>
+      )}
+
       {customer.tags.length > 0 && (
         <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
           {customer.tags.map((tag) => (
@@ -77,10 +90,13 @@ export function CustomerProfilePage() {
       >
         <Tab label={t('CustomerProfilePage.timelineTab')} value="timeline" />
         {isErpEnabled && <Tab label={t('CustomerProfilePage.erpTab')} value="erp" />}
+        <Tab label={t('CustomerProfilePage.ratingTab')} value="rating" />
       </Tabs>
 
       {tab === 'erp' && isErpEnabled ? (
         <CustomerErpPanel customerId={customer.id} />
+      ) : tab === 'rating' ? (
+        <CustomerRatingsPanel customerId={customer.id} />
       ) : (
         <CustomerTimelinePanel customerId={customer.id} />
       )}

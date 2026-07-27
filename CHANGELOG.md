@@ -16,6 +16,14 @@ for more detail on how this page is put together.
 
 ### Added
 
+- Agents and supervisors can now rate customers internally, 1-5 stars
+  with an optional note (e.g. "Polite, pays on time" or "Frequently
+  disputes charges") — visible on the customer's profile page (a new
+  "Internal rating" tab) and as a compact summary in the conversation
+  workspace's customer sidebar. Every rating is kept as its own entry, so
+  a history of ratings from different team members builds up over time
+  instead of one person's rating overwriting another's. Never shown to
+  the customer on any channel or survey.
 - The Queue Dashboard now shows exactly where every conversation stands:
   a new company-wide flow chart totals waiting, picked (assigned, no
   reply yet), active (assigned and replied to), resolved, and closed

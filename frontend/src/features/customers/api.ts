@@ -1,10 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page, PageParams } from '../../shared/api/pagination'
-import type { Customer, CustomerCreateRequest, CustomerUpdateRequest } from './types'
+import type {
+  Customer,
+  CustomerCreateRequest,
+  CustomerInternalRating,
+  CustomerInternalRatingRequest,
+  CustomerUpdateRequest,
+} from './types'
 
 const CUSTOMERS_LIST_KEY = ['customers', 'list']
 const CUSTOMER_KEY = (customerId: string) => ['customers', 'detail', customerId]
+const CUSTOMER_RATINGS_KEY = (customerId: string) => ['customers', customerId, 'ratings']
 
 async function fetchCustomers(params: PageParams & { search?: string }): Promise<Page<Customer>> {
   const { data } = await apiClient.get<Page<Customer>>('/customers', { params })
@@ -27,6 +34,44 @@ async function updateCustomer(
 ): Promise<Customer> {
   const { data } = await apiClient.patch<Customer>(`/customers/${customerId}`, payload)
   return data
+}
+
+async function fetchCustomerRatings(
+  customerId: string,
+  params: PageParams,
+): Promise<Page<CustomerInternalRating>> {
+  const { data } = await apiClient.get<Page<CustomerInternalRating>>(
+    `/customers/${customerId}/ratings`,
+    { params },
+  )
+  return data
+}
+
+async function createCustomerRating(
+  customerId: string,
+  payload: CustomerInternalRatingRequest,
+): Promise<CustomerInternalRating> {
+  const { data } = await apiClient.post<CustomerInternalRating>(
+    `/customers/${customerId}/ratings`,
+    payload,
+  )
+  return data
+}
+
+async function updateCustomerRating(
+  customerId: string,
+  ratingId: string,
+  payload: CustomerInternalRatingRequest,
+): Promise<CustomerInternalRating> {
+  const { data } = await apiClient.patch<CustomerInternalRating>(
+    `/customers/${customerId}/ratings/${ratingId}`,
+    payload,
+  )
+  return data
+}
+
+async function deleteCustomerRating(customerId: string, ratingId: string): Promise<void> {
+  await apiClient.delete(`/customers/${customerId}/ratings/${ratingId}`)
 }
 
 export function useCustomersQuery(params: PageParams & { search?: string }) {
@@ -64,5 +109,57 @@ export function useUpdateCustomerMutation(customerId: string) {
       queryClient.setQueryData(CUSTOMER_KEY(customerId), data)
       void queryClient.invalidateQueries({ queryKey: CUSTOMERS_LIST_KEY })
     },
+  })
+}
+
+export function useCustomerRatingsQuery(customerId: string | undefined, params: PageParams) {
+  return useQuery({
+    queryKey: [...CUSTOMER_RATINGS_KEY(customerId ?? ''), params],
+    queryFn: () => fetchCustomerRatings(customerId as string, params),
+    enabled: Boolean(customerId),
+  })
+}
+
+/** All three rating mutations invalidate the customer's own detail cache
+ * (and the customers list) alongside the ratings list — `rating_average`/
+ * `rating_count` are embedded fields on `Customer`, computed server-side
+ * from this same table, so both caches go stale together. */
+function invalidateAfterRatingChange(
+  queryClient: ReturnType<typeof useQueryClient>,
+  customerId: string,
+) {
+  void queryClient.invalidateQueries({ queryKey: CUSTOMER_RATINGS_KEY(customerId) })
+  void queryClient.invalidateQueries({ queryKey: CUSTOMER_KEY(customerId) })
+  void queryClient.invalidateQueries({ queryKey: CUSTOMERS_LIST_KEY })
+}
+
+export function useCreateCustomerRatingMutation(customerId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: CustomerInternalRatingRequest) =>
+      createCustomerRating(customerId, payload),
+    onSuccess: () => invalidateAfterRatingChange(queryClient, customerId),
+  })
+}
+
+export function useUpdateCustomerRatingMutation(customerId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      ratingId,
+      payload,
+    }: {
+      ratingId: string
+      payload: CustomerInternalRatingRequest
+    }) => updateCustomerRating(customerId, ratingId, payload),
+    onSuccess: () => invalidateAfterRatingChange(queryClient, customerId),
+  })
+}
+
+export function useDeleteCustomerRatingMutation(customerId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ratingId: string) => deleteCustomerRating(customerId, ratingId),
+    onSuccess: () => invalidateAfterRatingChange(queryClient, customerId),
   })
 }

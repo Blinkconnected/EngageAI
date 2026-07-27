@@ -45,6 +45,7 @@
     "releaseErrorFallback": "Could not release this conversation.",
     "updateErrorFallback": "Could not update this conversation.",
     "customerLabel": "Customer",
+    "customerRatingCount": "Based on {{count}} internal ratings",
     "channelLabel": "Channel",
     "emptyValue": "—",
     "aiSummaryLabel": "AI Summary",

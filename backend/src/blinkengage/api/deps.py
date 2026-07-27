@@ -24,6 +24,9 @@ from blinkengage.application.services.channel_config_service import ChannelConfi
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
+from blinkengage.application.services.customer_internal_rating_service import (
+    CustomerInternalRatingService,
+)
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.erp_config_service import ErpConfigService
@@ -77,6 +80,9 @@ from blinkengage.infrastructure.repositories.conversation_transfer_repository im
     ConversationTransferRepository,
 )
 from blinkengage.infrastructure.repositories.csat_repository import CsatResponseRepository
+from blinkengage.infrastructure.repositories.customer_internal_rating_repository import (
+    CustomerInternalRatingRepository,
+)
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.erp_config_repository import ErpConfigRepository
@@ -369,6 +375,17 @@ def get_customer_service(
 ) -> CustomerService:
     return CustomerService(
         customers=CustomerRepository(session), tags=TagRepository(session), events=events
+    )
+
+
+def get_customer_internal_rating_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> CustomerInternalRatingService:
+    return CustomerInternalRatingService(
+        ratings=CustomerInternalRatingRepository(session),
+        customers=CustomerRepository(session),
+        events=events,
     )
 
 

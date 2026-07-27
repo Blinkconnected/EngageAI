@@ -48,7 +48,12 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("teams.manage", "Create/edit/delete teams"),
     Permission("agents.read", "View agent profiles"),
     Permission("agents.manage", "Create/edit/delete agent profiles"),
-    # --- Customers ---
+    # --- Customers --- Internal Customer Ratings (stars + optional note,
+    # staff-only, never customer-visible) reuse these two rather than a
+    # new permission, same reasoning as Internal Notes reusing
+    # conversations.read/manage below: rating a customer is just another
+    # way of interacting with a customer profile the caller can already
+    # view/edit.
     Permission("customers.read", "View customer profiles"),
     Permission("customers.manage", "Create/edit/merge/delete customer profiles"),
     # --- Conversations ---

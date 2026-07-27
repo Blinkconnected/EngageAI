@@ -12,7 +12,9 @@
     "backAriaLabel": "العودة إلى العملاء",
     "editButton": "تعديل",
     "timelineTab": "الجدول الزمني",
-    "erpTab": "ERPNext"
+    "erpTab": "ERPNext",
+    "ratingTab": "التقييم الداخلي",
+    "ratingSummary": "متوسط {{average}}، استنادًا إلى {{count}} تقييم داخلي"
   },
   "CustomersPage": {
     "nameColumn": "الاسم",
@@ -35,5 +37,15 @@
     "conversationFallback": "محادثة",
     "lastMessageLabel": "آخر رسالة {{time}}",
     "startedLabel": "بدأت {{time}}"
+  },
+  "CustomerRatingsPanel": {
+    "starsLabel": "قيّم هذا العميل",
+    "notePlaceholder": "ملاحظة اختيارية (مثال: \"مهذب، يدفع في الوقت المحدد\" أو \"كثيرًا ما يعترض على الرسوم\")",
+    "addRatingButton": "إضافة تقييم",
+    "addErrorFallback": "تعذّرت إضافة هذا التقييم.",
+    "loadingLabel": "جارٍ تحميل التقييمات…",
+    "emptyTitle": "لا توجد تقييمات داخلية بعد",
+    "emptyDescription": "التقييمات والملاحظات التي يتركها الوكلاء والمشرفون هنا لا تكون مرئية للعميل أبدًا.",
+    "deleteRatingAriaLabel": "حذف هذا التقييم"
   }
 }

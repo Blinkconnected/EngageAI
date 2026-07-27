@@ -101,6 +101,8 @@ export function ConversationViewPage() {
           <ConversationSidebar
             conversation={conversation}
             customerName={customerQuery.data?.full_name ?? t('ConversationViewPage.emptyValue')}
+            customerRatingAverage={customerQuery.data?.rating_average ?? null}
+            customerRatingCount={customerQuery.data?.rating_count ?? 0}
           />
         </Box>
       </Stack>

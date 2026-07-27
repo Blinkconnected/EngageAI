@@ -31,6 +31,16 @@ phone
 notes
 custom_fields (JSON)
 soft-delete
+
+customer_internal_ratings
+-------------------------
+id (PK)
+company_id (FK)
+customer_id (FK)
+rated_by_user_id (FK, null)
+stars (1-5)
+note (nullable)
+no soft-delete (hard-deletable, like internal_notes)
 ```
 
 `*` — see decision #1 below: these uniqueness constraints are scoped to
@@ -107,6 +117,32 @@ soft-delete
    these; they only make sense once the Channels/Conversations feature
    actually creates per-channel contact records for a customer to resolve
    against. Building them now would be speculative.
+
+7. **Internal Customer Ratings (P3.15) are a repeatable child table, not a
+   mutable field on `Customer`.** A single `rating`/`note` column would
+   silently overwrite the last agent's judgment call every time someone
+   else re-rated the same customer — the opposite of what an enterprise
+   team wants from a shared internal assessment (a running history of
+   "difficult customer" / "great customer" notes from different
+   agents/supervisors over time). `CustomerInternalRatingRepository
+   .summary_for_customers()` computes the average + count for potentially
+   many customers in one grouped query rather than one aggregate query per
+   row, avoiding N+1 when `GET /customers` renders every row's summary.
+   The summary is embedded directly on `CustomerResponse`
+   (`rating_average`/`rating_count`) rather than requiring a second
+   request, mirroring how `tags` is already embedded — every existing
+   caller of `GET /customers`/`GET /customers/{id}` (the profile page, the
+   conversation workspace's customer sidebar) gets it for free.
+   Deliberately named `CustomerInternalRating`/`customer_internal_ratings`
+   to stay unambiguously distinct from the *external*,
+   customer-submitted `CsatResponse`/`csat_responses` (Reports &
+   Analytics) — this is the reverse direction, staff rating the customer,
+   never the other way around, and never exposed on any customer-facing
+   surface. Reuses `customers.read`/`customers.manage` rather than a new
+   permission (see `domain/rbac.py`) and is hard-deletable like
+   `InternalNote`, same reasoning: a low-stakes annotation with no
+   compliance requirement to retain a deleted row, durably recorded via
+   its own domain events regardless of the row's fate.
 
 ## Pagination
 

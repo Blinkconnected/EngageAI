@@ -3,14 +3,25 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from blinkengage.api.deps import get_customer_service, get_erp_sync_service, require_permission
+from blinkengage.api.deps import (
+    get_customer_internal_rating_service,
+    get_customer_service,
+    get_erp_sync_service,
+    require_permission,
+)
 from blinkengage.api.schemas.customer import (
     CustomerCreateRequest,
+    CustomerInternalRatingCreateRequest,
+    CustomerInternalRatingResponse,
+    CustomerInternalRatingUpdateRequest,
     CustomerResponse,
     CustomerUpdateRequest,
 )
 from blinkengage.api.schemas.erp import ErpCustomerLinkResponse, ErpSyncedRecordResponse
 from blinkengage.api.schemas.pagination import Page, PageParams
+from blinkengage.application.services.customer_internal_rating_service import (
+    CustomerInternalRatingService,
+)
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.core.auth_context import AuthContext
@@ -19,7 +30,10 @@ from blinkengage.infrastructure.database.models.customer import Customer
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 
-def _to_response(customer: Customer) -> CustomerResponse:
+def _to_response(
+    customer: Customer, rating_summary: tuple[float | None, int] = (None, 0)
+) -> CustomerResponse:
+    rating_average, rating_count = rating_summary
     return CustomerResponse(
         id=customer.id,
         full_name=customer.full_name,
@@ -30,6 +44,8 @@ def _to_response(customer: Customer) -> CustomerResponse:
         tags=sorted(ct.tag.name for ct in customer.customer_tags),
         created_at=customer.created_at,
         updated_at=customer.updated_at,
+        rating_average=rating_average,
+        rating_count=rating_count,
     )
 
 
@@ -37,6 +53,9 @@ def _to_response(customer: Customer) -> CustomerResponse:
 async def list_customers(
     auth: Annotated[AuthContext, Depends(require_permission("customers.read"))],
     service: Annotated[CustomerService, Depends(get_customer_service)],
+    ratings: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
     page_params: Annotated[PageParams, Depends()],
     search: Annotated[str | None, Query(max_length=255)] = None,
 ) -> Page[CustomerResponse]:
@@ -46,8 +65,11 @@ async def list_customers(
         limit=page_params.page_size,
         search=search,
     )
+    rating_summaries = await ratings.summary_map(
+        company_id=auth.company_id, customer_ids=[item.id for item in items]
+    )
     return Page(
-        items=[_to_response(item) for item in items],
+        items=[_to_response(item, rating_summaries.get(item.id, (None, 0))) for item in items],
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
@@ -78,9 +100,13 @@ async def get_customer(
     customer_id: UUID,
     auth: Annotated[AuthContext, Depends(require_permission("customers.read"))],
     service: Annotated[CustomerService, Depends(get_customer_service)],
+    ratings: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
 ) -> CustomerResponse:
     customer = await service.get(company_id=auth.company_id, customer_id=customer_id)
-    return _to_response(customer)
+    summary = await ratings.summary(company_id=auth.company_id, customer_id=customer_id)
+    return _to_response(customer, summary)
 
 
 @router.patch("/{customer_id}", response_model=CustomerResponse)
@@ -89,6 +115,9 @@ async def update_customer(
     payload: CustomerUpdateRequest,
     auth: Annotated[AuthContext, Depends(require_permission("customers.manage"))],
     service: Annotated[CustomerService, Depends(get_customer_service)],
+    ratings: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
 ) -> CustomerResponse:
     customer = await service.update(
         company_id=auth.company_id,
@@ -101,7 +130,8 @@ async def update_customer(
         tag_names=payload.tags,
         actor_user_id=auth.user_id,
     )
-    return _to_response(customer)
+    summary = await ratings.summary(company_id=auth.company_id, customer_id=customer_id)
+    return _to_response(customer, summary)
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -151,3 +181,83 @@ async def pull_customer_erp_records(
         company_id=auth.company_id, customer_id=customer_id, doctype=doctype
     )
     return [ErpSyncedRecordResponse.model_validate(record) for record in records]
+
+
+@router.get("/{customer_id}/ratings", response_model=Page[CustomerInternalRatingResponse])
+async def list_customer_ratings(
+    customer_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("customers.read"))],
+    service: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
+    page_params: Annotated[PageParams, Depends()],
+) -> Page[CustomerInternalRatingResponse]:
+    items, total = await service.list_ratings(
+        company_id=auth.company_id,
+        customer_id=customer_id,
+        offset=page_params.offset,
+        limit=page_params.page_size,
+    )
+    return Page(
+        items=[CustomerInternalRatingResponse.model_validate(item) for item in items],
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+    )
+
+
+@router.post(
+    "/{customer_id}/ratings",
+    response_model=CustomerInternalRatingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_customer_rating(
+    customer_id: UUID,
+    payload: CustomerInternalRatingCreateRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("customers.manage"))],
+    service: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
+) -> CustomerInternalRatingResponse:
+    rating = await service.create(
+        company_id=auth.company_id,
+        customer_id=customer_id,
+        stars=payload.stars,
+        note=payload.note,
+        rated_by_user_id=auth.user_id,
+    )
+    return CustomerInternalRatingResponse.model_validate(rating)
+
+
+@router.patch("/{customer_id}/ratings/{rating_id}", response_model=CustomerInternalRatingResponse)
+async def update_customer_rating(
+    customer_id: UUID,
+    rating_id: UUID,
+    payload: CustomerInternalRatingUpdateRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("customers.manage"))],
+    service: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
+) -> CustomerInternalRatingResponse:
+    rating = await service.update(
+        company_id=auth.company_id,
+        rating_id=rating_id,
+        stars=payload.stars,
+        note=payload.note,
+        actor_user_id=auth.user_id,
+    )
+    return CustomerInternalRatingResponse.model_validate(rating)
+
+
+@router.delete("/{customer_id}/ratings/{rating_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_customer_rating(
+    customer_id: UUID,
+    rating_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("customers.manage"))],
+    service: Annotated[
+        CustomerInternalRatingService, Depends(get_customer_internal_rating_service)
+    ],
+) -> None:
+    await service.delete(
+        company_id=auth.company_id, rating_id=rating_id, actor_user_id=auth.user_id
+    )

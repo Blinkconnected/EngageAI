@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { axe } from 'vitest-axe'
@@ -70,5 +70,33 @@ describe('CustomerProfilePage', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Grace Renamed' })).toBeInTheDocument(),
     )
+  })
+
+  it('does not show a rating summary until the customer has at least one rating', async () => {
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Grace Blake' })
+    expect(screen.queryByText(/average, based on/i)).not.toBeInTheDocument()
+  })
+
+  it('adds an internal rating from the Internal rating tab and reflects it in the header summary', async () => {
+    const user = userEvent.setup()
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Grace Blake' })
+
+    await user.click(screen.getByRole('tab', { name: /internal rating/i }))
+    expect(await screen.findByText(/no internal ratings yet/i)).toBeInTheDocument()
+
+    // MUI's Rating radio inputs are visually hidden with zero on-screen
+    // size, which userEvent.click's pointer-visibility check rejects as
+    // "not clickable" — fireEvent.click bypasses that check and dispatches
+    // the click directly, same workaround this component's own icon
+    // buttons don't need since they're regular visible buttons.
+    const stars = screen.getAllByRole('radio', { name: /5 star/i })
+    fireEvent.click(stars[0])
+    await user.type(screen.getByPlaceholderText(/optional note/i), 'Great customer')
+    await user.click(screen.getByRole('button', { name: /add rating/i }))
+
+    await waitFor(() => expect(screen.getByText('Great customer')).toBeInTheDocument())
+    expect(screen.getByText(/5 average, based on 1 internal ratings/i)).toBeInTheDocument()
   })
 })

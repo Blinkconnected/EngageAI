@@ -14,7 +14,7 @@ nothing to resolve or merge until then.
 import uuid
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from blinkengage.infrastructure.database.base import (
@@ -87,3 +87,42 @@ class CustomerTag(Base):
 
     customer: Mapped["Customer"] = relationship(back_populates="customer_tags")
     tag: Mapped["Tag"] = relationship()
+
+
+class CustomerInternalRating(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A private, staff-only 1-5 star rating of a customer, with an
+    optional note — never exposed on any customer-facing surface (the
+    public CSAT survey flow is the unrelated, customer-submitted
+    ``CsatResponse``/``csat_responses``; this is the reverse direction,
+    staff rating the customer).
+
+    Repeatable rather than a single mutable field on ``Customer``: an
+    enterprise team wants a running history of "difficult customer" /
+    "great customer" assessments from different agents/supervisors over
+    time, not one value that silently overwrites the last person's
+    judgment call.
+
+    No ``SoftDeleteMixin`` — same reasoning as ``InternalNote``: a
+    low-stakes internal annotation with no compliance requirement to
+    retain a deleted row, durably recorded via the
+    ``customer_internal_rating.deleted`` domain event regardless of the
+    row's fate.
+    """
+
+    __tablename__ = "customer_internal_ratings"
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # SET NULL, not CASCADE — same reasoning as InternalNote.author_user_id:
+    # a rating must outlive the user who gave it.
+    rated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
+    # 1-5, validated at the API schema layer (Field(ge=1, le=5)) — same
+    # convention as CsatResponse.rating, no DB check constraint either.
+    stars: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, default=None)

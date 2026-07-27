@@ -12,7 +12,9 @@
     "backAriaLabel": "Back to customers",
     "editButton": "Edit",
     "timelineTab": "Timeline",
-    "erpTab": "ERPNext"
+    "erpTab": "ERPNext",
+    "ratingTab": "Internal rating",
+    "ratingSummary": "{{average}} average, based on {{count}} internal ratings"
   },
   "CustomersPage": {
     "nameColumn": "Name",
@@ -35,5 +37,15 @@
     "conversationFallback": "Conversation",
     "lastMessageLabel": "Last message {{time}}",
     "startedLabel": "Started {{time}}"
+  },
+  "CustomerRatingsPanel": {
+    "starsLabel": "Rate this customer",
+    "notePlaceholder": "Optional note (e.g. \"Polite, pays on time\" or \"Frequently disputes charges\")",
+    "addRatingButton": "Add rating",
+    "addErrorFallback": "Could not add this rating.",
+    "loadingLabel": "Loading ratings…",
+    "emptyTitle": "No internal ratings yet",
+    "emptyDescription": "Ratings and notes left here by agents and supervisors are never visible to the customer.",
+    "deleteRatingAriaLabel": "Delete this rating"
   }
 }

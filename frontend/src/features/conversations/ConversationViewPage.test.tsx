@@ -162,6 +162,17 @@ describe('ConversationViewPage', () => {
     expect(await screen.findByText('Customer seems frustrated.')).toBeInTheDocument()
   })
 
+  it("shows the customer's internal rating summary in the sidebar once rated", async () => {
+    renderConversationView()
+    await waitForLoaded()
+    expect(screen.queryByText(/based on \d+ internal ratings/i)).not.toBeInTheDocument()
+
+    await apiClient.post(`/customers/${MOCK_CUSTOMER.id}/ratings`, { stars: 4 })
+    await queryClient.invalidateQueries({ queryKey: ['customers'] })
+
+    expect(await screen.findByText(/based on 1 internal ratings/i)).toBeInTheDocument()
+  })
+
   // The seeded conversation (see mocks/handlers/conversations.ts) starts
   // queued and unassigned — these exercise the Release button, which only
   // ever appears once *something* has assigned it. Picking it directly

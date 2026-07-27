@@ -45,6 +45,7 @@
     "releaseErrorFallback": "تعذر تحرير هذه المحادثة.",
     "updateErrorFallback": "تعذر تحديث هذه المحادثة.",
     "customerLabel": "العميل",
+    "customerRatingCount": "استنادًا إلى {{count}} تقييم داخلي",
     "channelLabel": "القناة",
     "emptyValue": "—",
     "aiSummaryLabel": "ملخص الذكاء الاصطناعي",

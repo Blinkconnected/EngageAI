@@ -2,7 +2,17 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Divider,
+  Link,
+  MenuItem,
+  Rating,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { usePermissions } from '../../shared/hooks/usePermissions'
@@ -34,9 +44,13 @@ const STATUS_OPTION_KEY: Record<ConversationStatus, string> = {
 export function ConversationSidebar({
   conversation,
   customerName,
+  customerRatingAverage,
+  customerRatingCount,
 }: {
   conversation: Conversation
   customerName: string
+  customerRatingAverage: number | null
+  customerRatingCount: number
 }) {
   const { t } = useTranslation('conversationsCore')
   const { hasPermission } = usePermissions()
@@ -109,6 +123,14 @@ export function ConversationSidebar({
             {customerName}
           </Link>
         </Typography>
+        {customerRatingCount > 0 && (
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+            <Rating value={customerRatingAverage} precision={0.5} readOnly size="small" />
+            <Typography variant="caption" color="text.secondary">
+              {t('ConversationSidebar.customerRatingCount', { count: customerRatingCount })}
+            </Typography>
+          </Stack>
+        )}
       </div>
       <div>
         <Typography variant="overline" color="text.secondary">
