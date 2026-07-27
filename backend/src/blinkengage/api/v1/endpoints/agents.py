@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, status
 from blinkengage.api.deps import (
     get_agent_service,
     get_agent_skill_service,
+    get_conversation_service,
     get_current_auth,
     get_role_service,
     require_permission,
@@ -13,6 +14,7 @@ from blinkengage.api.deps import (
 from blinkengage.api.schemas.agent import (
     AgentCreateRequest,
     AgentPasswordResetRequest,
+    AgentRemovalRequest,
     AgentResponse,
     AgentUpdateRequest,
     SelfAvailabilityUpdateRequest,
@@ -22,9 +24,12 @@ from blinkengage.api.schemas.queue import AgentSkillResponse, RequiredSkillReque
 from blinkengage.api.schemas.role import AgentRoleResponse, AgentRoleUpdateRequest
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
+from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.core.auth_context import AuthContext
+from blinkengage.domain.exceptions import InvalidAgentTransferTargetError
 from blinkengage.infrastructure.database.models.agent import Agent
+from blinkengage.infrastructure.database.models.conversation_transfer import TransferTargetType
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -152,7 +157,64 @@ async def delete_agent(
     auth: Annotated[AuthContext, Depends(require_permission("agents.manage"))],
     service: Annotated[AgentService, Depends(get_agent_service)],
 ) -> None:
+    """Unconditional soft-delete, unchanged — kept exactly as it always
+    behaved for backward compatibility. ``POST /{agent_id}/removal``
+    below is the richer flow the frontend now actually uses, which
+    explicitly disposes of the agent's conversations first."""
     await service.delete(company_id=auth.company_id, agent_id=agent_id, actor_user_id=auth.user_id)
+
+
+@router.post("/{agent_id}/removal", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_agent(
+    agent_id: UUID,
+    payload: AgentRemovalRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("agents.manage"))],
+    agent_service: Annotated[AgentService, Depends(get_agent_service)],
+    conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> None:
+    """Disposes of every conversation currently assigned to this agent —
+    per the caller's chosen ``mode`` — before deleting the agent itself.
+    Reuses ``ConversationService``'s existing single-conversation
+    ``transfer``/``delete`` rather than any new bulk-mutation logic, so
+    each affected conversation gets exactly the same audit trail entry a
+    manual transfer/delete would produce. See
+    ``docs/architecture/administration.md``."""
+    await agent_service.get(company_id=auth.company_id, agent_id=agent_id)
+
+    conversations = await conversation_service.list_all_for_agent(
+        company_id=auth.company_id, agent_id=agent_id
+    )
+
+    if payload.mode == "transfer":
+        to_agent_id = payload.transfer_to_agent_id
+        if to_agent_id is None or to_agent_id == agent_id:
+            raise InvalidAgentTransferTargetError(agent_id)
+        # Validated up front rather than left to transfer()'s own check —
+        # with zero conversations to move, the loop below would never
+        # call transfer() at all, so a nonexistent target would otherwise
+        # go unnoticed.
+        await agent_service.get(company_id=auth.company_id, agent_id=to_agent_id)
+        for conversation in conversations:
+            await conversation_service.transfer(
+                company_id=auth.company_id,
+                conversation_id=conversation.id,
+                target_type=TransferTargetType.AGENT,
+                to_agent_id=to_agent_id,
+                to_department_id=None,
+                note="Automatically transferred — the previous agent was removed.",
+                actor_user_id=auth.user_id,
+            )
+    else:
+        for conversation in conversations:
+            await conversation_service.delete(
+                company_id=auth.company_id,
+                conversation_id=conversation.id,
+                actor_user_id=auth.user_id,
+            )
+
+    await agent_service.delete(
+        company_id=auth.company_id, agent_id=agent_id, actor_user_id=auth.user_id
+    )
 
 
 @router.get("/{agent_id}/skills", response_model=list[AgentSkillResponse])

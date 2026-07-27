@@ -60,9 +60,27 @@
     "emptyStateTitleDefault": "No agents yet",
     "emptyStateDescriptionSearch": "Try a different search.",
     "emptyStateDescriptionDefault": "Create your first agent to start handling conversations.",
-    "dataTableAriaLabel": "Agents",
-    "removeAgentTitle": "Remove agent",
-    "removeAgentDescription": "Remove {{name}} from your company? They will lose access immediately.",
-    "removeAgentConfirmLabel": "Remove"
+    "dataTableAriaLabel": "Agents"
+  },
+  "AgentRemovalDialog": {
+    "title": "Remove {{name}}",
+    "errorFallback": "Could not remove this agent.",
+    "conversationsWarning": "{{count}} conversation(s) are currently assigned to this agent.",
+    "noConversations": "This agent has no conversations currently assigned to them.",
+    "transferToggle": "Transfer conversations",
+    "permanentToggle": "Permanently delete",
+    "searchAgentsLabel": "Transfer to",
+    "permanentWarning": "Every conversation assigned to this agent will be permanently deleted along with the agent. This cannot be undone.",
+    "confirmTransferMessage": "Remove {{agentName}} and transfer all of their conversations to {{targetName}}?",
+    "confirmPermanentMessage": "This will permanently delete {{agentName}} and {{count}} assigned conversation(s).",
+    "irreversibleNote": "This action cannot be undone.",
+    "typeToConfirmMessage": "Type \"{{name}}\" to confirm.",
+    "typeToConfirmLabel": "Agent's full name",
+    "cancelButton": "Cancel",
+    "continueButton": "Continue",
+    "backButton": "Back",
+    "confirmTransferButton": "Transfer & remove",
+    "confirmPermanentButton": "Permanently delete",
+    "removingButton": "Removing…"
   }
 }

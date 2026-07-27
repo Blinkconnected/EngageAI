@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page, PageParams } from '../../shared/api/pagination'
-import type { Agent, AgentCreateRequest, AgentUpdateRequest, SelfAvailabilityStatus } from './types'
+import { CONVERSATIONS_LIST_KEY } from '../conversations/api'
+import type {
+  Agent,
+  AgentCreateRequest,
+  AgentRemovalRequest,
+  AgentUpdateRequest,
+  SelfAvailabilityStatus,
+} from './types'
 
 const AGENTS_LIST_KEY = ['agents', 'list']
 
@@ -22,6 +29,10 @@ async function updateAgent(agentId: string, payload: AgentUpdateRequest): Promis
 
 async function deleteAgent(agentId: string): Promise<void> {
   await apiClient.delete(`/agents/${agentId}`)
+}
+
+async function removeAgent(agentId: string, payload: AgentRemovalRequest): Promise<void> {
+  await apiClient.post(`/agents/${agentId}/removal`, payload)
 }
 
 async function resetAgentPassword(agentId: string, newPassword: string): Promise<void> {
@@ -82,6 +93,23 @@ export function useDeleteAgentMutation() {
   return useMutation({
     mutationFn: deleteAgent,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: AGENTS_LIST_KEY }),
+  })
+}
+
+/** The richer counterpart to `useDeleteAgentMutation` — see
+ * AgentRemovalDialog.tsx. Transfers or deletes every conversation still
+ * assigned to the agent (server-side) before removing the agent itself,
+ * so both the agent list and the Inbox need invalidating. */
+export function useRemoveAgentMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ agentId, payload }: { agentId: string; payload: AgentRemovalRequest }) =>
+      removeAgent(agentId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: AGENTS_LIST_KEY })
+      queryClient.invalidateQueries({ queryKey: ['agents', 'all'] })
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+    },
   })
 }
 

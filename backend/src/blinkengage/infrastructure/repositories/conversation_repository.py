@@ -127,3 +127,25 @@ class ConversationRepository:
     async def soft_delete(self, conversation: Conversation) -> None:
         conversation.deleted_at = datetime.now(UTC)
         await self._session.flush()
+
+    # A generous but still finite cap, same reasoning as reports/audit-log
+    # export's own row limits — a cheap safety net against a pathological
+    # case, not real pagination (see list_all_for_agent's docstring).
+    _MAX_AGENT_REMOVAL_CONVERSATIONS = 10_000
+
+    async def list_all_for_agent(self, *, company_id: UUID, agent_id: UUID) -> list[Conversation]:
+        """Every conversation currently assigned to ``agent_id``, whatever
+        its status — unpaginated, unlike ``list_for_company``. Used only
+        by the agent-removal flow (transfer-all/delete-all-then-remove,
+        see ``api.v1.endpoints.agents``'s ``remove_agent``), never a
+        user-facing list."""
+        result = await self._session.execute(
+            select(Conversation)
+            .where(
+                Conversation.company_id == company_id,
+                Conversation.assigned_agent_id == agent_id,
+                Conversation.deleted_at.is_(None),
+            )
+            .limit(self._MAX_AGENT_REMOVAL_CONVERSATIONS)
+        )
+        return list(result.scalars().all())

@@ -111,6 +111,26 @@ export const agentsHandlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
+  http.post(`${API_BASE_URL}/agents/:agentId/removal`, async ({ request, params }) => {
+    const payload = (await request.json()) as {
+      mode: 'transfer' | 'permanent'
+      transfer_to_agent_id?: string
+    }
+    if (!agents.some((agent) => agent.id === params.agentId)) {
+      return HttpResponse.json({ detail: 'Not found' }, { status: 404 })
+    }
+    if (payload.mode === 'transfer') {
+      if (payload.transfer_to_agent_id === params.agentId) {
+        return HttpResponse.json({ detail: 'Cannot transfer to self' }, { status: 400 })
+      }
+      if (!agents.some((agent) => agent.id === payload.transfer_to_agent_id)) {
+        return HttpResponse.json({ detail: 'Target agent not found' }, { status: 404 })
+      }
+    }
+    agents = agents.filter((agent) => agent.id !== params.agentId)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.post(`${API_BASE_URL}/agents/:agentId/password`, ({ params }) => {
     const exists = agents.some((agent) => agent.id === params.agentId)
     if (!exists) return HttpResponse.json({ detail: 'Not found' }, { status: 404 })

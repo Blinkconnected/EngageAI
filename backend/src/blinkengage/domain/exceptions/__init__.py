@@ -304,3 +304,15 @@ class WeakPasswordError(DomainError):
     def __init__(self, required_length: int) -> None:
         self.required_length = required_length
         super().__init__(f"Password must be at least {required_length} characters long")
+
+
+class InvalidAgentTransferTargetError(DomainError):
+    """Raised when removing an agent in "transfer" mode names the agent
+    being removed as its own transfer target — every other target-not-
+    found case already raises ``EntityNotFoundError`` naturally (the same
+    lookup ``ConversationService.transfer`` performs for a manual
+    transfer)."""
+
+    def __init__(self, agent_id: object) -> None:
+        self.agent_id = agent_id
+        super().__init__(f"Agent {agent_id!r} cannot be its own conversation-transfer target")

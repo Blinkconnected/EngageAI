@@ -29,6 +29,12 @@ for more detail on how this page is put together.
 - Every PDF and Excel report export (and the audit log export) now
   automatically includes your company logo at the top, once you've
   uploaded one.
+- Removing an agent now asks what to do with any conversations still
+  assigned to them: transfer every one of them to another agent, or
+  permanently delete the agent together with those conversations.
+  Permanent deletion requires two separate confirmation steps, including
+  typing the agent's name, since it can't be undone the way a transfer
+  can.
 - Manual pickup and release for queued conversations, so agents can claim
   or hand back work directly from the Inbox, with a new "Busy" status
   agents can set for themselves.

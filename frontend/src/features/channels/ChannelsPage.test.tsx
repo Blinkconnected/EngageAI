@@ -163,8 +163,7 @@ describe('ChannelsPage', () => {
 
     await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
     expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()
-  }, // this sandbox's constrained (2-core) hardware — it's the one test in // This test alone exceeds the file's already-bumped 15s default under
-  // the suite that types into two extra fields and toggles a Collapse
+  }, // the suite that types into two extra fields and toggles a Collapse // this sandbox's constrained (2-core) hardware — it's the one test in // This test alone exceeds the file's already-bumped 15s default under
   // section on top of the shared heavy DataGrid mount every test in this
   // file pays for. A local override here (not another global bump) keeps
   // the rest of the suite's timeout tight on ordinary CI hardware.

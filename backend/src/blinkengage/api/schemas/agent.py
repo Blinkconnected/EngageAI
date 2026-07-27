@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from blinkengage.api.schemas.validators import validate_password_strength
 from blinkengage.infrastructure.database.models.agent import AgentStatus
@@ -53,6 +53,24 @@ class AgentPasswordResetRequest(BaseModel):
     @classmethod
     def _check_password_strength(cls, value: str) -> str:
         return validate_password_strength(value)
+
+
+class AgentRemovalRequest(BaseModel):
+    """Body for ``POST /agents/{agent_id}/removal`` — the richer
+    counterpart to the plain ``DELETE /agents/{agent_id}`` (kept
+    unchanged for backward compatibility), which explicitly disposes of
+    the agent's currently assigned conversations first. See
+    ``docs/architecture/administration.md``."""
+
+    mode: Literal["transfer", "permanent"]
+    # Required (and validated) only for "transfer" — "permanent" ignores it.
+    transfer_to_agent_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _check_transfer_target(self) -> "AgentRemovalRequest":
+        if self.mode == "transfer" and self.transfer_to_agent_id is None:
+            raise ValueError("transfer_to_agent_id is required when mode is 'transfer'")
+        return self
 
 
 class AgentResponse(BaseModel):

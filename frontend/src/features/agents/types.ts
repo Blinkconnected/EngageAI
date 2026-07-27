@@ -33,3 +33,11 @@ export interface AgentUpdateRequest {
   department_id?: string | null
   status?: AgentStatus
 }
+
+/** Body for `POST /agents/{id}/removal` — see AgentRemovalDialog.tsx.
+ * `transfer_to_agent_id` is required (and validated server-side) only
+ * when `mode` is `'transfer'`. */
+export interface AgentRemovalRequest {
+  mode: 'transfer' | 'permanent'
+  transfer_to_agent_id?: string
+}

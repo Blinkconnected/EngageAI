@@ -9,16 +9,16 @@ import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
-import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { usePaginationParams } from '../../shared/api/pagination'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useAllDepartmentsQuery } from '../departments/api'
 import { AgentCreateDialog } from './AgentCreateDialog'
 import { AgentEditDialog } from './AgentEditDialog'
+import { AgentRemovalDialog } from './AgentRemovalDialog'
 import { AgentResetPasswordDialog } from './AgentResetPasswordDialog'
 import { AgentRoleDialog } from './AgentRoleDialog'
-import { useAgentsQuery, useDeleteAgentMutation } from './api'
+import { useAgentsQuery } from './api'
 import type { Agent, AgentStatus } from './types'
 
 const STATUS_COLOR: Record<AgentStatus, 'success' | 'warning' | 'default'> = {
@@ -41,10 +41,9 @@ export function AgentsPage() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
-  const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null)
+  const [removingAgent, setRemovingAgent] = useState<Agent | null>(null)
   const [resettingPasswordAgent, setResettingPasswordAgent] = useState<Agent | null>(null)
   const [changingRoleAgent, setChangingRoleAgent] = useState<Agent | null>(null)
-  const deleteMutation = useDeleteAgentMutation()
 
   const departmentNameById = useMemo(() => {
     const map = new Map<string, string>()
@@ -131,7 +130,7 @@ export function AgentsPage() {
                           key="delete"
                           icon={<DeleteOutlineIcon fontSize="small" />}
                           label={t('AgentsPage.actionDelete')}
-                          onClick={() => setDeletingAgent(params.row)}
+                          onClick={() => setRemovingAgent(params.row)}
                         />,
                       ]
                     : []),
@@ -217,22 +216,7 @@ export function AgentsPage() {
             agent={resettingPasswordAgent}
             onClose={() => setResettingPasswordAgent(null)}
           />
-          <ConfirmDialog
-            open={Boolean(deletingAgent)}
-            title={t('AgentsPage.removeAgentTitle')}
-            description={t('AgentsPage.removeAgentDescription', {
-              name: deletingAgent?.full_name ?? '',
-            })}
-            confirmLabel={t('AgentsPage.removeAgentConfirmLabel')}
-            confirmColor="error"
-            isConfirming={deleteMutation.isPending}
-            onConfirm={() => {
-              if (deletingAgent) {
-                deleteMutation.mutate(deletingAgent.id, { onSuccess: () => setDeletingAgent(null) })
-              }
-            }}
-            onClose={() => setDeletingAgent(null)}
-          />
+          <AgentRemovalDialog agent={removingAgent} onClose={() => setRemovingAgent(null)} />
         </>
       )}
 

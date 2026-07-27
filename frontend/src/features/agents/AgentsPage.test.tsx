@@ -96,14 +96,40 @@ describe('AgentsPage', () => {
     expect(await screen.findByLabelText(/^role/i)).toHaveTextContent('Admin')
   })
 
-  it('deletes an agent after confirming', async () => {
+  it('removes an agent by transferring their conversations to another agent', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<AgentsPage />)
     const row = (await screen.findByText('Grace Hopper')).closest('[role="row"]')
     expect(row).not.toBeNull()
 
     await user.click(within(row as HTMLElement).getByLabelText('Delete'))
-    await user.click(await screen.findByRole('button', { name: /^remove$/i }))
+    // Transfer is the default mode — pick a target agent to continue.
+    await user.click(await screen.findByLabelText(/transfer to/i))
+    await user.click(await screen.findByRole('option', { name: 'Mock Self Agent' }))
+    await user.click(screen.getByRole('button', { name: /^continue$/i }))
+    await user.click(await screen.findByRole('button', { name: /transfer & remove/i }))
+
+    await waitFor(() => expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument())
+  })
+
+  it('permanently removes an agent after two confirmation steps', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<AgentsPage />)
+    const row = (await screen.findByText('Grace Hopper')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    await user.click(within(row as HTMLElement).getByLabelText('Delete'))
+    await user.click(await screen.findByRole('button', { name: /^permanently delete$/i }))
+    // First confirmation step: the consequences warning.
+    await user.click(screen.getByRole('button', { name: /^continue$/i }))
+    // Second confirmation step: the final button stays disabled until the
+    // agent's exact name is typed in.
+    await user.click(await screen.findByRole('button', { name: /^continue$/i }))
+    const finalButton = await screen.findByRole('button', { name: /^permanently delete$/i })
+    expect(finalButton).toBeDisabled()
+    await user.type(screen.getByLabelText(/agent's full name/i), 'Grace Hopper')
+    expect(finalButton).toBeEnabled()
+    await user.click(finalButton)
 
     await waitFor(() => expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument())
   })

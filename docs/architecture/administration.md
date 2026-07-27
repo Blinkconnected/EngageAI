@@ -57,6 +57,50 @@ frontend fetches this authenticated and renders it via a blob URL
 attachments — not a direct `<img src>` to a raw storage URL. Re-uploading
 best-effort deletes the previous object rather than accumulating orphans.
 
+## Agent removal: transfer or permanent delete
+
+Added later (Enterprise Readiness & UX milestone, Priority 2 item 12).
+The plain `DELETE /agents/{agent_id}` (unconditional soft-delete) is left
+completely unchanged for backward compatibility — it never touched the
+agent's assigned conversations before this milestone and still doesn't.
+The frontend now exclusively uses a new, richer endpoint instead: `POST
+/agents/{agent_id}/removal`, gated by the same `agents.manage`
+permission, taking `{mode: "transfer" | "permanent", transfer_to_agent_id?}`.
+
+Both modes fetch every conversation still assigned to the departing
+agent (`ConversationRepository.list_all_for_agent` — unpaginated, capped
+at 10,000 as a safety net, never a user-facing list) and dispose of each
+one via `ConversationService`'s existing single-conversation
+`transfer()`/`delete()` — reused as-is, not duplicated, so every affected
+conversation gets exactly the same audit trail entry a manual
+transfer/delete would produce. Only after that does it call the
+existing `AgentService.delete()`.
+
+"Permanently delete...together with assigned conversations" is
+implemented as a **soft** delete of those conversations (`Conversation
+.deleted_at`), the same mechanism already used everywhere else in this
+codebase (Agent, Department, Conversation all soft-delete) — not a
+literal irreversible SQL purge. A true hard delete would need explicit
+cascade handling this codebase has never needed before (MinIO attachment
+object cleanup, compliance/audit-retention implications for the
+Healthcare/Financial/Government customers this product targets) and has
+no precedent anywhere in this codebase (confirmed: no `hard_delete`/
+`purge` method exists for any entity). Soft-deleting achieves the same
+user-facing result — the conversation is gone from every query, report,
+and view, exactly like any other "deleted" record in this app — without
+introducing a new, riskier data-destruction primitive. This is a
+deliberate interpretation of the roadmap's "permanently delete," not an
+oversight; revisit if literal data purging is ever actually required
+(e.g. a GDPR right-to-erasure request), which would be its own
+dedicated feature with its own compliance review, not a side effect of
+an agent-management action.
+
+Transferring to the agent being removed is rejected
+(`InvalidAgentTransferTargetError`, 400) — checked explicitly up front
+rather than left to `transfer()`'s own target-lookup, since with zero
+conversations to move the loop would never call `transfer()` at all and
+a nonexistent/self target would otherwise go unnoticed.
+
 ## Plugin registry introspection
 
 `GET /admin/plugins` (`company.manage`) reports what's actually

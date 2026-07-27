@@ -666,6 +666,130 @@ async def test_transfer_records_whether_the_recipient_was_online(
     assert response_2.json()["recipient_was_online"] is True
 
 
+class TestAgentRemoval:
+    """``POST /agents/{agent_id}/removal`` (P2.12) — the richer
+    counterpart to the plain ``DELETE /agents/{agent_id}`` that
+    explicitly disposes of the agent's conversations first. Lives here
+    (not test_agents_api.py) since every test needs the conversation-
+    creation/transfer machinery this file already has."""
+
+    async def test_transfer_mode_reassigns_every_conversation_then_deletes_the_agent(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+    ) -> None:
+        departing_agent = await _create_agent(client, owner_headers, "departing@acme.example")
+        target_agent = await _create_agent(client, owner_headers, "target@acme.example")
+
+        conversation_1 = await _create_conversation(client, owner_headers, registered_owner, app)
+        conversation_2 = await _create_conversation(client, owner_headers, registered_owner, app)
+        for conversation in (conversation_1, conversation_2):
+            transfer_response = await client.post(
+                f"/api/v1/conversations/{conversation['id']}/transfer",
+                json={"target_type": "agent", "to_agent_id": departing_agent["id"]},
+                headers=owner_headers,
+            )
+            assert transfer_response.status_code == 201, transfer_response.text
+
+        removal_response = await client.post(
+            f"/api/v1/agents/{departing_agent['id']}/removal",
+            json={"mode": "transfer", "transfer_to_agent_id": target_agent["id"]},
+            headers=owner_headers,
+        )
+        assert removal_response.status_code == 204, removal_response.text
+
+        for conversation in (conversation_1, conversation_2):
+            get_response = await client.get(
+                f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
+            )
+            assert get_response.json()["assigned_agent_id"] == target_agent["id"]
+
+        deleted_agent_response = await client.get(
+            f"/api/v1/agents/{departing_agent['id']}", headers=owner_headers
+        )
+        assert deleted_agent_response.status_code == 404
+
+    async def test_permanent_mode_deletes_the_agents_conversations_and_the_agent(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+    ) -> None:
+        departing_agent = await _create_agent(client, owner_headers, "purge-me@acme.example")
+        conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+        await client.post(
+            f"/api/v1/conversations/{conversation['id']}/transfer",
+            json={"target_type": "agent", "to_agent_id": departing_agent["id"]},
+            headers=owner_headers,
+        )
+
+        removal_response = await client.post(
+            f"/api/v1/agents/{departing_agent['id']}/removal",
+            json={"mode": "permanent"},
+            headers=owner_headers,
+        )
+        assert removal_response.status_code == 204, removal_response.text
+
+        get_conversation_response = await client.get(
+            f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
+        )
+        assert get_conversation_response.status_code == 404
+
+        get_agent_response = await client.get(
+            f"/api/v1/agents/{departing_agent['id']}", headers=owner_headers
+        )
+        assert get_agent_response.status_code == 404
+
+    async def test_transfer_mode_rejects_transferring_to_the_agent_being_removed(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        agent = await _create_agent(client, owner_headers, "self-transfer@acme.example")
+
+        response = await client.post(
+            f"/api/v1/agents/{agent['id']}/removal",
+            json={"mode": "transfer", "transfer_to_agent_id": agent["id"]},
+            headers=owner_headers,
+        )
+        assert response.status_code == 400
+
+    async def test_transfer_mode_requires_a_transfer_target(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        agent = await _create_agent(client, owner_headers, "no-target@acme.example")
+
+        response = await client.post(
+            f"/api/v1/agents/{agent['id']}/removal",
+            json={"mode": "transfer"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_transfer_mode_to_a_nonexistent_agent_404s(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        agent = await _create_agent(client, owner_headers, "orphan@acme.example")
+
+        response = await client.post(
+            f"/api/v1/agents/{agent['id']}/removal",
+            json={
+                "mode": "transfer",
+                "transfer_to_agent_id": "00000000-0000-0000-0000-000000000000",
+            },
+            headers=owner_headers,
+        )
+        assert response.status_code == 404
+
+    async def test_removal_requires_agents_manage_permission(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        agent = await _create_agent(client, owner_headers, "protected@acme.example")
+        _, agent_headers = await _create_agent_with_headers(
+            client, owner_headers, "plain-agent@acme.example"
+        )
+
+        response = await client.post(
+            f"/api/v1/agents/{agent['id']}/removal",
+            json={"mode": "permanent"},
+            headers=agent_headers,
+        )
+        assert response.status_code == 403
+
+
 async def test_list_conversations_filters_by_assigned_agent_id(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:

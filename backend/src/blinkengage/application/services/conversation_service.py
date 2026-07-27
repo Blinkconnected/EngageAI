@@ -160,6 +160,11 @@ class ConversationService:
             unassigned_only=unassigned_only,
         )
 
+    async def list_all_for_agent(self, *, company_id: UUID, agent_id: UUID) -> list[Conversation]:
+        return await self._conversations.list_all_for_agent(
+            company_id=company_id, agent_id=agent_id
+        )
+
     async def update(
         self,
         *,

@@ -60,9 +60,27 @@
     "emptyStateTitleDefault": "لا يوجد وكلاء بعد",
     "emptyStateDescriptionSearch": "جرّب بحثًا مختلفًا.",
     "emptyStateDescriptionDefault": "أنشئ أول وكيل لديك لبدء التعامل مع المحادثات.",
-    "dataTableAriaLabel": "الوكلاء",
-    "removeAgentTitle": "إزالة الوكيل",
-    "removeAgentDescription": "هل تريد إزالة {{name}} من شركتك؟ سيفقد الوصول فورًا.",
-    "removeAgentConfirmLabel": "إزالة"
+    "dataTableAriaLabel": "الوكلاء"
+  },
+  "AgentRemovalDialog": {
+    "title": "إزالة {{name}}",
+    "errorFallback": "تعذّرت إزالة هذا الوكيل.",
+    "conversationsWarning": "توجد {{count}} محادثة (محادثات) مُسندة حاليًا إلى هذا الوكيل.",
+    "noConversations": "لا توجد محادثات مُسندة حاليًا إلى هذا الوكيل.",
+    "transferToggle": "نقل المحادثات",
+    "permanentToggle": "حذف نهائي",
+    "searchAgentsLabel": "النقل إلى",
+    "permanentWarning": "سيتم حذف كل محادثة مُسندة إلى هذا الوكيل نهائيًا مع الوكيل نفسه. لا يمكن التراجع عن هذا الإجراء.",
+    "confirmTransferMessage": "هل تريد إزالة {{agentName}} ونقل جميع محادثاته إلى {{targetName}}؟",
+    "confirmPermanentMessage": "سيؤدي هذا إلى حذف {{agentName}} نهائيًا مع {{count}} محادثة (محادثات) مُسندة إليه.",
+    "irreversibleNote": "لا يمكن التراجع عن هذا الإجراء.",
+    "typeToConfirmMessage": "اكتب \"{{name}}\" للتأكيد.",
+    "typeToConfirmLabel": "الاسم الكامل للوكيل",
+    "cancelButton": "إلغاء",
+    "continueButton": "متابعة",
+    "backButton": "رجوع",
+    "confirmTransferButton": "نقل وإزالة",
+    "confirmPermanentButton": "حذف نهائي",
+    "removingButton": "جارٍ الإزالة…"
   }
 }
