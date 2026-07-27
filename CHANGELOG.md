@@ -23,6 +23,9 @@ for more detail on how this page is put together.
   English remains the default. The sign-in/registration pages, the
   public Changelog, and the customer-facing satisfaction survey page
   aren't translated yet and stay in English for this release.
+- You can now upload your company logo directly from your computer in
+  Settings → Branding, instead of pasting a link to an image hosted
+  elsewhere.
 - Manual pickup and release for queued conversations, so agents can claim
   or hand back work directly from the Inbox, with a new "Busy" status
   agents can set for themselves.
@@ -93,6 +96,7 @@ for more detail on how this page is put together.
 
 ### Changed
 
+- The Branding tab in Settings has moved to the bottom of the tab list.
 - Settings → Language now only offers languages with a complete
   translation (English and Arabic) rather than listing French and
   Spanish alongside them with no actual translated text behind them.

@@ -37,10 +37,6 @@ SupportedLanguage = Literal["en", "ar", "fr", "es"]
 SUPPORTED_LANGUAGES: tuple[str, ...] = get_args(SupportedLanguage)
 
 
-class BrandingSettingsUpdate(BaseModel):
-    logo_url: str | None = Field(default=None, max_length=2000)
-
-
 class BusinessHoursDay(BaseModel):
     open: str = "09:00"
     close: str = "17:00"
@@ -97,7 +93,9 @@ class CompanySettingsUpdate(BaseModel):
     not a sparse per-field patch within the section."""
 
     onboarding: OnboardingSettingsUpdate | None = None
-    branding: BrandingSettingsUpdate | None = None
+    # No `branding` section here — the logo is managed exclusively via
+    # POST/DELETE /company/logo (see api/v1/endpoints/company.py), not a
+    # generic settings PATCH, since it's a file upload, not a form field.
     language: SupportedLanguage | None = None
     timezone: str | None = None
     business_hours: BusinessHoursSettingsUpdate | None = None

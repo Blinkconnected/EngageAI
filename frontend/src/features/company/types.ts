@@ -27,8 +27,16 @@ export interface BusinessHoursDay {
   closed: boolean
 }
 
+/** Read-only from the client's perspective — set exclusively via
+ * `POST`/`DELETE /company/logo` (see `api.ts`'s `useUploadCompanyLogoMutation`/
+ * `useDeleteCompanyLogoMutation`), never through the generic company
+ * settings PATCH. `logo_key` is an internal storage reference, not a
+ * fetchable URL — the actual bytes come from `GET /company/logo`
+ * (`useCompanyLogoUrl`), same authenticated-blob-fetch pattern as
+ * message attachments. */
 export interface BrandingSettings {
-  logo_url?: string | null
+  logo_key?: string | null
+  logo_content_type?: string | null
 }
 
 export interface BusinessHoursSettings {

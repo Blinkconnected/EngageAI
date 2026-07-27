@@ -58,10 +58,7 @@ class TestUpdate:
             "/api/v1/company",
             json={
                 "name": "Acme Corporation",
-                "settings": {
-                    "timezone": "America/New_York",
-                    "branding": {"logo_url": "https://cdn.example.com/logo.png"},
-                },
+                "settings": {"timezone": "America/New_York"},
             },
             headers=owner_headers,
         )
@@ -70,7 +67,6 @@ class TestUpdate:
         body = response.json()
         assert body["name"] == "Acme Corporation"
         assert body["settings"]["timezone"] == "America/New_York"
-        assert body["settings"]["branding"]["logo_url"] == "https://cdn.example.com/logo.png"
 
         get_response = await client.get("/api/v1/company", headers=owner_headers)
         assert get_response.json()["name"] == "Acme Corporation"
@@ -390,4 +386,113 @@ class TestAiConfig:
 
     async def test_requires_authentication(self, client: AsyncClient) -> None:
         response = await client.get("/api/v1/company/ai-config")
+        assert response.status_code in (401, 403)
+
+
+class TestLogo:
+    async def test_no_logo_uploaded_returns_404(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        response = await client.get("/api/v1/company/logo", headers=owner_headers)
+        assert response.status_code == 404
+
+    async def test_owner_can_upload_and_fetch_a_logo(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        upload_response = await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", b"fake-png-bytes", "image/png")},
+            headers=owner_headers,
+        )
+        assert upload_response.status_code == 200, upload_response.text
+        assert upload_response.json()["settings"]["branding"]["logo_content_type"] == "image/png"
+
+        get_response = await client.get("/api/v1/company/logo", headers=owner_headers)
+        assert get_response.status_code == 200
+        assert get_response.headers["content-type"] == "image/png"
+        assert get_response.content == b"fake-png-bytes"
+
+    async def test_re_uploading_replaces_the_previous_logo(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", b"first-version", "image/png")},
+            headers=owner_headers,
+        )
+        await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.webp", b"second-version", "image/webp")},
+            headers=owner_headers,
+        )
+
+        get_response = await client.get("/api/v1/company/logo", headers=owner_headers)
+        assert get_response.content == b"second-version"
+        assert get_response.headers["content-type"] == "image/webp"
+
+    async def test_rejects_disallowed_content_type(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        response = await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.svg", b"<svg></svg>", "image/svg+xml")},
+            headers=owner_headers,
+        )
+        assert response.status_code == 400
+
+    async def test_rejects_oversized_file(self, client: AsyncClient, owner_headers: dict) -> None:
+        oversized = b"x" * (2 * 1024 * 1024 + 1)
+        response = await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", oversized, "image/png")},
+            headers=owner_headers,
+        )
+        assert response.status_code == 400
+
+    async def test_owner_can_delete_the_logo(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", b"fake-png-bytes", "image/png")},
+            headers=owner_headers,
+        )
+
+        delete_response = await client.delete("/api/v1/company/logo", headers=owner_headers)
+        assert delete_response.status_code == 200
+        assert delete_response.json()["settings"]["branding"]["logo_key"] is None
+
+        get_response = await client.get("/api/v1/company/logo", headers=owner_headers)
+        assert get_response.status_code == 404
+
+    async def test_agent_cannot_upload_or_delete_logo(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        await client.post(
+            "/api/v1/agents",
+            json={
+                "email": "logo-agent@acme.example",
+                "full_name": "Agent",
+                "password": "correct-horse-battery-9",
+            },
+            headers=owner_headers,
+        )
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "logo-agent@acme.example", "password": "correct-horse-battery-9"},
+        )
+        agent_headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+
+        upload_response = await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", b"fake-png-bytes", "image/png")},
+            headers=agent_headers,
+        )
+        assert upload_response.status_code == 403
+
+        delete_response = await client.delete("/api/v1/company/logo", headers=agent_headers)
+        assert delete_response.status_code == 403
+
+    async def test_requires_authentication(self, client: AsyncClient) -> None:
+        response = await client.get("/api/v1/company/logo")
         assert response.status_code in (401, 403)

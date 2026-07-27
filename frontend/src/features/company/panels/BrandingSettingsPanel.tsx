@@ -1,29 +1,29 @@
-import { useState } from 'react'
-import {
-  Alert,
-  Avatar,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material'
+import { useRef, type ChangeEvent } from 'react'
+import { Alert, Avatar, Button, Card, CardContent, Stack, Typography } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
-import { useUpdateCompanyMutation } from '../api'
+import {
+  useCompanyLogoUrl,
+  useDeleteCompanyLogoMutation,
+  useUploadCompanyLogoMutation,
+} from '../api'
 import type { Company } from '../types'
+
+const ACCEPTED_TYPES = 'image/png,image/jpeg,image/webp'
 
 export function BrandingSettingsPanel({ company }: { company: Company }) {
   const { t } = useTranslation('companySettings')
-  const [logoUrl, setLogoUrl] = useState(company.settings.branding?.logo_url ?? '')
-  const updateMutation = useUpdateCompanyMutation()
-  const savedLogoUrl = company.settings.branding?.logo_url ?? ''
-  const isDirty = logoUrl !== savedLogoUrl
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const logoKey = company.settings.branding?.logo_key
+  const logoUrlQuery = useCompanyLogoUrl(logoKey)
+  const uploadMutation = useUploadCompanyLogoMutation()
+  const deleteMutation = useDeleteCompanyLogoMutation()
 
-  function handleSave() {
-    updateMutation.mutate({ settings: { branding: { logo_url: logoUrl || null } } })
+  function handleFileSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // Reset so choosing the exact same file again still fires onChange.
+    event.target.value = ''
+    if (file) uploadMutation.mutate(file)
   }
 
   return (
@@ -34,57 +34,63 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
             {t('BrandingSettingsPanel.description')}
           </Typography>
 
-          {updateMutation.isError && (
-            <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
+          {(uploadMutation.isError || deleteMutation.isError) && (
+            <Alert severity="error">
+              {extractErrorMessage(uploadMutation.error ?? deleteMutation.error)}
+            </Alert>
           )}
-          {updateMutation.isSuccess && !isDirty && (
-            <Alert severity="success">{t('BrandingSettingsPanel.savedMessage')}</Alert>
+          {uploadMutation.isSuccess && (
+            <Alert severity="success">{t('BrandingSettingsPanel.uploadedMessage')}</Alert>
+          )}
+          {deleteMutation.isSuccess && (
+            <Alert severity="success">{t('BrandingSettingsPanel.removedMessage')}</Alert>
           )}
 
           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
             <Avatar
               variant="rounded"
-              src={logoUrl || undefined}
+              src={logoUrlQuery.data}
               alt={t('BrandingSettingsPanel.logoPreviewAlt')}
               sx={{ width: 56, height: 56, bgcolor: 'action.hover' }}
             >
               {company.name.charAt(0).toUpperCase()}
             </Avatar>
-            <Box sx={{ flexGrow: 1 }}>
-              <TextField
-                label={t('BrandingSettingsPanel.logoUrlLabel')}
-                value={logoUrl}
-                onChange={(event) => setLogoUrl(event.target.value)}
-                fullWidth
-                placeholder={t('BrandingSettingsPanel.logoUrlPlaceholder')}
-              />
-            </Box>
-          </Stack>
 
-          <Stack direction="row" spacing={2}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              accept={ACCEPTED_TYPES}
+              onChange={handleFileSelected}
+            />
             <Button
-              variant="contained"
-              disabled={updateMutation.isPending || !isDirty}
-              onClick={handleSave}
+              variant="outlined"
+              disabled={uploadMutation.isPending}
+              onClick={() => fileInputRef.current?.click()}
             >
-              {updateMutation.isPending
-                ? t('BrandingSettingsPanel.savingButton')
-                : t('BrandingSettingsPanel.saveChangesButton')}
+              {uploadMutation.isPending
+                ? t('BrandingSettingsPanel.uploadingButton')
+                : logoKey
+                  ? t('BrandingSettingsPanel.changeButton')
+                  : t('BrandingSettingsPanel.uploadButton')}
             </Button>
-            {savedLogoUrl && (
+            {logoKey && (
               <Button
                 color="error"
                 variant="outlined"
-                disabled={updateMutation.isPending}
-                onClick={() => {
-                  setLogoUrl('')
-                  updateMutation.mutate({ settings: { branding: { logo_url: null } } })
-                }}
+                disabled={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate()}
               >
-                {t('BrandingSettingsPanel.removeLogoButton')}
+                {deleteMutation.isPending
+                  ? t('BrandingSettingsPanel.removingButton')
+                  : t('BrandingSettingsPanel.removeLogoButton')}
               </Button>
             )}
           </Stack>
+
+          <Typography variant="caption" color="text.secondary">
+            {t('BrandingSettingsPanel.helperText')}
+          </Typography>
         </Stack>
       </CardContent>
     </Card>

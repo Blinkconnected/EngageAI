@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
@@ -8,6 +8,21 @@ import { queryClient } from '../../app/queryClient'
 import { loggedOut } from '../auth/authSlice'
 import { renderAuthenticated } from '../../test/renderAuthenticated'
 import { CompanySettingsPage } from './CompanySettingsPage'
+
+// `useCompanyLogoUrl` is stubbed (real exports kept via importOriginal) —
+// jsdom's Blob doesn't implement `.stream()`, which MSW's Response
+// construction needs for any blob-typed response, so the real fetch path
+// can't run here. Same documented tooling gap as AttachmentList.test.tsx/
+// AppLayout.test.tsx.
+vi.mock('./api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./api')>()
+  return {
+    ...actual,
+    useCompanyLogoUrl: (logoKey: string | null | undefined) => ({
+      data: logoKey ? 'blob:mock-logo-url' : undefined,
+    }),
+  }
+})
 
 function renderWithRoutes(initialEntry = '/settings/company/general') {
   return renderAuthenticated(
@@ -77,9 +92,6 @@ describe('CompanySettingsPage', () => {
     renderWithRoutes()
     await screen.findByDisplayValue('Acme Corp')
 
-    await user.click(screen.getByRole('tab', { name: 'Branding' }))
-    expect(await screen.findByLabelText(/logo url/i)).toBeInTheDocument()
-
     await user.click(screen.getByRole('tab', { name: 'Language' }))
     expect(await screen.findByLabelText(/default language/i)).toBeInTheDocument()
 
@@ -100,18 +112,40 @@ describe('CompanySettingsPage', () => {
 
     await user.click(screen.getByRole('tab', { name: 'AI' }))
     expect(await screen.findByLabelText(/enable ai engine features/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Branding' }))
+    expect(await screen.findByRole('button', { name: /upload logo/i })).toBeInTheDocument()
   })
 
-  it('saves a branding logo url', async () => {
+  it('uploads a branding logo', async () => {
     const user = userEvent.setup()
     renderWithRoutes('/settings/company/branding')
 
-    const logoField = await screen.findByLabelText(/logo url/i)
-    await user.type(logoField, 'https://cdn.example.com/logo.png')
-    await user.click(screen.getByRole('button', { name: /save changes/i }))
+    await screen.findByRole('button', { name: /upload logo/i })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['fake-png-bytes'], 'logo.png', { type: 'image/png' })
 
-    await waitFor(() => expect(screen.getByText('Saved.')).toBeInTheDocument())
+    await user.upload(fileInput, file)
+
+    await waitFor(() => expect(screen.getByText('Logo updated.')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /change logo/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /remove logo/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^upload logo$/i })).not.toBeInTheDocument()
+  })
+
+  it('removes a branding logo', async () => {
+    const user = userEvent.setup()
+    renderWithRoutes('/settings/company/branding')
+
+    await screen.findByRole('button', { name: /upload logo/i })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(fileInput, new File(['fake-png-bytes'], 'logo.png', { type: 'image/png' }))
+    await screen.findByRole('button', { name: /remove logo/i })
+
+    await user.click(screen.getByRole('button', { name: /remove logo/i }))
+
+    await waitFor(() => expect(screen.getByText('Logo removed.')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /upload logo/i })).toBeInTheDocument()
   })
 
   it('saves the default language', async () => {

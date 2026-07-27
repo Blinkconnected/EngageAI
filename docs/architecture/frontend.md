@@ -250,6 +250,22 @@ API URL couldn't) and triggers the save through a temporary object-URL
 independent of any client-side-only filter a panel applies to its own
 table/chart (e.g. the Conversations tab's channel filter).
 
+**Authenticated blob fetch** is the standing pattern anywhere the app
+needs to render bytes from a non-public-read storage bucket as an
+`<img>`/download: `apiClient.get(path, {responseType: 'blob'})` +
+`URL.createObjectURL(...)`, since a plain `<img src>`/`<a href>` to the
+API URL wouldn't carry the Authorization header. First established for
+message attachments (`conversations/api.ts`'s `fetchAttachmentBlobUrl`),
+reused as-is for the company logo (`company/api.ts`'s
+`useCompanyLogoUrl`) rather than inventing a second convention — the only
+difference is `useCompanyLogoUrl` wraps it in a React Query hook (keyed
+by the logo's storage key, `staleTime`/`gcTime: Infinity`, never
+explicitly revoked — a company has one current logo, replaced rarely, so
+a handful of stale object URLs left behind over a session is a
+negligible cost versus the risk of revoking a blob URL a second still-
+mounted consumer is using) since it's read in two places at once
+(topbar, Branding settings) rather than fetched once per attachment.
+
 ## Reusable UI primitives
 
 `shared/components/` holds the primitives every feature list/detail page

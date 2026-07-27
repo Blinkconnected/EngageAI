@@ -615,8 +615,12 @@ def get_webhook_ingest_service(
 def get_company_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    logos: Annotated[AttachmentStore, Depends(get_attachment_store)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> CompanyService:
-    return CompanyService(companies=CompanyRepository(session), events=events)
+    return CompanyService(
+        companies=CompanyRepository(session), events=events, logos=logos, settings=settings
+    )
 
 
 def get_erp_config_service(

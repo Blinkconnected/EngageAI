@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
@@ -8,6 +8,23 @@ import { loggedOut } from '../auth/authSlice'
 import { apiClient } from '../../shared/api/client'
 import { renderAuthenticated } from '../../test/renderAuthenticated'
 import { AppLayout } from './AppLayout'
+
+// `useCompanyLogoUrl` is stubbed (real exports kept via importOriginal) —
+// jsdom's Blob doesn't implement `.stream()`, which MSW's Response
+// construction needs for any blob-typed response, so the real fetch path
+// can't run here. Same documented tooling gap and same
+// mock-the-blob-fetch workaround as AttachmentList.test.tsx; the real
+// fetch-and-render path is covered by live verification against the
+// production Docker stack in an actual browser, not an automated test.
+vi.mock('../company/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../company/api')>()
+  return {
+    ...actual,
+    useCompanyLogoUrl: (logoKey: string | null | undefined) => ({
+      data: logoKey ? 'blob:mock-logo-url' : undefined,
+    }),
+  }
+})
 
 function renderLayout(initialEntry = '/') {
   return renderAuthenticated(
@@ -42,13 +59,17 @@ describe('AppLayout', () => {
     renderLayout()
     await screen.findByText('Acme Corp')
 
-    await apiClient.patch('/company', {
-      settings: { branding: { logo_url: 'https://cdn.example.com/logo.png' } },
-    })
+    // The mocked useCompanyLogoUrl (see the vi.mock above) reacts to
+    // `logo_key` becoming truthy exactly like the real hook would once
+    // GET /company/logo resolves — this exercises AppLayout's own
+    // rendering decision, not the blob-fetch itself.
+    const formData = new FormData()
+    formData.append('file', new File(['fake-png-bytes'], 'logo.png', { type: 'image/png' }))
+    await apiClient.post('/company/logo', formData, { headers: { 'Content-Type': undefined } })
     await queryClient.invalidateQueries({ queryKey: ['company'] })
 
     const logo = await screen.findByRole('img', { name: /acme corp logo/i })
-    expect(logo).toHaveAttribute('src', 'https://cdn.example.com/logo.png')
+    expect(logo).toHaveAttribute('src', 'blob:mock-logo-url')
   })
 
   it('shows a "Complete setup" banner when onboarding is incomplete', async () => {

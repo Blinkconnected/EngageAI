@@ -21,14 +21,16 @@
     "saveChangesButton": "حفظ التغييرات"
   },
   "BrandingSettingsPanel": {
-    "description": "يظهر في الترويسة بجانب اسم شركتك. الصق رابطًا لصورة مستضافة مسبقًا في مكان آخر (موقعك الإلكتروني، أو شبكة توصيل محتوى (CDN)، إلخ).",
-    "savedMessage": "تم الحفظ.",
+    "description": "يظهر في الترويسة بجانب اسم شركتك. ارفع صورة من جهازك.",
     "logoPreviewAlt": "معاينة الشعار",
-    "logoUrlLabel": "رابط الشعار",
-    "logoUrlPlaceholder": "https://cdn.example.com/logo.png",
-    "savingButton": "جارٍ الحفظ…",
-    "saveChangesButton": "حفظ التغييرات",
-    "removeLogoButton": "إزالة الشعار"
+    "uploadButton": "رفع الشعار",
+    "changeButton": "تغيير الشعار",
+    "uploadingButton": "جارٍ الرفع…",
+    "removeLogoButton": "إزالة الشعار",
+    "removingButton": "جارٍ الإزالة…",
+    "helperText": "PNG أو JPEG أو WebP — بحد أقصى 2 ميغابايت.",
+    "uploadedMessage": "تم تحديث الشعار.",
+    "removedMessage": "تمت إزالة الشعار."
   },
   "LanguageSettingsPanel": {
     "description": "لغة الواجهة الافتراضية لشركتك، يستخدمها جميع المستخدمين المسجّلين.",

@@ -3,9 +3,10 @@ package makes blocking network calls, so every method offloads to a
 worker thread via ``anyio.to_thread.run_sync`` (the standard way FastAPI/
 Starlette-adjacent async code calls blocking libraries) rather than
 blocking the event loop. Shared by any ``ChannelProvider``'s
-``upload_attachment``/``download_attachment`` and, from M13, the
-conversation engine's attachment persistence. See
-``docs/architecture/web-chat.md``.
+``upload_attachment``/``download_attachment``, the conversation engine's
+attachment persistence, and ``CompanyService``'s logo upload (same
+bucket, ``logos/`` key prefix — see ``docs/architecture/web-chat.md``
+and ``docs/architecture/administration.md``).
 """
 
 import io
@@ -42,6 +43,9 @@ class AttachmentStore:
         finally:
             response.close()
             response.release_conn()
+
+    async def delete(self, *, key: str) -> None:
+        await to_thread.run_sync(self._client.remove_object, self._bucket, key)
 
     async def health_check(self) -> bool:
         try:

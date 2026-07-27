@@ -21,7 +21,6 @@ import type { Company } from './types'
 function baseTabsFor(t: (key: string) => string) {
   return [
     { value: 'general', label: t('CompanySettingsPage.tabGeneral') },
-    { value: 'branding', label: t('CompanySettingsPage.tabBranding') },
     { value: 'language', label: t('CompanySettingsPage.tabLanguage') },
     { value: 'timezone', label: t('CompanySettingsPage.tabTimezone') },
     { value: 'business-hours', label: t('CompanySettingsPage.tabBusinessHours') },
@@ -29,6 +28,10 @@ function baseTabsFor(t: (key: string) => string) {
     { value: 'messaging', label: t('CompanySettingsPage.tabMessaging') },
     { value: 'security', label: t('CompanySettingsPage.tabSecurity') },
     { value: 'ai', label: t('CompanySettingsPage.tabAi') },
+    // Branding lives at the bottom of Settings — it's the tab an owner
+    // touches least often (set once at onboarding, rarely revisited),
+    // unlike General/Language/Security above it.
+    { value: 'branding', label: t('CompanySettingsPage.tabBranding') },
   ] as const
 }
 

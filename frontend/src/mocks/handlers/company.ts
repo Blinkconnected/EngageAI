@@ -50,6 +50,40 @@ export const companyHandlers = [
     return HttpResponse.json(company)
   }),
 
+  http.get(`${API_BASE_URL}/company/logo`, () => {
+    const branding = company.settings.branding
+    if (!branding?.logo_key || !branding.logo_content_type) {
+      return HttpResponse.json({ detail: 'No logo has been uploaded' }, { status: 404 })
+    }
+    return new HttpResponse(new Blob(['fake-logo-bytes']), {
+      headers: { 'Content-Type': branding.logo_content_type },
+    })
+  }),
+
+  http.post(`${API_BASE_URL}/company/logo`, async ({ request }) => {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    company = {
+      ...company,
+      settings: {
+        ...company.settings,
+        branding: {
+          logo_key: `logos/mock/${file?.name ?? 'logo'}`,
+          logo_content_type: file?.type ?? 'image/png',
+        },
+      },
+    }
+    return HttpResponse.json(company)
+  }),
+
+  http.delete(`${API_BASE_URL}/company/logo`, () => {
+    company = {
+      ...company,
+      settings: { ...company.settings, branding: { logo_key: null, logo_content_type: null } },
+    }
+    return HttpResponse.json(company)
+  }),
+
   http.get(`${API_BASE_URL}/company/ai-config`, () => HttpResponse.json(aiConfig)),
 
   http.put(`${API_BASE_URL}/company/ai-config`, async ({ request }) => {

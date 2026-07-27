@@ -21,14 +21,16 @@
     "saveChangesButton": "Save changes"
   },
   "BrandingSettingsPanel": {
-    "description": "Shown in the header next to your company name. Paste a link to an image already hosted elsewhere (your website, a CDN, etc.).",
-    "savedMessage": "Saved.",
+    "description": "Shown in the header next to your company name. Upload an image from your computer.",
     "logoPreviewAlt": "Logo preview",
-    "logoUrlLabel": "Logo URL",
-    "logoUrlPlaceholder": "https://cdn.example.com/logo.png",
-    "savingButton": "Saving…",
-    "saveChangesButton": "Save changes",
-    "removeLogoButton": "Remove logo"
+    "uploadButton": "Upload logo",
+    "changeButton": "Change logo",
+    "uploadingButton": "Uploading…",
+    "removeLogoButton": "Remove logo",
+    "removingButton": "Removing…",
+    "helperText": "PNG, JPEG, or WebP — up to 2 MB.",
+    "uploadedMessage": "Logo updated.",
+    "removedMessage": "Logo removed."
   },
   "LanguageSettingsPanel": {
     "description": "Your company's default interface language, used by everyone signed in.",

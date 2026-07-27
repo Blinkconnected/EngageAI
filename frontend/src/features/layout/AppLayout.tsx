@@ -36,7 +36,7 @@ import { useAllAgentsQuery, useUpdateOwnAvailabilityMutation } from '../agents/a
 import type { SelfAvailabilityStatus } from '../agents/types'
 import { useLogout } from '../auth/api'
 import { useCurrentUserQuery } from '../session/api'
-import { useCompanyQuery, useIsOnboardingIncomplete } from '../company/api'
+import { useCompanyLogoUrl, useCompanyQuery, useIsOnboardingIncomplete } from '../company/api'
 import { NotificationBell } from '../notifications/NotificationBell'
 import { NotificationToastProvider } from '../notifications/NotificationToastProvider'
 import { RealtimeProvider } from '../realtime/RealtimeProvider'
@@ -76,7 +76,7 @@ export function AppLayout() {
   const updateAvailabilityMutation = useUpdateOwnAvailabilityMutation()
 
   const drawerContent = <SideNav onNavigate={() => setMobileNavOpen(false)} />
-  const logoUrl = company?.settings.branding?.logo_url
+  const logoQuery = useCompanyLogoUrl(company?.settings.branding?.logo_key)
 
   return (
     <NotificationToastProvider>
@@ -129,10 +129,10 @@ export function AppLayout() {
                     <MenuIcon />
                   </IconButton>
                 )}
-                {logoUrl && (
+                {logoQuery.data && (
                   <Box
                     component="img"
-                    src={logoUrl}
+                    src={logoQuery.data}
                     alt={t('AppLayout.companyLogoAlt', {
                       companyName: currentUser?.company.name ?? t('AppLayout.companyFallback'),
                     })}

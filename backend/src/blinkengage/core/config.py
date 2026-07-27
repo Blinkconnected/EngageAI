@@ -105,6 +105,16 @@ class Settings(BaseSettings):
         ]
     )
 
+    # --- Company logo upload (see docs/architecture/administration.md) ---
+    # Deliberately its own, tighter limit/allow-list rather than reusing
+    # attachment_max_size_bytes/attachment_allowed_content_types — a logo
+    # is always a raster image, never a document, and is rendered at a
+    # small fixed size everywhere it appears.
+    logo_max_size_bytes: int = 2 * 1024 * 1024  # 2 MiB
+    logo_allowed_content_types: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["image/png", "image/jpeg", "image/webp"]
+    )
+
     # --- AI Engine (see docs/architecture/ai-engine.md) ---
     # Platform-level, not per-company: matches how these settings were
     # already structured before this milestone (env-configured, not a
@@ -169,7 +179,12 @@ class Settings(BaseSettings):
     build_timestamp: str = "unknown"
     docker_image_tag: str = "development"
 
-    @field_validator("cors_allow_origins", "attachment_allowed_content_types", mode="before")
+    @field_validator(
+        "cors_allow_origins",
+        "attachment_allowed_content_types",
+        "logo_allowed_content_types",
+        mode="before",
+    )
     @classmethod
     def _split_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):

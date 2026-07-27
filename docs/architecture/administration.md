@@ -36,6 +36,27 @@ applied only to newly created companies going forward — existing
 companies' `Admin` roles are the customizable defaults the RBAC design
 already treats as such, not something a migration retroactively grants).
 
+## Company logo upload
+
+Added later (Enterprise Readiness & UX milestone, Priority 2 item 10):
+`branding.logo_url` — a plain string the operator had to paste a link
+into — is replaced by a real upload. `POST /company/logo` (multipart,
+`company.manage`) validates the file against its own tighter limits
+(`logo_max_size_bytes`/`logo_allowed_content_types` in `core/config.py` —
+2 MiB, PNG/JPEG/WebP only, deliberately smaller/narrower than the generic
+attachment upload's 25 MiB/document-inclusive allow-list, since a logo is
+always a small raster image), stores it in the same MinIO bucket
+attachments use (`AttachmentStore`, a `logos/` key prefix) via
+`CompanyService.upload_logo`, and persists only the storage key and
+content type into `settings.branding` — never a client-supplied URL.
+`GET /company/logo` streams the bytes back (any authenticated member, not
+`company.manage` — a logo is display-only branding, not sensitive data);
+`DELETE /company/logo` removes it. The bucket isn't public-read, so the
+frontend fetches this authenticated and renders it via a blob URL
+(`useCompanyLogoUrl`), the same pattern already used for message
+attachments — not a direct `<img src>` to a raw storage URL. Re-uploading
+best-effort deletes the previous object rather than accumulating orphans.
+
 ## Plugin registry introspection
 
 `GET /admin/plugins` (`company.manage`) reports what's actually

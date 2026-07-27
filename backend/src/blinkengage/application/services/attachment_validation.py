@@ -31,3 +31,24 @@ def validate_attachment(
             approved=False, reason=f"Content type {content_type!r} is not allowed"
         )
     return AttachmentValidationResult(approved=True)
+
+
+def validate_logo(
+    *, content_type: str, size_bytes: int, settings: Settings
+) -> AttachmentValidationResult:
+    """Same shape as ``validate_attachment``, against the tighter
+    ``logo_*`` limits — a logo is always a small raster image, never a
+    document, so it doesn't share the generic attachment allow-list."""
+    if size_bytes > settings.logo_max_size_bytes:
+        return AttachmentValidationResult(
+            approved=False,
+            reason=(
+                f"File size {size_bytes} bytes exceeds the maximum of "
+                f"{settings.logo_max_size_bytes} bytes"
+            ),
+        )
+    if content_type not in settings.logo_allowed_content_types:
+        return AttachmentValidationResult(
+            approved=False, reason=f"Content type {content_type!r} is not allowed"
+        )
+    return AttachmentValidationResult(approved=True)
