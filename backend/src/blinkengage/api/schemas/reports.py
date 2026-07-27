@@ -50,6 +50,9 @@ class LiveConversationCountsResponse(BaseModel):
     pending: int
     resolved: int
     closed: int
+    unassigned: int
+    total: int
+    active: int
 
 
 class LiveQueueDepthResponse(BaseModel):
@@ -68,10 +71,19 @@ class LiveQueueDepthResponse(BaseModel):
     throughput_24h: int
 
 
+class AgentWorkloadResponse(BaseModel):
+    agent_id: UUID
+    agent_name: str
+    open_count: int
+    pending_count: int
+    total_count: int
+
+
 class LiveDashboardResponse(BaseModel):
     agents: LiveAgentCountsResponse
     conversations: LiveConversationCountsResponse
     queues: list[LiveQueueDepthResponse]
+    agent_workload: list[AgentWorkloadResponse]
 
 
 class AgentPerformanceRowResponse(BaseModel):

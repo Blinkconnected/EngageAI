@@ -10,6 +10,22 @@ export interface LiveConversationCounts {
   pending: number
   resolved: number
   closed: number
+  /** Active (open/pending) conversations with nobody assigned yet. */
+  unassigned: number
+  /** Sum of all four statuses. */
+  total: number
+  /** Open + pending — conversations still being worked. */
+  active: number
+}
+
+/** One agent's current, live workload — matches the backend's
+ * `AgentWorkloadResponse`. */
+export interface AgentWorkload {
+  agent_id: string
+  agent_name: string
+  open_count: number
+  pending_count: number
+  total_count: number
 }
 
 /** Matches the backend's `LiveQueueDepthResponse`. */
@@ -38,4 +54,5 @@ export interface LiveDashboard {
   agents: LiveAgentCounts
   conversations: LiveConversationCounts
   queues: LiveQueueDepth[]
+  agent_workload: AgentWorkload[]
 }

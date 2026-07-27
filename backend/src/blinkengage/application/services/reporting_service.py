@@ -18,6 +18,7 @@ from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.reporting_repository import (
     AgentPerformanceRow,
+    AgentWorkload,
     AiOperationRow,
     ConversationStatsRow,
     CsatAgentRow,
@@ -61,6 +62,7 @@ class LiveDashboard:
     agents: LiveAgentCounts
     conversations: LiveConversationCounts
     queues: list[LiveQueueMetrics]
+    agent_workload: list[AgentWorkload]
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +145,7 @@ class ReportingService:
             agents=await self._reporting.live_agent_counts(company_id=company_id),
             conversations=await self._reporting.live_conversation_counts(company_id=company_id),
             queues=await self._reporting.queue_metrics(company_id=company_id),
+            agent_workload=await self._reporting.agent_workload(company_id=company_id),
         )
 
     async def conversation_report(

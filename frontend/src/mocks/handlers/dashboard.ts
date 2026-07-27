@@ -4,7 +4,20 @@ import type { LiveDashboard } from '../../features/dashboard/types'
 
 export const MOCK_LIVE_DASHBOARD: LiveDashboard = {
   agents: { online: 3, away: 1, busy: 2, offline: 2 },
-  conversations: { open: 12, pending: 4, resolved: 30, closed: 55 },
+  conversations: {
+    open: 12,
+    pending: 4,
+    resolved: 30,
+    closed: 55,
+    unassigned: 3,
+    total: 101,
+    active: 16,
+  },
+  agent_workload: [
+    { agent_id: 'a1', agent_name: 'Grace Blake', open_count: 5, pending_count: 1, total_count: 6 },
+    { agent_id: 'a2', agent_name: 'Sam Ortiz', open_count: 2, pending_count: 2, total_count: 4 },
+    { agent_id: 'a3', agent_name: 'Priya Nair', open_count: 0, pending_count: 0, total_count: 0 },
+  ],
   queues: [
     {
       queue_id: 'q1',

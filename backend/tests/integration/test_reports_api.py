@@ -749,6 +749,77 @@ class TestLiveDashboard:
         assert response.status_code == 200, response.text
         assert response.json()["agents"]["busy"] == 1
 
+    async def test_live_dashboard_conversation_counts_include_total_active_and_unassigned(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = UUID(await _company_id(client, owner_headers))
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            db_session.add_all(
+                [
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="unassigned-open",
+                        status=ConversationStatus.OPEN,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="resolved",
+                        status=ConversationStatus.RESOLVED,
+                    ),
+                ]
+            )
+            await db_session.commit()
+
+        response = await client.get("/api/v1/reports/live-dashboard", headers=owner_headers)
+
+        assert response.status_code == 200, response.text
+        conversations = response.json()["conversations"]
+        assert conversations["open"] == 1
+        assert conversations["resolved"] == 1
+        assert conversations["unassigned"] == 1
+        assert conversations["total"] == 2
+        assert conversations["active"] == 1
+
+    async def test_live_dashboard_agent_workload_reflects_assigned_conversations(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = UUID(await _company_id(client, owner_headers))
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+        agent_id = await _create_agent(client, owner_headers, "workload-api@acme.example")
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            db_session.add(
+                Conversation(
+                    company_id=company_id,
+                    customer_id=customer_id,
+                    channel_config_id=config_id,
+                    external_thread_id="workload-open",
+                    status=ConversationStatus.OPEN,
+                    assigned_agent_id=agent_id,
+                )
+            )
+            await db_session.commit()
+
+        response = await client.get("/api/v1/reports/live-dashboard", headers=owner_headers)
+
+        assert response.status_code == 200, response.text
+        workload = next(
+            row
+            for row in response.json()["agent_workload"]
+            if row["agent_id"] == str(agent_id)
+        )
+        assert workload["open_count"] == 1
+        assert workload["pending_count"] == 0
+        assert workload["total_count"] == 1
+
 
 class TestConversationPerformanceQueueAiReports:
     async def test_conversation_report_filters_by_channel(

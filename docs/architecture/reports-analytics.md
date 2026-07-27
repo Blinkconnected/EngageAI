@@ -71,6 +71,45 @@ This is the concrete instance of the original event-bus mandate's caveat:
 "consume events... rather than querying operational tables directly
 *where a projection suffices*" — here, a projection doesn't suffice.
 
+`GET /reports/live-dashboard` is also what powers the home page's
+Dashboard (`frontend/src/features/dashboard/DashboardPage.tsx`, the
+`index` route in `AppRoutes.tsx`) — there is no separate "home dashboard"
+backend concept; it's the same single endpoint, gated by the same
+`reports.read` permission every Agent already holds by default.
+
+### Total/active/unassigned, and a live per-agent workload (added 2026-07-27)
+
+`LiveConversationCounts` (`reporting_repository.py`) gained `unassigned`
+as a real field (active — open/pending — conversations with no
+`assigned_agent_id`, one extra `COUNT` in `live_conversation_counts()`)
+and `total`/`active` as computed `@property`s (sums of the existing four
+status counts — no new query needed; `ConversationStatus` has no
+dedicated "active" value, so this is simply `open + pending`).
+
+A live, company-wide per-agent workload had no existing query anywhere —
+`agent_performance`'s `AgentDailyStats`-backed rows are a historical,
+date-ranged rollup (assigned/closed *over a range*), not "how many
+open/pending conversations does this agent hold right now." New
+`ReportingRepository.agent_workload()` joins `Agent`/`User` to
+`Conversation` (`LEFT JOIN`, same shape as `live_queue_depth`'s
+Queue→Conversation join, plus the same cross-tenant defense predicate),
+using `func.count(case((status == X, Conversation.id)))` — the exact
+portable, no-FILTER-clause idiom `queue_metrics()`'s `waiting_count`/
+`sla_breached_count` already established — to split open vs. pending in
+one query. Every non-deleted agent in the company appears, defaulting to
+0 (an idle agent is not omitted — a supervisor needs to see who's free,
+not just who's busy), the same seed-then-overlay shape
+`live_agent_counts` already uses for status counts.
+
+`ReportingService.live_dashboard()`/`LiveDashboard` compose this exactly
+like `queues`; `LiveDashboardResponse` gained a matching
+`agent_workload: list[AgentWorkloadResponse]` field. No RBAC change: this
+extends the one existing `reports.read`-gated endpoint, so it inherits
+that endpoint's existing broad visibility (every Agent already saw every
+other agent's presence status and every queue's full depth on this same
+page) rather than introducing a new, narrower permission the roadmap
+never asked for.
+
 ## Customer Satisfaction: a signed survey link, not a new auth flow
 
 CSAT needs a way for a *customer* (not a logged-in agent) to submit a
@@ -277,3 +316,28 @@ link's frontend route directly and completed both the contact-info step
 and the rating form against the real API. `csat-dispatch-consumer` was
 added to both `docker-compose.yml` and `docker-compose.prod.yml`,
 mirroring `reporting-consumer`'s shape.
+
+### Release Dashboard: total/active/unassigned + per-agent workload (added 2026-07-27)
+
+4 new tests added, all green under `pytest -q`, `ruff check`/`ruff
+format --check`, and `mypy src`:
+
+- `tests/integration/test_reporting_repository.py` (+2 tests) —
+  `live_conversation_counts()` reports `unassigned` counting only
+  open/pending rows with no assigned agent (a resolved-but-unassigned
+  row correctly excluded), and `total`/`active` sum correctly;
+  `agent_workload()` splits an agent's open vs. pending count correctly,
+  excludes a resolved conversation from their workload, and shows an
+  idle agent at `0` rather than omitting them.
+- `tests/integration/test_reports_api.py` (+2 tests) — `GET
+  /reports/live-dashboard`'s `conversations` object includes the new
+  `unassigned`/`total`/`active` fields, and its new `agent_workload`
+  array reflects a real assigned conversation.
+
+Frontend: `DashboardPage.tsx` gained three summary cards (Total, Active,
+Unassigned) above the existing per-status cards, and a "Team workload"
+table (agent, open, pending, total) alongside the existing Queue depth
+table — both fed by the same `useLiveDashboardQuery()` this page already
+used, no new query/polling added. 2 new tests in
+`DashboardPage.test.tsx` (5 total, was 3) cover the new summary cards and
+the workload table including an idle agent at zero.

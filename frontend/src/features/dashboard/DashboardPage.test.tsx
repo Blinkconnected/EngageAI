@@ -52,6 +52,46 @@ describe('DashboardPage', () => {
     expect(screen.getByText('2 offline')).toBeInTheDocument()
   })
 
+  it('shows total/active/unassigned conversation summary cards', async () => {
+    renderAuthenticated(<DashboardPage />)
+
+    // See mocks/handlers/dashboard.ts: open 12 + pending 4 + resolved 30 +
+    // closed 55 = total 101; active = open + pending = 16; unassigned = 3.
+    // Each card's value is asserted within its own card (rather than a
+    // bare `getByText`) since a small integer like "3" also legitimately
+    // appears elsewhere on the page (e.g. the queue depth table).
+    const totalCard = (await screen.findByText('Total conversations')).closest(
+      '.MuiCard-root',
+    ) as HTMLElement
+    expect(within(totalCard).getByText('101')).toBeInTheDocument()
+
+    const activeCard = screen
+      .getByText('Active (open + pending)')
+      .closest('.MuiCard-root') as HTMLElement
+    expect(within(activeCard).getByText('16')).toBeInTheDocument()
+
+    const unassignedCard = screen.getByText('Unassigned').closest('.MuiCard-root') as HTMLElement
+    expect(within(unassignedCard).getByText('3')).toBeInTheDocument()
+  })
+
+  it('renders the team workload table with each agent\'s open/pending/total counts', async () => {
+    renderAuthenticated(<DashboardPage />)
+
+    // See mocks/handlers/dashboard.ts: Grace Blake has 5 open, 1 pending,
+    // total 6; Priya Nair is idle (0/0/0) and still appears, not omitted.
+    const graceRow = (await screen.findByText('Grace Blake')).closest('tr') as HTMLElement
+    const graceCells = within(graceRow).getAllByRole('cell')
+    expect(graceCells[1]).toHaveTextContent('5')
+    expect(graceCells[2]).toHaveTextContent('1')
+    expect(graceCells[3]).toHaveTextContent('6')
+
+    const priyaRow = screen.getByText('Priya Nair').closest('tr') as HTMLElement
+    const priyaCells = within(priyaRow).getAllByRole('cell')
+    expect(priyaCells[1]).toHaveTextContent('0')
+    expect(priyaCells[2]).toHaveTextContent('0')
+    expect(priyaCells[3]).toHaveTextContent('0')
+  })
+
   it('has no detectable accessibility violations', async () => {
     const { container } = renderAuthenticated(<DashboardPage />)
     await screen.findByText('General')

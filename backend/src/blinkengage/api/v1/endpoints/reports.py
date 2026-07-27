@@ -15,6 +15,7 @@ from blinkengage.api.deps import get_reporting_service, require_permission
 from blinkengage.api.schemas.reports import (
     AgentDashboardResponse,
     AgentPerformanceRowResponse,
+    AgentWorkloadResponse,
     AiOperationRowResponse,
     ConversationStatsRowResponse,
     CsatAgentRowResponse,
@@ -148,7 +149,20 @@ async def live_dashboard(
             pending=dashboard.conversations.pending,
             resolved=dashboard.conversations.resolved,
             closed=dashboard.conversations.closed,
+            unassigned=dashboard.conversations.unassigned,
+            total=dashboard.conversations.total,
+            active=dashboard.conversations.active,
         ),
+        agent_workload=[
+            AgentWorkloadResponse(
+                agent_id=row.agent_id,
+                agent_name=row.agent_name,
+                open_count=row.open_count,
+                pending_count=row.pending_count,
+                total_count=row.total_count,
+            )
+            for row in dashboard.agent_workload
+        ],
         queues=[
             LiveQueueDepthResponse(
                 queue_id=row.queue_id,

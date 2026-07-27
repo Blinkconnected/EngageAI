@@ -10,6 +10,10 @@ from uuid import UUID
 
 from httpx import AsyncClient
 
+from blinkengage.infrastructure.database.models.conversation import (
+    Conversation,
+    ConversationStatus,
+)
 from blinkengage.infrastructure.repositories.daily_stats_repository import DailyStatsRepository
 from blinkengage.infrastructure.repositories.reporting_repository import ReportingRepository
 
@@ -33,6 +37,18 @@ async def _create_queue(client: AsyncClient, owner_headers: dict, name: str) -> 
     response = await client.post("/api/v1/queues", json={"name": name}, headers=owner_headers)
     assert response.status_code == 201, response.text
     return UUID(response.json()["id"])
+
+
+async def _create_web_chat_customer(client: AsyncClient, owner_headers: dict) -> tuple[UUID, UUID]:
+    config_response = await client.post(
+        "/api/v1/channel-configs",
+        json={"channel_type": "web_chat", "display_name": "Widget", "credentials": {}},
+        headers=owner_headers,
+    )
+    config_id = UUID(config_response.json()["id"])
+    session_response = await client.post(f"/api/v1/web-chat/{config_id}/sessions", json={})
+    customer_id = UUID(session_response.json()["customer_id"])
+    return config_id, customer_id
 
 
 class TestConversationStats:
@@ -200,3 +216,119 @@ class TestLiveDashboardQueries:
         assert len(depth) == 1
         assert depth[0].queue_name == "Billing"
         assert depth[0].open_conversations == 0
+
+    async def test_live_conversation_counts_reports_unassigned_total_and_active(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = await _company_id(client, owner_headers)
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+        agent_id = await _create_agent(client, owner_headers, "workload-a@acme.example")
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            db_session.add_all(
+                [
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="assigned-open",
+                        status=ConversationStatus.OPEN,
+                        assigned_agent_id=agent_id,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="unassigned-open",
+                        status=ConversationStatus.OPEN,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="unassigned-pending",
+                        status=ConversationStatus.PENDING,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="resolved-unassigned",
+                        status=ConversationStatus.RESOLVED,
+                    ),
+                ]
+            )
+            await db_session.commit()
+
+        async with session_factory() as session:
+            repo = ReportingRepository(session)
+            counts = await repo.live_conversation_counts(company_id=company_id)
+
+        assert counts.open == 2
+        assert counts.pending == 1
+        assert counts.resolved == 1
+        assert counts.closed == 0
+        # A resolved conversation is terminal, not "nobody is working
+        # this yet" — unassigned only counts the two still-open/pending
+        # unassigned rows above, not the resolved one too.
+        assert counts.unassigned == 2
+        assert counts.total == 4
+        assert counts.active == 3
+
+    async def test_agent_workload_includes_idle_agents_at_zero_and_splits_open_pending(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = await _company_id(client, owner_headers)
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+        busy_agent_id = await _create_agent(client, owner_headers, "workload-busy@acme.example")
+        idle_agent_id = await _create_agent(client, owner_headers, "workload-idle@acme.example")
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            db_session.add_all(
+                [
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="busy-open",
+                        status=ConversationStatus.OPEN,
+                        assigned_agent_id=busy_agent_id,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="busy-pending",
+                        status=ConversationStatus.PENDING,
+                        assigned_agent_id=busy_agent_id,
+                    ),
+                    # Resolved work no longer counts toward this agent's
+                    # live workload — only open/pending should.
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="busy-resolved",
+                        status=ConversationStatus.RESOLVED,
+                        assigned_agent_id=busy_agent_id,
+                    ),
+                ]
+            )
+            await db_session.commit()
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as session:
+            repo = ReportingRepository(session)
+            workload = await repo.agent_workload(company_id=company_id)
+
+        by_id = {row.agent_id: row for row in workload}
+        assert by_id[busy_agent_id].open_count == 1
+        assert by_id[busy_agent_id].pending_count == 1
+        assert by_id[busy_agent_id].total_count == 2
+        # An agent with no assigned conversations still appears, at 0 —
+        # not omitted, so a supervisor can see who's actually free.
+        assert by_id[idle_agent_id].open_count == 0
+        assert by_id[idle_agent_id].pending_count == 0
+        assert by_id[idle_agent_id].total_count == 0

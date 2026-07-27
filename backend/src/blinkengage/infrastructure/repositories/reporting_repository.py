@@ -113,6 +113,42 @@ class LiveConversationCounts:
     pending: int
     resolved: int
     closed: int
+    #: Active (open/pending) conversations with no ``assigned_agent_id`` —
+    #: the "nobody is working this yet" figure the Release Dashboard's
+    #: company-wide workload view needs alongside the per-agent
+    #: breakdown (``AgentWorkload`` below).
+    unassigned: int
+
+    @property
+    def total(self) -> int:
+        return self.open + self.pending + self.resolved + self.closed
+
+    @property
+    def active(self) -> int:
+        """Conversations still being worked — open or pending, as
+        opposed to resolved/closed. There is no dedicated "active"
+        ``ConversationStatus`` value; this is simply the sum of the two
+        non-terminal ones."""
+        return self.open + self.pending
+
+
+@dataclass(frozen=True, slots=True)
+class AgentWorkload:
+    """One agent's current, live workload — how many open/pending
+    conversations they're carrying right now, not a historical rollup
+    (contrast ``AgentPerformanceRow``, which sums ``AgentDailyStats``
+    over a date range). Every non-deleted agent in the company appears
+    here, defaulting to 0, the same seed-then-overlay shape
+    ``live_agent_counts`` already established for agent status counts."""
+
+    agent_id: UUID
+    agent_name: str
+    open_count: int
+    pending_count: int
+
+    @property
+    def total_count(self) -> int:
+        return self.open_count + self.pending_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,12 +439,58 @@ class ReportingRepository:
         counts = {status: 0 for status in ConversationStatus}
         for status, count in result.all():
             counts[status] = count
+
+        unassigned_result = await self._session.execute(
+            select(func.count(Conversation.id)).where(
+                Conversation.company_id == company_id,
+                Conversation.deleted_at.is_(None),
+                Conversation.assigned_agent_id.is_(None),
+                Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
+            )
+        )
         return LiveConversationCounts(
             open=counts[ConversationStatus.OPEN],
             pending=counts[ConversationStatus.PENDING],
             resolved=counts[ConversationStatus.RESOLVED],
             closed=counts[ConversationStatus.CLOSED],
+            unassigned=unassigned_result.scalar_one(),
         )
+
+    async def agent_workload(self, *, company_id: UUID) -> list[AgentWorkload]:
+        is_open = Conversation.status == ConversationStatus.OPEN
+        is_pending = Conversation.status == ConversationStatus.PENDING
+
+        result = await self._session.execute(
+            select(
+                Agent.id,
+                User.full_name,
+                func.count(case((is_open, Conversation.id))),
+                func.count(case((is_pending, Conversation.id))),
+            )
+            .join(User, User.id == Agent.user_id)
+            .join(
+                Conversation,
+                (Conversation.assigned_agent_id == Agent.id)
+                # Same cross-tenant defense as live_queue_depth()/
+                # queue_metrics() above — a Conversation only ever gets
+                # assigned to an Agent from its own company in practice,
+                # but this predicate guards the aggregate itself against
+                # a row that violates that invariant.
+                & (Conversation.company_id == company_id)
+                & (Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]))
+                & Conversation.deleted_at.is_(None),
+                isouter=True,
+            )
+            .where(Agent.company_id == company_id, Agent.deleted_at.is_(None))
+            .group_by(Agent.id, User.full_name)
+            .order_by(User.full_name)
+        )
+        return [
+            AgentWorkload(
+                agent_id=row[0], agent_name=row[1], open_count=row[2], pending_count=row[3]
+            )
+            for row in result.all()
+        ]
 
     async def live_queue_depth(self, *, company_id: UUID) -> list[LiveQueueDepth]:
         result = await self._session.execute(

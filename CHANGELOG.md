@@ -58,6 +58,11 @@ for more detail on how this page is put together.
   doesn't have an email or phone number on file, the survey page
   politely asks for one before showing the rating form, so support can
   follow up with them later.
+- The Dashboard now shows total, active, and unassigned conversation
+  counts, plus a Team Workload table with each agent's current open and
+  pending conversation count (including agents with none, so you can see
+  who's free) — alongside the existing per-status counts and Queue
+  depth table.
 
 ### Changed
 

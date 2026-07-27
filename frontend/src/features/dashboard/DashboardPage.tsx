@@ -16,11 +16,19 @@ import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { useLiveDashboardQuery } from './api'
-import type { LiveQueueDepth } from './types'
+import type { AgentWorkload, LiveQueueDepth } from './types'
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({
+  label,
+  value,
+  size = { xs: 12, sm: 6, md: 3 },
+}: {
+  label: string
+  value: number
+  size?: { xs: number; sm: number; md: number }
+}) {
   return (
-    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+    <Grid size={size}>
       <Card variant="outlined">
         <CardContent>
           <Typography color="text.secondary" gutterBottom>
@@ -51,6 +59,39 @@ function formatWaitSeconds(seconds: number | null): string {
   const remainingSeconds = total % 60
   if (minutes === 0) return `${remainingSeconds}s`
   return `${minutes}m ${remainingSeconds}s`
+}
+
+function AgentWorkloadTable({ workload }: { workload: AgentWorkload[] }) {
+  return (
+    <TableContainer>
+      <Table size="small" aria-label="Team workload">
+        <TableHead>
+          <TableRow>
+            <TableCell>Agent</TableCell>
+            <TableCell align="right">Open</TableCell>
+            <TableCell align="right">Pending</TableCell>
+            <TableCell align="right">Total</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {workload.map((agent) => (
+            <TableRow key={agent.agent_id}>
+              <TableCell>{agent.agent_name}</TableCell>
+              <TableCell align="right">{agent.open_count}</TableCell>
+              <TableCell align="right">{agent.pending_count}</TableCell>
+              <TableCell align="right">
+                {agent.total_count > 0 ? (
+                  <Chip label={agent.total_count} size="small" color="primary" />
+                ) : (
+                  agent.total_count
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
 }
 
 function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
@@ -112,7 +153,23 @@ export function DashboardPage() {
 
       {liveDashboardQuery.data && (
         <Grid container spacing={2}>
-          <StatCard label="Open conversations" value={liveDashboardQuery.data.conversations.open} />
+          <StatCard
+            label="Total conversations"
+            value={liveDashboardQuery.data.conversations.total}
+            size={{ xs: 12, sm: 4, md: 4 }}
+          />
+          <StatCard
+            label="Active (open + pending)"
+            value={liveDashboardQuery.data.conversations.active}
+            size={{ xs: 12, sm: 4, md: 4 }}
+          />
+          <StatCard
+            label="Unassigned"
+            value={liveDashboardQuery.data.conversations.unassigned}
+            size={{ xs: 12, sm: 4, md: 4 }}
+          />
+
+          <StatCard label="Open" value={liveDashboardQuery.data.conversations.open} />
           <StatCard label="Pending" value={liveDashboardQuery.data.conversations.pending} />
           <StatCard label="Resolved" value={liveDashboardQuery.data.conversations.resolved} />
           <StatCard label="Closed" value={liveDashboardQuery.data.conversations.closed} />
@@ -163,6 +220,24 @@ export function DashboardPage() {
           </Grid>
 
           <Grid size={{ xs: 12, md: 8 }}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }} gutterBottom>
+                  Team workload
+                </Typography>
+                {liveDashboardQuery.data.agent_workload.length === 0 ? (
+                  <EmptyState
+                    title="No agents yet"
+                    description="Each agent's live open/pending conversation count will appear here once your team is set up."
+                  />
+                ) : (
+                  <AgentWorkloadTable workload={liveDashboardQuery.data.agent_workload} />
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={12}>
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }} gutterBottom>
