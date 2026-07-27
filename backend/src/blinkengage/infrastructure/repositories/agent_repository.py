@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from blinkengage.infrastructure.database.models.agent import Agent
 from blinkengage.infrastructure.database.models.team import TeamMembership
+from blinkengage.infrastructure.database.models.user import User
 
 
 class AgentRepository:
@@ -31,9 +32,7 @@ class AgentRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_for_department(
-        self, *, company_id: UUID, department_id: UUID
-    ) -> list[Agent]:
+    async def list_for_department(self, *, company_id: UUID, department_id: UUID) -> list[Agent]:
         """Every active agent in a department — used to fan out a
         "conversation transferred to your department" notification to
         everyone eligible to pick it up, since a department-target
@@ -48,9 +47,22 @@ class AgentRepository:
         return list(result.scalars().all())
 
     async def list_for_company(
-        self, *, company_id: UUID, offset: int, limit: int
+        self, *, company_id: UUID, offset: int, limit: int, search: str | None = None
     ) -> tuple[list[Agent], int]:
         base = select(Agent).where(Agent.company_id == company_id, Agent.deleted_at.is_(None))
+        if search:
+            # full_name/email live on the linked User, not Agent itself —
+            # a join (not a correlated .has(), which can't be combined
+            # with an OR across Agent's own title column this cheaply)
+            # is needed to search across both.
+            pattern = f"%{search}%"
+            base = base.join(User, User.id == Agent.user_id).where(
+                or_(
+                    User.full_name.ilike(pattern),
+                    User.email.ilike(pattern),
+                    Agent.title.ilike(pattern),
+                )
+            )
         total = (
             await self._session.execute(
                 select(func.count()).select_from(base.with_only_columns(Agent.id).subquery())

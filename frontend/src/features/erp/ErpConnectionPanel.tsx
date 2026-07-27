@@ -14,6 +14,7 @@ import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
+import { ErpConfigEditDialog } from './ErpConfigEditDialog'
 import {
   useCreateErpConfigMutation,
   useDeleteErpConfigMutation,
@@ -124,6 +125,7 @@ function ConnectErpForm() {
  * duplicates the CRUD/test-connection logic. */
 export function ErpConnectionPanel() {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [editing, setEditing] = useState(false)
   const configsQuery = useErpConfigsQuery({ page: 1, page_size: 1 })
   const deleteMutation = useDeleteErpConfigMutation()
   const testConnectionMutation = useTestErpConnectionMutation()
@@ -167,6 +169,9 @@ export function ErpConnectionPanel() {
               >
                 {testConnectionMutation.isPending ? 'Testing…' : 'Test Connection'}
               </Button>
+              <Button variant="outlined" onClick={() => setEditing(true)}>
+                Edit
+              </Button>
               <Button
                 color="error"
                 variant="outlined"
@@ -178,6 +183,8 @@ export function ErpConnectionPanel() {
           </Stack>
         </CardContent>
       </Card>
+
+      <ErpConfigEditDialog config={editing ? config : null} onClose={() => setEditing(false)} />
 
       <ConfirmDialog
         open={confirmingDelete}

@@ -69,6 +69,12 @@ direction)`) and `theme/emotionCache.ts` (RTL-aware Emotion cache using
   persisted to `localStorage`, defaulting to the OS `prefers-color-scheme`).
 - **React Query** owns all server state, including the current user's
   profile. There is no `user` object in Redux — see below.
+- Page-local filter/pagination state that must survive a round trip to a
+  sibling route (not a nested one) lives in the URL via `useSearchParams`
+  instead of `useState` — `InboxPage.tsx` is the reference: navigating to
+  `/conversations/:id` and back fully unmounts/remounts `InboxPage`, so
+  local state would silently reset, but the URL (and a `replace: true`
+  history entry so filter changes don't spam browser Back) survives.
 
 ## Authentication flow
 
@@ -131,7 +137,8 @@ anchoring) also flip.
   /erp-configs                      ERPNext connection setup — erp.manage
   /reports                          Reports hub (tabbed) — reports.read
   /settings/company                 Settings (renamed from "Company Settings") — company.manage (GET has no gate; PATCH does)
-*                                   404 (NotFoundPage)
+  *                                 404 (NotFoundPage), inside the shell so signed-in users keep the sidebar/topbar
+*                                   404 (NotFoundPage), signed-out fallback
 ```
 
 Every gated route wraps its element in `RequirePermission`; the sidebar
@@ -211,7 +218,16 @@ loading/empty/error states:
   the backend's list endpoints don't accept generic sort/filter params
   (only the specific query params each endpoint documents), which the
   component makes explicit rather than offering controls that would
-  silently no-op.
+  silently no-op. Accepts an optional `error`/`onRetry` pair that renders
+  the shared `ErrorState` in place of the grid — every page using
+  `DataTable` should wire its list query's error through rather than
+  leaving a failed fetch showing an empty grid.
+- Agents, Departments, and Customers pages share one search convention:
+  a single `search` query param, matched server-side with a case
+  insensitive `ilike` across a small set of relevant columns (joining to
+  `User` for Agents, since name/email live there, not on `Agent` itself)
+  — see `CustomerRepository.list_for_company()` for the reference
+  implementation new searchable list endpoints should follow.
 - **`FormDialog`** — a generic modal shell (title, form body, submit/
   cancel actions, submit-pending disabling, server-error banner) that
   every Create/Edit dialog (Agent, Channel Config, Customer, ERP Config)

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from blinkengage.api.deps import get_department_service, require_permission
 from blinkengage.api.schemas.department import (
@@ -21,9 +21,13 @@ async def list_departments(
     auth: Annotated[AuthContext, Depends(require_permission("departments.read"))],
     service: Annotated[DepartmentService, Depends(get_department_service)],
     page_params: Annotated[PageParams, Depends()],
+    search: Annotated[str | None, Query(max_length=255)] = None,
 ) -> Page[DepartmentResponse]:
     items, total = await service.list_departments(
-        company_id=auth.company_id, offset=page_params.offset, limit=page_params.page_size
+        company_id=auth.company_id,
+        offset=page_params.offset,
+        limit=page_params.page_size,
+        search=search,
     )
     return Page(
         items=[DepartmentResponse.model_validate(item) for item in items],

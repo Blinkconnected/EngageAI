@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from 'react'
+import { useId, type FormEvent, type ReactNode } from 'react'
 import {
   Alert,
   Button,
@@ -37,14 +37,16 @@ export function FormDialog({
   onSubmit,
   onClose,
 }: FormDialogProps) {
+  const titleId = useId()
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     onSubmit()
   }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>{title}</DialogTitle>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" aria-labelledby={titleId}>
+      <DialogTitle id={titleId}>{title}</DialogTitle>
       <form onSubmit={handleSubmit}>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>

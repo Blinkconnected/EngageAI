@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Button, Chip } from '@mui/material'
+import { Button, Chip, TextField } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
@@ -32,8 +32,9 @@ export function AgentsPage() {
   const canManage = hasPermission('agents.manage')
   const canManageRoles = hasPermission('roles.manage')
 
+  const [search, setSearch] = useState('')
   const { page, pageSize, setPage, setPageSize, apiParams } = usePaginationParams()
-  const agentsQuery = useAgentsQuery(apiParams)
+  const agentsQuery = useAgentsQuery({ ...apiParams, search: search || undefined })
   const departmentsQuery = useAllDepartmentsQuery()
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -86,7 +87,7 @@ export function AgentsPage() {
               field: 'actions',
               type: 'actions' as const,
               headerName: 'Actions',
-              width: canManage ? 130 : 40,
+              width: (canManage ? 130 : 0) + (canManageRoles ? 40 : 0),
               getActions: (params: { row: Agent }) => [
                 ...(canManage
                   ? [
@@ -146,11 +147,28 @@ export function AgentsPage() {
         }
       />
 
+      <TextField
+        label="Search agents"
+        placeholder="Name, email, or title"
+        size="small"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value)
+          setPage(0)
+        }}
+        sx={{ mb: 2, width: 320 }}
+      />
+
       {agentsQuery.data?.total === 0 ? (
         <EmptyState
-          title="No agents yet"
-          description="Create your first agent to start handling conversations."
+          title={search ? 'No agents found' : 'No agents yet'}
+          description={
+            search
+              ? 'Try a different search.'
+              : 'Create your first agent to start handling conversations.'
+          }
           action={
+            !search &&
             canManage && (
               <Button variant="contained" onClick={() => setCreateOpen(true)}>
                 New agent
@@ -170,6 +188,8 @@ export function AgentsPage() {
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           loading={agentsQuery.isFetching}
+          error={agentsQuery.error}
+          onRetry={() => agentsQuery.refetch()}
         />
       )}
 

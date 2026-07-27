@@ -45,10 +45,17 @@ export function NotificationToastProvider({ children }: { children: ReactNode })
         sx={{
           position: 'fixed',
           top: 16,
+          left: 16,
           right: 16,
           zIndex: (theme) => theme.zIndex.snackbar,
           width: '100%',
           maxWidth: 360,
+          // `left` and `right` are both set so the stack never overflows
+          // a narrow viewport (width falls back to the left/right gap
+          // instead of the fixed 360 maxWidth); `ml: auto` then pushes it
+          // back to hug the right edge once the viewport is wide enough
+          // for maxWidth to win.
+          ml: 'auto',
         }}
       >
         {toasts.map((toast) => (

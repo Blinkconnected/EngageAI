@@ -57,7 +57,7 @@ function RoleEditDialogFields({ role, onClose }: { role: Role; onClose: () => vo
         onChange={(event) => setName(event.target.value)}
         required
         fullWidth
-        autoFocus
+        autoFocus={!role.is_system}
         disabled={role.is_system}
         helperText={role.is_system ? "A system role's name can't be changed." : undefined}
       />
@@ -68,6 +68,9 @@ function RoleEditDialogFields({ role, onClose }: { role: Role; onClose: () => vo
         fullWidth
         multiline
         minRows={2}
+        // Name is disabled for a system role — focus lands here instead,
+        // the first field actually editable in that case.
+        autoFocus={role.is_system}
       />
       {isOwner && (
         <Alert severity="info">

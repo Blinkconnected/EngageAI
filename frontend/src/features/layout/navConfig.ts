@@ -23,6 +23,12 @@ export interface NavItem {
    * docs/architecture/company-onboarding.md) — completely hidden
    * otherwise, not just permission-gated. */
   requiresErpEnabled?: boolean
+  /** Section root used for sidebar active-highlighting, when it differs
+   * from `path` itself — needed only for an item whose `path` embeds a
+   * default tab (e.g. `/reports/executive`), so any OTHER tab under the
+   * same section (`/reports/performance`) still highlights this item.
+   * Defaults to `path` when omitted. */
+  matchPath?: string
 }
 
 /**
@@ -79,6 +85,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: 'Reports',
     path: '/reports/executive',
+    matchPath: '/reports',
     icon: AssessmentOutlinedIcon,
     permission: 'reports.read',
   },
@@ -92,6 +99,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: 'Settings',
     path: '/settings/company/general',
+    matchPath: '/settings/company',
     icon: BusinessOutlinedIcon,
     permission: 'company.manage',
   },

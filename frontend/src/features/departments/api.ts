@@ -5,7 +5,9 @@ import type { Department, DepartmentCreateRequest, DepartmentUpdateRequest } fro
 
 const DEPARTMENTS_LIST_KEY = ['departments', 'list']
 
-async function fetchDepartments(params: PageParams): Promise<Page<Department>> {
+async function fetchDepartments(
+  params: PageParams & { search?: string },
+): Promise<Page<Department>> {
   const { data } = await apiClient.get<Page<Department>>('/departments', { params })
   return data
 }
@@ -34,7 +36,7 @@ async function deleteDepartment(departmentId: string): Promise<void> {
   await apiClient.delete(`/departments/${departmentId}`)
 }
 
-export function useDepartmentsQuery(params: PageParams) {
+export function useDepartmentsQuery(params: PageParams & { search?: string }) {
   return useQuery({
     queryKey: [...DEPARTMENTS_LIST_KEY, params],
     queryFn: () => fetchDepartments(params),

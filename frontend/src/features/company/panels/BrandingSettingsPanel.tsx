@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { Alert, Avatar, Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import type { Company } from '../types'
@@ -8,6 +18,7 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
   const [logoUrl, setLogoUrl] = useState(company.settings.branding?.logo_url ?? '')
   const updateMutation = useUpdateCompanyMutation()
   const savedLogoUrl = company.settings.branding?.logo_url ?? ''
+  const isDirty = logoUrl !== savedLogoUrl
 
   function handleSave() {
     updateMutation.mutate({ settings: { branding: { logo_url: logoUrl || null } } })
@@ -18,14 +29,14 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Shown in the header next to your company name. Paste a link to an image already
-            hosted elsewhere (your website, a CDN, etc.).
+            Shown in the header next to your company name. Paste a link to an image already hosted
+            elsewhere (your website, a CDN, etc.).
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
             <Avatar
@@ -50,7 +61,7 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
           <Stack direction="row" spacing={2}>
             <Button
               variant="contained"
-              disabled={updateMutation.isPending || logoUrl === savedLogoUrl}
+              disabled={updateMutation.isPending || !isDirty}
               onClick={handleSave}
             >
               {updateMutation.isPending ? 'Saving…' : 'Save changes'}

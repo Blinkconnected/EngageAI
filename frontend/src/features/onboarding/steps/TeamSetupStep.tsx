@@ -16,8 +16,8 @@ import {
   Typography,
 } from '@mui/material'
 import { extractErrorMessage } from '../../../shared/api/errors'
-import { useCreateAgentMutation } from '../../agents/api'
-import { useCreateDepartmentMutation } from '../../departments/api'
+import { useAllAgentsQuery, useCreateAgentMutation } from '../../agents/api'
+import { useAllDepartmentsQuery, useCreateDepartmentMutation } from '../../departments/api'
 import { useCurrentUserQuery } from '../../session/api'
 
 function OwnerSummary() {
@@ -47,8 +47,12 @@ function OwnerSummary() {
 function InviteAgentForm() {
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
-  const [invited, setInvited] = useState<{ email: string; full_name: string }[]>([])
   const createMutation = useCreateAgentMutation()
+  // The real, server-side agent roster — not a local success list, which
+  // reset (misleadingly implying the invites never went through) every
+  // time Back/Next remounted this step, since OnboardingWizardPage
+  // renders steps conditionally.
+  const agentsQuery = useAllAgentsQuery()
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -56,7 +60,6 @@ function InviteAgentForm() {
       { email, full_name: fullName },
       {
         onSuccess: () => {
-          setInvited((current) => [...current, { email, full_name: fullName }])
           setEmail('')
           setFullName('')
         },
@@ -105,10 +108,10 @@ function InviteAgentForm() {
             {createMutation.isPending ? 'Inviting…' : 'Invite agent'}
           </Button>
 
-          {invited.length > 0 && (
-            <List dense>
-              {invited.map((agent) => (
-                <ListItem key={agent.email}>
+          {agentsQuery.data && agentsQuery.data.length > 0 && (
+            <List dense subheader="Agents on your team">
+              {agentsQuery.data.map((agent) => (
+                <ListItem key={agent.id}>
                   <ListItemAvatar>
                     <Avatar>{agent.full_name.charAt(0).toUpperCase()}</Avatar>
                   </ListItemAvatar>
@@ -125,20 +128,14 @@ function InviteAgentForm() {
 
 function CreateDepartmentForm() {
   const [name, setName] = useState('')
-  const [created, setCreated] = useState<string[]>([])
   const createMutation = useCreateDepartmentMutation()
+  // Real, server-side departments — see InviteAgentForm's identical
+  // reasoning for why a local-only success list is the wrong source here.
+  const departmentsQuery = useAllDepartmentsQuery()
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
-    createMutation.mutate(
-      { name, description: null },
-      {
-        onSuccess: () => {
-          setCreated((current) => [...current, name])
-          setName('')
-        },
-      },
-    )
+    createMutation.mutate({ name, description: null }, { onSuccess: () => setName('') })
   }
 
   return (
@@ -171,10 +168,10 @@ function CreateDepartmentForm() {
             </Button>
           </Stack>
 
-          {created.length > 0 && (
+          {departmentsQuery.data && departmentsQuery.data.length > 0 && (
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-              {created.map((departmentName) => (
-                <Chip key={departmentName} label={departmentName} />
+              {departmentsQuery.data.map((department) => (
+                <Chip key={department.id} label={department.name} />
               ))}
             </Stack>
           )}

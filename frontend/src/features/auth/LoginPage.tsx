@@ -47,7 +47,12 @@ export function LoginPage() {
             alt="Blink Engage"
             sx={{ height: 80, width: 'auto', display: 'block', mx: 'auto', alignSelf: 'center' }}
           />
-          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+          <Typography
+            variant="body2"
+            component="h1"
+            color="text.secondary"
+            sx={{ textAlign: 'center' }}
+          >
             Sign in to your workspace
           </Typography>
 

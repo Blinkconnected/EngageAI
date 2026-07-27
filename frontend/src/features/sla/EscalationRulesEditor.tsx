@@ -54,7 +54,9 @@ export function EscalationRulesEditor({
 
   return (
     <Stack spacing={2}>
-      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+      {/* `component="p"` — subtitle2 defaults to `<h6>`, which would
+          otherwise skip straight from the dialog's own `<h2>` title. */}
+      <Typography variant="subtitle2" component="p" sx={{ fontWeight: 600 }}>
         Escalation rules
       </Typography>
       {rules.length === 0 && (
@@ -85,7 +87,7 @@ export function EscalationRulesEditor({
               updateRule(index, { trigger: event.target.value as EscalationTrigger })
             }
             size="small"
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: { xs: '100%', sm: 200 } }}
           >
             {TRIGGER_OPTIONS.map((option) => (
               <MenuItem key={option.value} value={option.value}>
@@ -106,7 +108,7 @@ export function EscalationRulesEditor({
               })
             }
             size="small"
-            sx={{ minWidth: 220 }}
+            sx={{ minWidth: { xs: '100%', sm: 220 } }}
           >
             {ACTION_OPTIONS.map((option) => (
               <MenuItem key={option.value} value={option.value}>
@@ -123,7 +125,8 @@ export function EscalationRulesEditor({
               disabled={queuesQuery.isPending}
               onChange={(event) => updateRule(index, { target_queue_id: event.target.value })}
               size="small"
-              sx={{ minWidth: 200 }}
+              required
+              sx={{ minWidth: { xs: '100%', sm: 200 } }}
             >
               {queuesQuery.data?.map((queue) => (
                 <MenuItem key={queue.id} value={queue.id}>
@@ -141,7 +144,8 @@ export function EscalationRulesEditor({
               disabled={agentsQuery.isPending}
               onChange={(event) => updateRule(index, { target_agent_id: event.target.value })}
               size="small"
-              sx={{ minWidth: 200 }}
+              required
+              sx={{ minWidth: { xs: '100%', sm: 200 } }}
             >
               {agentsQuery.data?.map((agent) => (
                 <MenuItem key={agent.id} value={agent.user_id}>
@@ -155,7 +159,7 @@ export function EscalationRulesEditor({
             <Autocomplete
               multiple
               size="small"
-              sx={{ minWidth: 260 }}
+              sx={{ minWidth: { xs: '100%', sm: 260 } }}
               options={agentsQuery.data ?? []}
               loading={agentsQuery.isPending}
               getOptionLabel={(agent) => agent.full_name}

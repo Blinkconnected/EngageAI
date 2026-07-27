@@ -1,3 +1,4 @@
+import { Link as RouterLink } from 'react-router-dom'
 import {
   Avatar,
   Button,
@@ -28,7 +29,15 @@ export function RoleMembersDialog({ role, onClose }: { role: Role | null; onClos
           <ErrorState error={membersQuery.error} onRetry={() => membersQuery.refetch()} />
         )}
         {membersQuery.data && membersQuery.data.length === 0 && (
-          <EmptyState title="No one has this role" description="Assign it from the Agents page." />
+          <EmptyState
+            title="No one has this role"
+            description="Assign it from the Agents page."
+            action={
+              <Button component={RouterLink} to="/agents" size="small" onClick={onClose}>
+                Go to Agents
+              </Button>
+            }
+          />
         )}
         {membersQuery.data && membersQuery.data.length > 0 && (
           <List dense aria-label={role ? `${role.name} members` : 'Members'}>

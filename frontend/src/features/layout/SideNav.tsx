@@ -1,5 +1,5 @@
 import { Box, List, ListItemButton, ListItemIcon, ListItemText, Toolbar } from '@mui/material'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, matchPath, useLocation } from 'react-router-dom'
 import { useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useIsErpEnabled } from '../company/api'
@@ -31,7 +31,14 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
       </Toolbar>
       <List component="nav" aria-label="Main navigation" sx={{ px: 1 }}>
         {visibleItems.map((item) => {
-          const selected = location.pathname === item.path
+          // Prefix match (not exact equality) so a nested/detail route —
+          // a conversation, a customer profile, a non-default Settings/
+          // Reports tab — keeps its section highlighted instead of
+          // going blank. `end: true` only for the root Dashboard item,
+          // or it would match every path.
+          const sectionPath = item.matchPath ?? item.path
+          const selected =
+            matchPath({ path: sectionPath, end: sectionPath === '/' }, location.pathname) != null
           const Icon = item.icon
           return (
             <ListItemButton

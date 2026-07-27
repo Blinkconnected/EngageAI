@@ -44,8 +44,8 @@ describe('ReportsPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Conversations' }))
 
     const table = await screen.findByRole('region', { name: 'Conversations report' })
-    expect(within(table).getByText('whatsapp')).toBeInTheDocument()
-    expect(within(table).getByText('web_chat')).toBeInTheDocument()
+    expect(within(table).getByText('WhatsApp Business')).toBeInTheDocument()
+    expect(within(table).getByText('Web Chat')).toBeInTheDocument()
   })
 
   it('switching to the CSAT tab shows the average rating', async () => {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Button, Chip } from '@mui/material'
+import { Button, Chip, TextField } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
@@ -22,8 +22,9 @@ export function DepartmentsPage() {
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('departments.manage')
 
+  const [search, setSearch] = useState('')
   const { page, pageSize, setPage, setPageSize, apiParams } = usePaginationParams()
-  const departmentsQuery = useDepartmentsQuery(apiParams)
+  const departmentsQuery = useDepartmentsQuery({ ...apiParams, search: search || undefined })
   const agentsQuery = useAllAgentsQuery()
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -66,6 +67,7 @@ export function DepartmentsPage() {
             label={params.value}
             size="small"
             variant="outlined"
+            aria-label={`View ${params.value} agent(s) in ${(params.row as Department).name}`}
             onClick={() => setViewingAgentsDepartment(params.row as Department)}
           />
         ),
@@ -124,11 +126,28 @@ export function DepartmentsPage() {
         }
       />
 
+      <TextField
+        label="Search departments"
+        placeholder="Name or description"
+        size="small"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value)
+          setPage(0)
+        }}
+        sx={{ mb: 2, width: 320 }}
+      />
+
       {departmentsQuery.data?.total === 0 ? (
         <EmptyState
-          title="No departments yet"
-          description="Create your first department to start organizing agents."
+          title={search ? 'No departments found' : 'No departments yet'}
+          description={
+            search
+              ? 'Try a different search.'
+              : 'Create your first department to start organizing agents.'
+          }
           action={
+            !search &&
             canManage && (
               <Button variant="contained" onClick={() => setCreateOpen(true)}>
                 New department
@@ -148,6 +167,8 @@ export function DepartmentsPage() {
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           loading={departmentsQuery.isFetching}
+          error={departmentsQuery.error}
+          onRetry={() => departmentsQuery.refetch()}
         />
       )}
 

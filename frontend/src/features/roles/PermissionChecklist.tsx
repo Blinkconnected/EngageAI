@@ -55,7 +55,10 @@ export function PermissionChecklist({
     <Stack spacing={2}>
       {groups.map(([resource, items]) => (
         <Box key={resource}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+          {/* `component="p"` — subtitle2 defaults to `<h6>`, which would
+              otherwise skip straight from the dialog's own `<h2>` title
+              (this is a bolded section label, not a real heading). */}
+          <Typography variant="subtitle2" component="p" sx={{ fontWeight: 600 }}>
             {resourceLabel(resource)}
           </Typography>
           <FormGroup>

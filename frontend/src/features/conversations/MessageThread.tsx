@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, Button, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Chip, Paper, Stack, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
@@ -49,15 +49,7 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
             {formatRelativeTime(message.created_at)}
           </Typography>
           {isOutbound && message.status === 'failed' && (
-            <Tooltip
-              title={
-                typeof message.message_metadata.error === 'string'
-                  ? message.message_metadata.error
-                  : 'The channel provider rejected this message — its credentials may need attention.'
-              }
-            >
-              <Chip label="Failed to send" size="small" color="error" />
-            </Tooltip>
+            <Chip label="Failed to send" size="small" color="error" />
           )}
           {isOutbound && message.delivery_status === 'delivered' && (
             <Typography variant="caption" sx={{ opacity: 0.8 }}>
@@ -65,6 +57,18 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
             </Typography>
           )}
         </Stack>
+        {isOutbound && message.status === 'failed' && (
+          // The failure reason as plain visible text, not only a hover
+          // Tooltip on a non-focusable Chip — a keyboard-only or
+          // screen-reader agent needs this to decide whether to retry,
+          // edit, or escalate, the same info a sighted mouse user already
+          // gets on hover.
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.25 }}>
+            {typeof message.message_metadata.error === 'string'
+              ? message.message_metadata.error
+              : 'The channel provider rejected this message — its credentials may need attention.'}
+          </Typography>
+        )}
       </Paper>
     </Box>
   )

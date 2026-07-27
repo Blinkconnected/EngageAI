@@ -1,5 +1,6 @@
 import { Box } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRowsProp } from '@mui/x-data-grid'
+import { ErrorState } from './ErrorState'
 
 interface DataTableProps<T> {
   rows: T[]
@@ -13,6 +14,12 @@ interface DataTableProps<T> {
   loading?: boolean
   onRowClick?: (row: T) => void
   ariaLabel: string
+  /** When set, renders the shared ErrorState in place of the grid — so
+   * every DataTable-based list gets consistent "the request failed"
+   * feedback for free instead of each page needing to remember to wire
+   * it up itself (some previously didn't). */
+  error?: unknown
+  onRetry?: () => void
 }
 
 /**
@@ -34,7 +41,17 @@ export function DataTable<T extends object>({
   loading = false,
   onRowClick,
   ariaLabel,
+  error,
+  onRetry,
 }: DataTableProps<T>) {
+  if (error != null) {
+    return (
+      <Box sx={{ width: '100%' }} role="region" aria-label={ariaLabel}>
+        <ErrorState error={error} onRetry={onRetry} />
+      </Box>
+    )
+  }
+
   return (
     <Box sx={{ width: '100%' }} role="region" aria-label={ariaLabel}>
       <DataGrid
@@ -58,7 +75,13 @@ export function DataTable<T extends object>({
         onRowClick={onRowClick ? (params) => onRowClick(params.row as T) : undefined}
         sx={{
           border: 'none',
-          '& .MuiDataGrid-row': onRowClick ? { cursor: 'pointer' } : undefined,
+          '& .MuiDataGrid-row': onRowClick
+            ? { cursor: 'pointer' }
+            : // MUI X's own row-hover background is otherwise always on,
+              // implying every table's rows are clickable — suppressed
+              // here for a table that isn't, so it doesn't look and feel
+              // like the Customers page's genuinely clickable rows.
+              { '&:hover': { backgroundColor: 'transparent' } },
         }}
       />
     </Box>

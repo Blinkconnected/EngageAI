@@ -107,9 +107,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         select
         label="Assignment strategy"
         value={assignmentStrategy}
-        onChange={(event) =>
-          setAssignmentStrategy(event.target.value as QueueAssignmentStrategy)
-        }
+        onChange={(event) => setAssignmentStrategy(event.target.value as QueueAssignmentStrategy)}
         fullWidth
         helperText="Manual: conversations wait for an agent to pick them up. Round robin/Least load assign automatically."
       >
@@ -127,7 +125,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         onChange={(event) => setSlaPolicyId(event.target.value)}
         fullWidth
         slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-        helperText="Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See Roles & SLA → SLA Builder."
+        helperText="Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See SLA Builder."
       >
         <MenuItem value="">None (use targets below)</MenuItem>
         {slaPoliciesQuery.data?.map((policy) => (

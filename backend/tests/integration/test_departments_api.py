@@ -42,6 +42,36 @@ async def test_list_departments_is_paginated(client: AsyncClient, owner_headers:
     assert body["page_size"] == 2
 
 
+async def test_search_departments_by_name(client: AsyncClient, owner_headers: dict) -> None:
+    for name in ("Support", "Sales"):
+        await client.post("/api/v1/departments", json={"name": name}, headers=owner_headers)
+
+    response = await client.get(
+        "/api/v1/departments", params={"search": "support"}, headers=owner_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["name"] == "Support"
+
+
+async def test_search_departments_by_description(client: AsyncClient, owner_headers: dict) -> None:
+    await client.post(
+        "/api/v1/departments",
+        json={"name": "Support", "description": "Handles billing questions"},
+        headers=owner_headers,
+    )
+    await client.post("/api/v1/departments", json={"name": "Sales"}, headers=owner_headers)
+
+    response = await client.get(
+        "/api/v1/departments", params={"search": "billing"}, headers=owner_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["name"] == "Support"
+
+
 async def test_update_department(client: AsyncClient, owner_headers: dict) -> None:
     create_response = await client.post(
         "/api/v1/departments", json={"name": "Support"}, headers=owner_headers

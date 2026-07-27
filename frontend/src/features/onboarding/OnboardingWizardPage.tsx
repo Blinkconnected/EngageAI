@@ -12,6 +12,18 @@ import type { Company } from '../company/types'
 
 const STEPS = ['Company Information', 'Team Setup', 'Channels', 'ERP Integration'] as const
 
+// Persisted so a reload (or navigating away and back via the "Complete
+// setup" banner) resumes on the step the admin was viewing instead of
+// silently resetting to the first one — the data each step collects is
+// already saved independently per-panel (see CompanyInfoStep.tsx), so
+// only the wizard's own position was ever at risk of looking "lost".
+const ACTIVE_STEP_STORAGE_KEY = 'blinkengage.onboarding.activeStep'
+
+function readStoredStep(): number {
+  const stored = Number(sessionStorage.getItem(ACTIVE_STEP_STORAGE_KEY))
+  return Number.isInteger(stored) && stored >= 0 && stored < STEPS.length ? stored : 0
+}
+
 export function OnboardingWizardPage() {
   const companyQuery = useCompanyQuery()
 
@@ -27,14 +39,24 @@ export function OnboardingWizardPage() {
 }
 
 function OnboardingWizard({ company }: { company: Company }) {
-  const [activeStep, setActiveStep] = useState(0)
+  const [activeStep, setActiveStepState] = useState(readStoredStep)
   const navigate = useNavigate()
   const finishMutation = useUpdateCompanyMutation()
+
+  function setActiveStep(step: number) {
+    setActiveStepState(step)
+    sessionStorage.setItem(ACTIVE_STEP_STORAGE_KEY, String(step))
+  }
 
   function finish() {
     finishMutation.mutate(
       { settings: { onboarding: { completed: true } } },
-      { onSuccess: () => navigate('/', { replace: true }) },
+      {
+        onSuccess: () => {
+          sessionStorage.removeItem(ACTIVE_STEP_STORAGE_KEY)
+          navigate('/', { replace: true })
+        },
+      },
     )
   }
 
@@ -70,11 +92,9 @@ function OnboardingWizard({ company }: { company: Company }) {
           Skip setup
         </Button>
         <Stack direction="row" spacing={2}>
-          {activeStep > 0 && (
-            <Button onClick={() => setActiveStep((step) => step - 1)}>Back</Button>
-          )}
+          {activeStep > 0 && <Button onClick={() => setActiveStep(activeStep - 1)}>Back</Button>}
           {activeStep < STEPS.length - 1 ? (
-            <Button variant="contained" onClick={() => setActiveStep((step) => step + 1)}>
+            <Button variant="contained" onClick={() => setActiveStep(activeStep + 1)}>
               Next
             </Button>
           ) : (

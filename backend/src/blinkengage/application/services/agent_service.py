@@ -171,10 +171,10 @@ class AgentService:
         return agent
 
     async def list_agents(
-        self, *, company_id: UUID, offset: int, limit: int
+        self, *, company_id: UUID, offset: int, limit: int, search: str | None = None
     ) -> tuple[list[Agent], int]:
         return await self._agents.list_for_company(
-            company_id=company_id, offset=offset, limit=limit
+            company_id=company_id, offset=offset, limit=limit, search=search
         )
 
     async def update_own_status(

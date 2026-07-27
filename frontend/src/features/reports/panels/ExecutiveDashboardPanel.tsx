@@ -3,6 +3,7 @@ import { BarChart } from '@mui/x-charts/BarChart'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { ErrorState } from '../../../shared/components/ErrorState'
 import { LoadingState } from '../../../shared/components/LoadingState'
+import { channelTypeLabel } from '../../channels/types'
 import { useExecutiveDashboardQuery } from '../api'
 import { ReportExportButtons } from '../ReportExportButtons'
 import { StatCard } from '../StatCard'
@@ -66,7 +67,13 @@ export function ExecutiveDashboardPanel({ range }: { range: DateRange }) {
             <BarChart
               height={320}
               dataset={channels}
-              xAxis={[{ dataKey: 'channel_type', scaleType: 'band' }]}
+              xAxis={[
+                {
+                  dataKey: 'channel_type',
+                  scaleType: 'band',
+                  valueFormatter: (value: string) => channelTypeLabel(value),
+                },
+              ]}
               series={[
                 { dataKey: 'opened', label: 'Opened' },
                 { dataKey: 'closed', label: 'Closed' },

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Box, Stack, Typography } from '@mui/material'
 
 interface PageHeaderProps {
-  title: string
+  title: ReactNode
   description?: string
   actions?: ReactNode
 }

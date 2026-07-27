@@ -1,16 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import {
-  Alert,
-  Button,
-  Divider,
-  Link,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material'
+import { Alert, Button, Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { usePermissions } from '../../shared/hooks/usePermissions'
@@ -83,19 +74,25 @@ export function ConversationSidebar({
 
   const channel = channelsQuery.data?.find((c) => c.id === conversation.channel_config_id)
   const assignedAgent = agentsQuery.data?.find((a) => a.id === conversation.assigned_agent_id)
-  const assignedDepartment = departmentsQuery.data?.find(
-    (d) => d.id === conversation.department_id,
-  )
+  const assignedDepartment = departmentsQuery.data?.find((d) => d.id === conversation.department_id)
 
   return (
     <Stack spacing={2} sx={{ p: 2, width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
       {releaseError && <Alert severity="error">{releaseError}</Alert>}
+      {updateMutation.isError && (
+        <Alert severity="error" onClose={() => updateMutation.reset()}>
+          {extractErrorMessage(updateMutation.error, 'Could not update this conversation.')}
+        </Alert>
+      )}
 
       <div>
         <Typography variant="overline" color="text.secondary">
           Customer
         </Typography>
-        <Typography variant="subtitle1">
+        {/* `component="p"` — MUI's default subtitle1 mapping is `<h6>`,
+            which (now that ConversationViewPage renders a real `<h1>`
+            via PageHeader) would otherwise skip straight from h1 to h6. */}
+        <Typography variant="subtitle1" component="p">
           <Link component={RouterLink} to={`/customers/${conversation.customer_id}`}>
             {customerName}
           </Link>
@@ -114,7 +111,11 @@ export function ConversationSidebar({
             AI Summary
           </Typography>
           {summaryMutation.isError && (
-            <Alert severity="error" sx={{ mt: 0.5, mb: 0.5 }} onClose={() => summaryMutation.reset()}>
+            <Alert
+              severity="error"
+              sx={{ mt: 0.5, mb: 0.5 }}
+              onClose={() => summaryMutation.reset()}
+            >
               {extractErrorMessage(summaryMutation.error, 'Could not summarize this conversation.')}
             </Alert>
           )}

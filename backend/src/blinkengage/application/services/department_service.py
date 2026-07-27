@@ -53,10 +53,10 @@ class DepartmentService:
         return department
 
     async def list_departments(
-        self, *, company_id: UUID, offset: int, limit: int
+        self, *, company_id: UUID, offset: int, limit: int, search: str | None = None
     ) -> tuple[list[Department], int]:
         return await self._departments.list_for_company(
-            company_id=company_id, offset=offset, limit=limit
+            company_id=company_id, offset=offset, limit=limit, search=search
         )
 
     async def update(

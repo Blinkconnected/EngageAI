@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Chip, List, ListItemButton, ListItemText } from '@mui/material'
+import { Chip, List, ListItemButton, ListItemText, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
@@ -47,8 +47,15 @@ export function CustomerTimelinePanel({ customerId }: { customerId: string }) {
     )
   }
 
+  const { total } = conversationsQuery.data
+
   return (
     <List>
+      {total > 50 && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          Showing the 50 most recent of {total} conversations.
+        </Typography>
+      )}
       {conversationsQuery.data.items.map((conversation) => (
         <ListItemButton
           key={conversation.id}

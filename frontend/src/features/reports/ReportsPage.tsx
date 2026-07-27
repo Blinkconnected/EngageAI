@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { Box, Tab, Tabs } from '@mui/material'
+import { Alert, Box, Tab, Tabs } from '@mui/material'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { useCurrentUserQuery } from '../session/api'
 import { DateRangeFilter } from './DateRangeFilter'
-import { defaultDateRange } from './dateRange'
+import { defaultDateRange, isValidDateRange } from './dateRange'
 import { AiReportPanel } from './panels/AiReportPanel'
 import { ConversationsReportPanel } from './panels/ConversationsReportPanel'
 import { CsatReportPanel } from './panels/CsatReportPanel'
@@ -63,19 +63,35 @@ export function ReportsPage() {
         sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
       >
         {visibleTabs.map((t) => (
-          <Tab key={t.value} value={t.value} label={t.label} id={`reports-tab-${t.value}`} />
+          <Tab
+            key={t.value}
+            value={t.value}
+            label={t.label}
+            id={`reports-tab-${t.value}`}
+            aria-controls={`reports-tabpanel-${t.value}`}
+          />
         ))}
       </Tabs>
 
-      <Box role="tabpanel" aria-labelledby={`reports-tab-${activeTab.value}`}>
-        {activeTab.value === 'executive' && <ExecutiveDashboardPanel range={range} />}
-        {activeTab.value === 'conversations' && <ConversationsReportPanel range={range} />}
-        {activeTab.value === 'performance' && <PerformanceReportPanel range={range} />}
-        {activeTab.value === 'queues' && <QueuesReportPanel range={range} />}
-        {activeTab.value === 'sla' && <SlaReportPanel range={range} />}
-        {activeTab.value === 'csat' && <CsatReportPanel range={range} />}
-        {activeTab.value === 'ai' && <AiReportPanel range={range} />}
-        {activeTab.value === 'my-performance' && <MyPerformancePanel range={range} />}
+      <Box
+        role="tabpanel"
+        id={`reports-tabpanel-${activeTab.value}`}
+        aria-labelledby={`reports-tab-${activeTab.value}`}
+      >
+        {!isValidDateRange(range) ? (
+          <Alert severity="warning">Fix the date range above to see this report.</Alert>
+        ) : (
+          <>
+            {activeTab.value === 'executive' && <ExecutiveDashboardPanel range={range} />}
+            {activeTab.value === 'conversations' && <ConversationsReportPanel range={range} />}
+            {activeTab.value === 'performance' && <PerformanceReportPanel range={range} />}
+            {activeTab.value === 'queues' && <QueuesReportPanel range={range} />}
+            {activeTab.value === 'sla' && <SlaReportPanel range={range} />}
+            {activeTab.value === 'csat' && <CsatReportPanel range={range} />}
+            {activeTab.value === 'ai' && <AiReportPanel range={range} />}
+            {activeTab.value === 'my-performance' && <MyPerformancePanel range={range} />}
+          </>
+        )}
       </Box>
     </>
   )

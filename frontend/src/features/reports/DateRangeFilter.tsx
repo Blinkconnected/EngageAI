@@ -42,14 +42,23 @@ export function DateRangeFilter({ range, onChange }: DateRangeFilterProps) {
         helperText={invalid ? '"From" must be on or before "To".' : undefined}
       />
       <ButtonGroup size="small" variant="outlined" aria-label="Quick date range presets">
-        {PRESETS.map((preset) => (
-          <Button
-            key={preset.label}
-            onClick={() => onChange({ date_from: isoDate(daysAgo(preset.days)), date_to: isoDate(daysAgo(0)) })}
-          >
-            {preset.label}
-          </Button>
-        ))}
+        {PRESETS.map((preset) => {
+          const isActive =
+            range.date_to === isoDate(daysAgo(0)) &&
+            range.date_from === isoDate(daysAgo(preset.days))
+          return (
+            <Button
+              key={preset.label}
+              variant={isActive ? 'contained' : 'outlined'}
+              aria-pressed={isActive}
+              onClick={() =>
+                onChange({ date_from: isoDate(daysAgo(preset.days)), date_to: isoDate(daysAgo(0)) })
+              }
+            >
+              {preset.label}
+            </Button>
+          )
+        })}
       </ButtonGroup>
     </Stack>
   )

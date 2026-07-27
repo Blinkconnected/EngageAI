@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import {
   Alert,
@@ -19,7 +19,6 @@ import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
 import { EmptyState } from '../../shared/components/EmptyState'
-import { usePaginationParams } from '../../shared/api/pagination'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { formatRelativeTime } from '../../shared/utils/formatRelativeTime'
 import { usePermissions } from '../../shared/hooks/usePermissions'
@@ -61,13 +60,37 @@ export function InboxPage() {
   const { hasPermission } = usePermissions()
   const canPick = hasPermission('conversations.pick')
 
-  const [filterMode, setFilterMode] = useState<FilterMode>('status')
-  const [statusTab, setStatusTab] = useState<ConversationStatus | 'all'>('open')
-  const [myConversationsOnly, setMyConversationsOnly] = useState(false)
-  const [queueFilterId, setQueueFilterId] = useState('')
-  const [unassignedOnly, setUnassignedOnly] = useState(false)
+  // Filter/queue/page state lives in the URL, not local useState — this is
+  // the app's highest-frequency workflow (agents constantly open a
+  // conversation from here and come back), and local state was silently
+  // reset on every such round trip since InboxPage fully unmounts when
+  // navigating to /conversations/:id and back. Query params survive that.
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  function updateParams(patch: Record<string, string | null>) {
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === null || value === '') next.delete(key)
+          else next.set(key, value)
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  const filterMode: FilterMode = searchParams.get('mode') === 'queue' ? 'queue' : 'status'
+  const statusTab = (searchParams.get('status') as ConversationStatus | 'all' | null) ?? 'open'
+  const myConversationsOnly = searchParams.get('mine') === '1'
+  const queueFilterId = searchParams.get('queue') ?? ''
+  const unassignedOnly = searchParams.get('unassigned') === '1'
+  const page = Number(searchParams.get('page') ?? '0')
+  const pageSize = Number(searchParams.get('pageSize') ?? '20')
+  const apiParams = { page: page + 1, page_size: pageSize }
+
   const [actionError, setActionError] = useState<string | null>(null)
-  const { page, pageSize, setPage, setPageSize, apiParams } = usePaginationParams()
 
   const { data: currentUser } = useCurrentUserQuery()
   const agentsQuery = useAllAgentsQuery()
@@ -254,10 +277,7 @@ export function InboxPage() {
             value={filterMode}
             exclusive
             onChange={(_event, value: FilterMode | null) => {
-              if (value) {
-                setFilterMode(value)
-                setPage(0)
-              }
+              if (value) updateParams({ mode: value === 'status' ? null : value, page: null })
             }}
             aria-label="Filter mode"
           >
@@ -269,8 +289,7 @@ export function InboxPage() {
             <Tabs
               value={statusTab}
               onChange={(_event, value) => {
-                setStatusTab(value)
-                setPage(0)
+                updateParams({ status: value === 'open' ? null : value, page: null })
               }}
             >
               {TABS.map((tab) => (
@@ -285,8 +304,7 @@ export function InboxPage() {
               value={queueFilterId}
               disabled={queuesQuery.isPending}
               onChange={(event) => {
-                setQueueFilterId(event.target.value)
-                setPage(0)
+                updateParams({ queue: event.target.value || null, page: null })
               }}
               sx={{ minWidth: 200 }}
             >
@@ -307,8 +325,7 @@ export function InboxPage() {
               <Switch
                 checked={myConversationsOnly}
                 onChange={(event) => {
-                  setMyConversationsOnly(event.target.checked)
-                  setPage(0)
+                  updateParams({ mine: event.target.checked ? '1' : null, page: null })
                 }}
               />
             }
@@ -321,8 +338,7 @@ export function InboxPage() {
               <Switch
                 checked={unassignedOnly}
                 onChange={(event) => {
-                  setUnassignedOnly(event.target.checked)
-                  setPage(0)
+                  updateParams({ unassigned: event.target.checked ? '1' : null, page: null })
                 }}
               />
             }
@@ -350,8 +366,10 @@ export function InboxPage() {
           rowCount={conversationsQuery.data?.total ?? 0}
           page={page}
           pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
+          onPageChange={(newPage) => updateParams({ page: newPage === 0 ? null : String(newPage) })}
+          onPageSizeChange={(newPageSize) =>
+            updateParams({ pageSize: newPageSize === 20 ? null : String(newPageSize), page: null })
+          }
           loading={conversationsQuery.isFetching}
           onRowClick={(row) => navigate(`/conversations/${row.id}`)}
         />

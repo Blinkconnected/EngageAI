@@ -1,16 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page, PageParams } from '../../shared/api/pagination'
-import type {
-  Agent,
-  AgentCreateRequest,
-  AgentUpdateRequest,
-  SelfAvailabilityStatus,
-} from './types'
+import type { Agent, AgentCreateRequest, AgentUpdateRequest, SelfAvailabilityStatus } from './types'
 
 const AGENTS_LIST_KEY = ['agents', 'list']
 
-async function fetchAgents(params: PageParams): Promise<Page<Agent>> {
+async function fetchAgents(params: PageParams & { search?: string }): Promise<Page<Agent>> {
   const { data } = await apiClient.get<Page<Agent>>('/agents', { params })
   return data
 }
@@ -38,7 +33,7 @@ async function updateOwnAvailability(status: SelfAvailabilityStatus): Promise<Ag
   return data
 }
 
-export function useAgentsQuery(params: PageParams) {
+export function useAgentsQuery(params: PageParams & { search?: string }) {
   return useQuery({
     queryKey: [...AGENTS_LIST_KEY, params],
     queryFn: () => fetchAgents(params),

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from blinkengage.api.deps import (
     get_agent_service,
@@ -48,9 +48,13 @@ async def list_agents(
     auth: Annotated[AuthContext, Depends(require_permission("agents.read"))],
     service: Annotated[AgentService, Depends(get_agent_service)],
     page_params: Annotated[PageParams, Depends()],
+    search: Annotated[str | None, Query(max_length=255)] = None,
 ) -> Page[AgentResponse]:
     items, total = await service.list_agents(
-        company_id=auth.company_id, offset=page_params.offset, limit=page_params.page_size
+        company_id=auth.company_id,
+        offset=page_params.offset,
+        limit=page_params.page_size,
+        search=search,
     )
     return Page(
         items=[_to_response(item) for item in items],

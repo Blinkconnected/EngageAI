@@ -132,13 +132,18 @@ export function useTestConnectionEphemeralMutation() {
 }
 
 /** Re-check an already-saved channel — reconnect flow / health monitoring
- * detail view. Also invalidates the list so a just-updated health badge
- * shows up without a manual refresh. */
+ * detail view. Also invalidates both the paginated list AND the
+ * unpaginated `useAllChannelsQuery` cache (the Provider & Service Status
+ * page reads only the latter) so a just-updated health badge shows up
+ * on either page without a manual refresh. */
 export function useTestConnectionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: testConnection,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: CHANNELS_LIST_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CHANNELS_LIST_KEY })
+      queryClient.invalidateQueries({ queryKey: ['channels', 'all'] })
+    },
   })
 }
 

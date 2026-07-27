@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Box, IconButton, Stack, Tab, Tabs, Typography } from '@mui/material'
+import { Box, IconButton, Stack, Tab, Tabs } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { useCustomerQuery } from '../customers/api'
@@ -33,13 +34,20 @@ export function ConversationViewPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
-        <IconButton onClick={() => navigate('/conversations')} aria-label="Back to inbox">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+        <IconButton
+          onClick={() => navigate('/conversations')}
+          aria-label="Back to inbox"
+          sx={{ mt: 0.5 }}
+        >
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          {customerQuery.data?.full_name ?? 'Conversation'}
-        </Typography>
+        {/* Reuses the same PageHeader (and therefore the same single `h1`)
+            every other page in the app renders its title through — this
+            page previously hand-rolled a smaller, non-h1 title. */}
+        <Box sx={{ flexGrow: 1 }}>
+          <PageHeader title={customerQuery.data?.full_name ?? 'Conversation'} />
+        </Box>
       </Stack>
 
       <Stack
@@ -70,7 +78,20 @@ export function ConversationViewPage() {
           {tab === 'transfers' && <TransferHistoryPanel conversationId={conversation.id} />}
         </Box>
 
-        <Box sx={{ borderLeft: { md: 1 }, borderTop: { xs: 1, md: 0 }, borderColor: 'divider' }}>
+        <Box
+          sx={{
+            borderLeft: { md: 1 },
+            borderTop: { xs: 1, md: 0 },
+            borderColor: 'divider',
+            // On mobile the sidebar (Status/Transfer/Release/Queue, etc.)
+            // renders below the already-scrolling message thread — bounded
+            // and independently scrollable here so those actions stay
+            // reachable without scrolling past the entire conversation
+            // history first.
+            overflowY: { xs: 'auto', md: 'visible' },
+            maxHeight: { xs: 320, md: 'none' },
+          }}
+        >
           <ConversationSidebar
             conversation={conversation}
             customerName={customerQuery.data?.full_name ?? '—'}

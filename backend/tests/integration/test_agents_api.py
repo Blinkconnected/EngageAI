@@ -44,6 +44,70 @@ async def test_create_agent_duplicate_email_conflicts(
     assert response.status_code == 409
 
 
+async def test_search_agents_by_name(client: AsyncClient, owner_headers: dict) -> None:
+    await client.post(
+        "/api/v1/agents",
+        json={
+            "email": "alice@acme.example",
+            "full_name": "Alice Anderson",
+            "password": "correct-horse-battery-9",
+        },
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/agents",
+        json={
+            "email": "bob@acme.example",
+            "full_name": "Bob Baker",
+            "password": "correct-horse-battery-9",
+        },
+        headers=owner_headers,
+    )
+
+    response = await client.get(
+        "/api/v1/agents", params={"search": "alice"}, headers=owner_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["full_name"] == "Alice Anderson"
+
+
+async def test_search_agents_by_title(client: AsyncClient, owner_headers: dict) -> None:
+    create_response = await client.post(
+        "/api/v1/agents",
+        json={
+            "email": "alice@acme.example",
+            "full_name": "Alice Anderson",
+            "password": "correct-horse-battery-9",
+        },
+        headers=owner_headers,
+    )
+    agent_id = create_response.json()["id"]
+    await client.patch(
+        f"/api/v1/agents/{agent_id}",
+        json={"title": "Senior Support Specialist"},
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/agents",
+        json={
+            "email": "bob@acme.example",
+            "full_name": "Bob Baker",
+            "password": "correct-horse-battery-9",
+        },
+        headers=owner_headers,
+    )
+
+    response = await client.get(
+        "/api/v1/agents", params={"search": "Specialist"}, headers=owner_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["full_name"] == "Alice Anderson"
+
+
 async def test_update_agent_status_and_title(client: AsyncClient, owner_headers: dict) -> None:
     create_response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
     agent_id = create_response.json()["id"]

@@ -6,7 +6,7 @@ import { useAllDepartmentsQuery } from '../departments/api'
 import { useUpdateAgentMutation } from './api'
 import type { Agent, AgentStatus } from './types'
 
-const STATUS_OPTIONS: AgentStatus[] = ['online', 'away', 'offline']
+const STATUS_OPTIONS: AgentStatus[] = ['online', 'away', 'busy', 'offline']
 
 export function AgentEditDialog({ agent, onClose }: { agent: Agent | null; onClose: () => void }) {
   if (!agent) return null

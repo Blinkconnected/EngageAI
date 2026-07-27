@@ -11,6 +11,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -37,7 +38,10 @@ function fullWeekSchedule(
 ): Record<Weekday, BusinessHoursDay> {
   const result = {} as Record<Weekday, BusinessHoursDay>
   for (const day of WEEKDAYS) {
-    result[day] = schedule?.[day] ?? { ...DEFAULT_DAY, closed: day === 'saturday' || day === 'sunday' }
+    result[day] = schedule?.[day] ?? {
+      ...DEFAULT_DAY,
+      closed: day === 'saturday' || day === 'sunday',
+    }
   }
   return result
 }
@@ -48,6 +52,11 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
     fullWeekSchedule(company.settings.business_hours?.schedule),
   )
   const updateMutation = useUpdateCompanyMutation()
+
+  const savedEnabled = company.settings.business_hours?.enabled ?? false
+  const savedSchedule = fullWeekSchedule(company.settings.business_hours?.schedule)
+  const isDirty =
+    enabled !== savedEnabled || JSON.stringify(schedule) !== JSON.stringify(savedSchedule)
 
   function updateDay(day: Weekday, patch: Partial<BusinessHoursDay>) {
     setSchedule((current) => ({ ...current, [day]: { ...current[day], ...patch } }))
@@ -62,14 +71,14 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            When your team is available. Displayed to customers and reserved for future SLA/
-            routing use.
+            When your team is available. Displayed to customers and reserved for future SLA/ routing
+            use.
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
           <FormControlLabel
             control={
@@ -79,59 +88,65 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
           />
 
           {enabled && (
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Day</TableCell>
-                  <TableCell>Closed</TableCell>
-                  <TableCell>Open</TableCell>
-                  <TableCell>Close</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {WEEKDAYS.map((day) => {
-                  const dayValue = schedule[day]
-                  return (
-                    <TableRow key={day}>
-                      <TableCell>{DAY_LABELS[day]}</TableCell>
-                      <TableCell>
-                        <Checkbox
-                          size="small"
-                          checked={dayValue.closed}
-                          onChange={(event) => updateDay(day, { closed: event.target.checked })}
-                          slotProps={{ input: { 'aria-label': `${DAY_LABELS[day]} closed` } }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          type="time"
-                          size="small"
-                          value={dayValue.open}
-                          disabled={dayValue.closed}
-                          onChange={(event) => updateDay(day, { open: event.target.value })}
-                          slotProps={{ htmlInput: { 'aria-label': `${DAY_LABELS[day]} opens at` } }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          type="time"
-                          size="small"
-                          value={dayValue.close}
-                          disabled={dayValue.closed}
-                          onChange={(event) => updateDay(day, { close: event.target.value })}
-                          slotProps={{ htmlInput: { 'aria-label': `${DAY_LABELS[day]} closes at` } }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Day</TableCell>
+                    <TableCell>Closed</TableCell>
+                    <TableCell>Open</TableCell>
+                    <TableCell>Close</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {WEEKDAYS.map((day) => {
+                    const dayValue = schedule[day]
+                    return (
+                      <TableRow key={day}>
+                        <TableCell>{DAY_LABELS[day]}</TableCell>
+                        <TableCell>
+                          <Checkbox
+                            size="small"
+                            checked={dayValue.closed}
+                            onChange={(event) => updateDay(day, { closed: event.target.checked })}
+                            slotProps={{ input: { 'aria-label': `${DAY_LABELS[day]} closed` } }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            type="time"
+                            size="small"
+                            value={dayValue.open}
+                            disabled={dayValue.closed}
+                            onChange={(event) => updateDay(day, { open: event.target.value })}
+                            slotProps={{
+                              htmlInput: { 'aria-label': `${DAY_LABELS[day]} opens at` },
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            type="time"
+                            size="small"
+                            value={dayValue.close}
+                            disabled={dayValue.closed}
+                            onChange={(event) => updateDay(day, { close: event.target.value })}
+                            slotProps={{
+                              htmlInput: { 'aria-label': `${DAY_LABELS[day]} closes at` },
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
 
           <Button
             variant="contained"
-            disabled={updateMutation.isPending}
+            disabled={updateMutation.isPending || !isDirty}
             onClick={handleSave}
             sx={{ alignSelf: 'flex-start' }}
           >

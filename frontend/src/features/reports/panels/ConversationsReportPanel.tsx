@@ -5,6 +5,7 @@ import type { GridColDef } from '@mui/x-data-grid'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { ErrorState } from '../../../shared/components/ErrorState'
 import { LoadingState } from '../../../shared/components/LoadingState'
+import { channelTypeLabel } from '../../channels/types'
 import { useConversationsReportQuery } from '../api'
 import { ReportDataGrid } from '../ReportDataGrid'
 import { ReportExportButtons } from '../ReportExportButtons'
@@ -12,7 +13,12 @@ import type { ConversationStatsRow, DateRange } from '../types'
 
 const COLUMNS: GridColDef<ConversationStatsRow>[] = [
   { field: 'stat_date', headerName: 'Date', flex: 1 },
-  { field: 'channel_type', headerName: 'Channel', flex: 1 },
+  {
+    field: 'channel_type',
+    headerName: 'Channel',
+    flex: 1,
+    valueFormatter: (value: string) => channelTypeLabel(value),
+  },
   { field: 'opened', headerName: 'Opened', flex: 1, type: 'number' },
   { field: 'closed', headerName: 'Closed', flex: 1, type: 'number' },
   { field: 'resolved', headerName: 'Resolved', flex: 1, type: 'number' },
@@ -72,15 +78,23 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
           <MenuItem value="all">All channels</MenuItem>
           {channels.map((channel) => (
             <MenuItem key={channel} value={channel}>
-              {channel}
+              {channelTypeLabel(channel)}
             </MenuItem>
           ))}
         </TextField>
-        <ReportExportButtons
-          path="/reports/conversations"
-          range={range}
-          fallbackFilenameBase="conversations-report"
-        />
+        <Stack spacing={0.5} sx={{ alignItems: { xs: 'flex-start', sm: 'flex-end' } }}>
+          <ReportExportButtons
+            path="/reports/conversations"
+            range={range}
+            fallbackFilenameBase="conversations-report"
+          />
+          {channelFilter !== 'all' && (
+            <Typography variant="caption" color="text.secondary">
+              Exports include all channels for this date range, not just{' '}
+              {channelTypeLabel(channelFilter)}.
+            </Typography>
+          )}
+        </Stack>
       </Stack>
 
       {filteredRows.length === 0 ? (
@@ -98,7 +112,13 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
               <BarChart
                 height={300}
                 dataset={chartData}
-                xAxis={[{ dataKey: 'channel_type', scaleType: 'band' }]}
+                xAxis={[
+                  {
+                    dataKey: 'channel_type',
+                    scaleType: 'band',
+                    valueFormatter: (value: string) => channelTypeLabel(value),
+                  },
+                ]}
                 series={[
                   { dataKey: 'opened', label: 'Opened' },
                   { dataKey: 'closed', label: 'Closed' },

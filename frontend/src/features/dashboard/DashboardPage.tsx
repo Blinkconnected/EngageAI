@@ -18,17 +18,9 @@ import { EmptyState } from '../../shared/components/EmptyState'
 import { useLiveDashboardQuery } from './api'
 import type { AgentWorkload, LiveQueueDepth } from './types'
 
-function StatCard({
-  label,
-  value,
-  size = { xs: 12, sm: 6, md: 3 },
-}: {
-  label: string
-  value: number
-  size?: { xs: number; sm: number; md: number }
-}) {
+function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <Grid size={size}>
+    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
       <Card variant="outlined">
         <CardContent>
           <Typography color="text.secondary" gutterBottom>
@@ -39,7 +31,7 @@ function StatCard({
               variant would otherwise render as skips two levels, which is
               what an axe accessibility pass flags as a heading-order
               violation. */}
-          <Typography variant="h4" component="h2">
+          <Typography variant="h4" component="h2" aria-label={`${label}: ${value}`}>
             {value}
           </Typography>
         </CardContent>
@@ -156,18 +148,12 @@ export function DashboardPage() {
           <StatCard
             label="Total conversations"
             value={liveDashboardQuery.data.conversations.total}
-            size={{ xs: 12, sm: 4, md: 4 }}
           />
           <StatCard
             label="Active (open + pending)"
             value={liveDashboardQuery.data.conversations.active}
-            size={{ xs: 12, sm: 4, md: 4 }}
           />
-          <StatCard
-            label="Unassigned"
-            value={liveDashboardQuery.data.conversations.unassigned}
-            size={{ xs: 12, sm: 4, md: 4 }}
-          />
+          <StatCard label="Unassigned" value={liveDashboardQuery.data.conversations.unassigned} />
 
           <StatCard label="Open" value={liveDashboardQuery.data.conversations.open} />
           <StatCard label="Pending" value={liveDashboardQuery.data.conversations.pending} />
@@ -179,7 +165,12 @@ export function DashboardPage() {
               <CardContent>
                 {/* `component="h3"` — one level under the StatCards' `h2`
                     above, same heading-order rationale as there. */}
-                <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }} gutterBottom>
+                <Typography
+                  variant="subtitle1"
+                  component="h3"
+                  sx={{ fontWeight: 600 }}
+                  gutterBottom
+                >
                   Agents
                 </Typography>
                 <Grid container spacing={1}>
@@ -222,7 +213,12 @@ export function DashboardPage() {
           <Grid size={{ xs: 12, md: 8 }}>
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }} gutterBottom>
+                <Typography
+                  variant="subtitle1"
+                  component="h3"
+                  sx={{ fontWeight: 600 }}
+                  gutterBottom
+                >
                   Team workload
                 </Typography>
                 {liveDashboardQuery.data.agent_workload.length === 0 ? (
@@ -240,7 +236,12 @@ export function DashboardPage() {
           <Grid size={12}>
             <Card variant="outlined">
               <CardContent>
-                <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }} gutterBottom>
+                <Typography
+                  variant="subtitle1"
+                  component="h3"
+                  sx={{ fontWeight: 600 }}
+                  gutterBottom
+                >
                   Queue depth
                 </Typography>
                 {liveDashboardQuery.data.queues.length === 0 ? (

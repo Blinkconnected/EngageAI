@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   Alert,
-  Box,
   Button,
   Chip,
   IconButton,
@@ -45,24 +44,25 @@ function targetLabel(minutes: number | null): string {
   return minutes ? `${minutes} min` : '—'
 }
 
-function PoliciesTab({ canManage }: { canManage: boolean }) {
+function PoliciesTab({
+  canManage,
+  createOpen,
+  onOpenCreate,
+  onCloseCreate,
+}: {
+  canManage: boolean
+  createOpen: boolean
+  onOpenCreate: () => void
+  onCloseCreate: () => void
+}) {
   const policiesQuery = useSlaPoliciesQuery()
   const deleteMutation = useDeleteSlaPolicyMutation()
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [editingPolicy, setEditingPolicy] = useState<SlaPolicy | null>(null)
   const [deletingPolicy, setDeletingPolicy] = useState<SlaPolicy | null>(null)
 
   return (
     <>
-      {canManage && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            New policy
-          </Button>
-        </Box>
-      )}
-
       {policiesQuery.isPending && <LoadingState label="Loading SLA policies…" />}
       {policiesQuery.isError && (
         <ErrorState error={policiesQuery.error} onRetry={() => policiesQuery.refetch()} />
@@ -73,7 +73,7 @@ function PoliciesTab({ canManage }: { canManage: boolean }) {
           description="Create a policy to set response/resolution targets, business hours awareness, and escalation rules — then assign it to a queue."
           action={
             canManage && (
-              <Button variant="contained" onClick={() => setCreateOpen(true)}>
+              <Button variant="contained" onClick={onOpenCreate}>
                 New policy
               </Button>
             )
@@ -153,7 +153,7 @@ function PoliciesTab({ canManage }: { canManage: boolean }) {
 
       {canManage && (
         <>
-          <SlaPolicyCreateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+          <SlaPolicyCreateDialog open={createOpen} onClose={onCloseCreate} />
           <SlaPolicyEditDialog policy={editingPolicy} onClose={() => setEditingPolicy(null)} />
           <ConfirmDialog
             open={Boolean(deletingPolicy)}
@@ -177,21 +177,22 @@ function PoliciesTab({ canManage }: { canManage: boolean }) {
   )
 }
 
-function HolidaysTab({ canManage }: { canManage: boolean }) {
+function HolidaysTab({
+  canManage,
+  createOpen,
+  onOpenCreate,
+  onCloseCreate,
+}: {
+  canManage: boolean
+  createOpen: boolean
+  onOpenCreate: () => void
+  onCloseCreate: () => void
+}) {
   const holidaysQuery = useHolidaysQuery()
   const deleteMutation = useDeleteHolidayMutation()
-  const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <>
-      {canManage && (
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            New holiday
-          </Button>
-        </Box>
-      )}
-
       {holidaysQuery.isPending && <LoadingState label="Loading holidays…" />}
       {holidaysQuery.isError && (
         <ErrorState error={holidaysQuery.error} onRetry={() => holidaysQuery.refetch()} />
@@ -202,7 +203,7 @@ function HolidaysTab({ canManage }: { canManage: boolean }) {
           description="Add a holiday to exclude it from business-hours-aware SLA deadlines."
           action={
             canManage && (
-              <Button variant="contained" onClick={() => setCreateOpen(true)}>
+              <Button variant="contained" onClick={onOpenCreate}>
                 New holiday
               </Button>
             )
@@ -246,9 +247,7 @@ function HolidaysTab({ canManage }: { canManage: boolean }) {
         </TableContainer>
       )}
 
-      {canManage && (
-        <HolidayCreateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
-      )}
+      {canManage && <HolidayCreateDialog open={createOpen} onClose={onCloseCreate} />}
     </>
   )
 }
@@ -315,11 +314,15 @@ function PreviewTab() {
             <TableBody>
               <TableRow>
                 <TableCell>First response warning</TableCell>
-                <TableCell>{formatDeadline(previewMutation.data.first_response_warning_at)}</TableCell>
+                <TableCell>
+                  {formatDeadline(previewMutation.data.first_response_warning_at)}
+                </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>First response deadline</TableCell>
-                <TableCell>{formatDeadline(previewMutation.data.first_response_deadline)}</TableCell>
+                <TableCell>
+                  {formatDeadline(previewMutation.data.first_response_deadline)}
+                </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Resolution warning</TableCell>
@@ -341,12 +344,34 @@ export function SlaBuilderPage() {
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('sla_policies.manage')
   const [tab, setTab] = useState<'policies' | 'holidays' | 'preview'>('policies')
+  // Owned here, not per-tab, so the "+ New" action stays in the shared
+  // PageHeader — stable top-right, and simply absent on the Preview tab
+  // (which has no create action) — instead of moving/disappearing.
+  const [policyCreateOpen, setPolicyCreateOpen] = useState(false)
+  const [holidayCreateOpen, setHolidayCreateOpen] = useState(false)
+
+  const headerAction =
+    canManage &&
+    (tab === 'policies' ? (
+      <Button variant="contained" startIcon={<AddIcon />} onClick={() => setPolicyCreateOpen(true)}>
+        New policy
+      </Button>
+    ) : tab === 'holidays' ? (
+      <Button
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={() => setHolidayCreateOpen(true)}
+      >
+        New holiday
+      </Button>
+    ) : null)
 
   return (
     <>
       <PageHeader
         title="SLA Builder"
         description="Define response and resolution targets, business hours and holidays, warning thresholds, and automatic escalation."
+        actions={headerAction}
       />
 
       <Tabs value={tab} onChange={(_event, value) => setTab(value)} sx={{ mb: 2 }}>
@@ -355,8 +380,22 @@ export function SlaBuilderPage() {
         <Tab label="Preview" value="preview" />
       </Tabs>
 
-      {tab === 'policies' && <PoliciesTab canManage={canManage} />}
-      {tab === 'holidays' && <HolidaysTab canManage={canManage} />}
+      {tab === 'policies' && (
+        <PoliciesTab
+          canManage={canManage}
+          createOpen={policyCreateOpen}
+          onOpenCreate={() => setPolicyCreateOpen(true)}
+          onCloseCreate={() => setPolicyCreateOpen(false)}
+        />
+      )}
+      {tab === 'holidays' && (
+        <HolidaysTab
+          canManage={canManage}
+          createOpen={holidayCreateOpen}
+          onOpenCreate={() => setHolidayCreateOpen(true)}
+          onCloseCreate={() => setHolidayCreateOpen(false)}
+        />
+      )}
       {tab === 'preview' && <PreviewTab />}
     </>
   )

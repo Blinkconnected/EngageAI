@@ -69,8 +69,46 @@ for more detail on how this page is put together.
   an at-a-glance Operational/Degraded/Not configured badge, individual
   and "Check all now" bulk connection testing, extensible to any future
   channel type automatically.
+- A search box on the Agents and Departments pages, matching the one
+  already on Customers (matches by name, email, or title for Agents; by
+  name or description for Departments).
+- You can now edit an already-connected business system (ERP) connection
+  — including updating the site URL, rotating credentials, or switching
+  it back on if it had been turned off — instead of only being able to
+  disconnect and set it up again from scratch.
+- Deleting a queue that a routing rule still points to is now blocked
+  with an explanation, instead of silently breaking that rule.
+- The onboarding wizard now remembers which step you were on if you
+  reload the page or come back later to finish it, and the Team Setup
+  step's invited-agent and created-department lists no longer reset to
+  empty when you go Back or Next (the invites and departments were
+  always saved — only the on-screen list was forgetting them).
 
 ### Changed
+
+- The "+ New" button for Queues, Routing Rules, SLA Policies, and
+  Holidays now lives in the page header instead of inside each tab, so
+  it stays put as you switch tabs.
+- The Inbox now keeps your filters (status, "My conversations", queue,
+  unassigned) and page position in the page's address, so they survive
+  opening a conversation and coming back, refreshing the page, or
+  sharing a link.
+- Report channel names (e.g. "whatsapp") now display using the same
+  friendly names used everywhere else in the app (e.g. "WhatsApp
+  Business").
+- A failed message's error reason is now always shown under the
+  message, instead of only on hover — easier to see on phones and
+  tablets.
+- A large number of smaller consistency and accessibility improvements
+  across nearly every page: clearer error messages and a retry option
+  on tables that fail to load, consistent "unsaved changes" behavior
+  across every Settings tab, corrected heading order and keyboard
+  navigation for screen reader and keyboard users (notifications,
+  permissions, conversation and customer pages), and mobile layout
+  fixes on narrow screens (Escalation Rules editor, notification
+  pop-ups, the notification bell menu).
+
+### Fixed
 
 - "Company Settings" is now simply called "Settings" throughout the app
   (sidebar, page title, and onboarding) — nothing about what it does or
@@ -84,9 +122,6 @@ for more detail on how this page is put together.
 - A manually generated customer satisfaction survey link (Conversations
   → generate CSAT link) now opens a proper feedback page in the app
   instead of a raw API address.
-
-### Fixed
-
 - The live queue dashboard was missing two of its numbers (assigned count
   and throughput), even though the underlying data was already being
   calculated correctly.
@@ -102,6 +137,17 @@ for more detail on how this page is put together.
   didn't appear until the page was refreshed or the agent sent their own
   reply — it now appears instantly, matching what was already promised
   for this release.
+- The Status page's connection badges didn't refresh after using "Test
+  Connection" until the page was reloaded.
+- The sidebar's active-page highlight went blank on nested pages such as
+  a specific conversation or customer profile, instead of staying on the
+  right section.
+- The Dashboard's summary cards weren't aligned to a consistent grid,
+  causing rows to look uneven.
+- Navigating to an unknown web address while signed in showed a blank
+  screen instead of the "Page not found" screen.
+- The Agents page's action-column width didn't account for the "Change
+  role" action, clipping it for some users.
 
 ### Security
 

@@ -81,6 +81,8 @@ export function CustomersPage() {
           onPageSizeChange={setPageSize}
           loading={customersQuery.isFetching}
           onRowClick={(row) => navigate(`/customers/${row.id}`)}
+          error={customersQuery.error}
+          onRetry={() => customersQuery.refetch()}
         />
       )}
     </>

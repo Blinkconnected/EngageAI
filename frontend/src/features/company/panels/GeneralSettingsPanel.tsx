@@ -13,6 +13,7 @@ const STATUS_COLOR = {
 export function GeneralSettingsPanel({ company }: { company: Company }) {
   const [name, setName] = useState(company.name)
   const updateMutation = useUpdateCompanyMutation()
+  const isDirty = name !== company.name
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -33,7 +34,7 @@ export function GeneralSettingsPanel({ company }: { company: Company }) {
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
           <TextField
             label="Company name"
@@ -45,7 +46,7 @@ export function GeneralSettingsPanel({ company }: { company: Company }) {
           <Button
             type="submit"
             variant="contained"
-            disabled={updateMutation.isPending || name === company.name}
+            disabled={updateMutation.isPending || !isDirty}
             sx={{ alignSelf: 'flex-start' }}
           >
             {updateMutation.isPending ? 'Saving…' : 'Save changes'}

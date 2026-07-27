@@ -1,27 +1,42 @@
 import { useState } from 'react'
-import { Alert, Button, Card, CardContent, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
-import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES, type Company, type SupportedLanguage } from '../types'
+import {
+  LANGUAGE_LABELS,
+  SUPPORTED_LANGUAGES,
+  type Company,
+  type SupportedLanguage,
+} from '../types'
 
 export function LanguageSettingsPanel({ company }: { company: Company }) {
   const [language, setLanguage] = useState<SupportedLanguage>(company.settings.language ?? 'en')
   const updateMutation = useUpdateCompanyMutation()
   const savedLanguage = company.settings.language ?? 'en'
+  const isDirty = language !== savedLanguage
 
   return (
     <Card variant="outlined" sx={{ maxWidth: 520 }}>
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Your company's default language. Full interface translation is coming in a future
-            update — this sets the preference for when it arrives.
+            Your company's default language. Full interface translation is coming in a future update
+            — this sets the preference for when it arrives.
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
           <TextField
             select
@@ -39,7 +54,7 @@ export function LanguageSettingsPanel({ company }: { company: Company }) {
 
           <Button
             variant="contained"
-            disabled={updateMutation.isPending || language === savedLanguage}
+            disabled={updateMutation.isPending || !isDirty}
             onClick={() => updateMutation.mutate({ settings: { language } })}
             sx={{ alignSelf: 'flex-start' }}
           >

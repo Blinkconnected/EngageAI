@@ -133,7 +133,12 @@ export function AppLayout() {
                     sx={{ height: 28, width: 28, mr: 1, borderRadius: 0.5, objectFit: 'contain' }}
                   />
                 )}
-                <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
+                <Typography
+                  variant="h6"
+                  component="div"
+                  noWrap
+                  sx={{ flexGrow: 1, minWidth: 0, fontWeight: 600 }}
+                >
                   {currentUser?.company.name ?? 'Blink Engage'}
                 </Typography>
                 <NotificationBell />
@@ -191,7 +196,7 @@ export function AppLayout() {
                         component="div"
                         sx={{ mb: 0.5 }}
                       >
-                        Status
+                        Status{myAgent.status === 'offline' ? ' — Currently Offline' : ''}
                       </Typography>
                       <ToggleButtonGroup
                         size="small"

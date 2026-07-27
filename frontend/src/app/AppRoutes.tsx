@@ -169,7 +169,14 @@ export function AppRoutes() {
           }
         />
         <Route path="403" element={<ForbiddenPage />} />
+        {/* Matched first for a signed-in user (more specific than the
+            top-level "*" below), so an unmatched URL keeps the sidebar/
+            top bar/footer instead of dropping them onto a bare page. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
+      {/* Fallback for a signed-out visitor hitting an unmatched URL —
+          ProtectedRoute above would just redirect them to /login anyway,
+          so this only ever renders for someone with no session at all. */}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

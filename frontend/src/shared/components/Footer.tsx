@@ -6,7 +6,7 @@ export function Footer() {
   return (
     <Box sx={{ py: 2, textAlign: 'center' }}>
       <Typography variant="caption" color="text.secondary">
-        © Blink Connected {year}
+        © Blink Engage {year}
       </Typography>
     </Box>
   )

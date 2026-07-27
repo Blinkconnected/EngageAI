@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.department import Department
@@ -32,11 +32,16 @@ class DepartmentRepository:
         return result.scalar_one_or_none()
 
     async def list_for_company(
-        self, *, company_id: UUID, offset: int, limit: int
+        self, *, company_id: UUID, offset: int, limit: int, search: str | None = None
     ) -> tuple[list[Department], int]:
         base = select(Department).where(
             Department.company_id == company_id, Department.deleted_at.is_(None)
         )
+        if search:
+            pattern = f"%{search}%"
+            base = base.where(
+                or_(Department.name.ilike(pattern), Department.description.ilike(pattern))
+            )
         total = (
             await self._session.execute(
                 select(func.count()).select_from(base.with_only_columns(Department.id).subquery())

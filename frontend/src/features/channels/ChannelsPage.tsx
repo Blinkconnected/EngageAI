@@ -132,6 +132,8 @@ export function ChannelsPage() {
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           loading={channelsQuery.isFetching}
+          error={channelsQuery.error}
+          onRetry={() => channelsQuery.refetch()}
         />
       )}
 

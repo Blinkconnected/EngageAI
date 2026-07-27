@@ -5,6 +5,7 @@ import {
   Button,
   FormControlLabel,
   IconButton,
+  ListItemButton,
   Paper,
   Stack,
   Switch,
@@ -97,33 +98,36 @@ export function NotificationHistoryPanel() {
         <Paper
           key={notification.id}
           variant="outlined"
-          sx={{
-            p: 1.5,
-            bgcolor: notification.is_read ? 'transparent' : 'action.hover',
-            cursor: notification.is_read ? 'default' : 'pointer',
-          }}
-          onClick={() => handleItemClick(notification)}
+          sx={{ bgcolor: notification.is_read ? 'transparent' : 'action.hover' }}
         >
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-            <Stack sx={{ flexGrow: 1, minWidth: 0 }} spacing={0.5}>
-              <Typography variant="body2" sx={{ fontWeight: notification.is_read ? 400 : 600 }}>
-                {notification.title}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {notification.body}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {formatRelativeTime(notification.created_at)}
-              </Typography>
-            </Stack>
+          {/* The row and the delete action are SIBLINGS, not
+              parent/child — nesting the IconButton inside the
+              ListItemButton would put a <button> inside a <button>,
+              which is invalid and breaks keyboard/screen-reader
+              activation of the inner control. */}
+          <Stack direction="row" spacing={0} sx={{ alignItems: 'stretch' }}>
+            <ListItemButton
+              onClick={() => handleItemClick(notification)}
+              sx={{ flexGrow: 1, minWidth: 0, alignItems: 'flex-start', py: 1.5, px: 1.5 }}
+            >
+              <Stack sx={{ minWidth: 0 }} spacing={0.5}>
+                <Typography variant="body2" sx={{ fontWeight: notification.is_read ? 400 : 600 }}>
+                  {notification.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {notification.body}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {formatRelativeTime(notification.created_at)}
+                </Typography>
+              </Stack>
+            </ListItemButton>
             <Tooltip title="Delete">
               <IconButton
                 size="small"
                 aria-label={`Delete notification: ${notification.title}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  deleteMutation.mutate(notification.id)
-                }}
+                onClick={() => deleteMutation.mutate(notification.id)}
+                sx={{ alignSelf: 'flex-start', mt: 1.5, mr: 1.5 }}
               >
                 <DeleteOutlineIcon fontSize="small" />
               </IconButton>

@@ -71,15 +71,27 @@ describe('QueuesPage', () => {
   })
 
   it('deletes a queue after confirming', async () => {
+    // "General" (unlike "VIP") has no routing rule targeting it — see
+    // the next test for that guarded case.
     const user = userEvent.setup()
     renderAuthenticated(<QueuesPage />)
-    const row = (await screen.findByText('VIP')).closest('[role="row"]')
+    const row = (await screen.findByText('General')).closest('[role="row"]')
     expect(row).not.toBeNull()
 
     await user.click(within(row as HTMLElement).getByLabelText('Delete'))
     await user.click(await screen.findByRole('button', { name: /^remove$/i }))
 
-    await waitFor(() => expect(screen.queryByText('VIP')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('General')).not.toBeInTheDocument())
+  })
+
+  it('blocks deleting a queue a routing rule still targets', async () => {
+    renderAuthenticated(<QueuesPage />)
+    const row = (await screen.findByText('VIP')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    expect(
+      within(row as HTMLElement).getByLabelText(/routing rule\(s\) still target this queue/),
+    ).toBeDisabled()
   })
 
   it('does not offer create/edit/delete without queues.manage', async () => {

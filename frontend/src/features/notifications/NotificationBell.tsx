@@ -6,9 +6,9 @@ import {
   Button,
   Divider,
   IconButton,
-  ListItemButton,
   ListItemText,
   Menu,
+  MenuItem,
   Typography,
 } from '@mui/material'
 import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
@@ -53,7 +53,9 @@ export function NotificationBell() {
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        slotProps={{ paper: { sx: { width: 360, maxHeight: 480 } } }}
+        slotProps={{
+          paper: { sx: { width: 360, maxWidth: 'calc(100vw - 32px)', maxHeight: 480 } },
+        }}
       >
         <Box
           sx={{
@@ -80,11 +82,12 @@ export function NotificationBell() {
           </Box>
         )}
         {notificationsQuery.data?.items.map((notification) => (
-          <ListItemButton
+          <MenuItem
             key={notification.id}
             onClick={() => handleItemClick(notification)}
             sx={{
               alignItems: 'flex-start',
+              whiteSpace: 'normal',
               bgcolor: notification.is_read ? 'transparent' : 'action.hover',
             }}
           >
@@ -101,7 +104,7 @@ export function NotificationBell() {
                 </>
               }
             />
-          </ListItemButton>
+          </MenuItem>
         ))}
         <Divider />
         <Box sx={{ p: 1, textAlign: 'center' }}>

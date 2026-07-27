@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Alert, Autocomplete, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Autocomplete,
+  Button,
+  Card,
+  CardContent,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import type { Company } from '../types'
@@ -17,6 +26,7 @@ export function TimezoneSettingsPanel({ company }: { company: Company }) {
   const [timezone, setTimezone] = useState(company.settings.timezone ?? 'UTC')
   const updateMutation = useUpdateCompanyMutation()
   const savedTimezone = company.settings.timezone ?? 'UTC'
+  const isDirty = timezone !== savedTimezone
 
   return (
     <Card variant="outlined" sx={{ maxWidth: 520 }}>
@@ -29,7 +39,7 @@ export function TimezoneSettingsPanel({ company }: { company: Company }) {
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
           <Autocomplete
             options={options}
@@ -41,7 +51,7 @@ export function TimezoneSettingsPanel({ company }: { company: Company }) {
 
           <Button
             variant="contained"
-            disabled={updateMutation.isPending || timezone === savedTimezone}
+            disabled={updateMutation.isPending || !isDirty}
             onClick={() => updateMutation.mutate({ settings: { timezone } })}
             sx={{ alignSelf: 'flex-start' }}
           >

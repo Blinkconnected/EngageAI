@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   Alert,
@@ -29,6 +29,31 @@ import {
  * neither is a session, so every request here goes through apiClient
  * with no Authorization header attached (the customer isn't signed in).
  */
+// Each step is its own top-level return in FeedbackPage, so a distinct
+// `key` per call site forces React to remount this on every step
+// transition — otherwise it'd reuse the same DOM node (same type, same
+// position) and the mount-only focus effect would never refire, leaving
+// screen-reader/keyboard focus stuck on the previous step's heading.
+function StepHeading({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+  }, [])
+
+  return (
+    <Typography
+      ref={ref}
+      variant="h6"
+      component="h1"
+      tabIndex={-1}
+      sx={{ textAlign: 'center', outline: 'none' }}
+    >
+      {children}
+    </Typography>
+  )
+}
+
 function PageShell({ children }: { children: ReactNode }) {
   return (
     <Box
@@ -125,9 +150,7 @@ export function FeedbackPage() {
   if (csatMutation.isSuccess || context.already_responded) {
     return (
       <PageShell>
-        <Typography variant="h6" sx={{ textAlign: 'center' }}>
-          Thank you for your feedback!
-        </Typography>
+        <StepHeading key="thank-you">Thank you for your feedback!</StepHeading>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
           We appreciate you taking the time to help us improve.
         </Typography>
@@ -138,9 +161,7 @@ export function FeedbackPage() {
   if (context.needs_contact_info && !contactInfoProvided) {
     return (
       <PageShell>
-        <Typography variant="h6" sx={{ textAlign: 'center' }}>
-          Before you go
-        </Typography>
+        <StepHeading key="contact-info">Before you go</StepHeading>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
           How can we reach you if we need to follow up? Please share your email address or
           phone number.
@@ -182,9 +203,7 @@ export function FeedbackPage() {
 
   return (
     <PageShell>
-      <Typography variant="h6" sx={{ textAlign: 'center' }}>
-        How was your experience?
-      </Typography>
+      <StepHeading key="rating">How was your experience?</StepHeading>
       <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
         Your feedback helps us serve you better.
       </Typography>
@@ -200,7 +219,13 @@ export function FeedbackPage() {
             value={rating}
             onChange={(_event, value) => setRating(value)}
             data-testid="csat-rating"
+            aria-describedby="csat-rating-hint"
           />
+          <Typography id="csat-rating-hint" variant="caption" color="text.secondary">
+            {rating
+              ? `You selected ${rating} star${rating === 1 ? '' : 's'}.`
+              : 'Select a rating to enable submitting your feedback.'}
+          </Typography>
           <TextField
             label="Additional comments (optional)"
             value={comment}

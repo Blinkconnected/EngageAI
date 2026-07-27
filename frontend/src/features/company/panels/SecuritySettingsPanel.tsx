@@ -13,20 +13,21 @@ export function SecuritySettingsPanel({ company }: { company: Company }) {
   const updateMutation = useUpdateCompanyMutation()
 
   const isValid = minPasswordLength >= MIN_ALLOWED && minPasswordLength <= MAX_ALLOWED
+  const isDirty = minPasswordLength !== savedValue
 
   return (
     <Card variant="outlined" sx={{ maxWidth: 520 }}>
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Every password on the platform already requires at least {MIN_ALLOWED} characters
-            with a letter and a digit. Raise the minimum length further for your company here.
+            Every password on the platform already requires at least {MIN_ALLOWED} characters with a
+            letter and a digit. Raise the minimum length further for your company here.
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
           <TextField
             label="Minimum password length"
@@ -41,9 +42,11 @@ export function SecuritySettingsPanel({ company }: { company: Company }) {
 
           <Button
             variant="contained"
-            disabled={updateMutation.isPending || !isValid || minPasswordLength === savedValue}
+            disabled={updateMutation.isPending || !isValid || !isDirty}
             onClick={() =>
-              updateMutation.mutate({ settings: { security: { min_password_length: minPasswordLength } } })
+              updateMutation.mutate({
+                settings: { security: { min_password_length: minPasswordLength } },
+              })
             }
             sx={{ alignSelf: 'flex-start' }}
           >

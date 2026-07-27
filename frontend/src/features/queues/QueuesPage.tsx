@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import {
-  Box,
   Button,
   Chip,
   IconButton,
@@ -46,14 +45,37 @@ function assignmentStrategyLabel(strategy: Queue['assignment_strategy']): string
   return QUEUE_ASSIGNMENT_STRATEGIES.find((s) => s.value === strategy)?.label ?? strategy
 }
 
-function QueuesTab({ canManage }: { canManage: boolean }) {
+function QueuesTab({
+  canManage,
+  createOpen,
+  onOpenCreate,
+  onCloseCreate,
+}: {
+  canManage: boolean
+  createOpen: boolean
+  onOpenCreate: () => void
+  onCloseCreate: () => void
+}) {
   const { page, pageSize, setPage, setPageSize, apiParams } = usePaginationParams()
   const queuesQuery = useQueuesQuery(apiParams)
+  const routingRulesQuery = useRoutingRulesQuery()
   const deleteMutation = useDeleteQueueMutation()
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [editingQueue, setEditingQueue] = useState<Queue | null>(null)
   const [deletingQueue, setDeletingQueue] = useState<Queue | null>(null)
+
+  // How many routing rules still target each queue — deleting a queue
+  // they depend on would leave those rules pointing nowhere, silently
+  // failing to route any conversation matching them (the same class of
+  // gap the SLA Builder's own Policies tab already guards against for
+  // SLA policies assigned to queues).
+  const ruleCountByQueue = useMemo(() => {
+    const counts = new Map<string, number>()
+    routingRulesQuery.data?.forEach((rule) => {
+      counts.set(rule.target_queue_id, (counts.get(rule.target_queue_id) ?? 0) + 1)
+    })
+    return counts
+  }, [routingRulesQuery.data])
 
   const columns: GridColDef<Queue>[] = useMemo(
     () => [
@@ -97,37 +119,37 @@ function QueuesTab({ canManage }: { canManage: boolean }) {
               type: 'actions' as const,
               headerName: 'Actions',
               width: 80,
-              getActions: (params: { row: Queue }) => [
-                <GridActionsCellItem
-                  key="edit"
-                  icon={<EditOutlinedIcon fontSize="small" />}
-                  label="Edit"
-                  onClick={() => setEditingQueue(params.row)}
-                />,
-                <GridActionsCellItem
-                  key="delete"
-                  icon={<DeleteOutlineIcon fontSize="small" />}
-                  label="Delete"
-                  onClick={() => setDeletingQueue(params.row)}
-                />,
-              ],
+              getActions: (params: { row: Queue }) => {
+                const ruleCount = ruleCountByQueue.get(params.row.id) ?? 0
+                const blockedReason =
+                  ruleCount > 0
+                    ? `${ruleCount} routing rule(s) still target this queue — repoint them before deleting it.`
+                    : null
+                return [
+                  <GridActionsCellItem
+                    key="edit"
+                    icon={<EditOutlinedIcon fontSize="small" />}
+                    label="Edit"
+                    onClick={() => setEditingQueue(params.row)}
+                  />,
+                  <GridActionsCellItem
+                    key="delete"
+                    icon={<DeleteOutlineIcon fontSize="small" />}
+                    label={blockedReason ?? 'Delete'}
+                    disabled={blockedReason !== null}
+                    onClick={() => setDeletingQueue(params.row)}
+                  />,
+                ]
+              },
             },
           ]
         : []),
     ],
-    [canManage],
+    [canManage, ruleCountByQueue],
   )
 
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        {canManage && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            New queue
-          </Button>
-        )}
-      </Box>
-
       {queuesQuery.isPending && <LoadingState label="Loading queues…" />}
       {queuesQuery.isError && (
         <ErrorState error={queuesQuery.error} onRetry={() => queuesQuery.refetch()} />
@@ -138,7 +160,7 @@ function QueuesTab({ canManage }: { canManage: boolean }) {
           description="Create your first queue to start routing conversations."
           action={
             canManage && (
-              <Button variant="contained" onClick={() => setCreateOpen(true)}>
+              <Button variant="contained" onClick={onOpenCreate}>
                 New queue
               </Button>
             )
@@ -163,7 +185,7 @@ function QueuesTab({ canManage }: { canManage: boolean }) {
 
       {canManage && (
         <>
-          <QueueCreateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+          <QueueCreateDialog open={createOpen} onClose={onCloseCreate} />
           <QueueEditDialog queue={editingQueue} onClose={() => setEditingQueue(null)} />
           <ConfirmDialog
             open={Boolean(deletingQueue)}
@@ -196,12 +218,21 @@ function conditionsSummary(rule: RoutingRule): string {
   return parts.length > 0 ? parts.join(' and ') : 'Matches every conversation'
 }
 
-function RoutingRulesTab({ canManage }: { canManage: boolean }) {
+function RoutingRulesTab({
+  canManage,
+  createOpen,
+  onOpenCreate,
+  onCloseCreate,
+}: {
+  canManage: boolean
+  createOpen: boolean
+  onOpenCreate: () => void
+  onCloseCreate: () => void
+}) {
   const rulesQuery = useRoutingRulesQuery()
   const queuesQuery = useAllQueuesQuery()
   const deleteMutation = useDeleteRoutingRuleMutation()
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RoutingRule | null>(null)
 
@@ -220,14 +251,6 @@ function RoutingRulesTab({ canManage }: { canManage: boolean }) {
 
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        {canManage && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-            New routing rule
-          </Button>
-        )}
-      </Box>
-
       {rulesQuery.isPending && <LoadingState label="Loading routing rules…" />}
       {rulesQuery.isError && (
         <ErrorState error={rulesQuery.error} onRetry={() => rulesQuery.refetch()} />
@@ -238,7 +261,7 @@ function RoutingRulesTab({ canManage }: { canManage: boolean }) {
           description="New conversations with no matching rule aren't routed to a queue automatically."
           action={
             canManage && (
-              <Button variant="contained" onClick={() => setCreateOpen(true)}>
+              <Button variant="contained" onClick={onOpenCreate}>
                 New routing rule
               </Button>
             )
@@ -303,7 +326,7 @@ function RoutingRulesTab({ canManage }: { canManage: boolean }) {
 
       {canManage && (
         <>
-          <RoutingRuleCreateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+          <RoutingRuleCreateDialog open={createOpen} onClose={onCloseCreate} />
           <RoutingRuleEditDialog rule={editingRule} onClose={() => setEditingRule(null)} />
           <ConfirmDialog
             open={Boolean(deletingRule)}
@@ -329,12 +352,37 @@ export function QueuesPage() {
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('queues.manage')
   const [tab, setTab] = useState<'queues' | 'rules'>('queues')
+  // Owned here (not per-tab) so the "+ New" action can live in the
+  // shared PageHeader — stable top-right, same as every other page —
+  // instead of moving/disappearing as the tab changes.
+  const [queueCreateOpen, setQueueCreateOpen] = useState(false)
+  const [ruleCreateOpen, setRuleCreateOpen] = useState(false)
 
   return (
     <>
       <PageHeader
         title="Queues & Routing"
         description="Decide where new conversations go, and how they're assigned to agents."
+        actions={
+          canManage &&
+          (tab === 'queues' ? (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setQueueCreateOpen(true)}
+            >
+              New queue
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setRuleCreateOpen(true)}
+            >
+              New routing rule
+            </Button>
+          ))
+        }
       />
 
       <Tabs value={tab} onChange={(_event, value) => setTab(value)} sx={{ mb: 2 }}>
@@ -342,14 +390,26 @@ export function QueuesPage() {
         <Tab label="Routing Rules" value="rules" />
       </Tabs>
 
-      {tab === 'queues' && <QueuesTab canManage={canManage} />}
+      {tab === 'queues' && (
+        <QueuesTab
+          canManage={canManage}
+          createOpen={queueCreateOpen}
+          onOpenCreate={() => setQueueCreateOpen(true)}
+          onCloseCreate={() => setQueueCreateOpen(false)}
+        />
+      )}
       {tab === 'rules' && (
         <>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             A new conversation is routed to the first active rule (in priority order) whose
             conditions match. Conversations that match no rule aren't routed to a queue.
           </Typography>
-          <RoutingRulesTab canManage={canManage} />
+          <RoutingRulesTab
+            canManage={canManage}
+            createOpen={ruleCreateOpen}
+            onOpenCreate={() => setRuleCreateOpen(true)}
+            onCloseCreate={() => setRuleCreateOpen(false)}
+          />
         </>
       )}
     </>

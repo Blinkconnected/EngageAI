@@ -23,6 +23,7 @@ describe('OnboardingWizardPage', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
     queryClient.clear()
+    sessionStorage.clear()
   })
 
   it('shows the company information step first, pre-filled', async () => {
