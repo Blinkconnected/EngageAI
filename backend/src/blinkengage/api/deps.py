@@ -37,6 +37,7 @@ from blinkengage.application.services.notification_service import NotificationSe
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
 from blinkengage.application.services.reporting_service import ReportingService
+from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
@@ -478,6 +479,13 @@ def get_routing_rule_service(
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> RoutingRuleService:
     return RoutingRuleService(routing_rules=RoutingRuleRepository(session), events=events)
+
+
+def get_role_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> RoleService:
+    return RoleService(roles=RoleRepository(session), events=events)
 
 
 def get_workflow_service(

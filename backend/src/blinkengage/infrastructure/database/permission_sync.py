@@ -84,17 +84,15 @@ def sync_permissions(
     seeding. Never removes a grant, so a role's *extra* permissions
     (beyond its defaults) are always preserved.
 
-    One honestly-documented limit, not a bug: this is a stateless diff
-    against the *current* default set, so it cannot distinguish "this
-    default permission was never granted yet" from "this default
-    permission was deliberately revoked from this company's role" — both
-    look identical (a missing row) and both get (re-)granted. This is a
-    non-issue today because no API/UI exists anywhere in this codebase to
-    revoke a default permission from a system role in the first place
-    (`docs/architecture/auth-rbac.md`'s "deliberately deferred" custom
-    roles/role-editor item) — but if that ever ships, distinguishing an
-    explicit revocation from a not-yet-synced gap will need an explicit
-    marker (e.g. a revocation record), not a rework of this function.
+    Skips step 3 entirely for a role with ``permissions_customized=True``
+    — set by ``RoleService.update()`` the moment an Owner deliberately
+    edits an Admin/Agent role's permission grants (see that column's
+    docstring on ``Role``). Without this, an Owner revoking a default
+    permission from Admin/Agent would see it silently reappear the next
+    time this function runs (every service start, not just when
+    `domain/rbac.py` itself changes) — this function has no other way to
+    distinguish "never granted yet" from "deliberately revoked," since
+    both look identical (a missing row).
     """
     permissions_seeded = _sync_permission_catalog(session)
 
@@ -119,6 +117,9 @@ def sync_permissions(
                 session.add(role)
                 session.flush()  # populate role.id for the grants below
                 roles_created += 1
+
+            if role.permissions_customized:
+                continue
 
             already_granted = {
                 row[0]

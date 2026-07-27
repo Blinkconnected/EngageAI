@@ -15,6 +15,7 @@ export const MOCK_USER: UserProfile = {
   roles: ['Owner'],
   permissions: [
     'company.manage',
+    'roles.manage',
     'agents.read',
     'agents.manage',
     'departments.read',

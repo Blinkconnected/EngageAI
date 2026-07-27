@@ -198,6 +198,80 @@ class ConversationAlreadyClaimedError(DomainError):
         super().__init__(f"Conversation with id={conversation_id!r} was already claimed")
 
 
+class SystemRoleNotDeletableError(DomainError):
+    """Raised when ``RoleService.delete()`` targets a role with
+    ``is_system=True`` (Owner/Admin/Agent, seeded per company at creation
+    — see ``infrastructure.database.models.rbac.Role``). Deleting one
+    would strand every company using the default set with no equivalent
+    of a role several hardcoded lookups depend on (``auth_service``'s
+    Owner seeding, ``agent_service``'s Agent seeding). A plain
+    precondition failure, not a missing resource, so it falls through to
+    the generic 400 like ``ConversationNotInQueueError``."""
+
+    def __init__(self, role_name: str) -> None:
+        self.role_name = role_name
+        super().__init__(f"System role {role_name!r} cannot be deleted")
+
+
+class RoleHasMembersError(DomainError):
+    """Raised when ``RoleService.delete()`` targets a role that still has
+    one or more users assigned to it. ``UserRole.role_id`` cascade-deletes
+    on ``Role`` deletion, so allowing this would silently strip those
+    users of every permission with no warning. Falls through to the
+    generic 400 like ``SystemRoleNotDeletableError``."""
+
+    def __init__(self, role_name: str, member_count: int) -> None:
+        self.role_name = role_name
+        self.member_count = member_count
+        super().__init__(
+            f"Role {role_name!r} still has {member_count} member(s) and cannot be deleted"
+        )
+
+
+class SystemRoleNameImmutableError(DomainError):
+    """Raised when ``RoleService.update()`` attempts to rename a system
+    role. Unlike the rest of a system role's fields (description,
+    and — for Admin/Agent — permissions), the *name* of ``Owner``/
+    ``Agent`` is a hardcoded lookup key relied on elsewhere
+    (``auth_service`` seeds a new company's owner by looking up
+    ``name="Owner"``; ``agent_service`` seeds every new agent by looking
+    up ``name="Agent"``). Renaming either out from under those lookups
+    would silently break agent/owner creation for that company, so it's
+    blocked outright rather than merely discouraged."""
+
+    def __init__(self, role_name: str) -> None:
+        self.role_name = role_name
+        super().__init__(f"System role {role_name!r} cannot be renamed")
+
+
+class OwnerPermissionsImmutableError(DomainError):
+    """Raised when ``RoleService.update()`` attempts to change the
+    ``Owner`` system role's permission set. Owner always holds the full
+    permission catalog by design (see
+    ``domain.rbac.DEFAULT_ROLE_PERMISSIONS`` and
+    ``infrastructure.database.models.rbac.Role``'s docstring) — there
+    must always be at least one role in a company that can never be
+    locked out of its own RBAC configuration."""
+
+    def __init__(self) -> None:
+        super().__init__("The Owner role's permissions cannot be changed")
+
+
+class CompanyOwnerRoleImmutableError(DomainError):
+    """Raised when ``RoleService.assign_role_to_user()`` targets the
+    user flagged ``User.is_company_owner`` (the one who originally
+    registered the company — see ``AuthService.register_company``) with
+    any role other than the ``Owner`` system role. Every other user's
+    role is freely reassignable, but the founding owner staying Owner is
+    the one invariant this app relies on to guarantee a company can
+    never end up with nobody holding ``roles.manage`` (only Owner is
+    granted it by default, and Admin/Agent's default grants are
+    themselves edited through that same permission)."""
+
+    def __init__(self) -> None:
+        super().__init__("The company owner's role cannot be changed away from Owner")
+
+
 class WeakPasswordError(DomainError):
     """Raised when a password satisfies the platform-wide floor
     (``validate_password_strength`` — at least 10 characters with a

@@ -113,6 +113,38 @@ def test_sync_backfills_a_missing_grant_without_touching_others() -> None:
     )
 
 
+def test_sync_does_not_regrant_a_deliberately_removed_permission_from_a_customized_role() -> None:
+    """The interaction this milestone's ``Role.permissions_customized``
+    flag exists to prevent: once an Owner deliberately revokes a default
+    permission from Admin/Agent via ``RoleService.update()`` (which sets
+    this flag), a later sync run — which happens on every service start,
+    not just when `domain/rbac.py` changes — must leave that role's
+    grants alone instead of silently restoring what was removed."""
+    session = _make_session()
+    company = _make_company(session)
+    sync_permissions(session, company_id=company.id)
+
+    admin_role = session.execute(
+        select(Role).where(Role.company_id == company.id, Role.name == SystemRole.ADMIN.value)
+    ).scalar_one()
+    removed_code = next(iter(DEFAULT_ROLE_PERMISSIONS[SystemRole.ADMIN]))
+    session.execute(
+        RolePermission.__table__.delete().where(
+            RolePermission.role_id == admin_role.id,
+            RolePermission.permission_code == removed_code,
+        )
+    )
+    admin_role.permissions_customized = True
+    session.flush()
+
+    result = sync_permissions(session, company_id=company.id)
+
+    assert result.grants_added == 0
+    granted = _granted_codes(session, company_id=company.id, role_name=SystemRole.ADMIN.value)
+    assert removed_code not in granted
+    assert granted == set(DEFAULT_ROLE_PERMISSIONS[SystemRole.ADMIN]) - {removed_code}
+
+
 def test_sync_preserves_an_extra_permission_beyond_the_defaults() -> None:
     """A system role with a grant beyond its default set (e.g. a future
     role-editor's customization) must never lose it — the sync is

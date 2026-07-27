@@ -39,6 +39,17 @@ class Role(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # permission set is always the full catalog (enforced in the service
     # layer, not the schema).
     is_system: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Set the moment an Admin/Agent system role's permission_codes are
+    # edited via RoleService.update() (never for Owner, whose permissions
+    # can't be edited at all). Tells
+    # infrastructure.database.permission_sync.sync_permissions() to stop
+    # re-granting this role's *missing* defaults — without this marker,
+    # sync's additive-only reconciliation (which runs on every service
+    # start) would silently undo a deliberate revocation the next time it
+    # runs, unable to tell "never granted yet" apart from "removed on
+    # purpose." Irrelevant for non-system roles, which sync already
+    # ignores entirely.
+    permissions_customized: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     company: Mapped["Company"] = relationship(back_populates="roles")
     role_permissions: Mapped[list["RolePermission"]] = relationship(

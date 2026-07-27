@@ -73,6 +73,29 @@ describe('AgentsPage', () => {
     )
   })
 
+  it("changes an agent's role", async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<AgentsPage />)
+    const row = (await screen.findByText('Grace Hopper')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    await user.click(within(row as HTMLElement).getByLabelText('Change role'))
+    expect(await screen.findByText(/change grace hopper's role/i)).toBeInTheDocument()
+    const roleField = await screen.findByLabelText(/^role/i)
+    expect(roleField).toHaveTextContent('Agent')
+
+    await user.click(roleField)
+    await user.click(await screen.findByRole('option', { name: 'Admin' }))
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByText(/change grace hopper's role/i)).not.toBeInTheDocument(),
+    )
+
+    await user.click(within(row as HTMLElement).getByLabelText('Change role'))
+    expect(await screen.findByLabelText(/^role/i)).toHaveTextContent('Admin')
+  })
+
   it('deletes an agent after confirming', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<AgentsPage />)

@@ -126,13 +126,14 @@ rationale:
 | `/admin/plugins` | `company.manage` | `docs/architecture/administration.md` |
 | `/departments` | `departments.read`/`.manage` | `docs/architecture/core-crm.md` |
 | `/teams` | `teams.read`/`.manage` | `docs/architecture/core-crm.md` |
-| `/agents` | `agents.read`/`.manage` | `docs/architecture/core-crm.md` |
+| `/agents` (incl. `/agents/{id}/role`) | `agents.read`/`.manage`; the `role` sub-route needs `roles.manage` instead | `docs/architecture/core-crm.md`, `docs/architecture/auth-rbac.md` |
 | `/customers` | `customers.read`/`.manage`; ERP sub-routes need `erp.manage` | `docs/architecture/core-crm.md`, `docs/architecture/erp-integration.md` |
 | `/audit-logs` | `audit_logs.read` | `docs/architecture/audit-logging.md` |
 | `/channel-configs` | `channels.read`/`.manage` | `docs/architecture/channels.md` |
 | `/webhooks`, `/web-chat` | see "Public endpoints" above | `docs/architecture/channels.md`, `docs/architecture/web-chat.md` |
 | `/conversations` | `conversations.read`/`.manage`/`.delete` | `docs/architecture/conversations.md` |
 | `/queues`, `/routing-rules` | `queues.read`/`.manage` | `docs/architecture/queues-routing.md` |
+| `/roles`, `/permissions` | `roles.manage` (covers both read and write) | `docs/architecture/auth-rbac.md` |
 | `/workflows` | `workflows.read`/`.manage` | `docs/architecture/workflow-engine.md` |
 | `/knowledge`, `/quick-replies` | `knowledge_base.*`/`quick_replies.*` | `docs/architecture/knowledge-quick-replies-notes.md` |
 | `/notifications` | none — personal inbox, scoped by caller identity | `docs/architecture/notifications.md` |

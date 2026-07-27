@@ -7,6 +7,7 @@ from blinkengage.api.deps import (
     get_agent_service,
     get_agent_skill_service,
     get_current_auth,
+    get_role_service,
     require_permission,
 )
 from blinkengage.api.schemas.agent import (
@@ -18,8 +19,10 @@ from blinkengage.api.schemas.agent import (
 )
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.api.schemas.queue import AgentSkillResponse, RequiredSkillRequest
+from blinkengage.api.schemas.role import AgentRoleResponse, AgentRoleUpdateRequest
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
+from blinkengage.application.services.role_service import RoleService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.agent import Agent
 
@@ -180,3 +183,38 @@ async def unassign_agent_skill(
     await service.unassign_skill(
         company_id=auth.company_id, agent_id=agent_id, skill_name=skill_name
     )
+
+
+@router.get("/{agent_id}/role", response_model=AgentRoleResponse)
+async def get_agent_role(
+    agent_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("roles.manage"))],
+    agents: Annotated[AgentService, Depends(get_agent_service)],
+    roles: Annotated[RoleService, Depends(get_role_service)],
+) -> AgentRoleResponse:
+    """Deliberately its own on-demand endpoint rather than a field on
+    ``AgentResponse`` — role is fetched only when a "Change role" dialog
+    opens, not baked into every agent list/detail response (avoids
+    touching ``_to_response``'s 5 existing call sites for a piece of data
+    most callers don't need)."""
+    agent = await agents.get(company_id=auth.company_id, agent_id=agent_id)
+    role = await roles.get_role_for_user(company_id=auth.company_id, user_id=agent.user_id)
+    return AgentRoleResponse(role_id=role.id, role_name=role.name)
+
+
+@router.put("/{agent_id}/role", response_model=AgentRoleResponse)
+async def update_agent_role(
+    agent_id: UUID,
+    payload: AgentRoleUpdateRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("roles.manage"))],
+    agents: Annotated[AgentService, Depends(get_agent_service)],
+    roles: Annotated[RoleService, Depends(get_role_service)],
+) -> AgentRoleResponse:
+    agent = await agents.get(company_id=auth.company_id, agent_id=agent_id)
+    role = await roles.assign_role_to_user(
+        company_id=auth.company_id,
+        user=agent.user,
+        role_id=payload.role_id,
+        actor_user_id=auth.user_id,
+    )
+    return AgentRoleResponse(role_id=role.id, role_name=role.name)

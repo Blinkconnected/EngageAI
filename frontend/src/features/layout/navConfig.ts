@@ -9,6 +9,7 @@ import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
 import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 
 export interface NavItem {
   label: string
@@ -54,6 +55,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/queues',
     icon: AltRouteOutlinedIcon,
     permission: 'queues.read',
+  },
+  {
+    label: 'Roles & Permissions',
+    path: '/roles',
+    icon: AdminPanelSettingsOutlinedIcon,
+    permission: 'roles.manage',
   },
   {
     label: 'Reports',

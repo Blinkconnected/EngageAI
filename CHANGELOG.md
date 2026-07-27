@@ -36,6 +36,18 @@ for more detail on how this page is put together.
 - Owners and admins can now connect their own OpenAI, Claude, or
   self-hosted Ollama account for AI features, instead of relying on the
   platform's shared default provider (Company Settings → AI).
+- A new Roles & Permissions page: define custom roles alongside the
+  built-in Owner, Admin, and Agent roles, choose exactly which
+  permissions each one grants, and see (and manage) who holds each role.
+  Admin and Agent's own default permissions can now be customized too. A
+  new "Change role" action on the Agents page reassigns any agent to any
+  role.
+
+### Changed
+
+- The permission-sync mechanism that keeps every company's roles up to
+  date with the platform's permission catalog no longer overwrites a
+  role's permissions once an Owner has customized them by hand.
 
 ### Fixed
 
