@@ -52,6 +52,7 @@ export function createAppTheme(mode: ThemeMode, direction: Direction): Theme {
       h5: { fontFamily: '"Baloo 2", system-ui, sans-serif', fontWeight: 600 },
       h6: { fontFamily: '"Baloo 2", system-ui, sans-serif', fontWeight: 600 },
       button: { fontWeight: 700 },
+      body2: { lineHeight: 'unset' },
     },
     components: {
       MuiButton: {

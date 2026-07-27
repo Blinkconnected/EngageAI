@@ -336,6 +336,41 @@ decision #10). `GET /reports/live-dashboard` (`reports.read`) is
 unchanged in shape at the endpoint level but now returns all 8 metrics
 above per queue instead of just open/waiting counts.
 
+## Frontend admin UI
+
+A Product & UX Review flagged this directly: every piece of this
+milestone above had a complete backend and zero admin screen — creating
+a queue or authoring a routing rule required calling the API by hand.
+`frontend/src/features/queues/QueuesPage.tsx` (routed at `/queues`,
+gated on `queues.read`, mutating actions further gated on
+`queues.manage`) closes that gap with two tabs:
+
+- **Queues** — the standard list/create/edit/delete pattern this
+  codebase already established for Departments (`DataTable` +
+  `FormDialog` + `ConfirmDialog`), covering name, description,
+  department (organizational label only, decision #2), assignment
+  strategy, both SLA targets, and the active flag.
+- **Routing Rules** — a plain, priority-sorted `Table` rather than a
+  paginated `DataGrid`, deliberately: `GET /routing-rules` itself is
+  unpaginated (decision: this is a short list meant to be seen as a
+  whole priority order, not browsed a page at a time), so the frontend
+  matches that shape instead of forcing pagination onto data that
+  doesn't have it. Each rule's `conditions` (`channel_type`/
+  `body_contains`) are authored via a channel-type dropdown (reusing
+  `channels/types.ts`'s `CHANNEL_TYPES`) and a plain text field, then
+  composed into the same `{channel_type?, body_contains?}` shape the
+  backend already expects — no raw JSON exposed to the user.
+
+**Deliberately out of scope**: Required Skills management. The backend
+has no endpoint to *list* a queue's current required skills (only
+`POST`/`DELETE` to add/remove one by name — `QueueRepository
+.required_skill_ids()` exists at the repository layer but was never
+exposed through the service or API layer as named skills). Building an
+"add a skill" UI with no way to see what's already there would be a
+half-feature; this needs a small backend addition (a `GET` endpoint
+returning skill names) before it can be built properly, tracked as a
+follow-up rather than done speculatively here.
+
 ## Extension points
 
 - **A new assignment strategy** is one new `AssignmentStrategy` subclass

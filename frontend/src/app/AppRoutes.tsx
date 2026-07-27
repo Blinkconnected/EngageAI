@@ -9,6 +9,7 @@ import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AgentsPage } from '../features/agents/AgentsPage'
 import { DepartmentsPage } from '../features/departments/DepartmentsPage'
 import { ChannelsPage } from '../features/channels/ChannelsPage'
+import { QueuesPage } from '../features/queues/QueuesPage'
 import { InboxPage } from '../features/conversations/InboxPage'
 import { ConversationViewPage } from '../features/conversations/ConversationViewPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
@@ -111,6 +112,14 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="channels.read">
               <ChannelsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="queues"
+          element={
+            <RequirePermission permission="queues.read">
+              <QueuesPage />
             </RequirePermission>
           }
         />

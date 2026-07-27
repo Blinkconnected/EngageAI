@@ -8,6 +8,7 @@ import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
 import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 
 export interface NavItem {
   label: string
@@ -48,6 +49,12 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'departments.read',
   },
   { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
+  {
+    label: 'Queues',
+    path: '/queues',
+    icon: AltRouteOutlinedIcon,
+    permission: 'queues.read',
+  },
   {
     label: 'Reports',
     path: '/reports/executive',

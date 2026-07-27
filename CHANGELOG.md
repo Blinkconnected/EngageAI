@@ -29,6 +29,10 @@ for more detail on how this page is put together.
 - AI-assisted replies: agents can now ask AI to draft a reply based on the
   conversation so far, reviewing and editing it before sending. Agents can
   also generate a quick AI summary of a conversation from the sidebar.
+- A Queues & Routing page for owners and admins: create and edit queues
+  (assignment method, response/resolution time targets) and author the
+  rules that decide which queue a new conversation lands in — previously
+  only possible by calling the API directly.
 
 ### Fixed
 
