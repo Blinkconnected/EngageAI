@@ -9,6 +9,7 @@ import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { AgentsPage } from '../features/agents/AgentsPage'
 import { DepartmentsPage } from '../features/departments/DepartmentsPage'
 import { ChannelsPage } from '../features/channels/ChannelsPage'
+import { StatusPage } from '../features/status/StatusPage'
 import { QueuesPage } from '../features/queues/QueuesPage'
 import { RolesPage } from '../features/roles/RolesPage'
 import { SlaBuilderPage } from '../features/sla/SlaBuilderPage'
@@ -116,6 +117,14 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="channels.read">
               <ChannelsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="status"
+          element={
+            <RequirePermission permission="channels.read">
+              <StatusPage />
             </RequirePermission>
           }
         />

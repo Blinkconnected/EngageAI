@@ -11,6 +11,7 @@ import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
+import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined'
 
 export interface NavItem {
   label: string
@@ -51,6 +52,12 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'departments.read',
   },
   { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
+  {
+    label: 'Status',
+    path: '/status',
+    icon: MonitorHeartOutlinedIcon,
+    permission: 'channels.read',
+  },
   {
     label: 'Queues',
     path: '/queues',

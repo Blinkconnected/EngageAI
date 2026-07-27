@@ -337,6 +337,64 @@ Phase 1 fix pass.
 
 ---
 
+## Provider & Service Status page (added 2026-07-27): a view, not a new backend concept
+
+The roadmap asked for a dedicated "Provider and service Status" page —
+one place to see WhatsApp/Instagram/Telegram/Messenger/Email/SMS/Web
+Chat's connectivity at a glance, extensible to future providers. Phase 1
+above had already built everything this needs at the data layer:
+`ChannelConfig.last_health_status`/`last_health_checked_at`/
+`last_health_detail` (kept fresh by both the "Test Connection" action and
+`infrastructure/tasks/channel_health_check_task.py`'s 5-minute Celery-beat
+sweep), already returned in full by the existing, paginated
+`GET /channel-configs`. The frontend already has `useAllChannelsQuery()`
+(an unpaginated fetch, `frontend/src/features/channels/api.ts`, used
+today by the Onboarding Wizard's Channels step) fetching exactly that.
+
+So `frontend/src/features/status/StatusPage.tsx` is a **pure frontend
+aggregation view** — zero backend changes. It groups the same
+`GET /channel-configs` response by `channel_type` (using
+`CHANNEL_TYPES`, `features/channels/types.ts` — already the single
+source of truth for every channel-type label everywhere else in the
+app, so "extensible to future providers" falls out for free: a new
+provider only needs an entry there, not a new page-level query),
+computing one aggregate status per type client-side:
+
+- **Not configured** — no `ChannelConfig` row of that type at all
+  (still gets its own card, so an operator sees what they haven't
+  connected yet, not just what they have).
+- **Inactive** — every config of that type has `is_active=false`.
+- **Degraded** — any *active* config's `last_health_status` is
+  `"unhealthy"`.
+- **Not tested yet** — active configs exist, none have been checked.
+- **Operational** — at least one active config is healthy and none are
+  unhealthy.
+
+Each channel type's card lists its individual configs with the same
+`ChannelHealthBadge` the Channels management page already renders, and
+reuses `TestConnectionButton`/`useTestConnectionMutation()` unchanged
+for a per-channel "test now" action. A page-level "Check all now"
+button (gated by `channels.manage`, same as every other write-adjacent
+action here) fires `testConnectionMutation.mutateAsync()` for every
+configured channel via `Promise.allSettled` — an on-demand alternative
+to waiting for the next 5-minute beat tick, not a second scheduled job.
+
+New route `/status` (`channels.read`-gated, same permission as
+Channels), new sidebar entry — both siblings of the existing Channels
+page, not a replacement for it.
+
+5 new tests (`StatusPage.test.tsx`): aggregate status per type across
+degraded/not-tested/inactive/operational/not-configured, an idle-type's
+"no channel connected" message, individual + bulk "test now" actions
+calling through to the real test-connection endpoint, both hidden
+without `channels.manage`, and no accessibility violations. Verified
+live against the real running `docker compose` stack: created a real
+Web Chat channel, confirmed `GET /channel-configs` returns exactly the
+fields the page consumes, and confirmed `POST
+/channel-configs/{id}/test-connection` (the same call the page's
+"Test now"/"Check all now" actions make) genuinely pings MinIO and
+updates `last_health_status`/`last_health_checked_at`.
+
 ## Approval gate
 
 Per instruction, no channel connection flow implementation or

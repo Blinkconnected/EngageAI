@@ -63,6 +63,12 @@ for more detail on how this page is put together.
   pending conversation count (including agents with none, so you can see
   who's free) — alongside the existing per-status counts and Queue
   depth table.
+- A new Status page (Platform navigation) shows live connectivity for
+  every messaging channel type — WhatsApp, Facebook Messenger,
+  Instagram, Telegram, Email, SMS, and Web Chat — grouped by type with
+  an at-a-glance Operational/Degraded/Not configured badge, individual
+  and "Check all now" bulk connection testing, extensible to any future
+  channel type automatically.
 
 ### Changed
 
