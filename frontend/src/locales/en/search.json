@@ -1,0 +1,23 @@
+{
+  "GlobalSearchDialog": {
+    "title": "Search",
+    "placeholder": "Search conversations, customers, articles…",
+    "inputAriaLabel": "Search everything",
+    "minLengthHint": "Type at least {{count}} characters to search.",
+    "loadingLabel": "Searching…",
+    "noResultsTitle": "No matches",
+    "noResultsDescription": "Nothing matched \"{{query}}\". Try a different word or a shorter one.",
+    "noPageYet": "No page for this yet",
+    "groupLabels": {
+      "conversation": "Conversations",
+      "customer": "Customers",
+      "agent": "Agents",
+      "knowledge_article": "Knowledge base articles",
+      "knowledge_category": "Knowledge base categories",
+      "quick_reply": "Quick replies",
+      "team": "Teams",
+      "queue": "Queues",
+      "workflow": "Workflows"
+    }
+  }
+}

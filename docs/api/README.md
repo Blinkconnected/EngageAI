@@ -141,6 +141,7 @@ rationale:
 | `/ws/agent` (WebSocket) | JWT via `?token=` query param | `docs/architecture/notifications.md` |
 | `/ai` | `ai.use` (rate limited per user) | `docs/architecture/ai-engine.md` |
 | `/reports` | `reports.read` | `docs/architecture/reports-analytics.md` |
+| `/search` | authentication only — filtered per entity type inside (see architecture doc) | `docs/architecture/global-search.md` |
 | `/csat` | see "Public endpoints" above (respond) / `conversations.manage` (generate link) | `docs/architecture/reports-analytics.md` |
 | `/erp-configs`, `/webhooks/erpnext` | `erp.manage` / shared secret | `docs/architecture/erp-integration.md` |
 

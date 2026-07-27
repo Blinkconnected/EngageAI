@@ -15,6 +15,7 @@ import { conversationsHandlers } from './conversations'
 import { notificationsHandlers } from './notifications'
 import { erpHandlers } from './erp'
 import { reportsHandlers } from './reports'
+import { searchHandlers } from './search'
 
 export const handlers = [
   ...authHandlers,
@@ -34,4 +35,5 @@ export const handlers = [
   ...notificationsHandlers,
   ...erpHandlers,
   ...reportsHandlers,
+  ...searchHandlers,
 ]

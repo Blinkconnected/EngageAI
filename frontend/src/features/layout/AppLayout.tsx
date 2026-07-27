@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -27,6 +27,7 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import TranslateIcon from '@mui/icons-material/Translate'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
+import SearchIcon from '@mui/icons-material/Search'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
@@ -38,6 +39,7 @@ import { useLogout } from '../auth/api'
 import { useCurrentUserQuery } from '../session/api'
 import { useCompanyLogoUrl, useCompanyQuery, useIsOnboardingIncomplete } from '../company/api'
 import { NotificationBell } from '../notifications/NotificationBell'
+import { GlobalSearchDialog } from '../search/GlobalSearchDialog'
 import { NotificationToastProvider } from '../notifications/NotificationToastProvider'
 import { RealtimeProvider } from '../realtime/RealtimeProvider'
 import { Footer } from '../../shared/components/Footer'
@@ -52,6 +54,26 @@ export function AppLayout() {
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  // Cmd/Ctrl-K opens global search from anywhere in the app — the
+  // near-universal shortcut for this, and the only way to reach search
+  // without leaving the keyboard. Bound on window (not a specific
+  // element) since it must work regardless of what's focused, but
+  // deliberately ignored while the user is typing into a field, so it
+  // can never swallow a genuine Ctrl-K in a text input.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'k' || !(event.metaKey || event.ctrlKey)) return
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      event.preventDefault()
+      setSearchOpen(true)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const dispatch = useAppDispatch()
   const themeMode = useAppSelector((state) => state.ui.themeMode)
@@ -157,6 +179,14 @@ export function AppLayout() {
                 >
                   {currentUser?.company.name ?? t('AppLayout.appName')}
                 </Typography>
+                <Tooltip title={t('AppLayout.searchTooltip')}>
+                  <IconButton
+                    onClick={() => setSearchOpen(true)}
+                    aria-label={t('AppLayout.searchAriaLabel')}
+                  >
+                    <SearchIcon />
+                  </IconButton>
+                </Tooltip>
                 <NotificationBell />
                 <Tooltip title={t('AppLayout.toggleLanguageDirectionTooltip')}>
                   <IconButton
@@ -285,6 +315,7 @@ export function AppLayout() {
             <Footer />
           </Box>
         </Box>
+        <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
       </RealtimeProvider>
     </NotificationToastProvider>
   )

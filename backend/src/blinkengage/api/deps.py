@@ -42,6 +42,7 @@ from blinkengage.application.services.quick_reply_service import QuickReplyServi
 from blinkengage.application.services.reporting_service import ReportingService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
+from blinkengage.application.services.search_service import SearchService
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
@@ -120,6 +121,7 @@ from blinkengage.infrastructure.repositories.role_repository import RoleReposito
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
 )
+from blinkengage.infrastructure.repositories.search_repository import SearchRepository
 from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
@@ -491,6 +493,12 @@ def get_queue_service(
     )
 
 
+def get_search_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SearchService:
+    return SearchService(search=SearchRepository(session))
+
+
 def get_agent_skill_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> AgentSkillService:
@@ -705,6 +713,34 @@ def require_permission(
         return auth
 
     return _check
+
+
+async def enforce_search_rate_limit(
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    redis: Annotated[Redis, Depends(get_redis)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> AuthContext:
+    """Per-*user* rate limit for global search — same reasoning as
+    ``enforce_ai_rate_limit`` below (several agents can share one office
+    IP, so per-IP would be wrong), but for a different cost: one search
+    fans out across up to nine tables, every one of them a leading-
+    wildcard ``ILIKE`` that can't use a btree index. A typeahead firing
+    on every keystroke would be genuinely expensive, so this backstops
+    the frontend's own debounce rather than trusting it.
+
+    Deliberately depends on ``get_current_auth``, not
+    ``require_permission(...)``: one search spans nine entity types with
+    nine different permissions, and ``SearchService`` filters per type
+    against the caller's own set — see its docstring.
+    """
+    limiter = FixedWindowRateLimiter(
+        redis,
+        scope="search",
+        limit=settings.search_rate_limit_per_minute,
+        window_seconds=60,
+    )
+    await enforce_rate_limit(limiter, str(auth.user_id))
+    return auth
 
 
 async def enforce_ai_rate_limit(

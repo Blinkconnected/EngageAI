@@ -172,6 +172,13 @@ class Settings(BaseSettings):
     # Same reasoning, applied to ERP "Test Connection" (see
     # docs/architecture/company-onboarding.md).
     erp_test_connection_rate_limit_per_minute: int = 20
+    # Global Search (see docs/architecture/global-search.md) — per-user,
+    # like the AI/test-connection limits above. One search fans out
+    # across up to nine tables, each a leading-wildcard ILIKE that can't
+    # use an index, so this backstops the frontend's debounce rather
+    # than trusting it. Higher than those limits because typeahead is a
+    # genuinely interactive affordance, not an occasional action.
+    search_rate_limit_per_minute: int = 60
 
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding

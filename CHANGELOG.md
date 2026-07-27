@@ -16,6 +16,13 @@ for more detail on how this page is put together.
 
 ### Added
 
+- Global search: press Ctrl+K (or the search icon in the top bar) from
+  anywhere to search conversations, customers, agents, knowledge base
+  articles and categories, quick replies, teams, queues, and workflows
+  all at once. You only ever see results from things you already have
+  permission to open. Results for parts of the product that don't have
+  their own page yet are shown too, marked as such, so search never
+  quietly hides a real match.
 - AI Autopilot: AI can now handle conversations end to end on queues you
   choose, replying to customers automatically and handing the
   conversation to a human the moment it isn't confident enough — the

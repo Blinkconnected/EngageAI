@@ -1,5 +1,7 @@
 {
   "AppLayout": {
+    "searchTooltip": "Search (Ctrl+K)",
+    "searchAriaLabel": "Open search",
     "openNavigationMenu": "Open navigation menu",
     "companyLogoAlt": "{{companyName}} logo",
     "companyFallback": "Company",

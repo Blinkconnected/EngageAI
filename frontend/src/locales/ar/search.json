@@ -1,0 +1,23 @@
+{
+  "GlobalSearchDialog": {
+    "title": "البحث",
+    "placeholder": "ابحث في المحادثات والعملاء والمقالات…",
+    "inputAriaLabel": "البحث في كل شيء",
+    "minLengthHint": "اكتب {{count}} أحرف على الأقل للبحث.",
+    "loadingLabel": "جارٍ البحث…",
+    "noResultsTitle": "لا توجد نتائج مطابقة",
+    "noResultsDescription": "لم يطابق أي شيء \"{{query}}\". جرّب كلمة مختلفة أو أقصر.",
+    "noPageYet": "لا توجد صفحة لهذا بعد",
+    "groupLabels": {
+      "conversation": "المحادثات",
+      "customer": "العملاء",
+      "agent": "الوكلاء",
+      "knowledge_article": "مقالات قاعدة المعرفة",
+      "knowledge_category": "فئات قاعدة المعرفة",
+      "quick_reply": "الردود السريعة",
+      "team": "الفرق",
+      "queue": "قوائم الانتظار",
+      "workflow": "سير العمل"
+    }
+  }
+}

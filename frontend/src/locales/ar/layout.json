@@ -1,5 +1,7 @@
 {
   "AppLayout": {
+    "searchTooltip": "بحث (Ctrl+K)",
+    "searchAriaLabel": "فتح البحث",
     "openNavigationMenu": "فتح قائمة التنقل",
     "companyLogoAlt": "شعار {{companyName}}",
     "companyFallback": "الشركة",

@@ -23,6 +23,7 @@ import enQueues from '../locales/en/queues.json'
 import enReportsCore from '../locales/en/reportsCore.json'
 import enReportsPanels from '../locales/en/reportsPanels.json'
 import enRoles from '../locales/en/roles.json'
+import enSearch from '../locales/en/search.json'
 import enSla from '../locales/en/sla.json'
 import enStatus from '../locales/en/status.json'
 import enPages from '../locales/en/pages.json'
@@ -50,6 +51,7 @@ import arQueues from '../locales/ar/queues.json'
 import arReportsCore from '../locales/ar/reportsCore.json'
 import arReportsPanels from '../locales/ar/reportsPanels.json'
 import arRoles from '../locales/ar/roles.json'
+import arSearch from '../locales/ar/search.json'
 import arSla from '../locales/ar/sla.json'
 import arStatus from '../locales/ar/status.json'
 import arPages from '../locales/ar/pages.json'
@@ -85,6 +87,7 @@ export const NAMESPACES = [
   'reportsCore',
   'reportsPanels',
   'roles',
+  'search',
   'sla',
   'status',
   'pages',
@@ -127,6 +130,7 @@ void i18n.use(initReactI18next).init({
       reportsCore: enReportsCore,
       reportsPanels: enReportsPanels,
       roles: enRoles,
+      search: enSearch,
       sla: enSla,
       status: enStatus,
       pages: enPages,
@@ -155,6 +159,7 @@ void i18n.use(initReactI18next).init({
       reportsCore: arReportsCore,
       reportsPanels: arReportsPanels,
       roles: arRoles,
+      search: arSearch,
       sla: arSla,
       status: arStatus,
       pages: arPages,
