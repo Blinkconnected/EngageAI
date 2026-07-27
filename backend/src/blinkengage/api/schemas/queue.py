@@ -18,6 +18,9 @@ class QueueCreateRequest(BaseModel):
     # docstring. Both may still be set together; the flat fields simply
     # go unused while a policy is assigned.
     sla_policy_id: UUID | None = None
+    # AI Autopilot (see docs/architecture/ai-engine.md) — also requires
+    # the company-wide settings.ai.autopilot.enabled switch to be on.
+    autopilot_enabled: bool = False
 
 
 class QueueUpdateRequest(BaseModel):
@@ -33,6 +36,7 @@ class QueueUpdateRequest(BaseModel):
     # assigned policy back to unset via this endpoint, matching
     # department_id's identical existing limitation.
     sla_policy_id: UUID | None = None
+    autopilot_enabled: bool | None = None
 
 
 class QueueResponse(BaseModel):
@@ -45,6 +49,7 @@ class QueueResponse(BaseModel):
     resolution_target_minutes: int | None
     sla_policy_id: UUID | None
     is_active: bool
+    autopilot_enabled: bool
     created_at: datetime
     updated_at: datetime
 

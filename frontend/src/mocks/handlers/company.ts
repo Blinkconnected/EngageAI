@@ -38,6 +38,32 @@ export function resetCompanyMock() {
   savedApiKey = null
 }
 
+/** Mirrors the real backend's `CompanyService._merge_settings`: a
+ * top-level key present in the patch merges into that same key rather
+ * than replacing it outright, and — one level deeper — if both sides
+ * are object-shaped, THEIR keys are shallow-merged too (so patching
+ * just `ai.autopilot` doesn't wipe out an already-saved `ai.enabled`,
+ * the same "partial nested section" case the real backend handles). */
+function mergeSettings(existing: CompanySettings, patch: CompanySettings): CompanySettings {
+  const merged: Record<string, unknown> = { ...existing }
+  for (const [key, value] of Object.entries(patch)) {
+    const current = merged[key]
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      current !== null &&
+      typeof current === 'object' &&
+      !Array.isArray(current)
+    ) {
+      merged[key] = { ...current, ...value }
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged as CompanySettings
+}
+
 export const companyHandlers = [
   http.get(`${API_BASE_URL}/company`, () => HttpResponse.json(company)),
 
@@ -46,8 +72,7 @@ export const companyHandlers = [
     company = {
       ...company,
       name: body.name ?? company.name,
-      // Shallow-merge per top-level key, mirroring CompanyService.update.
-      settings: body.settings ? { ...company.settings, ...body.settings } : company.settings,
+      settings: body.settings ? mergeSettings(company.settings, body.settings) : company.settings,
     }
     return HttpResponse.json(company)
   }),

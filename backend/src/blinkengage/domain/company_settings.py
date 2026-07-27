@@ -43,6 +43,25 @@ def is_ai_enabled(settings: dict[str, Any]) -> bool:
     return bool(_section(settings, "ai").get("enabled", True))
 
 
+DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD = 0.7
+
+
+def _autopilot_section(settings: dict[str, Any]) -> dict[str, Any]:
+    value = _section(settings, "ai").get("autopilot")
+    return value if isinstance(value, dict) else {}
+
+
+def is_autopilot_enabled(settings: dict[str, Any]) -> bool:
+    return bool(_autopilot_section(settings).get("enabled", False))
+
+
+def autopilot_confidence_threshold(settings: dict[str, Any]) -> float:
+    value = _autopilot_section(settings).get("confidence_threshold")
+    if isinstance(value, int | float) and 0.0 <= value <= 1.0:
+        return float(value)
+    return DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
+
+
 def is_notification_type_enabled(settings: dict[str, Any], notification_type: str) -> bool:
     return bool(_section(settings, "notifications").get(notification_type, True))
 

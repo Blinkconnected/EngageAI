@@ -65,6 +65,8 @@
     "statusResolved": "Resolved",
     "statusClosed": "Closed",
     "assignedToLabel": "Assigned to",
+    "autopilotActiveLabel": "AI Autopilot",
+    "autopilotActiveHelperText": "AI is currently replying to this conversation. Pick it up to take over.",
     "unassignedValue": "Unassigned",
     "departmentSuffixLabel": "{{departmentName}} (department)",
     "transferButton": "Transfer…",

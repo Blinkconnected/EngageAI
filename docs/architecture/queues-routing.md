@@ -237,6 +237,25 @@ already-claimed conversation as "never handled" until its next `pick()`.
     doesn't actually indicate either. `AWAY` is unaffected and stays
     eligible, unchanged from before this sprint.
 
+11. **AI Autopilot short-circuits human assignment entirely, rather than
+    running alongside it.** When a queue has `autopilot_enabled` (and
+    the company-wide switch is on, and a provider is configured — see
+    `docs/architecture/ai-engine.md`'s Autopilot section for the full
+    two-opt-in gate), `_route_and_assign` sets
+    `Conversation.autopilot_active = True` and returns *before*
+    `AssignmentEngine.select_agent` runs. An autopilot conversation is
+    therefore never also assigned to an agent — a conversation has
+    exactly one owner at a time, AI or human, never both, matching the
+    same invariant `transfer()` already enforces between an agent and a
+    department. The conversation still gets its `queue_id`/
+    `queue_entered_at` and still publishes `conversation.queued`
+    normally, so it appears in queue metrics and the Live Dashboard like
+    any other queued work — it's specifically and only the
+    *assignment* step that's skipped. Every path that later assigns a
+    human (`pick()`, `transfer()`, `update()`) clears
+    `autopilot_active`, so taking over is just the ordinary pickup flow,
+    not a separate mechanism.
+
 ## Manual pickup: `pick()` / `release()`
 
 The self-service half of decision #6 — how a conversation sitting in a

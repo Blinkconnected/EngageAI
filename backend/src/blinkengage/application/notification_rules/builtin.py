@@ -35,6 +35,7 @@ from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.notifications.rule_registry import NotificationRuleRegistry
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.conversation_repository import ConversationRepository
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 
 _BODY_PREVIEW_MAX_LENGTH = 120
 
@@ -159,6 +160,48 @@ class ConversationSlaBreachedRule(NotificationRule):
                 body="One of your conversations has breached its SLA target.",
                 payload={"conversation_id": str(conversation.id)},
             )
+        ]
+
+
+@NotificationRuleRegistry.register("conversation.autopilot_handoff_needed")
+class AutopilotHandoffNeededRule(NotificationRule):
+    """The conversation was AI-handled, unassigned — there's no single
+    agent to target (same "no assignee, no notification" convention as
+    ``MessagePersistedRule`` below). Notifies the queue's department, if
+    it has one, mirroring ``ConversationTransferredRule``'s department
+    branch; otherwise the conversation simply becomes visible,
+    unassigned, in the Inbox, same as any other queued-but-unassigned
+    conversation."""
+
+    _REASON_SUFFIXES = {
+        "low_confidence": " (confidence was too low)",
+        "model_requested_handoff": " (the AI flagged this for a human)",
+        "no_reply_generated": " (the AI couldn't draft a reply)",
+        "ai_unavailable": " (AI is no longer configured)",
+    }
+
+    async def resolve(self, *, context: NotificationRuleContext) -> list[NotificationDraft]:
+        conversation = await _load_conversation(context)
+        if conversation is None or conversation.queue_id is None:
+            return []
+        queue = await QueueRepository(context.session).get_by_id(
+            company_id=context.company_id, queue_id=conversation.queue_id
+        )
+        if queue is None or queue.department_id is None:
+            return []
+        department_agents = await AgentRepository(context.session).list_for_department(
+            company_id=context.company_id, department_id=queue.department_id
+        )
+        reason_suffix = self._REASON_SUFFIXES.get(context.payload.get("reason", ""), "")
+        return [
+            NotificationDraft(
+                user_id=agent.user_id,
+                notification_type=context.event_type,
+                title="AI Autopilot needs you to take over",
+                body=f"A conversation handled by AI Autopilot needs a human.{reason_suffix}",
+                payload={"conversation_id": str(conversation.id)},
+            )
+            for agent in department_agents
         ]
 
 

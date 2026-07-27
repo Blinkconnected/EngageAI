@@ -295,3 +295,89 @@ class TestSuggestNextBestAction:
 
         assert result["action"] == "no_action_needed"
         assert result["reason"] == "I think you should just wait."
+
+
+class TestSuggestAutopilotReply:
+    async def test_parses_a_well_formed_high_confidence_response(
+        self, events: FakeEventPublisher
+    ) -> None:
+        provider = FakeAiProvider(
+            "REPLY: We're open 9-5 Monday to Friday.\nCONFIDENCE: 90\nHANDOFF: NO"
+        )
+        service = _service(provider, events)
+        company_id, conversation_id = uuid4(), uuid4()
+
+        result = await service.suggest_autopilot_reply(
+            company_id=company_id, conversation_id=conversation_id, conversation_history="..."
+        )
+
+        assert result.reply == "We're open 9-5 Monday to Friday."
+        assert result.confidence == 0.9
+        assert result.needs_handoff is False
+        assert len(events.published) == 1
+        assert events.published[0].payload == {"operation": "suggest_autopilot_reply"}
+
+    async def test_handoff_yes_is_respected_even_with_high_confidence(
+        self, events: FakeEventPublisher
+    ) -> None:
+        provider = FakeAiProvider(
+            "REPLY: I can process that refund.\nCONFIDENCE: 95\nHANDOFF: YES"
+        )
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.needs_handoff is True
+
+    async def test_blank_reply_line_is_none_not_an_empty_string(
+        self, events: FakeEventPublisher
+    ) -> None:
+        provider = FakeAiProvider("REPLY:\nCONFIDENCE: 20\nHANDOFF: YES")
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.reply is None
+
+    async def test_confidence_percent_sign_is_tolerated(self, events: FakeEventPublisher) -> None:
+        provider = FakeAiProvider("REPLY: ok\nCONFIDENCE: 80%\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.confidence == 0.8
+
+    async def test_out_of_range_confidence_is_ignored_leaving_the_conservative_default(
+        self, events: FakeEventPublisher
+    ) -> None:
+        provider = FakeAiProvider("REPLY: ok\nCONFIDENCE: 150\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.confidence == 0.0
+        # HANDOFF: NO was still parsed correctly — an out-of-range
+        # CONFIDENCE line doesn't invalidate every other line.
+        assert result.needs_handoff is False
+
+    async def test_completely_unparseable_response_defaults_to_safe_handoff(
+        self, events: FakeEventPublisher
+    ) -> None:
+        provider = FakeAiProvider("I'm not sure how to answer that in the format you want.")
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.reply is None
+        assert result.confidence == 0.0
+        assert result.needs_handoff is True

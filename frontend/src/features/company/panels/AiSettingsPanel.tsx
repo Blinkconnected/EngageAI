@@ -58,7 +58,98 @@ export function AiSettingsPanel({ company }: { company: Company }) {
       </Card>
 
       <AiProviderConfigCard />
+      <AutopilotSettingsCard company={company} />
     </Stack>
+  )
+}
+
+/** Company-wide Autopilot master switch + confidence threshold — the
+ * other half of the gate is per-queue (see QueueCreateDialog/
+ * QueueEditDialog's own Autopilot toggle); both must be on for a
+ * conversation to ever become AI-handled. Shown as a percentage in the
+ * UI (0-100), converted to the backend's 0.0-1.0 float on save. */
+function AutopilotSettingsCard({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettingsExtra')
+  const updateMutation = useUpdateCompanyMutation()
+
+  const savedAutopilot = company.settings.ai?.autopilot
+  const [enabled, setEnabled] = useState(savedAutopilot?.enabled ?? false)
+  const [thresholdPercent, setThresholdPercent] = useState(
+    Math.round((savedAutopilot?.confidence_threshold ?? 0.7) * 100).toString(),
+  )
+
+  const parsedThreshold = Number.parseInt(thresholdPercent, 10)
+  const isValid = Number.isFinite(parsedThreshold) && parsedThreshold >= 0 && parsedThreshold <= 100
+  const isDirty =
+    enabled !== (savedAutopilot?.enabled ?? false) ||
+    parsedThreshold !== Math.round((savedAutopilot?.confidence_threshold ?? 0.7) * 100)
+
+  function handleSave() {
+    if (!isValid) return
+    updateMutation.mutate({
+      settings: {
+        ai: { autopilot: { enabled, confidence_threshold: parsedThreshold / 100 } },
+      },
+    })
+  }
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Stack spacing={2}>
+          <div>
+            <Typography variant="subtitle1" component="p" sx={{ fontWeight: 600 }}>
+              {t('AiSettingsPanel.autopilotCardTitle')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t('AiSettingsPanel.autopilotCardDescription')}
+            </Typography>
+          </div>
+
+          {updateMutation.isError && (
+            <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
+          )}
+          {updateMutation.isSuccess && !isDirty && (
+            <Alert severity="success">{t('AiSettingsPanel.savedAlert')}</Alert>
+          )}
+
+          <FormControlLabel
+            control={
+              <Switch checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+            }
+            label={t('AiSettingsPanel.autopilotEnableLabel')}
+          />
+
+          {enabled && (
+            <TextField
+              label={t('AiSettingsPanel.confidenceThresholdLabel')}
+              type="number"
+              value={thresholdPercent}
+              onChange={(event) => setThresholdPercent(event.target.value)}
+              error={!isValid}
+              helperText={
+                isValid
+                  ? t('AiSettingsPanel.confidenceThresholdHelperText')
+                  : t('AiSettingsPanel.confidenceThresholdInvalid')
+              }
+              slotProps={{ htmlInput: { min: 0, max: 100 } }}
+              sx={{ maxWidth: 220 }}
+            />
+          )}
+
+          <Button
+            variant="contained"
+            disabled={updateMutation.isPending || !isDirty || !isValid}
+            onClick={handleSave}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            {updateMutation.isPending
+              ? t('AiSettingsPanel.autopilotSavingButton')
+              : t('AiSettingsPanel.autopilotSaveButton')}
+          </Button>
+        </Stack>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -253,8 +344,8 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
             sx={{ alignSelf: 'flex-start' }}
           >
             {updateMutation.isPending
-              ? t('AiSettingsPanel.savingButton')
-              : t('AiSettingsPanel.saveButton')}
+              ? t('AiSettingsPanel.providerSavingButton')
+              : t('AiSettingsPanel.providerSaveButton')}
           </Button>
         </Stack>
       </CardContent>

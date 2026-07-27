@@ -21,9 +21,11 @@ from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.routing_engine import RoutingEngine
-from blinkengage.core.config import get_settings
+from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.company_settings import is_autopilot_enabled
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
+from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -46,6 +48,7 @@ from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublis
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -389,6 +392,7 @@ async def handle_message_received(
             body=data.get("body"),
             session=session,
             events=events,
+            settings=settings,
         )
 
 
@@ -400,6 +404,7 @@ async def _route_and_assign(
     body: str | None,
     session: AsyncSession,
     events: DomainEventPublisher,
+    settings: Settings,
 ) -> None:
     """Only called for a just-created conversation — see
     ``docs/architecture/queues-routing.md`` decision #1. A conversation
@@ -433,6 +438,24 @@ async def _route_and_assign(
     queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
     if queue is None or not queue.is_active:
         return
+
+    if queue.autopilot_enabled:
+        # AI Autopilot (see docs/architecture/ai-engine.md): both the
+        # queue AND the company-wide kill-switch must opt in, and a real
+        # provider must actually be configured. Skips human
+        # auto-assignment entirely rather than assigning both an agent
+        # and AI — ai_autopilot_consumer.py (bound to message.persisted,
+        # which already fired for this same first message earlier in
+        # this same transaction) does the actual reply-or-handoff work,
+        # uniformly for the first message and every one after it.
+        company = await CompanyRepository(session).get_by_id(company_id)
+        if (
+            company is not None
+            and is_autopilot_enabled(company.settings)
+            and is_ai_available_for_company(settings, company.ai_config)
+        ):
+            conversation.autopilot_active = True
+            return
 
     assignment_engine = AssignmentEngine(queues=queues, agent_skills=agent_skills)
     agent_id = await assignment_engine.select_agent(queue=queue, session=session)

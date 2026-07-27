@@ -65,7 +65,15 @@
     "deploymentNameHelperText": "The name you gave this model deployment in Azure OpenAI Studio.",
     "apiVersionLabel": "API version",
     "apiVersionHelperText": "Leave blank to use the current default API version.",
-    "saveButton": "Save changes",
-    "savingButton": "Saving…"
+    "autopilotCardTitle": "AI Autopilot",
+    "autopilotCardDescription": "Let AI handle conversations automatically in queues you've opted in (Queues & Routing → a queue's own Autopilot toggle), handing off to an agent whenever it isn't confident enough.",
+    "autopilotEnableLabel": "Enable AI Autopilot",
+    "confidenceThresholdLabel": "Confidence threshold (%)",
+    "confidenceThresholdHelperText": "Below this confidence, Autopilot hands the conversation to an agent instead of replying.",
+    "confidenceThresholdInvalid": "Enter a whole number between 0 and 100.",
+    "autopilotSaveButton": "Save Autopilot settings",
+    "autopilotSavingButton": "Saving…",
+    "providerSaveButton": "Save provider settings",
+    "providerSavingButton": "Saving…"
   }
 }

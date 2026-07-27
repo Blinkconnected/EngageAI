@@ -179,10 +179,16 @@ fix, applied here:
   `WorkflowActionRegistry`, `SmsGatewayRegistry`). `@NotificationRuleRegistry.
   register("some.event_type")` on a class is the entire integration
   surface for a new built-in trigger.
-- `application/notification_rules/builtin.py` — the four built-in rules
+- `application/notification_rules/builtin.py` — the five built-in rules
   today: `ConversationAssignmentChangedRule`, `ConversationTransferredRule`,
-  `ConversationSlaBreachedRule`, and the new `MessagePersistedRule` (see
-  below). Each loads its conversation via `ConversationRepository.
+  `ConversationSlaBreachedRule`, `MessagePersistedRule` (see below), and
+  `AutopilotHandoffNeededRule` (bound to
+  `conversation.autopilot_handoff_needed` — see
+  `docs/architecture/ai-engine.md`'s AI Autopilot section; notifies the
+  queue's department, since an autopilot conversation is unassigned by
+  construction and so has no single agent to target, mirroring
+  `ConversationTransferredRule`'s own department branch). Each loads its
+  conversation via `ConversationRepository.
   get_by_id(company_id=..., conversation_id=...)` — company-scoped, not a
   raw `session.get()` — because nothing upstream actually guarantees a
   domain event's `company_id` and `payload["conversation_id"]` agree (a
@@ -193,8 +199,8 @@ fix, applied here:
   recipient agent lookup was correctly scoped. Fixed before this shipped.
 - `notification_consumer.py`'s `ROUTING_KEYS` is now
   `NotificationRuleRegistry.registered_event_types()`, computed at import
-  time (after importing `notification_rules.builtin`, which registers the
-  four rules as a decorator side effect) — never hand-maintained.
+  time (after importing `notification_rules.builtin`, which registers
+  every rule as a decorator side effect) — never hand-maintained.
   `handle_event()` is now a thin dispatcher: look up the rule for
   `event_type`, call `resolve()`, hand each returned draft to
   `NotificationService.create()`.

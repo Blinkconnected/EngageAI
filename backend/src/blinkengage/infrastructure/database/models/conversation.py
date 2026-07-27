@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blinkengage.infrastructure.database.base import (
@@ -162,4 +162,27 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     # for the same conversation.
     csat_survey_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
+    )
+
+    # --- AI Autopilot (see docs/architecture/ai-engine.md) ---
+    # True while the AI, not a human, is responsible for replying to this
+    # conversation — set instead of auto-assigning a human agent, only
+    # for a queue with ``Queue.autopilot_enabled`` (see
+    # conversation_ingest_consumer.py's ``_route_and_assign``). Cleared
+    # back to False the moment a human takes over, by any of the three
+    # existing paths that ever set ``assigned_agent_id``
+    # (``ConversationRepository.claim()`` i.e. ``pick()``,
+    # ``ConversationService.transfer()``, ``ConversationService.update()``)
+    # — a plain live-state flag, not an idempotency marker, since unlike
+    # every ``*_at`` column above it can legitimately flip back and forth
+    # (e.g. a human later releases it and it could be re-enabled).
+    autopilot_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Idempotency guard for the per-inbound-message autopilot decision
+    # (reply automatically vs. hand off) — the id of the last inbound
+    # Message ``ai_autopilot_consumer`` has already acted on. Guards
+    # against both a redelivery of the same ``message.persisted`` event
+    # (at-least-once delivery) causing a duplicate auto-reply or a
+    # duplicate handoff notification.
+    autopilot_last_handled_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), default=None
     )

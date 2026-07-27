@@ -225,6 +225,87 @@ model's response doesn't parse into the exact expected two-line format —
 a malformed model response degrades to "do nothing," never to a crash or
 an unvalidated free-text action string.
 
+## AI Autopilot (P4.18)
+
+Autopilot is the one place in this system where AI output reaches a
+customer **without a human reviewing it first** — every other AI feature
+(reply suggestions, next best action) is explicitly advisory-only, per
+the two sections above. Its whole design is therefore about being
+conservative by default and handing back to a human at the first sign of
+doubt.
+
+**Two independent opt-ins, both required.** A conversation only ever
+becomes AI-handled when *both* `Company.settings.ai.autopilot.enabled`
+(the company-wide master switch, default off — read via
+`domain/company_settings.py`'s `is_autopilot_enabled`) *and* the
+routed-to queue's own `Queue.autopilot_enabled` column (default false)
+are on, *and* a real provider is actually configured for that company
+(`is_ai_available_for_company`). The per-queue half is a real FK-backed
+column rather than a queue-id list inside the settings JSON blob,
+consistent with every other queue-level behavior (`assignment_strategy`,
+`sla_policy_id`); the company-wide half exists so Autopilot can be
+paused everywhere instantly without touching every queue.
+
+**Where it plugs in.** `conversation_ingest_consumer.py`'s
+`_route_and_assign` (which only ever runs for a brand-new conversation)
+sets `Conversation.autopilot_active = True` and returns *instead of*
+running `AssignmentEngine.select_agent` — an autopilot conversation is
+deliberately never also assigned to a human, or both would think they
+own it. All the actual reply-or-handoff work then happens in a separate
+consumer, `ai_autopilot_consumer.py`, bound to `message.persisted`
+(published for every INBOUND message). That event already fired for the
+conversation's *first* message earlier in the same transaction, so the
+first turn and every turn after it go through exactly the same code
+path — no special-cased "first message" branch.
+
+**The confidence contract.** `AiService.suggest_autopilot_reply` asks
+for a three-line response (`REPLY:`/`CONFIDENCE:` 0-100/`HANDOFF:`
+YES|NO) and parses it with `_parse_autopilot_reply`, which starts every
+field at its *unsafe-to-send* default (`reply=None`, `confidence=0.0`,
+`needs_handoff=True`) and only ever relaxes them on a cleanly-parsed
+line. A malformed, truncated, or off-format response can therefore only
+ever produce a handoff, never an unreviewed auto-send. The consumer
+hands off if **any** of: the model asked for a handoff, no reply was
+produced, or confidence < the company's threshold
+(`settings.ai.autopilot.confidence_threshold`, default 0.7 — stored
+0.0-1.0, shown as a percentage in the UI). Asking the model to
+self-assess is the pragmatic option available at this abstraction layer:
+`AiProvider.complete()` returns text, not token log-probs, and adding a
+second scoring call per message would double the per-message AI cost for
+a signal that's still ultimately the model's own opinion.
+
+**Handoff path.** Clearing `autopilot_active` publishes
+`conversation.autopilot_handoff_needed` (payload: conversation id,
+`reason`, `confidence`), which the existing
+`NotificationRuleRegistry` picks up via a new `AutopilotHandoffNeededRule`
+— notifying the queue's department, mirroring
+`ConversationTransferredRule`'s department branch (an autopilot
+conversation is unassigned by construction, so there's no single agent
+to target; with no department on the queue it simply becomes visible,
+unassigned, in the Inbox like any other queued work). No new realtime
+frame type was needed — the existing `notification` frame already
+delivers instantly, with toast/browser/sound handling and
+click-to-navigate already wired.
+
+**Taking over.** Every existing path that assigns a human clears
+`autopilot_active`: `ConversationRepository.claim()` (i.e. `pick()`),
+`ConversationService.transfer()`, and `ConversationService.update()`'s
+`assigned_agent_id` branch. There's deliberately no separate "take over
+from AI" endpoint — picking up the conversation *is* taking over, and a
+third assignment-mutation path would be a fourth place to keep this
+invariant in sync.
+
+**Idempotency.** `Conversation.autopilot_last_handled_message_id` records
+the last inbound message the consumer acted on, so an at-least-once
+redelivery of the same `message.persisted` event can't produce a
+duplicate auto-reply or a duplicate handoff notification. Same
+idempotency-marker convention as `csat_survey_sent_at`/`sla_*_breached_at`.
+
+**Provider disappearing mid-conversation** (disabled, key revoked,
+misconfigured) is handled explicitly rather than left to fail silently:
+the consumer hands off with `reason="ai_unavailable"` instead of leaving
+the customer's message permanently unanswered.
+
 ## Hallucination-proof auto-tagging
 
 `suggest_tags` only ever picks from the company's real `Tag` catalog
@@ -412,3 +493,57 @@ remain valid, read back as `None` for the two new ones).
   appears as a select option, and Azure OpenAI's Save button stays
   disabled until both a resource endpoint *and* a deployment name are
   filled in, not just an API key.
+
+### AI Autopilot (P4.18)
+
+29 new backend tests + 3 frontend, all green under `pytest -q`,
+`ruff check`, `mypy src`, `tsc`, `eslint`, `vitest`, and `vite build`:
+
+- `tests/integration/test_ai_autopilot_consumer.py` (7, new file) — the
+  high-confidence auto-send path (an OUTBOUND `Message` row actually
+  persisted, `autopilot_active` still true, still unassigned), the
+  low-confidence handoff path (no message sent, `autopilot_active`
+  cleared, `conversation.autopilot_handoff_needed` published with
+  `reason="low_confidence"`), `HANDOFF: YES` overriding a high
+  confidence, a completely unparseable model response defaulting to
+  handoff rather than auto-send, at-least-once redelivery not
+  double-sending, a non-autopilot conversation being ignored entirely
+  (asserted by making the provider factory *raise* if called), and a
+  malformed event payload being ignored.
+- `tests/integration/test_assignment_and_routing.py` (+3) — an
+  autopilot-enabled queue setting `autopilot_active` and skipping human
+  assignment *despite an eligible online agent existing*, plus both
+  fallback paths (company-wide switch off; no provider configured)
+  assigning a human normally.
+- `tests/integration/test_notification_consumer.py` (+2) — the handoff
+  event notifying every agent in the queue's department (with the
+  reason-specific body text), and creating no notification when the
+  queue has no department.
+- `tests/unit/test_ai_service.py` (+6) — `_parse_autopilot_reply`'s
+  well-formed path, `HANDOFF: YES` winning over high confidence, a blank
+  `REPLY:` line parsing to `None` (not `""`), a `%`-suffixed confidence
+  being tolerated, an out-of-range confidence being ignored while other
+  lines still parse, and a completely unparseable response defaulting to
+  the conservative handoff triple.
+- `tests/unit/test_company_settings.py` (+4) and
+  `tests/unit/test_ai_factory.py` (+3) — the new settings readers'
+  defaults/explicit values/out-of-range/non-numeric/null-section cases,
+  and `is_ai_available_for_company`.
+- `tests/integration/test_conversations_api.py` (+2) — `pick()` and
+  `transfer()` each clearing `autopilot_active`.
+- `tests/integration/test_queues_api.py` (+3) — `autopilot_enabled`
+  defaulting to false on create, settable on create, and togglable both
+  ways on update.
+- Frontend `CompanySettingsPage.test.tsx` (+3) — Autopilot off by
+  default with the threshold field hidden, enabling + saving a
+  threshold, and an out-of-range threshold disabling Save.
+
+The migration (`8b9c0d1e2f3a`, adding `conversations.autopilot_active`/
+`conversations.autopilot_last_handled_message_id`/
+`queues.autopilot_enabled`) is additive with `server_default="false"` on
+both booleans, so it applies cleanly to existing rows. A new
+`ai-autopilot-consumer` service was added to both `docker-compose.yml`
+and `docker-compose.prod.yml` (both validated via
+`docker compose config`), mirroring `csat-dispatch-consumer`'s shape —
+it needs Redis alongside Postgres/RabbitMQ for the same reason (building
+a `ConversationService` requires a realtime publisher).

@@ -10,6 +10,7 @@ durable event stream without this service needing its own usage-logging
 table.
 """
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from blinkengage.domain.ai_provider import AiProvider
@@ -20,6 +21,18 @@ _SENTIMENTS = frozenset({"positive", "neutral", "negative"})
 _NEXT_BEST_ACTIONS = frozenset(
     {"send_reply", "escalate_to_queue", "close_conversation", "no_action_needed"}
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AutopilotReply:
+    """The model's self-assessed answer to "can I handle this myself?" —
+    see ``_parse_autopilot_reply``'s defensive fallback for why
+    ``needs_handoff=True``/``confidence=0.0`` is always the safe default
+    on anything unparseable, never an auto-send."""
+
+    reply: str | None
+    confidence: float
+    needs_handoff: bool
 
 
 class AiService:
@@ -63,6 +76,43 @@ class AiService:
             operation="suggest_reply", company_id=company_id, conversation_id=conversation_id
         )
         return result
+
+    async def suggest_autopilot_reply(
+        self, *, company_id: UUID, conversation_id: UUID, conversation_history: str
+    ) -> AutopilotReply:
+        """Like ``suggest_reply``, but for AI Autopilot (see
+        docs/architecture/ai-engine.md): asks the model to also
+        self-assess its own confidence and whether a human should take
+        over instead, in the same completion — one API call, not two.
+        Never trusted blindly: ``_parse_autopilot_reply`` defaults to
+        ``needs_handoff=True``/``confidence=0.0``/``reply=None`` on
+        anything that doesn't parse, so a malformed response can only
+        ever result in a human handoff, never an unreviewed auto-send."""
+        provider = self._require_provider()
+        result = await provider.complete(
+            system=(
+                "You are an AI customer support agent handling this conversation "
+                "autonomously, with no human reviewing your reply before it's sent. "
+                "Using only information present in the conversation history, respond in "
+                "EXACTLY this format on three lines:\n"
+                "REPLY: <your proposed reply to the customer's most recent message, or "
+                "leave blank if you cannot help>\n"
+                "CONFIDENCE: <a whole number 0-100 for how confident you are this reply "
+                "fully and correctly resolves the customer's message>\n"
+                "HANDOFF: <YES if a human should take over instead — for example a "
+                "refund, a complaint, anything requiring account changes, or if you're "
+                "not fully sure — or NO otherwise>"
+            ),
+            prompt=conversation_history,
+            max_tokens=500,
+            temperature=0.2,
+        )
+        await self._publish_completed(
+            operation="suggest_autopilot_reply",
+            company_id=company_id,
+            conversation_id=conversation_id,
+        )
+        return _parse_autopilot_reply(result)
 
     async def summarize_conversation(
         self, *, company_id: UUID, conversation_id: UUID, conversation_history: str
@@ -298,3 +348,35 @@ def _parse_next_best_action(raw: str) -> dict[str, str]:
         elif lowered.startswith("reason:"):
             reason = line.split(":", 1)[1].strip()
     return {"action": action, "reason": reason}
+
+
+def _parse_autopilot_reply(raw: str) -> AutopilotReply:
+    """Conservative by construction: every field starts at the "hand this
+    off to a human" default, and only a cleanly-parsed, in-range
+    CONFIDENCE line plus an explicit HANDOFF: NO can ever produce an
+    auto-sendable result — any missing/malformed line leaves the unsafe
+    default in place rather than guessing."""
+    reply: str | None = None
+    confidence = 0.0
+    needs_handoff = True
+    for line in raw.splitlines():
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if lowered.startswith("reply:"):
+            value = stripped.split(":", 1)[1].strip()
+            reply = value or None
+        elif lowered.startswith("confidence:"):
+            value = stripped.split(":", 1)[1].strip().rstrip("%")
+            try:
+                parsed = float(value)
+            except ValueError:
+                continue
+            if 0.0 <= parsed <= 100.0:
+                confidence = parsed / 100.0
+        elif lowered.startswith("handoff:"):
+            value = stripped.split(":", 1)[1].strip().lower()
+            if value == "no":
+                needs_handoff = False
+            elif value == "yes":
+                needs_handoff = True
+    return AutopilotReply(reply=reply, confidence=confidence, needs_handoff=needs_handoff)

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Button,
+  Chip,
   Divider,
   Link,
   MenuItem,
@@ -199,14 +200,23 @@ export function ConversationSidebar({
         <Typography variant="overline" color="text.secondary">
           {t('ConversationSidebar.assignedToLabel')}
         </Typography>
-        <Typography variant="body2">
-          {assignedAgent?.full_name ??
-            (assignedDepartment
-              ? t('ConversationSidebar.departmentSuffixLabel', {
-                  departmentName: assignedDepartment.name,
-                })
-              : t('ConversationSidebar.unassignedValue'))}
-        </Typography>
+        {conversation.autopilot_active ? (
+          <div>
+            <Chip label={t('ConversationSidebar.autopilotActiveLabel')} size="small" color="info" />
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {t('ConversationSidebar.autopilotActiveHelperText')}
+            </Typography>
+          </div>
+        ) : (
+          <Typography variant="body2">
+            {assignedAgent?.full_name ??
+              (assignedDepartment
+                ? t('ConversationSidebar.departmentSuffixLabel', {
+                    departmentName: assignedDepartment.name,
+                  })
+                : t('ConversationSidebar.unassignedValue'))}
+          </Typography>
+        )}
         {/* Reassignment always goes through the Transfer dialog, not a
             free-form dropdown — see TransferDialog.tsx's docstring on why
             (permission gate, history, recipient notification). Hidden

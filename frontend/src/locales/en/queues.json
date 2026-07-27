@@ -15,7 +15,9 @@
     "firstResponseTargetLabel": "First response target (minutes)",
     "firstResponseTargetHelperText": "Leave blank for no first-response SLA on this queue. Ignored while an SLA policy above is set.",
     "resolutionTargetLabel": "Resolution target (minutes)",
-    "resolutionTargetHelperText": "Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set."
+    "resolutionTargetHelperText": "Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set.",
+    "autopilotLabel": "AI Autopilot",
+    "autopilotHelperText": "Let AI reply to conversations in this queue automatically, handing off to an agent when it isn't confident. Also requires Autopilot to be turned on in Settings → AI."
   },
   "QueueEditDialog": {
     "title": "Edit {{name}}",
@@ -33,7 +35,9 @@
     "firstResponseTargetHelperText": "Leave blank for no first-response SLA on this queue. Ignored while an SLA policy above is set.",
     "resolutionTargetLabel": "Resolution target (minutes)",
     "resolutionTargetHelperText": "Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set.",
-    "activeLabel": "Active"
+    "activeLabel": "Active",
+    "autopilotLabel": "AI Autopilot",
+    "autopilotHelperText": "Let AI reply to conversations in this queue automatically, handing off to an agent when it isn't confident. Also requires Autopilot to be turned on in Settings → AI."
   },
   "QueuesPage": {
     "pageTitle": "Queues & Routing",

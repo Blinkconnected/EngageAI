@@ -202,6 +202,9 @@ class ConversationService:
         previous_agent_id = conversation.assigned_agent_id
         if assigned_agent_id is not None:
             conversation.assigned_agent_id = assigned_agent_id
+            # A human being assigned always takes this back from AI
+            # Autopilot — see Conversation.autopilot_active's docstring.
+            conversation.autopilot_active = False
         if queue_id is not None and queue_id != conversation.queue_id:
             # Must belong to this same company — otherwise a client could
             # point queue_id at another tenant's Queue row (the FK alone
@@ -315,6 +318,10 @@ class ConversationService:
         """
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         from_agent_id = conversation.assigned_agent_id
+        # A transfer always hands this back to a human/department, never
+        # leaves it with AI Autopilot — see Conversation.autopilot_active's
+        # docstring. Unconditional across all three target types below.
+        conversation.autopilot_active = False
 
         recipient_was_online = False
         if target_type is TransferTargetType.AGENT:

@@ -52,8 +52,19 @@ export interface SecuritySettings {
   min_password_length: number
 }
 
-export interface AiSettings {
+export interface AutopilotSettings {
   enabled: boolean
+  confidence_threshold: number
+}
+
+export interface AiSettings {
+  // Optional, not just at the top-level `ai` key (which every other
+  // section already treats this way) — this section itself is only
+  // ever sent as a one-level-deep partial patch (see
+  // CompanyService._merge_settings), so a PATCH updating just
+  // `autopilot` doesn't need to restate `enabled`.
+  enabled?: boolean
+  autopilot?: AutopilotSettings
 }
 
 export interface ErpSettings {

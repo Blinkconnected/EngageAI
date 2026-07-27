@@ -1,6 +1,9 @@
 from blinkengage.domain.company_settings import (
+    DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD,
     DEFAULT_MIN_PASSWORD_LENGTH,
+    autopilot_confidence_threshold,
     is_ai_enabled,
+    is_autopilot_enabled,
     is_erp_enabled,
     is_notification_type_enabled,
     is_onboarding_completed,
@@ -14,6 +17,8 @@ def test_defaults_when_settings_is_empty() -> None:
     assert is_onboarding_completed(settings) is False
     assert is_erp_enabled(settings) is False
     assert is_ai_enabled(settings) is True
+    assert is_autopilot_enabled(settings) is False
+    assert autopilot_confidence_threshold(settings) == DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
     assert is_notification_type_enabled(settings, "conversation.sla_breached") is True
     assert is_typing_indicator_enabled(settings) is True
     assert min_password_length(settings) == DEFAULT_MIN_PASSWORD_LENGTH
@@ -23,7 +28,7 @@ def test_reads_explicit_values() -> None:
     settings = {
         "onboarding": {"completed": True},
         "erp": {"enabled": True},
-        "ai": {"enabled": False},
+        "ai": {"enabled": False, "autopilot": {"enabled": True, "confidence_threshold": 0.9}},
         "notifications": {"conversation.sla_breached": False},
         "messaging": {"typing_indicator_enabled": False},
         "security": {"min_password_length": 14},
@@ -31,10 +36,28 @@ def test_reads_explicit_values() -> None:
     assert is_onboarding_completed(settings) is True
     assert is_erp_enabled(settings) is True
     assert is_ai_enabled(settings) is False
+    assert is_autopilot_enabled(settings) is True
+    assert autopilot_confidence_threshold(settings) == 0.9
     assert is_notification_type_enabled(settings, "conversation.sla_breached") is False
     assert is_notification_type_enabled(settings, "message.persisted") is True
     assert is_typing_indicator_enabled(settings) is False
     assert min_password_length(settings) == 14
+
+
+def test_autopilot_confidence_threshold_ignores_an_out_of_range_value() -> None:
+    settings = {"ai": {"autopilot": {"confidence_threshold": 1.5}}}
+    assert autopilot_confidence_threshold(settings) == DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
+
+
+def test_autopilot_confidence_threshold_ignores_a_non_numeric_value() -> None:
+    settings = {"ai": {"autopilot": {"confidence_threshold": "high"}}}
+    assert autopilot_confidence_threshold(settings) == DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
+
+
+def test_autopilot_section_treats_a_null_autopilot_key_the_same_as_absent() -> None:
+    settings = {"ai": {"enabled": True, "autopilot": None}}
+    assert is_autopilot_enabled(settings) is False
+    assert autopilot_confidence_threshold(settings) == DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
 
 
 def test_min_password_length_ignores_a_value_below_the_platform_floor() -> None:
@@ -67,6 +90,8 @@ def test_every_reader_treats_an_explicit_null_section_the_same_as_absent() -> No
     assert is_onboarding_completed(settings) is False
     assert is_erp_enabled(settings) is False
     assert is_ai_enabled(settings) is True
+    assert is_autopilot_enabled(settings) is False
+    assert autopilot_confidence_threshold(settings) == DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
     assert is_notification_type_enabled(settings, "conversation.sla_breached") is True
     assert is_typing_indicator_enabled(settings) is True
     assert min_password_length(settings) == DEFAULT_MIN_PASSWORD_LENGTH

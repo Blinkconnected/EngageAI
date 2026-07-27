@@ -19,6 +19,9 @@ export interface Conversation {
   closed_at: string | null
   created_at: string
   updated_at: string
+  /** AI Autopilot — true while the AI, not a human, is responsible for
+   * replying to this conversation. */
+  autopilot_active: boolean
 }
 
 export interface ConversationUpdateRequest {

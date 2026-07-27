@@ -49,6 +49,7 @@ async def create_queue(
         first_response_target_minutes=payload.first_response_target_minutes,
         resolution_target_minutes=payload.resolution_target_minutes,
         sla_policy_id=payload.sla_policy_id,
+        autopilot_enabled=payload.autopilot_enabled,
         actor_user_id=auth.user_id,
     )
     return QueueResponse.model_validate(queue)
@@ -82,6 +83,7 @@ async def update_queue(
         resolution_target_minutes=payload.resolution_target_minutes,
         is_active=payload.is_active,
         sla_policy_id=payload.sla_policy_id,
+        autopilot_enabled=payload.autopilot_enabled,
         actor_user_id=auth.user_id,
     )
     return QueueResponse.model_validate(queue)

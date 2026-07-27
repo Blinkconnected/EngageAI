@@ -115,6 +115,10 @@ class ConversationRepository:
                 assigned_agent_id=agent_id,
                 picked_up_at=now,
                 first_picked_up_at=func.coalesce(Conversation.first_picked_up_at, now),
+                # A human claiming this conversation always takes it back
+                # from AI Autopilot, whether or not it was ever active —
+                # see Conversation.autopilot_active's docstring.
+                autopilot_active=False,
             )
         )
         return result.rowcount == 1

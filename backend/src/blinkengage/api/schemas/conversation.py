@@ -34,6 +34,9 @@ class ConversationResponse(BaseModel):
     closed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # AI Autopilot (see docs/architecture/ai-engine.md) — True while the
+    # AI, not a human, is responsible for replying to this conversation.
+    autopilot_active: bool
 
     model_config = {"from_attributes": True}
 

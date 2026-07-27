@@ -13,6 +13,9 @@ export interface Queue {
   // over the two flat target fields above when set.
   sla_policy_id: string | null
   is_active: boolean
+  // AI Autopilot — also requires the company-wide
+  // settings.ai.autopilot.enabled switch (see features/company/types.ts).
+  autopilot_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -25,6 +28,7 @@ export interface QueueCreateRequest {
   first_response_target_minutes?: number | null
   resolution_target_minutes?: number | null
   sla_policy_id?: string | null
+  autopilot_enabled?: boolean
 }
 
 export interface QueueUpdateRequest {
@@ -36,6 +40,7 @@ export interface QueueUpdateRequest {
   resolution_target_minutes?: number | null
   is_active?: boolean
   sla_policy_id?: string | null
+  autopilot_enabled?: boolean
 }
 
 /** The only two condition keys `RoutingEngine` recognizes (see

@@ -147,6 +147,19 @@ services:
           cpus: "0.5"
           memory: 256m
 
+  ai-autopilot-consumer:
+    build:
+      target: runtime
+    restart: always
+    volumes: !override []
+    healthcheck:
+      disable: true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
   erp-sync-consumer:
     build:
       target: runtime

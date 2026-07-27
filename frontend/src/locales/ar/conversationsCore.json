@@ -65,6 +65,8 @@
     "statusResolved": "تم الحل",
     "statusClosed": "مغلقة",
     "assignedToLabel": "مُسندة إلى",
+    "autopilotActiveLabel": "الطيار الآلي للذكاء الاصطناعي",
+    "autopilotActiveHelperText": "يقوم الذكاء الاصطناعي حاليًا بالرد على هذه المحادثة. استلمها لتتولى الأمر بنفسك.",
     "unassignedValue": "غير مُسندة",
     "departmentSuffixLabel": "{{departmentName}} (قسم)",
     "transferButton": "تحويل…",

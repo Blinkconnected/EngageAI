@@ -392,6 +392,33 @@ async def test_transfer_to_agent_reassigns_and_clears_department(
     assert get_response.json()["department_id"] is None
 
 
+async def test_transfer_clears_autopilot_active(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """A transfer always hands the conversation back to a human/
+    department, never leaves it with AI Autopilot."""
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    agent = await _create_agent(client, owner_headers, "autopilot-transfer-target@acme.example")
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        db_conversation = await session.get(Conversation, UUID(conversation["id"]))
+        assert db_conversation is not None
+        db_conversation.autopilot_active = True
+        await session.commit()
+
+    await client.post(
+        f"/api/v1/conversations/{conversation['id']}/transfer",
+        json={"target_type": "agent", "to_agent_id": agent["id"]},
+        headers=owner_headers,
+    )
+
+    get_response = await client.get(
+        f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
+    )
+    assert get_response.json()["autopilot_active"] is False
+
+
 async def test_transfer_to_department_unassigns_agent_and_sets_department(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:
@@ -906,6 +933,32 @@ async def test_pick_assigns_the_calling_agent_and_publishes_event(
     assert payload["queue_id"] == queue["id"]
     assert payload["agent_id"] == agent["id"]
     assert payload["wait_seconds"] >= 0
+
+
+async def test_pick_clears_autopilot_active(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """A human claiming a conversation always takes it back from AI
+    Autopilot — see Conversation.autopilot_active's docstring."""
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    queue = await _create_queue(client, owner_headers)
+    await _set_conversation_queue(client, owner_headers, conversation["id"], queue["id"])
+    agent, agent_headers = await _create_agent_with_headers(
+        client, owner_headers, "autopilot-picker@acme.example"
+    )
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        db_conversation = await session.get(Conversation, UUID(conversation["id"]))
+        assert db_conversation is not None
+        db_conversation.autopilot_active = True
+        await session.commit()
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation['id']}/pick", headers=agent_headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["autopilot_active"] is False
 
 
 async def test_pick_requires_conversations_pick_permission(

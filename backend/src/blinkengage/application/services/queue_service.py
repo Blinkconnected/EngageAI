@@ -44,6 +44,7 @@ class QueueService:
         first_response_target_minutes: int | None,
         resolution_target_minutes: int | None,
         sla_policy_id: UUID | None = None,
+        autopilot_enabled: bool = False,
         actor_user_id: UUID | None = None,
     ) -> Queue:
         if await self._queues.get_by_name(company_id=company_id, name=name) is not None:
@@ -60,6 +61,7 @@ class QueueService:
                 first_response_target_minutes=first_response_target_minutes,
                 resolution_target_minutes=resolution_target_minutes,
                 sla_policy_id=sla_policy_id,
+                autopilot_enabled=autopilot_enabled,
             )
         )
         await self._events.publish(
@@ -100,6 +102,7 @@ class QueueService:
         resolution_target_minutes: int | None,
         is_active: bool | None,
         sla_policy_id: UUID | None = None,
+        autopilot_enabled: bool | None = None,
         actor_user_id: UUID | None = None,
     ) -> Queue:
         queue = await self.get(company_id=company_id, queue_id=queue_id)
@@ -122,6 +125,8 @@ class QueueService:
         if sla_policy_id is not None:
             await self._validate_sla_policy(company_id=company_id, sla_policy_id=sla_policy_id)
             queue.sla_policy_id = sla_policy_id
+        if autopilot_enabled is not None:
+            queue.autopilot_enabled = autopilot_enabled
 
         await self._events.publish(
             DomainEvent(

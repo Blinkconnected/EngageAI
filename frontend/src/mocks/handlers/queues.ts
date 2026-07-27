@@ -21,6 +21,7 @@ const SEED_QUEUES: Queue[] = [
     resolution_target_minutes: null,
     sla_policy_id: null,
     is_active: true,
+    autopilot_enabled: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
@@ -39,6 +40,7 @@ const SEED_QUEUES: Queue[] = [
     resolution_target_minutes: null,
     sla_policy_id: null,
     is_active: true,
+    autopilot_enabled: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
@@ -96,6 +98,7 @@ export const queuesHandlers = [
       resolution_target_minutes: payload.resolution_target_minutes ?? null,
       sla_policy_id: payload.sla_policy_id ?? null,
       is_active: true,
+      autopilot_enabled: payload.autopilot_enabled ?? false,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     }

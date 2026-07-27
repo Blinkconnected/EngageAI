@@ -67,6 +67,16 @@ class Queue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         GUID(), ForeignKey("sla_policies.id", ondelete="SET NULL"), default=None
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # AI Autopilot (see docs/architecture/ai-engine.md) opt-in, per queue
+    # — a real FK-backed column rather than a queue-id list buried in
+    # Company.settings' JSON blob, consistent with how every other
+    # queue-level behavior (assignment_strategy, sla_policy_id) is
+    # modeled. A conversation only ever becomes autopilot_active when
+    # BOTH this is True AND the company-wide settings.ai.autopilot.enabled
+    # kill-switch is on (see domain/company_settings.py) — this is the
+    # per-queue half of that gate, letting one queue opt in without
+    # switching on autopilot company-wide.
+    autopilot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class AgentSkill(UUIDPrimaryKeyMixin, TimestampMixin, Base):

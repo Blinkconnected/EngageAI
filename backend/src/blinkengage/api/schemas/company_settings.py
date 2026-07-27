@@ -75,8 +75,21 @@ class SecuritySettingsUpdate(BaseModel):
     min_password_length: int = Field(default=10, ge=10, le=72)
 
 
+class AutopilotSettingsUpdate(BaseModel):
+    """Company-wide Autopilot master switch + threshold — a queue must
+    ALSO have ``Queue.autopilot_enabled`` set for a conversation to ever
+    actually become AI-handled (see ``Queue.autopilot_enabled``'s
+    docstring); this is the other half of that gate, and the one place
+    to instantly pause Autopilot everywhere without touching every
+    queue."""
+
+    enabled: bool = False
+    confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
 class AiSettingsUpdate(BaseModel):
     enabled: bool = True
+    autopilot: AutopilotSettingsUpdate | None = None
 
 
 class ErpSettingsUpdate(BaseModel):

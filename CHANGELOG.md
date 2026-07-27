@@ -16,6 +16,16 @@ for more detail on how this page is put together.
 
 ### Added
 
+- AI Autopilot: AI can now handle conversations end to end on queues you
+  choose, replying to customers automatically and handing the
+  conversation to a human the moment it isn't confident enough — the
+  full conversation history stays intact, so whoever takes over sees
+  everything that was already said. Turn it on in Settings → AI (with a
+  confidence threshold you control), then enable it per queue in Queues
+  & Routing; both switches must be on, so a single toggle can pause it
+  everywhere. Agents in the queue's department get a notification the
+  instant a handoff happens, and picking the conversation up takes it
+  back from AI the same way picking up any other conversation works.
 - Owners and admins can now connect Google Gemini, Microsoft Azure
   OpenAI, Mistral, Groq, or DeepSeek for AI features, alongside the
   existing OpenAI, Claude, and self-hosted Ollama options (Settings →

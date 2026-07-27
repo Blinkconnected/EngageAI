@@ -240,7 +240,7 @@ describe('CompanySettingsPage', () => {
       await user.click(await screen.findByLabelText(/^provider/i))
       await user.click(await screen.findByRole('option', { name: 'OpenAI' }))
 
-      const saveButton = screen.getByRole('button', { name: /save changes/i })
+      const saveButton = screen.getByRole('button', { name: /save provider settings/i })
       expect(saveButton).toBeDisabled()
 
       await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-value')
@@ -259,11 +259,11 @@ describe('CompanySettingsPage', () => {
       await user.click(await screen.findByLabelText(/^provider/i))
       await user.click(await screen.findByRole('option', { name: 'OpenAI' }))
       await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-value')
-      await user.click(screen.getByRole('button', { name: /save changes/i }))
+      await user.click(screen.getByRole('button', { name: /save provider settings/i }))
       await screen.findByText('Saved.')
 
       await user.type(screen.getByLabelText(/^model/i), 'gpt-4o')
-      const saveButton = screen.getByRole('button', { name: /save changes/i })
+      const saveButton = screen.getByRole('button', { name: /save provider settings/i })
       expect(saveButton).toBeEnabled()
       await user.click(saveButton)
 
@@ -280,7 +280,7 @@ describe('CompanySettingsPage', () => {
 
       expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument()
       await user.type(screen.getByLabelText(/base url/i), 'http://localhost:11434')
-      expect(screen.getByRole('button', { name: /save changes/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /save provider settings/i })).toBeEnabled()
     })
 
     it('has no detectable accessibility violations with the provider section expanded', async () => {
@@ -311,7 +311,7 @@ describe('CompanySettingsPage', () => {
       await user.click(await screen.findByLabelText(/^provider/i))
       await user.click(await screen.findByRole('option', { name: 'Azure OpenAI' }))
 
-      const saveButton = screen.getByRole('button', { name: /save changes/i })
+      const saveButton = screen.getByRole('button', { name: /save provider settings/i })
       await user.type(screen.getByLabelText(/api key/i), 'az-test-key')
       expect(saveButton).toBeDisabled()
 
@@ -323,6 +323,46 @@ describe('CompanySettingsPage', () => {
 
       await user.click(saveButton)
       expect(await screen.findByText('Saved.')).toBeInTheDocument()
+    })
+  })
+
+  describe('AI Autopilot configuration', () => {
+    it('is off with the default confidence threshold until enabled', async () => {
+      renderWithRoutes('/settings/company/ai')
+
+      await screen.findByLabelText(/^provider/i)
+      expect(screen.getByRole('switch', { name: /enable ai autopilot/i })).not.toBeChecked()
+      expect(screen.queryByLabelText(/confidence threshold/i)).not.toBeInTheDocument()
+    })
+
+    it('enables autopilot and saves a confidence threshold', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+      await screen.findByLabelText(/^provider/i)
+
+      await user.click(screen.getByRole('switch', { name: /enable ai autopilot/i }))
+      const thresholdField = screen.getByLabelText(/confidence threshold/i)
+      await user.clear(thresholdField)
+      await user.type(thresholdField, '85')
+
+      const saveButton = screen.getByRole('button', { name: /save autopilot settings/i })
+      expect(saveButton).toBeEnabled()
+      await user.click(saveButton)
+
+      expect(await screen.findByText('Saved.')).toBeInTheDocument()
+    })
+
+    it('rejects an out-of-range confidence threshold', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+      await screen.findByLabelText(/^provider/i)
+
+      await user.click(screen.getByRole('switch', { name: /enable ai autopilot/i }))
+      const thresholdField = screen.getByLabelText(/confidence threshold/i)
+      await user.clear(thresholdField)
+      await user.type(thresholdField, '150')
+
+      expect(screen.getByRole('button', { name: /save autopilot settings/i })).toBeDisabled()
     })
   })
 })

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MenuItem, TextField } from '@mui/material'
+import { FormControlLabel, MenuItem, Switch, TextField, Typography } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -26,6 +26,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
   const [firstResponseTarget, setFirstResponseTarget] = useState('')
   const [resolutionTarget, setResolutionTarget] = useState('')
   const [slaPolicyId, setSlaPolicyId] = useState('')
+  const [autopilotEnabled, setAutopilotEnabled] = useState(false)
 
   const departmentsQuery = useAllDepartmentsQuery()
   const slaPoliciesQuery = useSlaPoliciesQuery()
@@ -39,6 +40,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
     setFirstResponseTarget('')
     setResolutionTarget('')
     setSlaPolicyId('')
+    setAutopilotEnabled(false)
     createMutation.reset()
   }
 
@@ -57,6 +59,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         first_response_target_minutes: parseTargetMinutes(firstResponseTarget),
         resolution_target_minutes: parseTargetMinutes(resolutionTarget),
         sla_policy_id: slaPolicyId || null,
+        autopilot_enabled: autopilotEnabled,
       },
       { onSuccess: handleClose },
     )
@@ -154,6 +157,18 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         helperText={t('QueueCreateDialog.resolutionTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={autopilotEnabled}
+            onChange={(event) => setAutopilotEnabled(event.target.checked)}
+          />
+        }
+        label={t('QueueCreateDialog.autopilotLabel')}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {t('QueueCreateDialog.autopilotHelperText')}
+      </Typography>
     </FormDialog>
   )
 }

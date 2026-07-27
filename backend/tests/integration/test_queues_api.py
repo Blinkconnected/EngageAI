@@ -25,6 +25,47 @@ async def test_create_duplicate_queue_name_conflicts(
     assert response.status_code == 409
 
 
+async def test_create_queue_defaults_autopilot_to_disabled(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    response = await client.post(
+        "/api/v1/queues", json={"name": "Support"}, headers=owner_headers
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["autopilot_enabled"] is False
+
+
+async def test_create_queue_with_autopilot_enabled(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    response = await client.post(
+        "/api/v1/queues",
+        json={"name": "Autopilot Support", "autopilot_enabled": True},
+        headers=owner_headers,
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["autopilot_enabled"] is True
+
+
+async def test_update_queue_toggles_autopilot(client: AsyncClient, owner_headers: dict) -> None:
+    create_response = await client.post(
+        "/api/v1/queues", json={"name": "Support"}, headers=owner_headers
+    )
+    queue_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/api/v1/queues/{queue_id}", json={"autopilot_enabled": True}, headers=owner_headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["autopilot_enabled"] is True
+
+    response = await client.patch(
+        f"/api/v1/queues/{queue_id}", json={"autopilot_enabled": False}, headers=owner_headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["autopilot_enabled"] is False
+
+
 async def test_update_queue_sla_targets(client: AsyncClient, owner_headers: dict) -> None:
     create_response = await client.post(
         "/api/v1/queues", json={"name": "Support"}, headers=owner_headers

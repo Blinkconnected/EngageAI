@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FormControlLabel, MenuItem, Switch, TextField } from '@mui/material'
+import { FormControlLabel, MenuItem, Switch, TextField, Typography } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -38,6 +38,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
   )
   const [isActive, setIsActive] = useState(queue.is_active)
   const [slaPolicyId, setSlaPolicyId] = useState(queue.sla_policy_id ?? '')
+  const [autopilotEnabled, setAutopilotEnabled] = useState(queue.autopilot_enabled)
 
   const departmentsQuery = useAllDepartmentsQuery()
   const slaPoliciesQuery = useSlaPoliciesQuery()
@@ -56,6 +57,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
           resolution_target_minutes: parseTargetMinutes(resolutionTarget),
           is_active: isActive,
           sla_policy_id: slaPolicyId || null,
+          autopilot_enabled: autopilotEnabled,
         },
       },
       { onSuccess: onClose },
@@ -159,6 +161,18 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         }
         label={t('QueueEditDialog.activeLabel')}
       />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={autopilotEnabled}
+            onChange={(event) => setAutopilotEnabled(event.target.checked)}
+          />
+        }
+        label={t('QueueEditDialog.autopilotLabel')}
+      />
+      <Typography variant="caption" color="text.secondary">
+        {t('QueueEditDialog.autopilotHelperText')}
+      </Typography>
     </FormDialog>
   )
 }

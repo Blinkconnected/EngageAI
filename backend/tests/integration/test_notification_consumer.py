@@ -719,6 +719,122 @@ async def test_a_mismatched_company_id_and_conversation_id_creates_no_notificati
     assert total_notifications == 0
 
 
+async def test_autopilot_handoff_needed_notifies_the_queue_department(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    department_response = await client.post(
+        "/api/v1/departments", json={"name": "Autopilot Support"}, headers=owner_headers
+    )
+    department_id = department_response.json()["id"]
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={
+            "name": "Autopilot Queue",
+            "department_id": department_id,
+            "autopilot_enabled": True,
+        },
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+
+    _, user_id = await _create_agent(client, owner_headers, "autopilot-dept@acme.example")
+    agents_response = await client.get("/api/v1/agents", headers=owner_headers)
+    for agent in agents_response.json()["items"]:
+        if agent["user_id"] == user_id:
+            await client.patch(
+                f"/api/v1/agents/{agent['id']}",
+                json={"department_id": department_id},
+                headers=owner_headers,
+            )
+
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, UUID(conversation_id))
+        assert conversation is not None
+        conversation.queue_id = UUID(queue_id)
+        await session.commit()
+
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.autopilot_handoff_needed",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "reason": "low_confidence",
+                    "confidence": 0.3,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        notifications, total = await NotificationRepository(session).list_for_user(
+            company_id=UUID(company_id),
+            user_id=UUID(user_id),
+            offset=0,
+            limit=10,
+            unread_only=False,
+        )
+
+    assert total == 1
+    assert notifications[0].notification_type == "conversation.autopilot_handoff_needed"
+    assert "confidence was too low" in notifications[0].body
+    assert notifications[0].payload["conversation_id"] == conversation_id
+
+
+async def test_autopilot_handoff_needed_with_no_queue_department_creates_no_notification(
+    client: AsyncClient, owner_headers: dict, app: Any
+) -> None:
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={"name": "No Department Queue", "autopilot_enabled": True},
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    conversation_id = await _create_web_chat_conversation(client, owner_headers, app, company_id)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, UUID(conversation_id))
+        assert conversation is not None
+        conversation.queue_id = UUID(queue_id)
+        await session.commit()
+
+    async with session_factory() as session:
+        realtime = RealtimePublisher(app.state.container.redis())
+        await handle_event(
+            _event(
+                event_type="conversation.autopilot_handoff_needed",
+                company_id=company_id,
+                payload={
+                    "conversation_id": conversation_id,
+                    "reason": "model_requested_handoff",
+                    "confidence": 0.9,
+                },
+            ),
+            session,
+            realtime,
+        )
+        await session.commit()
+
+        total_notifications = (
+            await session.execute(select(func.count()).select_from(Notification))
+        ).scalar_one()
+
+    assert total_notifications == 0
+
+
 async def test_same_event_and_user_but_different_notification_type_are_not_deduped(
     client: AsyncClient, owner_headers: dict, app: Any
 ) -> None:

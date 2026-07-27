@@ -89,3 +89,14 @@ def build_ai_provider_for_company(
 
     model = company_ai_config.get("model") or settings.ai_model
     return provider_cls(credentials=credentials, model=model)
+
+
+def is_ai_available_for_company(
+    settings: Settings, company_ai_config: dict[str, Any] | None
+) -> bool:
+    """Whether a real, callable ``AiProvider`` would be built for this
+    company right now — used by AI Autopilot to decide whether a queue
+    can actually engage it (see ``conversation_ingest_consumer.py``),
+    without constructing (and immediately discarding) a provider
+    instance just to check."""
+    return build_ai_provider_for_company(settings, company_ai_config) is not None

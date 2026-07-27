@@ -65,7 +65,15 @@
     "deploymentNameHelperText": "الاسم الذي أطلقته على نشر هذا النموذج في Azure OpenAI Studio.",
     "apiVersionLabel": "إصدار الواجهة البرمجية",
     "apiVersionHelperText": "اتركه فارغًا لاستخدام إصدار الواجهة البرمجية الافتراضي الحالي.",
-    "saveButton": "حفظ التغييرات",
-    "savingButton": "جارٍ الحفظ…"
+    "autopilotCardTitle": "الطيار الآلي للذكاء الاصطناعي",
+    "autopilotCardDescription": "اسمح للذكاء الاصطناعي بمعالجة المحادثات تلقائيًا في قوائم الانتظار التي فعّلتها (قوائم الانتظار والتوجيه ← مفتاح الطيار الآلي الخاص بكل قائمة انتظار)، مع تسليمها لوكيل كلما لم يكن واثقًا بما يكفي.",
+    "autopilotEnableLabel": "تفعيل الطيار الآلي للذكاء الاصطناعي",
+    "confidenceThresholdLabel": "حد الثقة (%)",
+    "confidenceThresholdHelperText": "دون مستوى الثقة هذا، يقوم الطيار الآلي بتسليم المحادثة إلى وكيل بدلاً من الرد عليها.",
+    "confidenceThresholdInvalid": "أدخل رقمًا صحيحًا بين 0 و100.",
+    "autopilotSaveButton": "حفظ إعدادات الطيار الآلي",
+    "autopilotSavingButton": "جارٍ الحفظ…",
+    "providerSaveButton": "حفظ إعدادات المزود",
+    "providerSavingButton": "جارٍ الحفظ…"
   }
 }

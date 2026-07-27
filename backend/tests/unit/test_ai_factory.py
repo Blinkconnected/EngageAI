@@ -4,7 +4,11 @@ platform default). See ``docs/architecture/ai-engine.md``.
 """
 
 from blinkengage.core.config import get_settings
-from blinkengage.infrastructure.ai.factory import build_ai_provider, build_ai_provider_for_company
+from blinkengage.infrastructure.ai.factory import (
+    build_ai_provider,
+    build_ai_provider_for_company,
+    is_ai_available_for_company,
+)
 from blinkengage.infrastructure.ai.providers.azure_openai import AzureOpenAiProvider
 from blinkengage.infrastructure.ai.providers.claude import ClaudeProvider
 from blinkengage.infrastructure.ai.providers.gemini import GeminiProvider
@@ -116,3 +120,19 @@ class TestBuildAiProviderForCompany:
         assert provider._credentials["base_url"] == "https://platform-resource.openai.azure.com"
         assert provider._credentials["deployment_name"] == "platform-deployment"
         assert provider._credentials["api_version"] == "2024-02-15-preview"
+
+
+class TestIsAiAvailableForCompany:
+    def test_true_when_a_provider_would_be_built(self) -> None:
+        settings = _settings(ai_provider="openai", openai_api_key="platform-key")
+        assert is_ai_available_for_company(settings, None) is True
+
+    def test_false_when_disabled_and_no_company_override(self) -> None:
+        settings = _settings(ai_provider="disabled")
+        assert is_ai_available_for_company(settings, None) is False
+
+    def test_true_when_company_has_its_own_override(self) -> None:
+        settings = _settings(ai_provider="disabled")
+        assert (
+            is_ai_available_for_company(settings, {"provider": "openai", "api_key": "k"}) is True
+        )

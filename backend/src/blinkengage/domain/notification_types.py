@@ -45,6 +45,9 @@ NOTIFICATION_TYPES: tuple[NotificationTypeDef, ...] = (
     NotificationTypeDef("message.persisted", "New message received"),
     NotificationTypeDef("conversation.transferred", "Conversation transferred to you"),
     NotificationTypeDef("conversation.sla_breached", "SLA breached"),
+    NotificationTypeDef(
+        "conversation.autopilot_handoff_needed", "AI Autopilot needs you to take over"
+    ),
     NotificationTypeDef("workflow.notification", "Workflow notifications"),
 )
 

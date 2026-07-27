@@ -323,6 +323,33 @@ services:
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
+  # AI Autopilot (see docs/architecture/ai-engine.md) — binds
+  # message.persisted, and for a conversation the ingest consumer marked
+  # autopilot_active, either auto-sends an AI-drafted reply or hands off
+  # to a human when confidence is below the company's threshold. Needs
+  # Redis for the same reason csat-dispatch-consumer does (building a
+  # ConversationService requires a realtime publisher).
+  ai-autopilot-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.ai_autopilot_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   # ERPNext Integration (M24, see docs/architecture/erp-integration.md) —
   # binds customer.created only, pushing a new customer to ERPNext for
   # any company with an active ErpConfig (a no-op for the rest). Inbound

@@ -469,6 +469,186 @@ async def test_no_eligible_agent_leaves_selection_none(
     assert selected is None
 
 
+async def test_autopilot_enabled_queue_skips_human_assignment(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    company_id = registered_owner["user"]["company"]["id"]
+    # An eligible, online agent exists — proving autopilot is what kept
+    # this conversation unassigned, not merely a lack of candidates.
+    await _create_online_agent(client, owner_headers, "agent1@acme.example")
+    await client.patch(
+        "/api/v1/company",
+        json={"settings": {"ai": {"autopilot": {"enabled": True, "confidence_threshold": 0.7}}}},
+        headers=owner_headers,
+    )
+    await client.put(
+        "/api/v1/company/ai-config",
+        json={"provider": "openai", "api_key": "sk-test"},
+        headers=owner_headers,
+    )
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={
+            "name": "Autopilot Queue",
+            "assignment_strategy": "round_robin",
+            "autopilot_enabled": True,
+        },
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+
+    assert str(conversation.queue_id) == queue_id
+    assert conversation.autopilot_active is True
+    assert conversation.assigned_agent_id is None
+
+
+async def test_autopilot_queue_without_company_setting_falls_back_to_human_assignment(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """`Queue.autopilot_enabled` alone isn't enough — the company-wide
+    `settings.ai.autopilot.enabled` kill-switch also gates it (default
+    off), so a queue configured for autopilot before that switch is
+    turned on still assigns normally."""
+    company_id = registered_owner["user"]["company"]["id"]
+    agent_id = await _create_online_agent(client, owner_headers, "agent1@acme.example")
+    await client.put(
+        "/api/v1/company/ai-config",
+        json={"provider": "openai", "api_key": "sk-test"},
+        headers=owner_headers,
+    )
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={
+            "name": "Autopilot Queue",
+            "assignment_strategy": "round_robin",
+            "autopilot_enabled": True,
+        },
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+
+    assert conversation.autopilot_active is False
+    assert str(conversation.assigned_agent_id) == agent_id
+
+
+async def test_autopilot_queue_without_a_configured_provider_falls_back_to_human_assignment(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    company_id = registered_owner["user"]["company"]["id"]
+    agent_id = await _create_online_agent(client, owner_headers, "agent1@acme.example")
+    await client.patch(
+        "/api/v1/company",
+        json={"settings": {"ai": {"autopilot": {"enabled": True, "confidence_threshold": 0.7}}}},
+        headers=owner_headers,
+    )
+    # Deliberately no PUT /company/ai-config, and no platform-level
+    # provider configured either (settings.ai_provider defaults to
+    # "disabled") — is_ai_available_for_company must resolve to False.
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={
+            "name": "Autopilot Queue",
+            "assignment_strategy": "round_robin",
+            "autopilot_enabled": True,
+        },
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+
+    assert conversation.autopilot_active is False
+    assert str(conversation.assigned_agent_id) == agent_id
+
+
 async def test_sla_breach_is_published_exactly_once(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app, make_sla_monitor
 ) -> None:
