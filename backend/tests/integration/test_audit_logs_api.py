@@ -1,6 +1,14 @@
+import io
 from collections.abc import Awaitable, Callable
 
 from httpx import AsyncClient
+from PIL import Image as PILImage
+
+
+def _fake_png_bytes() -> bytes:
+    buffer = io.BytesIO()
+    PILImage.new("RGB", (120, 40), color="blue").save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 async def _create_agent(client: AsyncClient, owner_headers: dict, email: str) -> dict:
@@ -246,3 +254,26 @@ class TestExport:
             == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         assert response.content.startswith(b"PK")
+
+    async def test_pdf_export_includes_the_company_logo_once_uploaded(
+        self, client: AsyncClient, owner_headers: dict, drain_outbox: Callable[[], Awaitable[int]]
+    ) -> None:
+        await drain_outbox()
+        without_logo = await client.get(
+            "/api/v1/audit-logs", params={"export": "pdf"}, headers=owner_headers
+        )
+
+        upload_response = await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", _fake_png_bytes(), "image/png")},
+            headers=owner_headers,
+        )
+        assert upload_response.status_code == 200, upload_response.text
+
+        with_logo = await client.get(
+            "/api/v1/audit-logs", params={"export": "pdf"}, headers=owner_headers
+        )
+
+        assert with_logo.status_code == 200, with_logo.text
+        assert with_logo.content.startswith(b"%PDF")
+        assert len(with_logo.content) > len(without_logo.content)

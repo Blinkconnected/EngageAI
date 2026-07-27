@@ -26,6 +26,9 @@ for more detail on how this page is put together.
 - You can now upload your company logo directly from your computer in
   Settings → Branding, instead of pasting a link to an image hosted
   elsewhere.
+- Every PDF and Excel report export (and the audit log export) now
+  automatically includes your company logo at the top, once you've
+  uploaded one.
 - Manual pickup and release for queued conversations, so agents can claim
   or hand back work directly from the Inbox, with a new "Busy" status
   agents can set for themselves.

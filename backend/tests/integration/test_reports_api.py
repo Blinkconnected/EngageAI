@@ -4,12 +4,15 @@ direct-query behavior, and the ``export=pdf|xlsx`` file-download path.
 See ``docs/architecture/reports-analytics.md``.
 """
 
+import io
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from openpyxl import load_workbook
+from PIL import Image as PILImage
 
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -18,6 +21,17 @@ from blinkengage.infrastructure.database.models.conversation import (
 from blinkengage.infrastructure.repositories.daily_stats_repository import DailyStatsRepository
 
 _TODAY = date(2026, 6, 15)
+
+
+def _fake_png_bytes() -> bytes:
+    """A real, decodable PNG — unlike the opaque `b"fake-png-bytes"`
+    placeholder used elsewhere for attachments that are only ever stored/
+    downloaded as-is, the logo path actually decodes the image (via PIL,
+    through reportlab's ImageReader / openpyxl's Image) to compute its
+    aspect ratio, so it needs genuine image bytes to render at all."""
+    buffer = io.BytesIO()
+    PILImage.new("RGB", (120, 40), color="blue").save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 async def _company_id(client: AsyncClient, owner_headers: dict) -> str:
@@ -139,6 +153,65 @@ class TestExecutiveDashboard:
             == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         assert response.content.startswith(b"PK")
+
+    async def test_pdf_export_includes_the_company_logo_once_uploaded(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = await _company_id(client, owner_headers)
+        await _seed_conversation_stats(app, company_id)
+
+        without_logo = await client.get(
+            "/api/v1/reports/executive-dashboard",
+            params={"date_from": "2026-06-01", "date_to": "2026-06-30", "export": "pdf"},
+            headers=owner_headers,
+        )
+
+        upload_response = await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", _fake_png_bytes(), "image/png")},
+            headers=owner_headers,
+        )
+        assert upload_response.status_code == 200, upload_response.text
+
+        with_logo = await client.get(
+            "/api/v1/reports/executive-dashboard",
+            params={"date_from": "2026-06-01", "date_to": "2026-06-30", "export": "pdf"},
+            headers=owner_headers,
+        )
+
+        assert with_logo.status_code == 200, with_logo.text
+        assert with_logo.content.startswith(b"%PDF")
+        # A real logo image embedded in the document makes it meaningfully
+        # bigger than the identical report with no logo — the simplest
+        # reliable signal the logo actually made it into the PDF bytes
+        # without depending on any particular PDF-internals parsing.
+        assert len(with_logo.content) > len(without_logo.content)
+
+    async def test_xlsx_export_includes_the_company_logo_once_uploaded(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = await _company_id(client, owner_headers)
+        await _seed_conversation_stats(app, company_id)
+
+        await client.post(
+            "/api/v1/company/logo",
+            files={"file": ("logo.png", _fake_png_bytes(), "image/png")},
+            headers=owner_headers,
+        )
+
+        response = await client.get(
+            "/api/v1/reports/executive-dashboard",
+            params={"date_from": "2026-06-01", "date_to": "2026-06-30", "export": "xlsx"},
+            headers=owner_headers,
+        )
+
+        assert response.status_code == 200, response.text
+        workbook = load_workbook(io.BytesIO(response.content))
+        sheet = workbook.active
+        assert len(sheet._images) == 1  # noqa: SLF001 — openpyxl exposes no public accessor
+        # Blank rows reserved for the image push the header row down from 1.
+        assert sheet.cell(row=1, column=1).value is None
+        assert sheet.cell(row=4, column=1).value == "Metric"
 
 
 class TestAgentDashboard:

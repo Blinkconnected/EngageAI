@@ -232,6 +232,18 @@ into a two-column "Metric | Value" table for export; naturally-tabular
 reports (Conversations, Performance, Queues, SLA's per-queue breakdown,
 CSAT's daily trend, AI) export their rows directly.
 
+Added later (Enterprise Readiness & UX milestone, Priority 2 item 11):
+both renderers take an optional `logo` — the company's own uploaded logo
+(`CompanyService.get_logo`, see `docs/architecture/administration.md`),
+drawn at the top of the PDF (a `reportlab.platypus.Image` flowable
+ahead of the title) or anchored at cell A1 of the Excel sheet (with a
+few blank rows reserved above the header row so it doesn't render
+underneath the image). Every report endpoint (all seven in
+`reports.py`, plus the audit log export in `audit_logs.py`) fetches it
+via a small `_fetch_logo` helper that swallows any fetch failure —
+a company with no logo, or a transient object-storage error, renders
+the report without one rather than failing the export.
+
 ## Schema impact
 
 Six new tables (`conversation_daily_stats`, `agent_daily_stats`,

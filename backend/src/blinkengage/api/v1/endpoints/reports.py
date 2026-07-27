@@ -8,10 +8,11 @@ query param, returning a rendered file instead of JSON — see
 
 from datetime import date
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from blinkengage.api.deps import get_reporting_service, require_permission
+from blinkengage.api.deps import get_company_service, get_reporting_service, require_permission
 from blinkengage.api.schemas.reports import (
     AgentDashboardResponse,
     AgentPerformanceRowResponse,
@@ -29,9 +30,17 @@ from blinkengage.api.schemas.reports import (
     QueueStatsRowResponse,
     SlaReportResponse,
 )
+from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.reporting_service import ReportingService
 from blinkengage.core.auth_context import AuthContext
-from blinkengage.infrastructure.reporting.export import render_excel_table, render_pdf_table
+from blinkengage.core.logging import get_logger
+from blinkengage.infrastructure.reporting.export import (
+    CompanyLogo,
+    render_excel_table,
+    render_pdf_table,
+)
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -41,14 +50,34 @@ _PDF_MEDIA_TYPE = "application/pdf"
 _XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def _export_file(
-    export: ExportFormat, *, title: str, headers: list[str], rows: list[list[str]]
+async def _fetch_logo(company_service: CompanyService, company_id: UUID) -> CompanyLogo | None:
+    """A logo is cosmetic branding, not report data — any failure fetching
+    it (object storage hiccup, etc.) degrades to "render without one"
+    rather than failing the export itself."""
+    try:
+        return await company_service.get_logo(company_id=company_id)
+    except Exception:
+        logger.warning(
+            "report_export_logo_fetch_failed", company_id=str(company_id), exc_info=True
+        )
+        return None
+
+
+async def _export_file(
+    export: ExportFormat,
+    *,
+    title: str,
+    headers: list[str],
+    rows: list[list[str]],
+    company_service: CompanyService,
+    company_id: UUID,
 ) -> Response:
+    logo = await _fetch_logo(company_service, company_id)
     if export == "pdf":
-        content = render_pdf_table(title=title, headers=headers, rows=rows)
+        content = render_pdf_table(title=title, headers=headers, rows=rows, logo=logo)
         media_type, extension = _PDF_MEDIA_TYPE, "pdf"
     else:
-        content = render_excel_table(title=title, headers=headers, rows=rows)
+        content = render_excel_table(title=title, headers=headers, rows=rows, logo=logo)
         media_type, extension = _XLSX_MEDIA_TYPE, "xlsx"
     filename = f"{title.lower().replace(' ', '-')}.{extension}"
     return Response(
@@ -62,6 +91,7 @@ def _export_file(
 async def executive_dashboard(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     export: ExportFormat | None = Query(default=None),
@@ -81,8 +111,13 @@ async def executive_dashboard(
             ["AI Calls Total", str(dashboard.ai_calls_total)],
             ["Active Agent Count", str(dashboard.active_agent_count)],
         ]
-        return _export_file(
-            export, title="Executive Dashboard", headers=["Metric", "Value"], rows=rows
+        return await _export_file(
+            export,
+            title="Executive Dashboard",
+            headers=["Metric", "Value"],
+            rows=rows,
+            company_service=company_service,
+            company_id=auth.company_id,
         )
     return ExecutiveDashboardResponse(
         date_from=dashboard.date_from,
@@ -188,6 +223,7 @@ async def live_dashboard(
 async def conversation_report(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     channel_type: str | None = None,
@@ -218,7 +254,14 @@ async def conversation_report(
             ]
             for row in stats
         ]
-        return _export_file(export, title="Conversation Report", headers=headers, rows=rows)
+        return await _export_file(
+            export,
+            title="Conversation Report",
+            headers=headers,
+            rows=rows,
+            company_service=company_service,
+            company_id=auth.company_id,
+        )
     return [
         ConversationStatsRowResponse(
             stat_date=row.stat_date,
@@ -237,6 +280,7 @@ async def conversation_report(
 async def performance_report(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     export: ExportFormat | None = Query(default=None),
@@ -255,8 +299,13 @@ async def performance_report(
             ]
             for row in rows
         ]
-        return _export_file(
-            export, title="Agent Performance Report", headers=headers, rows=table_rows
+        return await _export_file(
+            export,
+            title="Agent Performance Report",
+            headers=headers,
+            rows=table_rows,
+            company_service=company_service,
+            company_id=auth.company_id,
         )
     return [
         AgentPerformanceRowResponse(
@@ -274,6 +323,7 @@ async def performance_report(
 async def queue_report(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     export: ExportFormat | None = Query(default=None),
@@ -286,7 +336,14 @@ async def queue_report(
         table_rows = [
             [row.queue_name, str(row.conversations_entered), str(row.sla_breached)] for row in rows
         ]
-        return _export_file(export, title="Queue Report", headers=headers, rows=table_rows)
+        return await _export_file(
+            export,
+            title="Queue Report",
+            headers=headers,
+            rows=table_rows,
+            company_service=company_service,
+            company_id=auth.company_id,
+        )
     return [
         QueueStatsRowResponse(
             queue_id=row.queue_id,
@@ -302,6 +359,7 @@ async def queue_report(
 async def sla_report(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     export: ExportFormat | None = Query(default=None),
@@ -315,7 +373,14 @@ async def sla_report(
             [row.queue_name, str(row.conversations_entered), str(row.sla_breached)]
             for row in report.by_queue
         ]
-        return _export_file(export, title="SLA Report", headers=headers, rows=table_rows)
+        return await _export_file(
+            export,
+            title="SLA Report",
+            headers=headers,
+            rows=table_rows,
+            company_service=company_service,
+            company_id=auth.company_id,
+        )
     return SlaReportResponse(
         date_from=report.date_from,
         date_to=report.date_to,
@@ -338,6 +403,7 @@ async def sla_report(
 async def csat_report(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     export: ExportFormat | None = Query(default=None),
@@ -351,7 +417,14 @@ async def csat_report(
             [row.stat_date.isoformat(), str(row.response_count), str(row.average_rating or "n/a")]
             for row in report.daily_trend
         ]
-        return _export_file(export, title="CSAT Report", headers=headers, rows=table_rows)
+        return await _export_file(
+            export,
+            title="CSAT Report",
+            headers=headers,
+            rows=table_rows,
+            company_service=company_service,
+            company_id=auth.company_id,
+        )
     return CsatReportResponse(
         date_from=report.date_from,
         date_to=report.date_to,
@@ -381,6 +454,7 @@ async def csat_report(
 async def ai_report(
     auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
     service: Annotated[ReportingService, Depends(get_reporting_service)],
+    company_service: Annotated[CompanyService, Depends(get_company_service)],
     date_from: date,
     date_to: date,
     export: ExportFormat | None = Query(default=None),
@@ -389,5 +463,12 @@ async def ai_report(
     if export is not None:
         headers = ["Operation", "Calls"]
         table_rows = [[row.operation, str(row.calls)] for row in rows]
-        return _export_file(export, title="AI Usage Report", headers=headers, rows=table_rows)
+        return await _export_file(
+            export,
+            title="AI Usage Report",
+            headers=headers,
+            rows=table_rows,
+            company_service=company_service,
+            company_id=auth.company_id,
+        )
     return [AiOperationRowResponse(operation=row.operation, calls=row.calls) for row in rows]
