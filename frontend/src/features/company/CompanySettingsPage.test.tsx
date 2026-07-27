@@ -293,5 +293,36 @@ describe('CompanySettingsPage', () => {
 
       expect(await axe(container)).toHaveNoViolations()
     })
+
+    it('offers every newly supported provider', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+
+      await user.click(await screen.findByLabelText(/^provider/i))
+      for (const label of ['Gemini (Google)', 'Azure OpenAI', 'Mistral', 'Groq', 'DeepSeek']) {
+        expect(screen.getByRole('option', { name: label })).toBeInTheDocument()
+      }
+    })
+
+    it('azure openai requires a resource endpoint and a deployment name, not just a key', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+
+      await user.click(await screen.findByLabelText(/^provider/i))
+      await user.click(await screen.findByRole('option', { name: 'Azure OpenAI' }))
+
+      const saveButton = screen.getByRole('button', { name: /save changes/i })
+      await user.type(screen.getByLabelText(/api key/i), 'az-test-key')
+      expect(saveButton).toBeDisabled()
+
+      await user.type(screen.getByLabelText(/resource endpoint/i), 'https://acme.openai.azure.com')
+      expect(saveButton).toBeDisabled()
+
+      await user.type(screen.getByLabelText(/deployment name/i), 'acme-gpt4')
+      expect(saveButton).toBeEnabled()
+
+      await user.click(saveButton)
+      expect(await screen.findByText('Saved.')).toBeInTheDocument()
+    })
   })
 })

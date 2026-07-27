@@ -16,6 +16,14 @@ for more detail on how this page is put together.
 
 ### Added
 
+- Owners and admins can now connect Google Gemini, Microsoft Azure
+  OpenAI, Mistral, Groq, or DeepSeek for AI features, alongside the
+  existing OpenAI, Claude, and self-hosted Ollama options (Settings →
+  AI). Azure OpenAI additionally asks for your deployment name (and
+  optionally an API version), since Azure selects the model that way
+  instead of by name. Whichever provider is configured — a company's
+  own, or the platform's shared default — every AI feature keeps working
+  exactly as before.
 - Opening a conversation now shows a persistent conversation list next to
   it (on desktop), so you can switch between conversations without
   losing your place — only the message history scrolls; the list, the

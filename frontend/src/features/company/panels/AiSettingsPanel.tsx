@@ -83,6 +83,10 @@ function AiProviderConfigCard() {
   return <AiProviderConfigForm aiConfig={aiConfigQuery.data} />
 }
 
+// Every provider except Ollama (self-hosted, typically inside the same
+// private network) needs a real API key.
+const PROVIDERS_NEEDING_NO_KEY: AiConfigProvider[] = ['ollama']
+
 function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
   const { t } = useTranslation('companySettingsExtra')
   const updateMutation = useUpdateAiConfigMutation()
@@ -91,16 +95,23 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
   const [apiKeyInput, setApiKeyInput] = useState('')
   const [model, setModel] = useState(aiConfig.model ?? '')
   const [baseUrl, setBaseUrl] = useState(aiConfig.base_url ?? '')
+  const [deploymentName, setDeploymentName] = useState(aiConfig.deployment_name ?? '')
+  const [apiVersion, setApiVersion] = useState(aiConfig.api_version ?? '')
 
   const savedApiKeySet = aiConfig.api_key_set
-  const needsApiKey = provider === 'openai' || provider === 'claude'
+  const isAzure = provider === 'azure_openai'
+  const needsApiKey = provider !== '' && !PROVIDERS_NEEDING_NO_KEY.includes(provider)
   const hasUsableKey = savedApiKeySet || apiKeyInput.trim().length > 0
-  const isValid = !needsApiKey || hasUsableKey
+  const isValid =
+    (!needsApiKey || hasUsableKey) &&
+    (!isAzure || (deploymentName.trim().length > 0 && baseUrl.trim().length > 0))
 
   const isDirty =
     provider !== (aiConfig.provider ?? '') ||
     model !== (aiConfig.model ?? '') ||
     baseUrl !== (aiConfig.base_url ?? '') ||
+    deploymentName !== (aiConfig.deployment_name ?? '') ||
+    apiVersion !== (aiConfig.api_version ?? '') ||
     apiKeyInput.trim().length > 0
 
   function handleSave() {
@@ -110,6 +121,8 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
         ...(apiKeyInput.trim() ? { api_key: apiKeyInput.trim() } : {}),
         model: model.trim() || null,
         base_url: baseUrl.trim() || null,
+        deployment_name: isAzure ? deploymentName.trim() || null : null,
+        api_version: isAzure ? apiVersion.trim() || null : null,
       },
       { onSuccess: () => setApiKeyInput('') },
     )
@@ -193,16 +206,43 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
                 helperText={t('AiSettingsPanel.modelHelperText')}
               />
               <TextField
-                label={t('AiSettingsPanel.baseUrlLabel')}
+                label={
+                  isAzure
+                    ? t('AiSettingsPanel.resourceEndpointLabel')
+                    : t('AiSettingsPanel.baseUrlLabel')
+                }
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 fullWidth
+                error={isAzure && !baseUrl.trim()}
                 helperText={
-                  provider === 'ollama'
-                    ? t('AiSettingsPanel.baseUrlHelperOllama')
-                    : t('AiSettingsPanel.baseUrlHelperOptional')
+                  isAzure
+                    ? t('AiSettingsPanel.resourceEndpointHelperText')
+                    : provider === 'ollama'
+                      ? t('AiSettingsPanel.baseUrlHelperOllama')
+                      : t('AiSettingsPanel.baseUrlHelperOptional')
                 }
               />
+              {isAzure && (
+                <>
+                  <TextField
+                    label={t('AiSettingsPanel.deploymentNameLabel')}
+                    value={deploymentName}
+                    onChange={(event) => setDeploymentName(event.target.value)}
+                    fullWidth
+                    required
+                    error={!deploymentName.trim()}
+                    helperText={t('AiSettingsPanel.deploymentNameHelperText')}
+                  />
+                  <TextField
+                    label={t('AiSettingsPanel.apiVersionLabel')}
+                    value={apiVersion}
+                    onChange={(event) => setApiVersion(event.target.value)}
+                    fullWidth
+                    helperText={t('AiSettingsPanel.apiVersionHelperText')}
+                  />
+                </>
+              )}
             </>
           )}
 

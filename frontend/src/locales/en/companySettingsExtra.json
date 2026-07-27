@@ -59,6 +59,12 @@
     "baseUrlLabel": "Base URL",
     "baseUrlHelperOllama": "Your Ollama server's address, e.g. http://localhost:11434.",
     "baseUrlHelperOptional": "Optional — only needed for a custom/self-hosted API endpoint.",
+    "resourceEndpointLabel": "Resource endpoint",
+    "resourceEndpointHelperText": "Your Azure OpenAI resource's endpoint, e.g. https://my-resource.openai.azure.com.",
+    "deploymentNameLabel": "Deployment name",
+    "deploymentNameHelperText": "The name you gave this model deployment in Azure OpenAI Studio.",
+    "apiVersionLabel": "API version",
+    "apiVersionHelperText": "Leave blank to use the current default API version.",
     "saveButton": "Save changes",
     "savingButton": "Saving…"
   }

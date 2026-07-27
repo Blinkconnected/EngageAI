@@ -22,6 +22,8 @@ const SEED_AI_CONFIG: AiConfig = {
   model: null,
   base_url: null,
   api_key_set: false,
+  deployment_name: null,
+  api_version: null,
 }
 
 let company: Company = { ...SEED_COMPANY, settings: { ...SEED_COMPANY.settings } }
@@ -98,6 +100,8 @@ export const companyHandlers = [
         model: body.model ?? null,
         base_url: body.base_url ?? null,
         api_key_set: Boolean(savedApiKey),
+        deployment_name: body.deployment_name ?? null,
+        api_version: body.api_version ?? null,
       }
     }
     return HttpResponse.json(aiConfig)

@@ -123,6 +123,8 @@ class CompanyService:
         api_key: str | None,
         model: str | None,
         base_url: str | None,
+        deployment_name: str | None = None,
+        api_version: str | None = None,
         actor_user_id: UUID | None = None,
     ) -> Company:
         """``provider=None`` clears the override entirely (reverts to the
@@ -130,7 +132,13 @@ class CompanyService:
         whatever was already saved," so switching models doesn't force
         re-entering a key that hasn't changed. See
         ``api.schemas.company.AiConfigUpdateRequest``'s docstring for why
-        there's no separate "clear just the key" operation."""
+        there's no separate "clear just the key" operation.
+        ``deployment_name``/``api_version`` are Azure OpenAI-only —
+        harmless, unread keys for every other provider — and, like
+        ``model``/``base_url`` (and unlike ``api_key``), they're not
+        secret, so the caller is expected to resend the full desired
+        value on every update rather than have it preserved when
+        omitted."""
         company = await self.get(company_id)
         if provider is None:
             company.ai_config = None
@@ -141,6 +149,8 @@ class CompanyService:
                 "api_key": api_key if api_key else existing.get("api_key"),
                 "model": model,
                 "base_url": base_url,
+                "deployment_name": deployment_name,
+                "api_version": api_version,
             }
         await self._companies.save(company)
         # Never the key itself — only whether one ended up set, same as

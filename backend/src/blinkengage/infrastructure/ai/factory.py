@@ -22,6 +22,24 @@ def _credentials_for(settings: Settings) -> dict[str, str]:
             "api_key": settings.anthropic_api_key or "",
             "base_url": settings.anthropic_base_url,
         }
+    if settings.ai_provider == "gemini":
+        return {"api_key": settings.gemini_api_key or "", "base_url": settings.gemini_base_url}
+    if settings.ai_provider == "azure_openai":
+        return {
+            "api_key": settings.azure_openai_api_key or "",
+            "base_url": settings.azure_openai_base_url or "",
+            "deployment_name": settings.azure_openai_deployment_name or "",
+            "api_version": settings.azure_openai_api_version,
+        }
+    if settings.ai_provider == "mistral":
+        return {"api_key": settings.mistral_api_key or "", "base_url": settings.mistral_base_url}
+    if settings.ai_provider == "groq":
+        return {"api_key": settings.groq_api_key or "", "base_url": settings.groq_base_url}
+    if settings.ai_provider == "deepseek":
+        return {
+            "api_key": settings.deepseek_api_key or "",
+            "base_url": settings.deepseek_base_url,
+        }
     return {"base_url": settings.ollama_base_url}
 
 
@@ -54,6 +72,16 @@ def build_ai_provider_for_company(
 
     if provider_name == "ollama":
         credentials = {"base_url": company_ai_config.get("base_url") or settings.ollama_base_url}
+    elif provider_name == "azure_openai":
+        credentials = {
+            "api_key": company_ai_config.get("api_key") or "",
+            "base_url": company_ai_config.get("base_url") or settings.azure_openai_base_url or "",
+            "deployment_name": company_ai_config.get("deployment_name")
+            or settings.azure_openai_deployment_name
+            or "",
+            "api_version": company_ai_config.get("api_version")
+            or settings.azure_openai_api_version,
+        }
     else:
         credentials = {"api_key": company_ai_config.get("api_key") or ""}
         if company_ai_config.get("base_url"):

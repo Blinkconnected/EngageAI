@@ -122,7 +122,17 @@ class Settings(BaseSettings):
     # per-company "bring your own AI provider" model can be layered on
     # later without a breaking change if a real enterprise need for it
     # emerges.
-    ai_provider: Literal["openai", "claude", "ollama", "disabled"] = "disabled"
+    ai_provider: Literal[
+        "openai",
+        "claude",
+        "gemini",
+        "azure_openai",
+        "ollama",
+        "mistral",
+        "groq",
+        "deepseek",
+        "disabled",
+    ] = "disabled"
     ai_model: str | None = None
     ai_default_max_tokens: int = 1000
     openai_api_key: str | None = None
@@ -130,6 +140,21 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     ollama_base_url: str = "http://localhost:11434"
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    # Azure OpenAI has no sensible universal default for the resource
+    # endpoint/deployment name (both account-specific) — left unset like
+    # openai_api_key/anthropic_api_key, deliberately not env-guessable.
+    azure_openai_api_key: str | None = None
+    azure_openai_base_url: str | None = None
+    azure_openai_deployment_name: str | None = None
+    azure_openai_api_version: str = "2024-02-15-preview"
+    mistral_api_key: str | None = None
+    mistral_base_url: str = "https://api.mistral.ai/v1"
+    groq_api_key: str | None = None
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     # --- Rate limiting ---
     rate_limit_per_minute: int = 60

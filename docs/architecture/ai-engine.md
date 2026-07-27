@@ -70,9 +70,23 @@ lookup, not structural typing against a reference already in scope.
 `infrastructure/ai/registry.py`'s `AiProviderRegistry` and
 `infrastructure/ai/factory.py`'s `build_ai_provider()` mirror
 `ChannelRegistry`/`ChannelProviderFactory` and `SmsGatewayRegistry`
-exactly: `@AiProviderRegistry.register("openai"|"claude"|"ollama")` class
-decorators, discovered via a blanket
+exactly: `@AiProviderRegistry.register(name)` class decorators —
+`"openai"`, `"claude"`, `"gemini"`, `"azure_openai"`, `"ollama"`,
+`"mistral"`, `"groq"`, `"deepseek"` — discovered via a blanket
 `import infrastructure.ai.providers  # noqa: F401` at the point of use.
+Groq/DeepSeek/Mistral all expose an OpenAI-compatible Chat Completions
+API and share one implementation, `infrastructure/ai/providers/
+_openai_compatible.py`'s `OpenAiCompatibleProvider` (not itself
+registered — an internal base class each of the three subclasses,
+overriding only `_DEFAULT_MODEL`/`_DEFAULT_BASE_URL`); `OpenAiProvider`
+itself was deliberately left as its own separate, unrelated-milestone
+file rather than retrofitted onto this shared base. Gemini
+(`generateContent`, a `contents`/`systemInstruction` request shape, no
+`messages` array, an API key query parameter) and Azure OpenAI (model
+selected by *deployment name in the URL*, an `api-key` header, a
+required `api-version` query parameter) are each different enough from
+every OpenAI-style API that they get their own bespoke `complete()`/
+`health_check()` implementations.
 
 ## Platform-level configuration, with an optional per-company override
 
@@ -80,14 +94,19 @@ decorators, discovered via a blanket
 per-tenant — each company has its own WhatsApp Business number, its own
 SMTP box. The AI Engine started differently: a platform capability a
 company either had turned on or didn't, with one shared API key/model
-per deployment. `settings.ai_provider`
-(`"openai" | "claude" | "ollama" | "disabled"`, defaulting to
-`"disabled"`), `settings.ai_model`, `settings.ai_default_max_tokens`, and
-per-provider credential/base-URL settings
-(`openai_api_key`/`anthropic_api_key`/`ollama_base_url`/...) follow the
-same environment-configured pattern `settings.smtp_*` (M21) already
-established for platform-level, not per-tenant, capabilities — this
-remains the *default* every company gets out of the box.
+per deployment. `settings.ai_provider` (one of the 8 registered provider
+names above, or `"disabled"`, the default), `settings.ai_model`,
+`settings.ai_default_max_tokens`, and per-provider credential/base-URL
+settings (`openai_api_key`/`anthropic_api_key`/`gemini_api_key`/
+`azure_openai_api_key`/`azure_openai_base_url`/
+`azure_openai_deployment_name`/`azure_openai_api_version`/
+`mistral_api_key`/`groq_api_key`/`deepseek_api_key`/`ollama_base_url`/...)
+follow the same environment-configured pattern `settings.smtp_*` (M21)
+already established for platform-level, not per-tenant, capabilities —
+this remains the *default* every company gets out of the box. Azure
+OpenAI's resource endpoint/deployment name are account-specific with no
+sensible universal default, so unlike every other provider's base URL
+they're left unset (`None`) rather than pointing at a real default host.
 
 What's since been added: a company can now **bring its own provider and
 key** instead (see "Per-company provider override" below) — this was
@@ -108,9 +127,14 @@ company configures its own, per below).
 AES-256-GCM-at-rest mechanism `ChannelConfig.credentials` already uses),
 **not** a key inside the plain-JSON `Company.settings` blob, because
 unlike every other admin setting this one carries a real secret (the
-provider API key). Shape: `{"provider": "openai"|"claude"|"ollama",
-"api_key": str | None, "model": str | None, "base_url": str | None}`, or
-`None` for "no override, use the platform default."
+provider API key). Shape: `{"provider": <one of the 8 registered
+names>, "api_key": str | None, "model": str | None, "base_url": str |
+None, "deployment_name": str | None, "api_version": str | None}`, or
+`None` for "no override, use the platform default." The last two keys
+are Azure OpenAI-only (harmless, unread by every other provider) —
+`base_url` doubles as Azure's "resource endpoint" rather than adding a
+fourth field for a concept that's really just "the base URL for this
+provider," same as every other provider already uses it for.
 
 - **Precedence**: `infrastructure/ai/factory.py`'s
   `build_ai_provider_for_company(settings, company_ai_config)` — falls
@@ -140,12 +164,17 @@ provider API key). Shape: `{"provider": "openai"|"claude"|"ollama",
   ["#"]"`, see `docs/architecture/administration.md`) and a leaked key in
   an audit row would defeat the whole point of encrypting it at rest.
 - **Frontend**: `frontend/src/features/company/panels/AiSettingsPanel.tsx`
-  — a Provider select ("Platform default" plus the three registered
-  providers), a password-masked API Key field (shown only for
-  OpenAI/Claude — Ollama needs no key, only a Base URL), a Model field,
+  — a Provider select ("Platform default" plus every registered
+  provider), a password-masked API Key field (shown for every provider
+  except Ollama, which needs no key, only a Base URL), a Model field,
   and a Base URL field, with an explicit Save button (disabled until the
-  form is both dirty and valid — OpenAI/Claude require *some* usable key,
-  either already-saved or freshly entered, before Save is enabled).
+  form is both dirty and valid — every key-requiring provider needs
+  *some* usable key, either already-saved or freshly entered, before
+  Save is enabled). Azure OpenAI additionally shows a required
+  Deployment Name field and an optional API Version field once selected
+  (Save stays disabled without both a resource endpoint and a
+  deployment name — a bare API key isn't enough to actually reach an
+  Azure deployment).
 
 ## Fails as 503, not 404/400/500
 
@@ -326,3 +355,60 @@ The new migration (`b2c3d4e5f6a7`, adding `companies.ai_config` as a
 `docker compose exec backend alembic upgrade head` and a downgrade/
 re-upgrade cycle, the same bar every migration in this codebase is held
 to.
+
+### Expanded provider support (P4.17): Gemini, Azure OpenAI, Mistral, Groq, DeepSeek
+
+Added 5 new `AiProvider` implementations alongside the original three —
+no changes to `domain/ai_provider.py`, `AiService`, `api/schemas/ai.py`,
+or `api/v1/endpoints/ai.py` were needed, exactly as this abstraction was
+designed to allow. Touched instead: `infrastructure/ai/providers/`
+(5 new files + the shared `_openai_compatible.py` base + `__init__.py`'s
+discovery imports), `infrastructure/ai/factory.py` (new
+`_credentials_for()`/`build_ai_provider_for_company()` branches, Azure
+OpenAI's being the one genuinely new shape — an extra
+`deployment_name`/`api_version` pair alongside the existing
+`api_key`/`base_url`), `core/config.py` (widened `ai_provider` `Literal`
++ 12 new per-provider `Settings` fields), `.env.example`,
+`api/schemas/company.py` (widened `AiConfigProvider` `Literal` + two new
+optional fields on both request/response schemas),
+`CompanyService.update_ai_config` and its endpoint (threading the two
+new fields through), and the frontend (`types.ts`, `AiSettingsPanel.tsx`
+— a generalized "does this provider need a key" check plus Azure's two
+extra conditional fields).
+
+No migration was needed for `Company.ai_config` itself (already a
+schema-less encrypted JSON blob — the two new keys are additive and
+backward compatible; existing rows with only the original four keys
+remain valid, read back as `None` for the two new ones).
+
+37 new tests added, all green under `pytest -q`, `ruff check`, and
+`mypy src`:
+
+- `tests/unit/test_ai_providers.py` (+16) — one `TestXProvider` class
+  per new provider: Groq/DeepSeek/Mistral's shared request/response
+  shape via `OpenAiCompatibleProvider` (mocked at the shared
+  `_openai_compatible` module, not each provider's own module, since
+  that's where the HTTP call actually executes), Gemini's `contents`/
+  `systemInstruction` shape and query-parameter API key, and Azure
+  OpenAI's deployment-name-in-the-URL/`api-key`-header/`api-version`
+  scheme (including a custom-API-version case and confirming no
+  `"model"` field is ever sent in the body).
+- `tests/unit/test_ai_factory.py` (+4) — Gemini as a representative
+  simple "api_key + optional base_url" provider (company override and
+  platform-default paths), and Azure OpenAI as the one provider needing
+  its extra fields threaded through both the company-override and
+  platform-default-fallback paths.
+- `tests/integration/test_company_api.py`'s `TestAiConfig` (+2) — each
+  of the 5 new provider names is accepted end-to-end, and Azure OpenAI's
+  `deployment_name`/`api_version` round-trip correctly (set, returned,
+  never exposing the key).
+- `tests/integration/test_admin_plugins_api.py` — the existing
+  `test_lists_every_registered_plugin_type` test's exact-set assertion
+  on `ai_providers` was updated to the full 8-provider list (this is the
+  Admin Plugins overview page, which enumerates every registered
+  provider name — a real, if incidental, consumer of the registry that
+  needed updating alongside the registry itself).
+- Frontend: `CompanySettingsPage.test.tsx` (+2) — every new provider
+  appears as a select option, and Azure OpenAI's Save button stays
+  disabled until both a resource endpoint *and* a deployment name are
+  filled in, not just an API key.

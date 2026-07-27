@@ -43,7 +43,16 @@ class TestPluginRegistry:
         assert "web_chat" in body["channel_types"]
         assert "whatsapp" in body["channel_types"]
         assert "twilio" in body["sms_gateways"]
-        assert set(body["ai_providers"]) == {"openai", "claude", "ollama"}
+        assert set(body["ai_providers"]) == {
+            "openai",
+            "claude",
+            "gemini",
+            "azure_openai",
+            "ollama",
+            "mistral",
+            "groq",
+            "deepseek",
+        }
         assert body["active_ai_provider"] == "disabled"
         assert "add_tag" in body["workflow_actions"]
         assert "send_reply" in body["workflow_actions"]

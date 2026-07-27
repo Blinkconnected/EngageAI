@@ -23,6 +23,8 @@ def _ai_config_response(config: dict[str, Any] | None) -> AiConfigResponse:
         model=config.get("model"),
         base_url=config.get("base_url"),
         api_key_set=bool(config.get("api_key")),
+        deployment_name=config.get("deployment_name"),
+        api_version=config.get("api_version"),
     )
 
 
@@ -77,6 +79,8 @@ async def update_ai_config(
         api_key=payload.api_key,
         model=payload.model,
         base_url=payload.base_url,
+        deployment_name=payload.deployment_name,
+        api_version=payload.api_version,
         actor_user_id=auth.user_id,
     )
     return _ai_config_response(company.ai_config)

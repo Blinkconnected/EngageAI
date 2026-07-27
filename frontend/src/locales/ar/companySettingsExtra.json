@@ -59,6 +59,12 @@
     "baseUrlLabel": "عنوان URL الأساسي",
     "baseUrlHelperOllama": "عنوان خادم Ollama الخاص بك، مثال: http://localhost:11434.",
     "baseUrlHelperOptional": "اختياري — مطلوب فقط لنقطة نهاية API مخصصة أو ذاتية الاستضافة.",
+    "resourceEndpointLabel": "نقطة نهاية المورد",
+    "resourceEndpointHelperText": "نقطة نهاية مورد Azure OpenAI الخاص بك، مثال: https://my-resource.openai.azure.com.",
+    "deploymentNameLabel": "اسم النشر",
+    "deploymentNameHelperText": "الاسم الذي أطلقته على نشر هذا النموذج في Azure OpenAI Studio.",
+    "apiVersionLabel": "إصدار الواجهة البرمجية",
+    "apiVersionHelperText": "اتركه فارغًا لاستخدام إصدار الواجهة البرمجية الافتراضي الحالي.",
     "saveButton": "حفظ التغييرات",
     "savingButton": "جارٍ الحفظ…"
   }

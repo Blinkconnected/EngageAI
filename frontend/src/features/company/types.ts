@@ -96,21 +96,31 @@ export interface CompanyUpdateRequest {
   settings?: CompanySettings
 }
 
-export type AiConfigProvider = 'openai' | 'claude' | 'ollama'
+export type AiConfigProvider =
+  'openai' | 'claude' | 'gemini' | 'azure_openai' | 'ollama' | 'mistral' | 'groq' | 'deepseek'
 
 export const AI_CONFIG_PROVIDERS: { value: AiConfigProvider; label: string }[] = [
   { value: 'openai', label: 'OpenAI' },
   { value: 'claude', label: 'Claude (Anthropic)' },
+  { value: 'gemini', label: 'Gemini (Google)' },
+  { value: 'azure_openai', label: 'Azure OpenAI' },
+  { value: 'mistral', label: 'Mistral' },
+  { value: 'groq', label: 'Groq' },
+  { value: 'deepseek', label: 'DeepSeek' },
   { value: 'ollama', label: 'Ollama (self-hosted)' },
 ]
 
 /** Matches the backend's `AiConfigResponse` (`GET /company/ai-config`) —
- * never carries the raw API key, only whether one is saved. */
+ * never carries the raw API key, only whether one is saved.
+ * `deployment_name`/`api_version` are only meaningful for `azure_openai`
+ * — every other provider leaves them `null`. */
 export interface AiConfig {
   provider: AiConfigProvider | null
   model: string | null
   base_url: string | null
   api_key_set: boolean
+  deployment_name: string | null
+  api_version: string | null
 }
 
 /** `provider: null` clears the override entirely (reverts to the
@@ -121,4 +131,6 @@ export interface AiConfigUpdateRequest {
   api_key?: string
   model?: string | null
   base_url?: string | null
+  deployment_name?: string | null
+  api_version?: string | null
 }

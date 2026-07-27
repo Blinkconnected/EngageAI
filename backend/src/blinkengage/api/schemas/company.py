@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field
 from blinkengage.api.schemas.company_settings import CompanySettingsUpdate
 from blinkengage.infrastructure.database.models.company import CompanyStatus
 
-AiConfigProvider = Literal["openai", "claude", "ollama"]
+AiConfigProvider = Literal[
+    "openai", "claude", "gemini", "azure_openai", "ollama", "mistral", "groq", "deepseek"
+]
 
 
 class CompanyUpdateRequest(BaseModel):
@@ -44,6 +46,12 @@ class AiConfigUpdateRequest(BaseModel):
     api_key: str | None = Field(default=None, min_length=1)
     model: str | None = Field(default=None, min_length=1, max_length=200)
     base_url: str | None = Field(default=None, min_length=1, max_length=500)
+    # Azure OpenAI only — every other provider ignores these. base_url
+    # above doubles as Azure's "resource endpoint" (e.g.
+    # https://my-resource.openai.azure.com), so these two are the only
+    # genuinely new fields Azure needs.
+    deployment_name: str | None = Field(default=None, min_length=1, max_length=200)
+    api_version: str | None = Field(default=None, min_length=1, max_length=50)
 
 
 class AiConfigResponse(BaseModel):
@@ -55,3 +63,5 @@ class AiConfigResponse(BaseModel):
     model: str | None
     base_url: str | None
     api_key_set: bool
+    deployment_name: str | None
+    api_version: str | None

@@ -263,6 +263,8 @@ class TestAiConfig:
             "model": None,
             "base_url": None,
             "api_key_set": False,
+            "deployment_name": None,
+            "api_version": None,
         }
 
     async def test_agent_can_view_but_not_edit(
@@ -358,6 +360,8 @@ class TestAiConfig:
             "model": None,
             "base_url": None,
             "api_key_set": False,
+            "deployment_name": None,
+            "api_version": None,
         }
 
     async def test_ollama_provider_does_not_require_an_api_key(
@@ -383,6 +387,45 @@ class TestAiConfig:
             headers=owner_headers,
         )
         assert response.status_code == 422
+
+    async def test_accepts_each_newly_supported_provider(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        for provider in ("gemini", "azure_openai", "mistral", "groq", "deepseek"):
+            response = await client.put(
+                "/api/v1/company/ai-config",
+                json={"provider": provider, "api_key": f"key-for-{provider}"},
+                headers=owner_headers,
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["provider"] == provider
+            assert response.json()["api_key_set"] is True
+
+    async def test_azure_openai_config_carries_deployment_name_and_api_version(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={
+                "provider": "azure_openai",
+                "api_key": "az-secret-key",
+                "base_url": "https://acme-resource.openai.azure.com",
+                "deployment_name": "acme-gpt4-deployment",
+                "api_version": "2023-05-15",
+            },
+            headers=owner_headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["provider"] == "azure_openai"
+        assert body["base_url"] == "https://acme-resource.openai.azure.com"
+        assert body["deployment_name"] == "acme-gpt4-deployment"
+        assert body["api_version"] == "2023-05-15"
+        assert body["api_key_set"] is True
+        assert "az-secret-key" not in response.text
+
+        get_response = await client.get("/api/v1/company/ai-config", headers=owner_headers)
+        assert get_response.json()["deployment_name"] == "acme-gpt4-deployment"
 
     async def test_requires_authentication(self, client: AsyncClient) -> None:
         response = await client.get("/api/v1/company/ai-config")
