@@ -336,6 +336,100 @@ class TestLiveDashboard:
         assert row["open_conversations"] == 2
         assert row["waiting_count"] == 1
 
+    async def test_live_dashboard_splits_assigned_into_picked_and_active(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = UUID(await _company_id(client, owner_headers))
+        queue_id = await _create_queue(client, owner_headers, "Stage Queue")
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+        agent_id = await _create_agent(client, owner_headers, "stage-agent@acme.example")
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            now = datetime.now(UTC)
+            db_session.add_all(
+                [
+                    # Picked: assigned, but the agent hasn't replied yet.
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="picked-thread",
+                        status=ConversationStatus.OPEN,
+                        queue_id=queue_id,
+                        queue_entered_at=now,
+                        assigned_agent_id=agent_id,
+                        picked_up_at=now,
+                    ),
+                    # Active: assigned AND the agent has sent a first reply.
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="active-thread",
+                        status=ConversationStatus.OPEN,
+                        queue_id=queue_id,
+                        queue_entered_at=now,
+                        assigned_agent_id=agent_id,
+                        picked_up_at=now,
+                        first_response_at=now,
+                    ),
+                ]
+            )
+            await db_session.commit()
+
+        response = await client.get("/api/v1/reports/live-dashboard", headers=owner_headers)
+
+        assert response.status_code == 200, response.text
+        row = _queue_row(response.json(), queue_id)
+        assert row["assigned_count"] == 2
+        assert row["picked_count"] == 1
+        assert row["active_count"] == 1
+
+    async def test_live_dashboard_splits_throughput_into_resolved_and_closed(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = UUID(await _company_id(client, owner_headers))
+        queue_id = await _create_queue(client, owner_headers, "Throughput Queue")
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            now = datetime.now(UTC)
+            db_session.add_all(
+                [
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="resolved-thread",
+                        status=ConversationStatus.RESOLVED,
+                        queue_id=queue_id,
+                        queue_entered_at=now,
+                        closed_at=now,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="closed-thread",
+                        status=ConversationStatus.CLOSED,
+                        queue_id=queue_id,
+                        queue_entered_at=now,
+                        closed_at=now,
+                    ),
+                ]
+            )
+            await db_session.commit()
+
+        response = await client.get("/api/v1/reports/live-dashboard", headers=owner_headers)
+
+        assert response.status_code == 200, response.text
+        row = _queue_row(response.json(), queue_id)
+        assert row["resolved_24h"] == 1
+        assert row["closed_24h"] == 1
+        assert row["throughput_24h"] == 2
+
     async def test_live_dashboard_avg_and_longest_wait_reflect_queue_entered_at(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:

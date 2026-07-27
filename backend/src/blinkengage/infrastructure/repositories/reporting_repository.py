@@ -178,8 +178,24 @@ class LiveQueueMetrics:
     waiting_count: int
     #: Assigned subset of ``open_conversations`` — the same set minus
     #: ``waiting_count``, exposed as its own field so a consumer never
-    #: has to derive it by subtraction.
+    #: has to derive it by subtraction. Kept unchanged (still exactly
+    #: ``picked_count + active_count``) for backward compatibility — new
+    #: consumers should prefer the split fields below.
     assigned_count: int
+    #: Enterprise Readiness & UX milestone, Priority 3 item 14 —
+    #: "waiting/picked/active/resolved/closed" queue stages, without
+    #: adding a 5th ``ConversationStatus`` value (explicitly out of
+    #: scope). Split of ``assigned_count``: assigned but the agent hasn't
+    #: sent a first reply yet (``first_response_at IS NULL``) — reusing
+    #: the existing SLA first-response timestamp
+    #: (``ConversationService.send_reply`` sets it once, on the first
+    #: outbound message) as the "has this actually been worked on yet"
+    #: signal, rather than introducing a new column for it.
+    picked_count: int
+    #: The other split of ``assigned_count`` — assigned AND
+    #: ``first_response_at IS NOT NULL``. ``assigned_count ==
+    #: picked_count + active_count`` always holds.
+    active_count: int
     #: Computed over the SAME waiting set as ``waiting_count``, via
     #: ``queue_entered_at``. ``None`` when ``waiting_count`` is 0.
     avg_wait_seconds: float | None
@@ -199,7 +215,14 @@ class LiveQueueMetrics:
     #: this queue — a raw completion-rate signal, independent of
     #: ``abandoned_count_24h``'s narrower "never handled" heuristic (a
     #: conversation counts here whether or not it was ever picked up).
+    #: Kept unchanged for backward compatibility — always exactly
+    #: ``resolved_24h + closed_24h``.
     throughput_24h: int
+    #: Split of ``throughput_24h`` by which terminal status it reached —
+    #: same P3.14 "make queue stages visible" motivation as
+    #: ``picked_count``/``active_count`` above.
+    resolved_24h: int
+    closed_24h: int
 
 
 class ReportingRepository:
@@ -583,6 +606,9 @@ class ReportingRepository:
             return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
         is_waiting = Conversation.assigned_agent_id.is_(None)
+        is_active = Conversation.assigned_agent_id.is_not(None) & (
+            Conversation.first_response_at.is_not(None)
+        )
         is_sla_breached = Conversation.sla_first_response_breached_at.is_not(None) | (
             Conversation.sla_resolution_breached_at.is_not(None)
         )
@@ -596,6 +622,7 @@ class ReportingRepository:
                 func.count(Conversation.id),
                 func.count(case((is_waiting, Conversation.id))),
                 func.count(case((is_sla_breached, Conversation.id))),
+                func.count(case((is_active, Conversation.id))),
             )
             .join(
                 Department,
@@ -690,9 +717,18 @@ class ReportingRepository:
         # Throughput: every conversation that reached a terminal status in
         # the last 24h, regardless of whether it was ever picked up (unlike
         # abandoned_count_24h, which specifically excludes ever-claimed
-        # conversations) — a raw completion-rate count.
+        # conversations) — a raw completion-rate count. Split by which
+        # terminal status (resolved_24h/closed_24h) so the two are
+        # distinguishable as separate queue "stages" (P3.14) — their sum
+        # is always throughput_24h, kept unchanged for compatibility.
+        is_resolved = Conversation.status == ConversationStatus.RESOLVED
+        is_closed = Conversation.status == ConversationStatus.CLOSED
         throughput_result = await self._session.execute(
-            select(Conversation.queue_id, func.count(Conversation.id))
+            select(
+                Conversation.queue_id,
+                func.count(case((is_resolved, Conversation.id))),
+                func.count(case((is_closed, Conversation.id))),
+            )
             .where(
                 Conversation.company_id == company_id,
                 Conversation.deleted_at.is_(None),
@@ -701,9 +737,13 @@ class ReportingRepository:
             )
             .group_by(Conversation.queue_id)
         )
-        throughput_by_queue = {
-            row[0]: row[1] for row in throughput_result.all() if row[0] is not None
-        }
+        resolved_by_queue: dict[UUID, int] = {}
+        closed_by_queue: dict[UUID, int] = {}
+        for throughput_row in throughput_result.all():
+            if throughput_row[0] is None:
+                continue
+            resolved_by_queue[throughput_row[0]] = throughput_row[1]
+            closed_by_queue[throughput_row[0]] = throughput_row[2]
 
         metrics: list[LiveQueueMetrics] = []
         for row in base_rows:
@@ -712,6 +752,10 @@ class ReportingRepository:
             pickup_seconds = pickup_seconds_by_queue.get(queue_id, [])
             open_conversations = row[4]
             waiting_count = row[5]
+            assigned_count = open_conversations - waiting_count
+            active_count = row[7]
+            resolved_24h = resolved_by_queue.get(queue_id, 0)
+            closed_24h = closed_by_queue.get(queue_id, 0)
             metrics.append(
                 LiveQueueMetrics(
                     queue_id=queue_id,
@@ -720,7 +764,9 @@ class ReportingRepository:
                     department_name=row[3],
                     open_conversations=open_conversations,
                     waiting_count=waiting_count,
-                    assigned_count=open_conversations - waiting_count,
+                    assigned_count=assigned_count,
+                    picked_count=assigned_count - active_count,
+                    active_count=active_count,
                     avg_wait_seconds=(
                         round(sum(wait_seconds) / len(wait_seconds), 2) if wait_seconds else None
                     ),
@@ -732,7 +778,9 @@ class ReportingRepository:
                     ),
                     abandoned_count_24h=abandoned_by_queue.get(queue_id, 0),
                     sla_breached_count=row[6],
-                    throughput_24h=throughput_by_queue.get(queue_id, 0),
+                    throughput_24h=resolved_24h + closed_24h,
+                    resolved_24h=resolved_24h,
+                    closed_24h=closed_24h,
                 )
             )
         return metrics

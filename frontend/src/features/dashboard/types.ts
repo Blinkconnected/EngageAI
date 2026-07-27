@@ -28,7 +28,11 @@ export interface AgentWorkload {
   total_count: number
 }
 
-/** Matches the backend's `LiveQueueDepthResponse`. */
+/** Matches the backend's `LiveQueueDepthResponse`. `assigned_count` and
+ * `throughput_24h` are kept for backward compatibility — always exactly
+ * `picked_count + active_count` and `resolved_24h + closed_24h`
+ * respectively (see `docs/architecture/queues-routing.md`'s "Queue
+ * stages" section). */
 export interface LiveQueueDepth {
   queue_id: string
   queue_name: string
@@ -37,16 +41,18 @@ export interface LiveQueueDepth {
   open_conversations: number
   waiting_count: number
   assigned_count: number
+  /** Assigned, but the agent hasn't sent a first reply yet. */
+  picked_count: number
+  /** Assigned AND the agent has sent at least one reply. */
+  active_count: number
   avg_wait_seconds: number | null
   longest_wait_seconds: number | null
-  // Not rendered as their own dashboard columns today (this milestone's
-  // enrichment covers waiting/avg-wait/longest-wait/SLA-breach only) but
-  // kept typed so this interface fully matches the backend response
-  // rather than silently dropping fields a future caller might need.
   pickup_avg_seconds_24h: number | null
   abandoned_count_24h: number
   sla_breached_count: number
   throughput_24h: number
+  resolved_24h: number
+  closed_24h: number
 }
 
 /** Matches the backend's `LiveDashboardResponse` (`GET /reports/live-dashboard`). */

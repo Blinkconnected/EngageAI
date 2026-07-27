@@ -207,12 +207,16 @@ async def live_dashboard(
                 open_conversations=row.open_conversations,
                 waiting_count=row.waiting_count,
                 assigned_count=row.assigned_count,
+                picked_count=row.picked_count,
+                active_count=row.active_count,
                 avg_wait_seconds=row.avg_wait_seconds,
                 longest_wait_seconds=row.longest_wait_seconds,
                 pickup_avg_seconds_24h=row.pickup_avg_seconds_24h,
                 abandoned_count_24h=row.abandoned_count_24h,
                 sla_breached_count=row.sla_breached_count,
                 throughput_24h=row.throughput_24h,
+                resolved_24h=row.resolved_24h,
+                closed_24h=row.closed_24h,
             )
             for row in dashboard.queues
         ],

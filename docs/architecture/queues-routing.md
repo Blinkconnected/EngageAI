@@ -302,11 +302,52 @@ superset of the older `LiveQueueDepth`/`live_queue_depth()` pair, which
 is kept as-is (unused but valid) rather than removed, per this project's
 "never remove existing functionality without replacing it" rule — the
 live dashboard endpoint now composes from `LiveQueueMetrics` instead.
-The dashboard's queue-depth table currently surfaces metrics #1, #3, #4,
-#6 as columns (Waiting/Avg wait/Longest waiting/SLA breached), alongside
-Open and Department; metrics #2/#5/#7/#8 are computed and returned by the
-API today but not yet given their own table columns — a frontend-only,
+The dashboard's queue-depth table surfaces metrics #1, #3, #4, #6 as
+columns (Waiting/Avg wait/Longest waiting/SLA breached), alongside Open
+and Department. Metrics #5/#7 (`pickup_avg_seconds_24h`/
+`abandoned_count_24h`) are computed and returned by the API today but
+still not given their own table columns — kept as a frontend-only,
 additive follow-up, not a backend gap.
+
+### P3.14 — queue stages (waiting/picked/active/resolved/closed)
+
+The Enterprise Readiness & UX milestone (Priority 3, item 14) asked for
+the queue dashboard to "clearly present queue stages such as waiting,
+picked, active, resolved, and closed" **without changing the existing
+`ConversationStatus` model** (still exactly `OPEN`/`PENDING`/`RESOLVED`/
+`CLOSED` — there is no dedicated `active` status value). This is solved
+by splitting two of the 8 metrics above using a column that already
+existed for SLA purposes, `Conversation.first_response_at` (set once, by
+`ConversationService.send_reply()`, the first time an agent sends an
+OUTBOUND message on that conversation) — no migration, no new column:
+
+| Stage | Definition |
+|---|---|
+| Waiting | `assigned_agent_id IS NULL` (== metric #1, `waiting_count`) |
+| Picked | `assigned_agent_id IS NOT NULL AND first_response_at IS NULL` — assigned, no reply sent yet |
+| Active | `assigned_agent_id IS NOT NULL AND first_response_at IS NOT NULL` — assigned and already replied to |
+| Resolved (24h) | reached `RESOLVED` in the last 24h, this queue |
+| Closed (24h) | reached `CLOSED` in the last 24h, this queue |
+
+`LiveQueueMetrics`/`LiveQueueDepthResponse` add `picked_count`,
+`active_count` (split of metric #2, `assigned_count`) and `resolved_24h`,
+`closed_24h` (split of metric #8, `throughput_24h`) as new fields
+alongside the originals — `assigned_count` and `throughput_24h` are kept
+byte-for-byte unchanged (`assigned_count == picked_count + active_count`
+and `throughput_24h == resolved_24h + closed_24h` always hold) so no
+existing consumer of the API breaks.
+
+The dashboard now renders these stages three ways: a company-wide funnel
+chart (`QueueFlowChart`, `@mui/x-charts` `BarChart`) above the per-queue
+table totalling waiting/picked/active/resolved/closed across every
+queue; a compact per-row stacked "flow" bar (`QueueStageBar`) giving an
+at-a-glance proportional view of each queue's waiting/picked/active mix
+(with a text `aria-label` carrying the same breakdown for assistive
+tech, since color alone conveys nothing without sight); and the
+queue-depth table itself, restructured with a two-row grouped header
+("Pipeline" for waiting/picked/active, "Last 24h" for resolved/closed,
+"Wait times" for avg/longest) so throughput is never visually confused
+with what's still in the queue.
 
 ## Domain event catalog
 

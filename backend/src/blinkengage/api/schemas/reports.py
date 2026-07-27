@@ -63,12 +63,19 @@ class LiveQueueDepthResponse(BaseModel):
     open_conversations: int
     waiting_count: int
     assigned_count: int
+    # P3.14 — waiting/picked/active/resolved/closed queue stages, split
+    # out of assigned_count/throughput_24h (both kept for compatibility;
+    # see LiveQueueMetrics's docstrings for the exact derivation).
+    picked_count: int
+    active_count: int
     avg_wait_seconds: float | None
     longest_wait_seconds: float | None
     pickup_avg_seconds_24h: float | None
     abandoned_count_24h: int
     sla_breached_count: int
     throughput_24h: int
+    resolved_24h: int
+    closed_24h: int
 
 
 class AgentWorkloadResponse(BaseModel):

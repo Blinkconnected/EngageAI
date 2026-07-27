@@ -13,23 +13,29 @@ describe('DashboardPage', () => {
     queryClient.clear()
   })
 
-  it('renders the enriched queue-depth table with department, waiting, wait-time and SLA-breach columns', async () => {
+  it('renders the enriched queue-depth table with department, stage, wait-time and SLA-breach columns', async () => {
     renderAuthenticated(<DashboardPage />)
 
-    // "General" (see mocks/handlers/dashboard.ts): department "Support",
-    // 7 open, 3 waiting, avg wait 125s -> "2m 5s", longest wait 340s ->
-    // "5m 40s", 2 SLA breaches. Cells are asserted by column position
-    // (matching QueueDepthTable's own column order) rather than by text
-    // alone, since several columns can legitimately share a value (e.g.
-    // both waiting/SLA-breached are small integers).
+    // "General" (see mocks/handlers/dashboard.ts): department "Support", 7
+    // open, 3 waiting, 1 picked, 3 active, 10 resolved/8 closed in the last
+    // 24h, avg wait 125s -> "2m 5s", longest wait 340s -> "5m 40s", 2 SLA
+    // breaches. Cells are asserted by column position (matching
+    // QueueDepthTable's own column order: queue, department, flow,
+    // waiting, picked, active, resolved-24h, closed-24h, avg wait, longest
+    // wait, SLA breached) rather than by text alone, since several columns
+    // can legitimately share a value (e.g. waiting/SLA-breached).
     const generalRow = (await screen.findByText('General')).closest('tr') as HTMLElement
     const generalCells = within(generalRow).getAllByRole('cell')
     expect(generalCells[1]).toHaveTextContent('Support')
     expect(generalCells[2]).toHaveTextContent('7')
     expect(generalCells[3]).toHaveTextContent('3')
-    expect(generalCells[4]).toHaveTextContent('2m 5s')
-    expect(generalCells[5]).toHaveTextContent('5m 40s')
-    expect(generalCells[6]).toHaveTextContent('2')
+    expect(generalCells[4]).toHaveTextContent('1')
+    expect(generalCells[5]).toHaveTextContent('3')
+    expect(generalCells[6]).toHaveTextContent('10')
+    expect(generalCells[7]).toHaveTextContent('8')
+    expect(generalCells[8]).toHaveTextContent('2m 5s')
+    expect(generalCells[9]).toHaveTextContent('5m 40s')
+    expect(generalCells[10]).toHaveTextContent('2')
 
     // "VIP" has no department and null wait times (nothing has waited) —
     // proves the null -> "—" fallback, not just the happy path above.
@@ -38,9 +44,19 @@ describe('DashboardPage', () => {
     expect(vipCells[1]).toHaveTextContent('—')
     expect(vipCells[2]).toHaveTextContent('5')
     expect(vipCells[3]).toHaveTextContent('0')
-    expect(vipCells[4]).toHaveTextContent('—')
-    expect(vipCells[5]).toHaveTextContent('—')
-    expect(vipCells[6]).toHaveTextContent('0')
+    expect(vipCells[4]).toHaveTextContent('2')
+    expect(vipCells[5]).toHaveTextContent('3')
+    expect(vipCells[6]).toHaveTextContent('6')
+    expect(vipCells[7]).toHaveTextContent('3')
+    expect(vipCells[8]).toHaveTextContent('—')
+    expect(vipCells[9]).toHaveTextContent('—')
+    expect(vipCells[10]).toHaveTextContent('0')
+  })
+
+  it('shows a company-wide queue flow chart above the per-queue table', async () => {
+    renderAuthenticated(<DashboardPage />)
+
+    expect(await screen.findByText('Queue flow (all queues)')).toBeInTheDocument()
   })
 
   it('shows a 4th "busy" chip alongside online/away/offline', async () => {

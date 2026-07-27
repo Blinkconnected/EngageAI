@@ -16,6 +16,13 @@ for more detail on how this page is put together.
 
 ### Added
 
+- The Queue Dashboard now shows exactly where every conversation stands:
+  a new company-wide flow chart totals waiting, picked (assigned, no
+  reply yet), active (assigned and replied to), resolved, and closed
+  conversations across every queue, and each queue's own row gets a
+  compact visual bar plus new Picked/Active/Resolved (24h)/Closed (24h)
+  columns, grouped under "Pipeline" and "Last 24h" headers so throughput
+  is never confused with what's still waiting.
 - Full Arabic translation of the entire signed-in application — every
   page, dialog, menu, table, and form across the app now renders in
   Arabic, with the interface laid out right-to-left to match. Set it in

@@ -1,16 +1,21 @@
+import { useMemo } from 'react'
 import {
+  Box,
   Card,
   CardContent,
   Chip,
   Grid,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material'
+import { BarChart } from '@mui/x-charts/BarChart'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
@@ -55,6 +60,105 @@ function formatWaitSeconds(seconds: number | null, t: TFunction): string {
   return t('DashboardPage.minutesSecondsFormat', { minutes, seconds: remainingSeconds })
 }
 
+function sumQueues(queues: LiveQueueDepth[], key: keyof LiveQueueDepth): number {
+  return queues.reduce((total, queue) => total + (queue[key] as number), 0)
+}
+
+/** Company-wide funnel across every queue — waiting/picked/active are the
+ * current pipeline; resolved/closed are the last 24h of throughput out of
+ * it. Gives supervisors the "conversation flow" overview the per-queue
+ * table below can't at a glance. */
+function QueueFlowChart({ queues, t }: { queues: LiveQueueDepth[]; t: TFunction }) {
+  const dataset = useMemo(
+    () => [
+      {
+        stage: t('DashboardPage.waitingColumnHeader'),
+        value: sumQueues(queues, 'waiting_count'),
+      },
+      {
+        stage: t('DashboardPage.pickedColumnHeader'),
+        value: sumQueues(queues, 'picked_count'),
+      },
+      {
+        stage: t('DashboardPage.activeColumnHeader'),
+        value: sumQueues(queues, 'active_count'),
+      },
+      {
+        stage: t('DashboardPage.resolved24hColumnHeader'),
+        value: sumQueues(queues, 'resolved_24h'),
+      },
+      {
+        stage: t('DashboardPage.closed24hColumnHeader'),
+        value: sumQueues(queues, 'closed_24h'),
+      },
+    ],
+    [queues, t],
+  )
+
+  return (
+    <BarChart
+      height={220}
+      dataset={dataset}
+      xAxis={[{ dataKey: 'stage', scaleType: 'band' }]}
+      series={[{ dataKey: 'value', label: t('DashboardPage.queueFlowSeriesLabel') }]}
+    />
+  )
+}
+
+const QUEUE_STAGE_BAR_WIDTH = 96
+
+/** Compact per-queue stacked bar: waiting/picked/active proportioned by
+ * count. Purely a faster-to-scan second encoding of the same numbers in
+ * the columns to its right — the `role="img"`+`aria-label` pair carries
+ * the full breakdown for assistive tech, since the colored segments alone
+ * convey nothing without sight. */
+function QueueStageBar({ queue, t }: { queue: LiveQueueDepth; t: TFunction }) {
+  if (queue.open_conversations === 0) {
+    return (
+      <Box
+        role="img"
+        aria-label={t('DashboardPage.noOpenConversations')}
+        sx={{
+          width: QUEUE_STAGE_BAR_WIDTH,
+          height: 8,
+          borderRadius: 4,
+          bgcolor: 'action.disabledBackground',
+        }}
+      />
+    )
+  }
+
+  const segments = [
+    { key: 'waiting', value: queue.waiting_count, color: 'warning.main' },
+    { key: 'picked', value: queue.picked_count, color: 'info.main' },
+    { key: 'active', value: queue.active_count, color: 'success.main' },
+  ] as const
+
+  const label = t('DashboardPage.queueFlowBarTooltip', {
+    waiting: queue.waiting_count,
+    picked: queue.picked_count,
+    active: queue.active_count,
+  })
+
+  return (
+    <Tooltip title={label}>
+      <Stack
+        direction="row"
+        role="img"
+        aria-label={label}
+        sx={{ width: QUEUE_STAGE_BAR_WIDTH, height: 8, borderRadius: 4, overflow: 'hidden' }}
+      >
+        {segments.map(
+          (segment) =>
+            segment.value > 0 && (
+              <Box key={segment.key} sx={{ flexGrow: segment.value, bgcolor: segment.color }} />
+            ),
+        )}
+      </Stack>
+    </Tooltip>
+  )
+}
+
 function AgentWorkloadTable({ workload }: { workload: AgentWorkload[] }) {
   const { t } = useTranslation('dashboard')
   return (
@@ -89,6 +193,10 @@ function AgentWorkloadTable({ workload }: { workload: AgentWorkload[] }) {
   )
 }
 
+/** Two-row grouped header: "Pipeline" (currently in the queue) and "Last
+ * 24h" (throughput out of it) are visually distinct groups, so a
+ * supervisor scanning the table doesn't mistake a resolved/closed count
+ * for part of what's still waiting. */
 function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
   const { t } = useTranslation('dashboard')
   return (
@@ -96,13 +204,30 @@ function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
       <Table size="small" aria-label={t('DashboardPage.queueDepthHeading')}>
         <TableHead>
           <TableRow>
-            <TableCell>{t('DashboardPage.queueColumnHeader')}</TableCell>
-            <TableCell>{t('DashboardPage.departmentColumnHeader')}</TableCell>
-            <TableCell align="right">{t('DashboardPage.openColumnHeader')}</TableCell>
+            <TableCell rowSpan={2}>{t('DashboardPage.queueColumnHeader')}</TableCell>
+            <TableCell rowSpan={2}>{t('DashboardPage.departmentColumnHeader')}</TableCell>
+            <TableCell rowSpan={2}>{t('DashboardPage.flowColumnHeader')}</TableCell>
+            <TableCell align="center" colSpan={3}>
+              {t('DashboardPage.pipelineGroupHeader')}
+            </TableCell>
+            <TableCell align="center" colSpan={2}>
+              {t('DashboardPage.last24hGroupHeader')}
+            </TableCell>
+            <TableCell align="center" colSpan={2}>
+              {t('DashboardPage.waitTimesGroupHeader')}
+            </TableCell>
+            <TableCell rowSpan={2} align="right">
+              {t('DashboardPage.slaBreachedColumnHeader')}
+            </TableCell>
+          </TableRow>
+          <TableRow>
             <TableCell align="right">{t('DashboardPage.waitingColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.pickedColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.activeColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.resolved24hColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.closed24hColumnHeader')}</TableCell>
             <TableCell align="right">{t('DashboardPage.avgWaitColumnHeader')}</TableCell>
             <TableCell align="right">{t('DashboardPage.longestWaitingColumnHeader')}</TableCell>
-            <TableCell align="right">{t('DashboardPage.slaBreachedColumnHeader')}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -110,10 +235,23 @@ function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
             <TableRow key={queue.queue_id}>
               <TableCell>{queue.queue_name}</TableCell>
               <TableCell>{queue.department_name ?? t('DashboardPage.dashPlaceholder')}</TableCell>
-              <TableCell align="right">
-                <Chip label={queue.open_conversations} size="small" color="primary" />
+              <TableCell>
+                <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
+                  <Chip label={queue.open_conversations} size="small" color="primary" />
+                  <QueueStageBar queue={queue} t={t} />
+                </Stack>
               </TableCell>
-              <TableCell align="right">{queue.waiting_count}</TableCell>
+              <TableCell align="right">
+                {queue.waiting_count > 0 ? (
+                  <Chip label={queue.waiting_count} size="small" color="warning" />
+                ) : (
+                  queue.waiting_count
+                )}
+              </TableCell>
+              <TableCell align="right">{queue.picked_count}</TableCell>
+              <TableCell align="right">{queue.active_count}</TableCell>
+              <TableCell align="right">{queue.resolved_24h}</TableCell>
+              <TableCell align="right">{queue.closed_24h}</TableCell>
               <TableCell align="right">{formatWaitSeconds(queue.avg_wait_seconds, t)}</TableCell>
               <TableCell align="right">
                 {formatWaitSeconds(queue.longest_wait_seconds, t)}
@@ -259,6 +397,24 @@ export function DashboardPage() {
               </CardContent>
             </Card>
           </Grid>
+
+          {liveDashboardQuery.data.queues.length > 0 && (
+            <Grid size={12}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography
+                    variant="subtitle1"
+                    component="h3"
+                    sx={{ fontWeight: 600 }}
+                    gutterBottom
+                  >
+                    {t('DashboardPage.queueFlowHeading')}
+                  </Typography>
+                  <QueueFlowChart queues={liveDashboardQuery.data.queues} t={t} />
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
 
           <Grid size={12}>
             <Card variant="outlined">
