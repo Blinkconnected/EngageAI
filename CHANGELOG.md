@@ -16,6 +16,15 @@ for more detail on how this page is put together.
 
 ### Added
 
+- Opening a conversation now shows a persistent conversation list next to
+  it (on desktop), so you can switch between conversations without
+  losing your place — only the message history scrolls; the list, the
+  reply box, and the customer info panel all stay put. The full Inbox
+  (with its filters, queue view, and Pick action) is still there, one
+  click away via the back button. On mobile, opening a conversation
+  still takes over the full screen as before.
+- Every page's navigation sidebar and top bar now stay visible while you
+  scroll a long page, instead of scrolling away with the content.
 - Agents and supervisors can now rate customers internally, 1-5 stars
   with an optional note (e.g. "Polite, pays on time" or "Frequently
   disputes charges") — visible on the customer's profile page (a new

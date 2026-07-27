@@ -175,8 +175,8 @@ Full interface translation, not just RTL layout mirroring:
   index                             Dashboard (live + executive summary)
   /agents                           Agents (Users) — requires agents.read
   /channels                         Channel configs (Connect WhatsApp, etc.) — channels.read
-  /conversations                    Inbox — conversations.read
-  /conversations/:conversationId    Conversation View (thread, reply, notes, assign)
+  /conversations                    Inbox — full filterable/sortable table — conversations.read
+  /conversations/:conversationId    Conversation workspace (list + thread/reply/notes/assign + customer panel)
   /customers                        Customer directory (search) — customers.read
   /customers/:customerId            Customer profile — Timeline + ERPNext tabs — customers.read
   /erp-configs                      ERPNext connection setup — erp.manage
@@ -189,6 +189,53 @@ Full interface translation, not just RTL layout mirroring:
 Every gated route wraps its element in `RequirePermission`; the sidebar
 independently hides nav entries the current user lacks permission for, so
 the two never disagree (both read the same `usePermissions` hook).
+
+## Conversation workspace layout (only the message thread scrolls)
+
+`/conversations/:conversationId` renders `ConversationWorkspacePage.tsx`, a
+3-pane layout: a persistent, compact `ConversationListPanel.tsx` on the
+left (own status quick-filter, own internal scroll), the existing
+`ConversationViewPage.tsx` (message thread + composer + tabs + the
+customer info `ConversationSidebar.tsx`) filling the rest, unchanged
+internally. Deliberately **not** a replacement for `/conversations`
+(`InboxPage.tsx`, unchanged) — that full, filterable/sortable table
+(queue mode, mine-only, unassigned-only, the Pick action) stays the
+richer triage surface, one click away via the back button; the
+workspace's own list is intentionally lighter (a single status
+quick-filter, no bulk actions), since its job is fast switching between
+conversations without losing the one you have open, not triage.
+
+Responsive: on mobile (`theme.breakpoints.down('md')`) there's no room
+for both the list and an open conversation, so only `ConversationViewPage`
+shows at this route — `ConversationSidebar`'s existing back button already
+returns to `/conversations` (the Inbox, full-width), giving the same
+list → detail → back pattern a phone's Mail app uses. No routing change
+was needed for this: `ConversationWorkspacePage` simply doesn't render
+`ConversationListPanel` when `useMediaQuery` reports non-desktop.
+
+**Making "only the message thread scrolls" actually work required a
+one-time, global fix to `AppLayout.tsx`, not just local CSS on this one
+page.** Every other page in the app relies on the *whole document*
+scrolling (nav sidebar and top bar scroll away with tall content) because
+`main`'s `sx` had `flexGrow: 1` but no `minHeight: 0` or `overflow`: a
+flex item's automatic minimum size (CSS Flexbox's
+`min-height: auto` default) refuses to shrink below its content's
+natural height unless overridden, so `main` — and everything above it —
+just grew to fit whatever a page rendered, and the browser scrolled the
+whole page instead of any one region. `MessageThread.tsx`'s own
+`overflowY: 'auto'` (and `ConversationViewPage.tsx`'s own
+`minHeight: 0` on its inner `Stack`) were already written assuming a
+properly height-bounded ancestor — they just never had one. Adding
+`minHeight: 0` to the content column and `minHeight: 0` +
+`overflowY: 'auto'` to `main` itself fixes this at the root: `main`
+becomes the one scroll container for ordinary pages (visually identical
+to before — nav/top bar simply stay pinned now instead of scrolling
+away, which is a strict improvement, not a regression), while the
+conversation workspace's own subtree, sized to exactly `main`'s
+available height with its own `overflow: hidden`, never needs `main`
+to grow at all — its list panel, `MessageThread`, and (should a future
+page need it) any other region can scroll independently within that
+fixed budget.
 
 ## Realtime
 

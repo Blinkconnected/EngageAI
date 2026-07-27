@@ -32,6 +32,13 @@
     "actionPick": "استلام",
     "pickErrorFallback": "تعذر استلام هذه المحادثة."
   },
+  "ConversationListPanel": {
+    "ariaLabel": "المحادثات",
+    "loadingLabel": "جارٍ تحميل المحادثات…",
+    "loadingCustomerLabel": "جارٍ التحميل…",
+    "emptyTitle": "لا يوجد شيء هنا",
+    "emptyDescription": "لا توجد محادثات مطابقة لهذه الحالة الآن."
+  },
   "ConversationViewPage": {
     "loadingLabel": "جارٍ تحميل المحادثة…",
     "backButtonAriaLabel": "العودة إلى الوارد",

@@ -32,6 +32,13 @@
     "actionPick": "Pick",
     "pickErrorFallback": "Could not pick up this conversation."
   },
+  "ConversationListPanel": {
+    "ariaLabel": "Conversations",
+    "loadingLabel": "Loading conversations…",
+    "loadingCustomerLabel": "Loading…",
+    "emptyTitle": "Nothing here",
+    "emptyDescription": "No conversations match this status right now."
+  },
   "ConversationViewPage": {
     "loadingLabel": "Loading conversation…",
     "backButtonAriaLabel": "Back to inbox",

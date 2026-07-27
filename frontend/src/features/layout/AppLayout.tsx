@@ -112,7 +112,15 @@ export function AppLayout() {
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              flexGrow: 1,
+              minWidth: 0,
+              minHeight: 0,
+            }}
+          >
             <OfflineBanner />
             <AppBar
               position="static"
@@ -252,7 +260,18 @@ export function AppLayout() {
                 </Menu>
               </Toolbar>
             </AppBar>
-            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+            {/* `minHeight: 0` overrides flexbox's automatic minimum size (a
+                flex item otherwise refuses to shrink below its content's
+                natural height, which would silently defeat every page's
+                ability to scroll internally instead of growing the whole
+                document) — combined with `overflowY: 'auto'`, this makes
+                `main` the one scroll container for ordinary pages (nav/
+                header/footer now stay put instead of scrolling away with
+                them), and gives any page that wants full internal control
+                over its own scrolling (e.g. the conversation workspace,
+                where only the message thread should scroll) a properly
+                height-bounded ancestor to size against. */}
+            <Box component="main" sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 3 }}>
               {showSetupBanner && (
                 <Alert severity="info" sx={{ mb: 2 }}>
                   {t('AppLayout.setupBannerMessage')}{' '}

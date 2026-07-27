@@ -14,7 +14,7 @@ import { QueuesPage } from '../features/queues/QueuesPage'
 import { RolesPage } from '../features/roles/RolesPage'
 import { SlaBuilderPage } from '../features/sla/SlaBuilderPage'
 import { InboxPage } from '../features/conversations/InboxPage'
-import { ConversationViewPage } from '../features/conversations/ConversationViewPage'
+import { ConversationWorkspacePage } from '../features/conversations/ConversationWorkspacePage'
 import { CustomersPage } from '../features/customers/CustomersPage'
 import { CustomerProfilePage } from '../features/customers/CustomerProfilePage'
 import { ErpConfigSettingsPage } from '../features/erp/ErpConfigSettingsPage'
@@ -82,7 +82,7 @@ export function AppRoutes() {
           path="conversations/:conversationId"
           element={
             <RequirePermission permission="conversations.read">
-              <ConversationViewPage />
+              <ConversationWorkspacePage />
             </RequirePermission>
           }
         />
