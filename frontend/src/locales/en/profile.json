@@ -1,0 +1,17 @@
+{
+  "ProfilePage": {
+    "pageTitle": "My Profile",
+    "pageDescription": "Your account details and security settings.",
+    "changePasswordHeading": "Change password",
+    "changePasswordDescription": "You'll be signed out of every device and need to sign in again.",
+    "changePasswordErrorFallback": "Could not change password.",
+    "passwordMismatchError": "New passwords do not match.",
+    "currentPasswordLabel": "Current password",
+    "newPasswordLabel": "New password",
+    "newPasswordHelperText": "At least 10 characters, including a letter and a digit.",
+    "confirmPasswordLabel": "Confirm new password",
+    "changingButton": "Changing…",
+    "changePasswordButton": "Change password",
+    "passwordChangedMessage": "Password changed. Please sign in with your new password."
+  }
+}

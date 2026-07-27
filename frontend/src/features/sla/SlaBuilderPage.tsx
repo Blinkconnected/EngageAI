@@ -21,6 +21,8 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { LoadingState } from '../../shared/components/LoadingState'
@@ -40,8 +42,10 @@ import {
 } from './api'
 import type { SlaPolicy } from './types'
 
-function targetLabel(minutes: number | null): string {
-  return minutes ? `${minutes} min` : '—'
+function targetLabel(minutes: number | null, t: TFunction<'sla'>): string {
+  return minutes
+    ? t('SlaBuilderPage.targetMinutesLabel', { minutes })
+    : t('SlaBuilderPage.noTargetDash')
 }
 
 function PoliciesTab({
@@ -55,6 +59,7 @@ function PoliciesTab({
   onOpenCreate: () => void
   onCloseCreate: () => void
 }) {
+  const { t } = useTranslation('sla')
   const policiesQuery = useSlaPoliciesQuery()
   const deleteMutation = useDeleteSlaPolicyMutation()
 
@@ -63,18 +68,20 @@ function PoliciesTab({
 
   return (
     <>
-      {policiesQuery.isPending && <LoadingState label="Loading SLA policies…" />}
+      {policiesQuery.isPending && (
+        <LoadingState label={t('SlaBuilderPage.policiesTab.loadingLabel')} />
+      )}
       {policiesQuery.isError && (
         <ErrorState error={policiesQuery.error} onRetry={() => policiesQuery.refetch()} />
       )}
       {policiesQuery.data && policiesQuery.data.length === 0 && (
         <EmptyState
-          title="No SLA policies yet"
-          description="Create a policy to set response/resolution targets, business hours awareness, and escalation rules — then assign it to a queue."
+          title={t('SlaBuilderPage.policiesTab.emptyTitle')}
+          description={t('SlaBuilderPage.policiesTab.emptyDescription')}
           action={
             canManage && (
               <Button variant="contained" onClick={onOpenCreate}>
-                New policy
+                {t('SlaBuilderPage.newPolicyButton')}
               </Button>
             )
           }
@@ -82,35 +89,49 @@ function PoliciesTab({
       )}
       {policiesQuery.data && policiesQuery.data.length > 0 && (
         <TableContainer>
-          <Table aria-label="SLA policies">
+          <Table aria-label={t('SlaBuilderPage.policiesTab.tableAriaLabel')}>
             <TableHead>
               <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>First response</TableCell>
-                <TableCell>Resolution</TableCell>
-                <TableCell>Warning</TableCell>
-                <TableCell>Business hours</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Queues</TableCell>
-                {canManage && <TableCell align="right">Actions</TableCell>}
+                <TableCell>{t('SlaBuilderPage.policiesTab.nameColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.policiesTab.firstResponseColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.policiesTab.resolutionColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.policiesTab.warningColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.policiesTab.businessHoursColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.policiesTab.statusColumn')}</TableCell>
+                <TableCell align="right">{t('SlaBuilderPage.policiesTab.queuesColumn')}</TableCell>
+                {canManage && (
+                  <TableCell align="right">
+                    {t('SlaBuilderPage.policiesTab.actionsColumn')}
+                  </TableCell>
+                )}
               </TableRow>
             </TableHead>
             <TableBody>
               {policiesQuery.data.map((policy) => {
                 const blockedReason =
                   policy.assigned_queue_count > 0
-                    ? `Reassign ${policy.assigned_queue_count === 1 ? 'the queue' : 'all queues'} using this policy before deleting it.`
+                    ? policy.assigned_queue_count === 1
+                      ? t('SlaBuilderPage.policiesTab.blockedReasonSingular')
+                      : t('SlaBuilderPage.policiesTab.blockedReasonPlural')
                     : null
                 return (
                   <TableRow key={policy.id}>
                     <TableCell>{policy.name}</TableCell>
-                    <TableCell>{targetLabel(policy.first_response_target_minutes)}</TableCell>
-                    <TableCell>{targetLabel(policy.resolution_target_minutes)}</TableCell>
+                    <TableCell>{targetLabel(policy.first_response_target_minutes, t)}</TableCell>
+                    <TableCell>{targetLabel(policy.resolution_target_minutes, t)}</TableCell>
                     <TableCell>{policy.warning_threshold_percent}%</TableCell>
-                    <TableCell>{policy.business_hours_aware ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>
+                      {policy.business_hours_aware
+                        ? t('SlaBuilderPage.yesLabel')
+                        : t('SlaBuilderPage.noLabel')}
+                    </TableCell>
                     <TableCell>
                       <Chip
-                        label={policy.is_active ? 'Active' : 'Inactive'}
+                        label={
+                          policy.is_active
+                            ? t('SlaBuilderPage.policiesTab.activeChipLabel')
+                            : t('SlaBuilderPage.policiesTab.inactiveChipLabel')
+                        }
                         size="small"
                         color={policy.is_active ? 'success' : 'default'}
                       />
@@ -119,22 +140,28 @@ function PoliciesTab({
                     {canManage && (
                       <TableCell align="right">
                         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                          <Tooltip title="Edit">
+                          <Tooltip title={t('SlaBuilderPage.policiesTab.editTooltip')}>
                             <IconButton
                               size="small"
                               onClick={() => setEditingPolicy(policy)}
-                              aria-label={`Edit ${policy.name}`}
+                              aria-label={t('SlaBuilderPage.policiesTab.editAriaLabel', {
+                                name: policy.name,
+                              })}
                             >
                               <EditOutlinedIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title={blockedReason ?? 'Delete'}>
+                          <Tooltip
+                            title={blockedReason ?? t('SlaBuilderPage.policiesTab.deleteTooltip')}
+                          >
                             <span>
                               <IconButton
                                 size="small"
                                 disabled={blockedReason !== null}
                                 onClick={() => setDeletingPolicy(policy)}
-                                aria-label={`Delete ${policy.name}`}
+                                aria-label={t('SlaBuilderPage.policiesTab.deleteAriaLabel', {
+                                  name: policy.name,
+                                })}
                               >
                                 <DeleteOutlineIcon fontSize="small" />
                               </IconButton>
@@ -157,9 +184,11 @@ function PoliciesTab({
           <SlaPolicyEditDialog policy={editingPolicy} onClose={() => setEditingPolicy(null)} />
           <ConfirmDialog
             open={Boolean(deletingPolicy)}
-            title="Remove SLA policy"
-            description={`Remove ${deletingPolicy?.name ?? ''}? This cannot be undone.`}
-            confirmLabel="Remove"
+            title={t('SlaBuilderPage.policiesTab.removeDialogTitle')}
+            description={t('SlaBuilderPage.policiesTab.removeDialogDescription', {
+              name: deletingPolicy?.name ?? '',
+            })}
+            confirmLabel={t('SlaBuilderPage.policiesTab.removeConfirmLabel')}
             confirmColor="error"
             isConfirming={deleteMutation.isPending}
             onConfirm={() => {
@@ -188,23 +217,26 @@ function HolidaysTab({
   onOpenCreate: () => void
   onCloseCreate: () => void
 }) {
+  const { t } = useTranslation('sla')
   const holidaysQuery = useHolidaysQuery()
   const deleteMutation = useDeleteHolidayMutation()
 
   return (
     <>
-      {holidaysQuery.isPending && <LoadingState label="Loading holidays…" />}
+      {holidaysQuery.isPending && (
+        <LoadingState label={t('SlaBuilderPage.holidaysTab.loadingLabel')} />
+      )}
       {holidaysQuery.isError && (
         <ErrorState error={holidaysQuery.error} onRetry={() => holidaysQuery.refetch()} />
       )}
       {holidaysQuery.data && holidaysQuery.data.length === 0 && (
         <EmptyState
-          title="No holidays yet"
-          description="Add a holiday to exclude it from business-hours-aware SLA deadlines."
+          title={t('SlaBuilderPage.holidaysTab.emptyTitle')}
+          description={t('SlaBuilderPage.holidaysTab.emptyDescription')}
           action={
             canManage && (
               <Button variant="contained" onClick={onOpenCreate}>
-                New holiday
+                {t('SlaBuilderPage.newHolidayButton')}
               </Button>
             )
           }
@@ -212,13 +244,17 @@ function HolidaysTab({
       )}
       {holidaysQuery.data && holidaysQuery.data.length > 0 && (
         <TableContainer>
-          <Table aria-label="Holidays">
+          <Table aria-label={t('SlaBuilderPage.holidaysTab.tableAriaLabel')}>
             <TableHead>
               <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Repeats yearly</TableCell>
-                {canManage && <TableCell align="right">Actions</TableCell>}
+                <TableCell>{t('SlaBuilderPage.holidaysTab.nameColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.holidaysTab.dateColumn')}</TableCell>
+                <TableCell>{t('SlaBuilderPage.holidaysTab.repeatsYearlyColumn')}</TableCell>
+                {canManage && (
+                  <TableCell align="right">
+                    {t('SlaBuilderPage.holidaysTab.actionsColumn')}
+                  </TableCell>
+                )}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -226,14 +262,20 @@ function HolidaysTab({
                 <TableRow key={holiday.id}>
                   <TableCell>{holiday.name}</TableCell>
                   <TableCell>{holiday.date}</TableCell>
-                  <TableCell>{holiday.recurs_annually ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>
+                    {holiday.recurs_annually
+                      ? t('SlaBuilderPage.yesLabel')
+                      : t('SlaBuilderPage.noLabel')}
+                  </TableCell>
                   {canManage && (
                     <TableCell align="right">
-                      <Tooltip title="Delete">
+                      <Tooltip title={t('SlaBuilderPage.holidaysTab.deleteTooltip')}>
                         <IconButton
                           size="small"
                           onClick={() => deleteMutation.mutate(holiday.id)}
-                          aria-label={`Delete ${holiday.name}`}
+                          aria-label={t('SlaBuilderPage.holidaysTab.deleteAriaLabel', {
+                            name: holiday.name,
+                          })}
                         >
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
@@ -252,12 +294,13 @@ function HolidaysTab({
   )
 }
 
-function formatDeadline(value: string | null): string {
-  if (!value) return 'No target set'
+function formatDeadline(value: string | null, t: TFunction<'sla'>): string {
+  if (!value) return t('SlaBuilderPage.previewTab.noTargetSet')
   return new Date(value).toLocaleString()
 }
 
 function PreviewTab() {
+  const { t } = useTranslation('sla')
   const policiesQuery = useSlaPoliciesQuery()
   const previewMutation = usePreviewSlaPolicyMutation()
   const [policyId, setPolicyId] = useState('')
@@ -271,12 +314,11 @@ function PreviewTab() {
   return (
     <Stack spacing={2} sx={{ maxWidth: 480 }}>
       <Typography variant="body2" color="text.secondary">
-        See exactly when a policy's warnings and deadlines would land for a hypothetical
-        conversation — no real data is touched.
+        {t('SlaBuilderPage.previewTab.description')}
       </Typography>
       <TextField
         select
-        label="Policy"
+        label={t('SlaBuilderPage.previewTab.policyLabel')}
         value={policyId}
         disabled={policiesQuery.isPending}
         onChange={(event) => setPolicyId(event.target.value)}
@@ -289,7 +331,7 @@ function PreviewTab() {
         ))}
       </TextField>
       <TextField
-        label="Conversation created at"
+        label={t('SlaBuilderPage.previewTab.conversationCreatedAtLabel')}
         type="datetime-local"
         value={startsAt}
         onChange={(event) => setStartsAt(event.target.value)}
@@ -302,7 +344,9 @@ function PreviewTab() {
         disabled={!policyId || !startsAt || previewMutation.isPending}
         sx={{ alignSelf: 'flex-start' }}
       >
-        {previewMutation.isPending ? 'Calculating…' : 'Preview'}
+        {previewMutation.isPending
+          ? t('SlaBuilderPage.previewTab.calculatingButton')
+          : t('SlaBuilderPage.previewTab.previewButton')}
       </Button>
 
       {previewMutation.isError && (
@@ -310,27 +354,29 @@ function PreviewTab() {
       )}
       {previewMutation.isSuccess && (
         <TableContainer>
-          <Table size="small" aria-label="SLA preview">
+          <Table size="small" aria-label={t('SlaBuilderPage.previewTab.tableAriaLabel')}>
             <TableBody>
               <TableRow>
-                <TableCell>First response warning</TableCell>
+                <TableCell>{t('SlaBuilderPage.previewTab.firstResponseWarningRow')}</TableCell>
                 <TableCell>
-                  {formatDeadline(previewMutation.data.first_response_warning_at)}
+                  {formatDeadline(previewMutation.data.first_response_warning_at, t)}
                 </TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>First response deadline</TableCell>
+                <TableCell>{t('SlaBuilderPage.previewTab.firstResponseDeadlineRow')}</TableCell>
                 <TableCell>
-                  {formatDeadline(previewMutation.data.first_response_deadline)}
+                  {formatDeadline(previewMutation.data.first_response_deadline, t)}
                 </TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>Resolution warning</TableCell>
-                <TableCell>{formatDeadline(previewMutation.data.resolution_warning_at)}</TableCell>
+                <TableCell>{t('SlaBuilderPage.previewTab.resolutionWarningRow')}</TableCell>
+                <TableCell>
+                  {formatDeadline(previewMutation.data.resolution_warning_at, t)}
+                </TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>Resolution deadline</TableCell>
-                <TableCell>{formatDeadline(previewMutation.data.resolution_deadline)}</TableCell>
+                <TableCell>{t('SlaBuilderPage.previewTab.resolutionDeadlineRow')}</TableCell>
+                <TableCell>{formatDeadline(previewMutation.data.resolution_deadline, t)}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -341,6 +387,7 @@ function PreviewTab() {
 }
 
 export function SlaBuilderPage() {
+  const { t } = useTranslation('sla')
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('sla_policies.manage')
   const [tab, setTab] = useState<'policies' | 'holidays' | 'preview'>('policies')
@@ -354,7 +401,7 @@ export function SlaBuilderPage() {
     canManage &&
     (tab === 'policies' ? (
       <Button variant="contained" startIcon={<AddIcon />} onClick={() => setPolicyCreateOpen(true)}>
-        New policy
+        {t('SlaBuilderPage.newPolicyButton')}
       </Button>
     ) : tab === 'holidays' ? (
       <Button
@@ -362,22 +409,22 @@ export function SlaBuilderPage() {
         startIcon={<AddIcon />}
         onClick={() => setHolidayCreateOpen(true)}
       >
-        New holiday
+        {t('SlaBuilderPage.newHolidayButton')}
       </Button>
     ) : null)
 
   return (
     <>
       <PageHeader
-        title="SLA Builder"
-        description="Define response and resolution targets, business hours and holidays, warning thresholds, and automatic escalation."
+        title={t('SlaBuilderPage.pageTitle')}
+        description={t('SlaBuilderPage.pageDescription')}
         actions={headerAction}
       />
 
       <Tabs value={tab} onChange={(_event, value) => setTab(value)} sx={{ mb: 2 }}>
-        <Tab label="Policies" value="policies" />
-        <Tab label="Holidays" value="holidays" />
-        <Tab label="Preview" value="preview" />
+        <Tab label={t('SlaBuilderPage.tabPolicies')} value="policies" />
+        <Tab label={t('SlaBuilderPage.tabHolidays')} value="holidays" />
+        <Tab label={t('SlaBuilderPage.tabPreview')} value="preview" />
       </Tabs>
 
       {tab === 'policies' && (

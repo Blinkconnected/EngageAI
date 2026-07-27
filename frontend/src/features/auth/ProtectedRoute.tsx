@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { Box, CircularProgress } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { useAppSelector } from '../../app/hooks'
 import { useCurrentUserQuery } from '../session/api'
 import { selectIsAuthenticated } from './authSlice'
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { t } = useTranslation('auth')
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
   const location = useLocation()
   const currentUserQuery = useCurrentUserQuery()
@@ -24,7 +26,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
           justifyContent: 'center',
         }}
       >
-        <CircularProgress aria-label="Loading your workspace" />
+        <CircularProgress aria-label={t('ProtectedRoute.loadingWorkspace')} />
       </Box>
     )
   }

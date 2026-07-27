@@ -9,6 +9,7 @@ import {
   ListItemText,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { useAllAgentsQuery } from '../agents/api'
 import type { Department } from './types'
@@ -24,21 +25,20 @@ export function DepartmentAgentsDialog({
   department: Department | null
   onClose: () => void
 }) {
+  const { t } = useTranslation('departments')
   const agentsQuery = useAllAgentsQuery()
   if (!department) return null
 
-  const members = (agentsQuery.data ?? []).filter(
-    (agent) => agent.department_id === department.id,
-  )
+  const members = (agentsQuery.data ?? []).filter((agent) => agent.department_id === department.id)
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>{department.name} — Agents</DialogTitle>
+      <DialogTitle>{t('DepartmentAgentsDialog.title', { name: department.name })}</DialogTitle>
       <DialogContent>
         {members.length === 0 ? (
           <EmptyState
-            title="No agents assigned"
-            description="Assign agents to this department from the Agents page's Edit dialog."
+            title={t('DepartmentAgentsDialog.emptyTitle')}
+            description={t('DepartmentAgentsDialog.emptyDescription')}
           />
         ) : (
           <List dense>
@@ -58,7 +58,7 @@ export function DepartmentAgentsDialog({
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('DepartmentAgentsDialog.closeButton')}</Button>
       </DialogActions>
     </Dialog>
   )

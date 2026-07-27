@@ -1,0 +1,57 @@
+{
+  "ChannelCredentialFields": {},
+  "EmailFields": {
+    "smtpSectionTitle": "Outbound (SMTP)",
+    "smtpHostLabel": "SMTP host",
+    "smtpHostPlaceholder": "smtp.gmail.com",
+    "smtpHostHelperText": "Your mailbox provider's outbound mail server",
+    "smtpPortLabel": "SMTP port",
+    "useTlsLabel": "Use TLS",
+    "smtpUsernameLabel": "SMTP username",
+    "smtpUsernamePlaceholder": "support@yourcompany.com",
+    "smtpPasswordLabel": "SMTP password",
+    "smtpPasswordHelperText": "Gmail/Outlook/etc. usually require an app-specific password, not your regular login password",
+    "fromAddressLabel": "From address",
+    "fromAddressHelperText": "Defaults to the SMTP username if left blank",
+    "imapToggleLabel": "Also receive replies (IMAP)",
+    "imapSectionTitle": "Inbound (IMAP)",
+    "imapHostLabel": "IMAP host",
+    "imapHostPlaceholder": "imap.gmail.com",
+    "imapPortLabel": "IMAP port",
+    "useSslLabel": "Use SSL",
+    "imapUsernameLabel": "IMAP username",
+    "imapPasswordLabel": "IMAP password",
+    "imapFolderLabel": "IMAP folder"
+  },
+  "GenericJsonFields": {
+    "credentialsLabel": "Credentials (JSON)",
+    "invalidJsonError": "Enter valid JSON.",
+    "credentialsHelperText": "Provider-specific credentials as a JSON object"
+  },
+  "TelegramFields": {
+    "alertBeforeLink": "Don't have a bot yet? Message",
+    "alertLinkText": "@BotFather",
+    "alertAfterLink": "on Telegram, send",
+    "alertAfterCode": ", and follow the prompts — it replies with the token below. No webhook setup needed afterward; BlinkEngage registers it automatically.",
+    "botTokenLabel": "Bot token",
+    "botTokenPlaceholder": "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+    "botTokenHelperText": "From @BotFather — the token printed after /newbot (or /token for an existing bot)"
+  },
+  "WebChatFields": {
+    "infoAlert": "Web Chat needs no external credentials — it's this product's own embeddable chat widget. Just save to create it, then use the webhook/session details on the next screen."
+  },
+  "WhatsAppFields": {
+    "alertBeforeLink": "Both values come from",
+    "alertLinkText": "Meta for Developers",
+    "alertAfterLink": "→ your app → WhatsApp → API Setup. Use a permanent System User token, not the temporary one shown by default (it expires in 24 hours).",
+    "phoneNumberIdLabel": "Phone number ID",
+    "phoneNumberIdPlaceholder": "109876543212345",
+    "phoneNumberIdHelperText": "From Meta's WhatsApp Business App Dashboard",
+    "accessTokenLabel": "Access token",
+    "accessTokenPlaceholder": "EAAG...permanent-system-user-token",
+    "accessTokenHelperText": "A permanent (System User) access token, not a short-lived one",
+    "verifyTokenLabel": "Verify token",
+    "verifyTokenHelperText": "You'll enter this same value in Meta's dashboard",
+    "generateButton": "Generate"
+  }
+}

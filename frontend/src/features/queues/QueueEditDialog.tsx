@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FormControlLabel, MenuItem, Switch, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useAllDepartmentsQuery } from '../departments/api'
@@ -13,13 +14,7 @@ function parseTargetMinutes(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-export function QueueEditDialog({
-  queue,
-  onClose,
-}: {
-  queue: Queue | null
-  onClose: () => void
-}) {
+export function QueueEditDialog({ queue, onClose }: { queue: Queue | null; onClose: () => void }) {
   if (!queue) return null
   // Keying on queue.id remounts fresh whenever a different queue is
   // opened, so fields simply initialize from props (see
@@ -28,6 +23,7 @@ export function QueueEditDialog({
 }
 
 function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () => void }) {
+  const { t } = useTranslation('queues')
   const [name, setName] = useState(queue.name)
   const [description, setDescription] = useState(queue.description ?? '')
   const [departmentId, setDepartmentId] = useState(queue.department_id ?? '')
@@ -69,8 +65,8 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
   return (
     <FormDialog
       open
-      title={`Edit ${queue.name}`}
-      submitLabel="Save changes"
+      title={t('QueueEditDialog.title', { name: queue.name })}
+      submitLabel={t('QueueEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -78,7 +74,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
       onClose={onClose}
     >
       <TextField
-        label="Name"
+        label={t('QueueEditDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -86,7 +82,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         autoFocus
       />
       <TextField
-        label="Description"
+        label={t('QueueEditDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
@@ -95,14 +91,14 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
       />
       <TextField
         select
-        label="Department"
+        label={t('QueueEditDialog.departmentLabel')}
         value={departmentId}
         disabled={departmentsQuery.isPending}
         onChange={(event) => setDepartmentId(event.target.value)}
         fullWidth
-        helperText="Organizational label only — doesn't restrict who can pick up work here."
+        helperText={t('QueueEditDialog.departmentHelperText')}
       >
-        <MenuItem value="">No department</MenuItem>
+        <MenuItem value="">{t('QueueEditDialog.noDepartmentOption')}</MenuItem>
         {departmentsQuery.data?.map((department) => (
           <MenuItem key={department.id} value={department.id}>
             {department.name}
@@ -111,11 +107,9 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
       </TextField>
       <TextField
         select
-        label="Assignment strategy"
+        label={t('QueueEditDialog.assignmentStrategyLabel')}
         value={assignmentStrategy}
-        onChange={(event) =>
-          setAssignmentStrategy(event.target.value as QueueAssignmentStrategy)
-        }
+        onChange={(event) => setAssignmentStrategy(event.target.value as QueueAssignmentStrategy)}
         fullWidth
       >
         {QUEUE_ASSIGNMENT_STRATEGIES.map((strategy) => (
@@ -126,15 +120,15 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
       </TextField>
       <TextField
         select
-        label="SLA policy"
+        label={t('QueueEditDialog.slaPolicyLabel')}
         value={slaPolicyId}
         disabled={slaPoliciesQuery.isPending}
         onChange={(event) => setSlaPolicyId(event.target.value)}
         fullWidth
         slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-        helperText="Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See SLA Builder."
+        helperText={t('QueueEditDialog.slaPolicyHelperText')}
       >
-        <MenuItem value="">None (use targets below)</MenuItem>
+        <MenuItem value="">{t('QueueEditDialog.noSlaPolicyOption')}</MenuItem>
         {slaPoliciesQuery.data?.map((policy) => (
           <MenuItem key={policy.id} value={policy.id}>
             {policy.name}
@@ -142,28 +136,28 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         ))}
       </TextField>
       <TextField
-        label="First response target (minutes)"
+        label={t('QueueEditDialog.firstResponseTargetLabel')}
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no first-response SLA on this queue. Ignored while an SLA policy above is set."
+        helperText={t('QueueEditDialog.firstResponseTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
-        label="Resolution target (minutes)"
+        label={t('QueueEditDialog.resolutionTargetLabel')}
         type="number"
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set."
+        helperText={t('QueueEditDialog.resolutionTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <FormControlLabel
         control={
           <Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
         }
-        label="Active"
+        label={t('QueueEditDialog.activeLabel')}
       />
     </FormDialog>
   )

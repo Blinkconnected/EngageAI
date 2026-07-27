@@ -1,0 +1,29 @@
+{
+  "ReportsPage": {
+    "title": "التقارير",
+    "description": "تقارير تنفيذية وتشغيلية وتقارير عن استخدام الذكاء الاصطناعي على مستوى شركتك.",
+    "tabExecutive": "تنفيذي",
+    "tabConversations": "المحادثات",
+    "tabAgentPerformance": "أداء الوكلاء",
+    "tabQueues": "قوائم الانتظار",
+    "tabSla": "اتفاقية مستوى الخدمة",
+    "tabCsat": "رضا العملاء",
+    "tabAiUsage": "استخدام الذكاء الاصطناعي",
+    "tabMyPerformance": "أدائي",
+    "invalidDateRangeWarning": "يرجى تصحيح النطاق الزمني أعلاه لعرض هذا التقرير."
+  },
+  "DateRangeFilter": {
+    "fromLabel": "من",
+    "toLabel": "إلى",
+    "fromToHelperText": "يجب أن يكون تاريخ \"من\" في نفس تاريخ \"إلى\" أو قبله.",
+    "quickPresetsAriaLabel": "نطاقات زمنية سريعة محددة مسبقًا",
+    "preset7d": "7 أيام",
+    "preset30d": "30 يومًا",
+    "preset90d": "90 يومًا"
+  },
+  "ReportExportButtons": {
+    "pdfButton": "PDF",
+    "excelButton": "Excel",
+    "exportFailedMessage": "فشل التصدير. يرجى المحاولة مرة أخرى."
+  }
+}

@@ -9,22 +9,12 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import { useAllAgentsQuery } from '../agents/api'
 import { useAllQueuesQuery } from '../queues/api'
 import type { EscalationAction, EscalationRule, EscalationTrigger } from './types'
-
-const TRIGGER_OPTIONS: { value: EscalationTrigger; label: string }[] = [
-  { value: 'warning', label: 'Warning threshold crossed' },
-  { value: 'breach', label: 'SLA breached' },
-]
-
-const ACTION_OPTIONS: { value: EscalationAction; label: string }[] = [
-  { value: 'reassign_queue', label: 'Reassign to another queue' },
-  { value: 'reassign_agent', label: 'Reassign to an agent' },
-  { value: 'notify', label: 'Notify agent(s)' },
-]
 
 function emptyRule(): EscalationRule {
   return { trigger: 'breach', action: 'notify', user_ids: [] }
@@ -37,8 +27,20 @@ export function EscalationRulesEditor({
   rules: EscalationRule[]
   onChange: (next: EscalationRule[]) => void
 }) {
+  const { t } = useTranslation('sla')
   const queuesQuery = useAllQueuesQuery()
   const agentsQuery = useAllAgentsQuery()
+
+  const TRIGGER_OPTIONS: { value: EscalationTrigger; label: string }[] = [
+    { value: 'warning', label: t('EscalationRulesEditor.triggerWarningLabel') },
+    { value: 'breach', label: t('EscalationRulesEditor.triggerBreachLabel') },
+  ]
+
+  const ACTION_OPTIONS: { value: EscalationAction; label: string }[] = [
+    { value: 'reassign_queue', label: t('EscalationRulesEditor.actionReassignQueueLabel') },
+    { value: 'reassign_agent', label: t('EscalationRulesEditor.actionReassignAgentLabel') },
+    { value: 'notify', label: t('EscalationRulesEditor.actionNotifyLabel') },
+  ]
 
   function updateRule(index: number, patch: Partial<EscalationRule>) {
     onChange(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)))
@@ -57,12 +59,11 @@ export function EscalationRulesEditor({
       {/* `component="p"` — subtitle2 defaults to `<h6>`, which would
           otherwise skip straight from the dialog's own `<h2>` title. */}
       <Typography variant="subtitle2" component="p" sx={{ fontWeight: 600 }}>
-        Escalation rules
+        {t('EscalationRulesEditor.sectionTitle')}
       </Typography>
       {rules.length === 0 && (
         <Typography variant="body2" color="text.secondary">
-          No escalation rules yet. Add one to automatically reassign or notify someone when this
-          policy's warning threshold is crossed or its SLA breaches.
+          {t('EscalationRulesEditor.emptyDescription')}
         </Typography>
       )}
       {rules.map((rule, index) => (
@@ -81,7 +82,7 @@ export function EscalationRulesEditor({
         >
           <TextField
             select
-            label="When"
+            label={t('EscalationRulesEditor.whenLabel')}
             value={rule.trigger}
             onChange={(event) =>
               updateRule(index, { trigger: event.target.value as EscalationTrigger })
@@ -97,7 +98,7 @@ export function EscalationRulesEditor({
           </TextField>
           <TextField
             select
-            label="Then"
+            label={t('EscalationRulesEditor.thenLabel')}
             value={rule.action}
             onChange={(event) =>
               updateRule(index, {
@@ -120,7 +121,7 @@ export function EscalationRulesEditor({
           {rule.action === 'reassign_queue' && (
             <TextField
               select
-              label="Target queue"
+              label={t('EscalationRulesEditor.targetQueueLabel')}
               value={rule.target_queue_id ?? ''}
               disabled={queuesQuery.isPending}
               onChange={(event) => updateRule(index, { target_queue_id: event.target.value })}
@@ -139,7 +140,7 @@ export function EscalationRulesEditor({
           {rule.action === 'reassign_agent' && (
             <TextField
               select
-              label="Target agent"
+              label={t('EscalationRulesEditor.targetAgentLabel')}
               value={rule.target_agent_id ?? ''}
               disabled={agentsQuery.isPending}
               onChange={(event) => updateRule(index, { target_agent_id: event.target.value })}
@@ -170,19 +171,25 @@ export function EscalationRulesEditor({
               onChange={(_event, selected) =>
                 updateRule(index, { user_ids: selected.map((agent) => agent.user_id) })
               }
-              renderInput={(params) => <TextField {...params} label="Notify" />}
+              renderInput={(params) => (
+                <TextField {...params} label={t('EscalationRulesEditor.notifyLabel')} />
+              )}
             />
           )}
 
-          <Tooltip title="Remove rule">
-            <IconButton size="small" onClick={() => removeRule(index)} aria-label="Remove rule">
+          <Tooltip title={t('EscalationRulesEditor.removeRuleTooltip')}>
+            <IconButton
+              size="small"
+              onClick={() => removeRule(index)}
+              aria-label={t('EscalationRulesEditor.removeRuleAriaLabel')}
+            >
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
       ))}
       <Button startIcon={<AddIcon />} onClick={addRule} sx={{ alignSelf: 'flex-start' }}>
-        Add escalation rule
+        {t('EscalationRulesEditor.addRuleButton')}
       </Button>
     </Stack>
   )

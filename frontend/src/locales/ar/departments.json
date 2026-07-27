@@ -1,0 +1,48 @@
+{
+  "DepartmentAgentsDialog": {
+    "title": "{{name}} — الوكلاء",
+    "emptyTitle": "لا يوجد وكلاء مُسنَدون",
+    "emptyDescription": "قم بإسناد الوكلاء إلى هذا القسم من مربع حوار التعديل في صفحة الوكلاء.",
+    "closeButton": "إغلاق"
+  },
+  "DepartmentCreateDialog": {
+    "title": "قسم جديد",
+    "submitLabel": "إنشاء قسم",
+    "nameLabel": "الاسم",
+    "descriptionLabel": "الوصف"
+  },
+  "DepartmentEditDialog": {
+    "title": "تعديل {{name}}",
+    "submitLabel": "حفظ التغييرات",
+    "nameLabel": "الاسم",
+    "descriptionLabel": "الوصف",
+    "activeLabel": "نشط"
+  },
+  "DepartmentsPage": {
+    "pageTitle": "الأقسام",
+    "pageDescription": "نظّم الوكلاء ضمن أقسام تمهيدًا للتوجيه وقوائم الانتظار والتقارير.",
+    "newDepartmentButton": "قسم جديد",
+    "columnName": "الاسم",
+    "columnDescription": "الوصف",
+    "columnAgents": "الوكلاء",
+    "columnStatus": "الحالة",
+    "columnActions": "الإجراءات",
+    "statusActive": "نشط",
+    "statusInactive": "غير نشط",
+    "editAction": "تعديل",
+    "deleteAction": "حذف",
+    "noValuePlaceholder": "—",
+    "agentCountAriaLabel": "عرض {{count}} وكيل (وكلاء) في {{name}}",
+    "searchLabel": "البحث في الأقسام",
+    "searchPlaceholder": "الاسم أو الوصف",
+    "emptyTitleSearch": "لم يتم العثور على أقسام",
+    "emptyTitleNoSearch": "لا توجد أقسام بعد",
+    "emptyDescriptionSearch": "جرّب بحثًا مختلفًا.",
+    "emptyDescriptionNoSearch": "أنشئ أول قسم لبدء تنظيم الوكلاء.",
+    "dataTableAriaLabel": "الأقسام",
+    "deleteDialogTitle": "إزالة القسم",
+    "deleteDialogDescriptionWithAgents": "إزالة {{name}}؟ سيتم إلغاء إسناد {{count}} وكيل (وكلاء) مُسنَدين إليه حاليًا.",
+    "deleteDialogDescriptionNoAgents": "إزالة {{name}}؟ لا يمكن التراجع عن هذا الإجراء.",
+    "deleteDialogConfirmLabel": "إزالة"
+  }
+}

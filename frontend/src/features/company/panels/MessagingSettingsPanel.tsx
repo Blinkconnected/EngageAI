@@ -8,11 +8,13 @@ import {
   Switch,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import type { Company } from '../types'
 
 export function MessagingSettingsPanel({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettingsExtra')
   const [typingIndicatorEnabled, setTypingIndicatorEnabled] = useState(
     company.settings.messaging?.typing_indicator_enabled ?? true,
   )
@@ -41,11 +43,10 @@ export function MessagingSettingsPanel({ company }: { company: Company }) {
                 onChange={(event) => handleChange(event.target.checked)}
               />
             }
-            label="Show agents' typing indicator to customers"
+            label={t('MessagingSettingsPanel.typingIndicatorLabel')}
           />
           <Typography variant="body2" color="text.secondary">
-            When on, customers see a live "agent is typing…" indicator on channels that support
-            it (Web Chat, WhatsApp, Telegram).
+            {t('MessagingSettingsPanel.description')}
           </Typography>
         </Stack>
       </CardContent>

@@ -57,8 +57,20 @@ export const MOCK_AGENT_DASHBOARD: AgentDashboard = {
 }
 
 export const MOCK_PERFORMANCE_ROWS: AgentPerformanceRow[] = [
-  { agent_id: 'agent-1', agent_name: 'Alex Agent', conversations_assigned: 10, conversations_closed: 8, messages_sent: 45 },
-  { agent_id: 'agent-2', agent_name: 'Jamie Rivera', conversations_assigned: 6, conversations_closed: 4, messages_sent: 22 },
+  {
+    agent_id: 'agent-1',
+    agent_name: 'Alex Agent',
+    conversations_assigned: 10,
+    conversations_closed: 8,
+    messages_sent: 45,
+  },
+  {
+    agent_id: 'agent-2',
+    agent_name: 'Jamie Rivera',
+    conversations_assigned: 6,
+    conversations_closed: 4,
+    messages_sent: 22,
+  },
 ]
 
 export const MOCK_QUEUE_ROWS: QueueStatsRow[] = [
@@ -113,7 +125,9 @@ export const reportsHandlers = [
   http.get(`${API_BASE_URL}/reports/executive-dashboard`, ({ request }) =>
     isExportRequest(request) ? exportResponse() : HttpResponse.json(MOCK_EXECUTIVE_DASHBOARD),
   ),
-  http.get(`${API_BASE_URL}/reports/agent-dashboard`, () => HttpResponse.json(MOCK_AGENT_DASHBOARD)),
+  http.get(`${API_BASE_URL}/reports/agent-dashboard`, () =>
+    HttpResponse.json(MOCK_AGENT_DASHBOARD),
+  ),
   http.get(`${API_BASE_URL}/reports/conversations`, ({ request }) =>
     isExportRequest(request) ? exportResponse() : HttpResponse.json(MOCK_CONVERSATION_STATS),
   ),

@@ -1,0 +1,55 @@
+{
+  "RoleCreateDialog": {
+    "title": "دور جديد",
+    "submitLabel": "إنشاء دور",
+    "loadingPermissions": "جارٍ تحميل الصلاحيات…",
+    "nameLabel": "الاسم",
+    "descriptionLabel": "الوصف"
+  },
+  "RoleEditDialog": {
+    "title": "تعديل {{name}}",
+    "submitLabel": "حفظ التغييرات",
+    "nameLabel": "الاسم",
+    "systemRoleNameHelperText": "لا يمكن تغيير اسم دور من أدوار النظام.",
+    "descriptionLabel": "الوصف",
+    "ownerRoleInfo": "يملك دور المالك جميع الصلاحيات دائمًا ولا يمكن تغييره.",
+    "loadingPermissions": "جارٍ تحميل الصلاحيات…"
+  },
+  "RoleMembersDialog": {
+    "membersTitle": "أعضاء {{name}}",
+    "membersTitleFallback": "الأعضاء",
+    "loadingMembers": "جارٍ تحميل الأعضاء…",
+    "emptyTitle": "لا يوجد من يملك هذا الدور",
+    "emptyDescription": "قم بإسناده من صفحة الوكلاء.",
+    "goToAgentsButton": "الذهاب إلى الوكلاء",
+    "closeButton": "إغلاق"
+  },
+  "RolesPage": {
+    "pageTitle": "الأدوار والصلاحيات",
+    "pageDescription": "عرّف أدوارًا مخصصة إلى جانب الأدوار المدمجة: المالك، والمسؤول، والوكيل، وتحكّم بدقة فيما يمكن لكل دور القيام به.",
+    "newRoleButton": "دور جديد",
+    "loadingRoles": "جارٍ تحميل الأدوار…",
+    "tableAriaLabel": "الأدوار",
+    "columnName": "الاسم",
+    "columnDescription": "الوصف",
+    "columnType": "النوع",
+    "columnPermissions": "الصلاحيات",
+    "columnMembers": "الأعضاء",
+    "columnActions": "الإجراءات",
+    "noValuePlaceholder": "—",
+    "typeSystem": "نظام",
+    "typeCustom": "مخصص",
+    "membersTooltip": "الأعضاء",
+    "viewMembersAriaLabel": "عرض أعضاء {{name}}",
+    "editTooltip": "تعديل",
+    "editAriaLabel": "تعديل {{name}}",
+    "deleteTooltip": "حذف",
+    "deleteAriaLabel": "حذف {{name}}",
+    "systemRoleDeleteBlocked": "لا يمكن حذف أدوار النظام.",
+    "reassignMemberSingular": "أعد إسناد عضوه قبل حذف هذا الدور.",
+    "reassignMemberPlural": "أعد إسناد جميع أعضائه قبل حذف هذا الدور.",
+    "removeRoleDialogTitle": "إزالة الدور",
+    "removeRoleDialogDescription": "إزالة {{name}}؟ لا يمكن التراجع عن هذا الإجراء.",
+    "removeButton": "إزالة"
+  }
+}

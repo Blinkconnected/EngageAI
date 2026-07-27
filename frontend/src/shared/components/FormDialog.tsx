@@ -8,6 +8,7 @@ import {
   DialogTitle,
   Stack,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 
 interface FormDialogProps {
   open: boolean
@@ -30,14 +31,16 @@ export function FormDialog({
   open,
   title,
   children,
-  submitLabel = 'Save',
+  submitLabel,
   isSubmitting = false,
   error,
   errorMessage,
   onSubmit,
   onClose,
 }: FormDialogProps) {
+  const { t } = useTranslation('shared')
   const titleId = useId()
+  const resolvedSubmitLabel = submitLabel ?? t('FormDialog.saveButton')
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -50,16 +53,18 @@ export function FormDialog({
       <form onSubmit={handleSubmit}>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            {error != null && <Alert severity="error">{errorMessage ?? 'Save failed.'}</Alert>}
+            {error != null && (
+              <Alert severity="error">{errorMessage ?? t('FormDialog.saveFailedMessage')}</Alert>
+            )}
             {children}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={onClose} disabled={isSubmitting}>
-            Cancel
+            {t('FormDialog.cancelButton')}
           </Button>
           <Button type="submit" variant="contained" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving…' : submitLabel}
+            {isSubmitting ? t('FormDialog.savingButton') : resolvedSubmitLabel}
           </Button>
         </DialogActions>
       </form>

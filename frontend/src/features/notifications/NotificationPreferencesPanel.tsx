@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Paper,
@@ -21,18 +22,21 @@ import {
 import { useNotificationPreferencesQuery, useUpdateNotificationPreferenceMutation } from './api'
 import { NOTIFICATION_CHANNELS, type NotificationChannel } from './types'
 
-const CHANNEL_LABELS: Record<NotificationChannel, string> = {
-  email: 'Email',
-  browser: 'Browser',
-  sound: 'Sound',
-}
-
 export function NotificationPreferencesPanel() {
+  const { t } = useTranslation('notifications')
   const preferencesQuery = useNotificationPreferencesQuery()
   const updateMutation = useUpdateNotificationPreferenceMutation()
   const [browserPermission, setBrowserPermission] = useState(getBrowserNotificationPermission())
 
-  if (preferencesQuery.isPending) return <LoadingState label="Loading preferences…" />
+  const CHANNEL_LABELS: Record<NotificationChannel, string> = {
+    email: t('NotificationPreferencesPanel.channelLabelEmail'),
+    browser: t('NotificationPreferencesPanel.channelLabelBrowser'),
+    sound: t('NotificationPreferencesPanel.channelLabelSound'),
+  }
+
+  if (preferencesQuery.isPending) {
+    return <LoadingState label={t('NotificationPreferencesPanel.loadingLabel')} />
+  }
   if (preferencesQuery.isError) {
     return <ErrorState error={preferencesQuery.error} onRetry={() => preferencesQuery.refetch()} />
   }
@@ -65,19 +69,18 @@ export function NotificationPreferencesPanel() {
   return (
     <Stack spacing={2}>
       {!isBrowserNotificationSupported() && (
-        <Alert severity="info">Browser notifications aren't supported in this browser.</Alert>
+        <Alert severity="info">{t('NotificationPreferencesPanel.browserNotSupportedAlert')}</Alert>
       )}
       {isBrowserNotificationSupported() && browserPermission === 'denied' && (
-        <Alert severity="warning">
-          Browser notifications are blocked at the browser level. Enable them in this site's
-          browser settings to use this channel.
-        </Alert>
+        <Alert severity="warning">{t('NotificationPreferencesPanel.browserBlockedAlert')}</Alert>
       )}
       <TableContainer component={Paper} variant="outlined">
-        <Table size="small" aria-label="Notification preferences">
+        <Table size="small" aria-label={t('NotificationPreferencesPanel.tableAriaLabel')}>
           <TableHead>
             <TableRow>
-              <TableCell>Notification type</TableCell>
+              <TableCell>
+                {t('NotificationPreferencesPanel.notificationTypeColumnHeader')}
+              </TableCell>
               {NOTIFICATION_CHANNELS.map((channel) => (
                 <TableCell key={channel} align="center">
                   {CHANNEL_LABELS[channel]}
@@ -100,7 +103,10 @@ export function NotificationPreferencesPanel() {
                       }
                       slotProps={{
                         input: {
-                          'aria-label': `${labelByType.get(notificationType)} via ${CHANNEL_LABELS[channel]}`,
+                          'aria-label': t('NotificationPreferencesPanel.toggleAriaLabel', {
+                            type: labelByType.get(notificationType),
+                            channel: CHANNEL_LABELS[channel],
+                          }),
                         },
                       }}
                     />

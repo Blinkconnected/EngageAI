@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import i18n from '../i18n'
 import { configure } from '@testing-library/dom'
 import { afterAll, afterEach, beforeAll, expect } from 'vitest'
 import * as axeMatchers from 'vitest-axe/matchers'
@@ -34,7 +35,7 @@ expect.extend(axeMatchers)
 configure({ asyncUtilTimeout: 5000 })
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => {
+afterEach(async () => {
   server.resetHandlers()
   resetAgentsMock()
   resetChannelsMock()
@@ -48,5 +49,13 @@ afterEach(() => {
   resetRolesMock()
   resetSlaMock()
   resetCsatMock()
+  // Some panels (e.g. company Language settings) call `i18n.changeLanguage`
+  // as a real side effect of saving. i18next is a module-level singleton,
+  // so without resetting it here that language leaks into every later test
+  // in the run — reset it back to the app's default so each test starts
+  // from the same baseline regardless of what a previous test saved.
+  if (i18n.language !== 'en') {
+    await i18n.changeLanguage('en')
+  }
 })
 afterAll(() => server.close())

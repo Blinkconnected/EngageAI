@@ -9,9 +9,7 @@ import { MessageThread } from './MessageThread'
 
 function renderWithTyping(conversationId: string, isTyping: boolean) {
   return renderAuthenticated(
-    <RealtimeContext.Provider
-      value={{ sendTyping: () => {}, isCustomerTyping: () => isTyping }}
-    >
+    <RealtimeContext.Provider value={{ sendTyping: () => {}, isCustomerTyping: () => isTyping }}>
       <MessageThread conversationId={conversationId} />
     </RealtimeContext.Provider>,
   )

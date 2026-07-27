@@ -1,0 +1,48 @@
+{
+  "DepartmentAgentsDialog": {
+    "title": "{{name}} — Agents",
+    "emptyTitle": "No agents assigned",
+    "emptyDescription": "Assign agents to this department from the Agents page's Edit dialog.",
+    "closeButton": "Close"
+  },
+  "DepartmentCreateDialog": {
+    "title": "New department",
+    "submitLabel": "Create department",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description"
+  },
+  "DepartmentEditDialog": {
+    "title": "Edit {{name}}",
+    "submitLabel": "Save changes",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "activeLabel": "Active"
+  },
+  "DepartmentsPage": {
+    "pageTitle": "Departments",
+    "pageDescription": "Organize agents into departments to prepare for routing, queues and reporting.",
+    "newDepartmentButton": "New department",
+    "columnName": "Name",
+    "columnDescription": "Description",
+    "columnAgents": "Agents",
+    "columnStatus": "Status",
+    "columnActions": "Actions",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "editAction": "Edit",
+    "deleteAction": "Delete",
+    "noValuePlaceholder": "—",
+    "agentCountAriaLabel": "View {{count}} agent(s) in {{name}}",
+    "searchLabel": "Search departments",
+    "searchPlaceholder": "Name or description",
+    "emptyTitleSearch": "No departments found",
+    "emptyTitleNoSearch": "No departments yet",
+    "emptyDescriptionSearch": "Try a different search.",
+    "emptyDescriptionNoSearch": "Create your first department to start organizing agents.",
+    "dataTableAriaLabel": "Departments",
+    "deleteDialogTitle": "Remove department",
+    "deleteDialogDescriptionWithAgents": "Remove {{name}}? {{count}} agent(s) currently assigned to it will be unassigned.",
+    "deleteDialogDescriptionNoAgents": "Remove {{name}}? This cannot be undone.",
+    "deleteDialogConfirmLabel": "Remove"
+  }
+}

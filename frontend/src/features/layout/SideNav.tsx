@@ -1,5 +1,6 @@
 import { Box, List, ListItemButton, ListItemIcon, ListItemText, Toolbar } from '@mui/material'
 import { NavLink, matchPath, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useIsErpEnabled } from '../company/api'
@@ -8,6 +9,7 @@ import logoDark from '../../assets/logo-dark.png'
 import { NAV_ITEMS } from './navConfig'
 
 export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslation('layout')
   const { hasPermission } = usePermissions()
   const location = useLocation()
   const isErpEnabled = useIsErpEnabled()
@@ -25,11 +27,11 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
         <Box
           component="img"
           src={themeMode === 'dark' ? logoDark : logoLight}
-          alt="Blink Engage"
+          alt={t('SideNav.logoAlt')}
           sx={{ height: 28, width: 'auto' }}
         />
       </Toolbar>
-      <List component="nav" aria-label="Main navigation" sx={{ px: 1 }}>
+      <List component="nav" aria-label={t('SideNav.mainNavigationAriaLabel')} sx={{ px: 1 }}>
         {visibleItems.map((item) => {
           // Prefix match (not exact equality) so a nested/detail route —
           // a conversation, a customer profile, a non-default Settings/
@@ -52,7 +54,7 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
               <ListItemIcon sx={{ minWidth: 40 }}>
                 <Icon fontSize="small" />
               </ListItemIcon>
-              <ListItemText primary={item.label} />
+              <ListItemText primary={t(item.label)} />
             </ListItemButton>
           )
         })}

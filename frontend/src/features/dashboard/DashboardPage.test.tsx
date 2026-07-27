@@ -74,7 +74,7 @@ describe('DashboardPage', () => {
     expect(within(unassignedCard).getByText('3')).toBeInTheDocument()
   })
 
-  it('renders the team workload table with each agent\'s open/pending/total counts', async () => {
+  it("renders the team workload table with each agent's open/pending/total counts", async () => {
     renderAuthenticated(<DashboardPage />)
 
     // See mocks/handlers/dashboard.ts: Grace Blake has 5 open, 1 pending,

@@ -1,0 +1,38 @@
+{
+  "NotificationBell": {
+    "title": "Notifications",
+    "ariaLabel": "Notifications",
+    "ariaLabelUnread": "Notifications ({{count}} unread)",
+    "markAllReadButton": "Mark all read",
+    "emptyStateTitle": "No notifications",
+    "viewAllButton": "View all notifications"
+  },
+  "NotificationHistoryPanel": {
+    "loadingLabel": "Loading notifications…",
+    "unreadOnlyLabel": "Unread only",
+    "markAllReadButton": "Mark all read",
+    "emptyStateTitle": "No notifications",
+    "emptyStateDescriptionUnread": "You're all caught up — no unread notifications.",
+    "emptyStateDescriptionAll": "Notifications about your conversations and workflows will appear here.",
+    "deleteTooltip": "Delete",
+    "deleteNotificationAriaLabel": "Delete notification: {{title}}",
+    "loadMoreButton": "Load more"
+  },
+  "NotificationPreferencesPanel": {
+    "loadingLabel": "Loading preferences…",
+    "browserNotSupportedAlert": "Browser notifications aren't supported in this browser.",
+    "browserBlockedAlert": "Browser notifications are blocked at the browser level. Enable them in this site's browser settings to use this channel.",
+    "notificationTypeColumnHeader": "Notification type",
+    "tableAriaLabel": "Notification preferences",
+    "channelLabelEmail": "Email",
+    "channelLabelBrowser": "Browser",
+    "channelLabelSound": "Sound",
+    "toggleAriaLabel": "{{type}} via {{channel}}"
+  },
+  "NotificationsPage": {
+    "title": "Notifications",
+    "description": "Everything you've been notified about, and how you'd like to hear about it.",
+    "historyTab": "History",
+    "preferencesTab": "Preferences"
+  }
+}

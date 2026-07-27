@@ -1,0 +1,68 @@
+{
+  "AgentCreateDialog": {
+    "title": "New agent",
+    "submitLabel": "Create agent",
+    "fullNameLabel": "Full name",
+    "emailLabel": "Email",
+    "initialPasswordLabel": "Initial password",
+    "initialPasswordHelperText": "At least 10 characters, including a letter and a digit.",
+    "titleLabel": "Title",
+    "departmentLabel": "Department",
+    "departmentNoneOption": "None"
+  },
+  "AgentEditDialog": {
+    "title": "Edit {{name}}",
+    "submitLabel": "Save changes",
+    "titleLabel": "Title",
+    "departmentLabel": "Department",
+    "departmentNoneOption": "None",
+    "statusLabel": "Status",
+    "statusOnline": "online",
+    "statusAway": "away",
+    "statusBusy": "busy",
+    "statusOffline": "offline"
+  },
+  "AgentResetPasswordDialog": {
+    "title": "Reset password for {{name}}",
+    "submitLabel": "Reset password",
+    "newPasswordLabel": "New password",
+    "newPasswordHelperText": "At least 10 characters, including a letter and a digit. The agent will be signed out everywhere and must use this password to log back in."
+  },
+  "AgentRoleDialog": {
+    "changeRoleTitle": "Change role",
+    "loadingLabel": "Loading…",
+    "title": "Change {{name}}'s role",
+    "submitLabel": "Save changes",
+    "roleLabel": "Role"
+  },
+  "AgentsPage": {
+    "columnName": "Name",
+    "columnEmail": "Email",
+    "columnTitle": "Title",
+    "columnDepartment": "Department",
+    "columnStatus": "Status",
+    "columnActions": "Actions",
+    "emptyValue": "—",
+    "statusOnline": "online",
+    "statusAway": "away",
+    "statusBusy": "busy",
+    "statusOffline": "offline",
+    "actionEdit": "Edit",
+    "actionResetPassword": "Reset password",
+    "actionChangeRole": "Change role",
+    "actionDelete": "Delete",
+    "pageTitle": "Agents",
+    "pageDescription": "Everyone in your company who can handle conversations.",
+    "newAgentButton": "New agent",
+    "searchLabel": "Search agents",
+    "searchPlaceholder": "Name, email, or title",
+    "emptyStateTitleSearch": "No agents found",
+    "emptyStateTitleDefault": "No agents yet",
+    "emptyStateDescriptionSearch": "Try a different search.",
+    "emptyStateDescriptionDefault": "Create your first agent to start handling conversations.",
+    "dataTableAriaLabel": "Agents",
+    "removeAgentTitle": "Remove agent",
+    "removeAgentDescription": "Remove {{name}} from your company? They will lose access immediately.",
+    "removeAgentConfirmLabel": "Remove"
+  }
+}

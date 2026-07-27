@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Card, CardContent, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
 import type { GridColDef } from '@mui/x-data-grid'
+import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { ErrorState } from '../../../shared/components/ErrorState'
 import { LoadingState } from '../../../shared/components/LoadingState'
@@ -10,21 +11,6 @@ import { useConversationsReportQuery } from '../api'
 import { ReportDataGrid } from '../ReportDataGrid'
 import { ReportExportButtons } from '../ReportExportButtons'
 import type { ConversationStatsRow, DateRange } from '../types'
-
-const COLUMNS: GridColDef<ConversationStatsRow>[] = [
-  { field: 'stat_date', headerName: 'Date', flex: 1 },
-  {
-    field: 'channel_type',
-    headerName: 'Channel',
-    flex: 1,
-    valueFormatter: (value: string) => channelTypeLabel(value),
-  },
-  { field: 'opened', headerName: 'Opened', flex: 1, type: 'number' },
-  { field: 'closed', headerName: 'Closed', flex: 1, type: 'number' },
-  { field: 'resolved', headerName: 'Resolved', flex: 1, type: 'number' },
-  { field: 'first_response_breached', headerName: '1st resp. breaches', flex: 1, type: 'number' },
-  { field: 'resolution_breached', headerName: 'Resolution breaches', flex: 1, type: 'number' },
-]
 
 function aggregateByChannel(rows: ConversationStatsRow[]) {
   const totals = new Map<string, { opened: number; closed: number; resolved: number }>()
@@ -40,8 +26,55 @@ function aggregateByChannel(rows: ConversationStatsRow[]) {
 }
 
 export function ConversationsReportPanel({ range }: { range: DateRange }) {
+  const { t, i18n } = useTranslation('reportsPanels')
   const query = useConversationsReportQuery(range)
   const [channelFilter, setChannelFilter] = useState('all')
+
+  const columns: GridColDef<ConversationStatsRow>[] = useMemo(
+    () => [
+      { field: 'stat_date', headerName: t('ConversationsReportPanel.columns.date'), flex: 1 },
+      {
+        field: 'channel_type',
+        headerName: t('ConversationsReportPanel.columns.channel'),
+        flex: 1,
+        valueFormatter: (value: string) => channelTypeLabel(value),
+      },
+      {
+        field: 'opened',
+        headerName: t('ConversationsReportPanel.columns.opened'),
+        flex: 1,
+        type: 'number',
+      },
+      {
+        field: 'closed',
+        headerName: t('ConversationsReportPanel.columns.closed'),
+        flex: 1,
+        type: 'number',
+      },
+      {
+        field: 'resolved',
+        headerName: t('ConversationsReportPanel.columns.resolved'),
+        flex: 1,
+        type: 'number',
+      },
+      {
+        field: 'first_response_breached',
+        headerName: t('ConversationsReportPanel.columns.firstRespBreaches'),
+        flex: 1,
+        type: 'number',
+      },
+      {
+        field: 'resolution_breached',
+        headerName: t('ConversationsReportPanel.columns.resolutionBreaches'),
+        flex: 1,
+        type: 'number',
+      },
+    ],
+    // i18n.language isn't referenced by name in this callback, but t()'s
+    // output depends on it, so it must stay a real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, i18n.language],
+  )
 
   const channels = useMemo(
     () => Array.from(new Set((query.data ?? []).map((row) => row.channel_type))).sort(),
@@ -55,7 +88,7 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
     [query.data, channelFilter],
   )
 
-  if (query.isPending) return <LoadingState label="Loading conversations report…" />
+  if (query.isPending) return <LoadingState label={t('ConversationsReportPanel.loadingLabel')} />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
 
   const chartData = aggregateByChannel(filteredRows)
@@ -70,12 +103,12 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
         <TextField
           select
           size="small"
-          label="Channel"
+          label={t('ConversationsReportPanel.channelSelectLabel')}
           value={channelFilter}
           onChange={(event) => setChannelFilter(event.target.value)}
           sx={{ minWidth: 180 }}
         >
-          <MenuItem value="all">All channels</MenuItem>
+          <MenuItem value="all">{t('ConversationsReportPanel.allChannelsOption')}</MenuItem>
           {channels.map((channel) => (
             <MenuItem key={channel} value={channel}>
               {channelTypeLabel(channel)}
@@ -90,8 +123,9 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
           />
           {channelFilter !== 'all' && (
             <Typography variant="caption" color="text.secondary">
-              Exports include all channels for this date range, not just{' '}
-              {channelTypeLabel(channelFilter)}.
+              {t('ConversationsReportPanel.exportsNotice', {
+                channel: channelTypeLabel(channelFilter),
+              })}
             </Typography>
           )}
         </Stack>
@@ -99,15 +133,15 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
 
       {filteredRows.length === 0 ? (
         <EmptyState
-          title="No conversation activity"
-          description="No conversations were opened, closed, or resolved in this date range."
+          title={t('ConversationsReportPanel.emptyTitle')}
+          description={t('ConversationsReportPanel.emptyDescription')}
         />
       ) : (
         <>
           <Card variant="outlined" sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }} gutterBottom>
-                Totals by channel
+                {t('ConversationsReportPanel.chartTitle')}
               </Typography>
               <BarChart
                 height={300}
@@ -120,18 +154,18 @@ export function ConversationsReportPanel({ range }: { range: DateRange }) {
                   },
                 ]}
                 series={[
-                  { dataKey: 'opened', label: 'Opened' },
-                  { dataKey: 'closed', label: 'Closed' },
-                  { dataKey: 'resolved', label: 'Resolved' },
+                  { dataKey: 'opened', label: t('ConversationsReportPanel.seriesOpened') },
+                  { dataKey: 'closed', label: t('ConversationsReportPanel.seriesClosed') },
+                  { dataKey: 'resolved', label: t('ConversationsReportPanel.seriesResolved') },
                 ]}
               />
             </CardContent>
           </Card>
           <ReportDataGrid
             rows={filteredRows}
-            columns={COLUMNS}
+            columns={columns}
             getRowId={(row) => `${row.stat_date}-${row.channel_type}`}
-            ariaLabel="Conversations report"
+            ariaLabel={t('ConversationsReportPanel.gridAriaLabel')}
           />
         </>
       )}

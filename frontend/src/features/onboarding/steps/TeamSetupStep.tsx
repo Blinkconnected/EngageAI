@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Avatar,
@@ -21,6 +22,7 @@ import { useAllDepartmentsQuery, useCreateDepartmentMutation } from '../../depar
 import { useCurrentUserQuery } from '../../session/api'
 
 function OwnerSummary() {
+  const { t } = useTranslation('onboarding')
   const { data: currentUser } = useCurrentUserQuery()
   if (!currentUser) return null
 
@@ -37,7 +39,9 @@ function OwnerSummary() {
               {currentUser.email}
             </Typography>
           </Stack>
-          {currentUser.is_company_owner && <Chip label="Owner" color="primary" size="small" />}
+          {currentUser.is_company_owner && (
+            <Chip label={t('TeamSetupStep.ownerChip')} color="primary" size="small" />
+          )}
         </Stack>
       </CardContent>
     </Card>
@@ -45,6 +49,7 @@ function OwnerSummary() {
 }
 
 function InviteAgentForm() {
+  const { t } = useTranslation('onboarding')
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const createMutation = useCreateAgentMutation()
@@ -72,10 +77,10 @@ function InviteAgentForm() {
       <CardContent>
         <Stack spacing={2} component="form" onSubmit={handleSubmit}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            Invite agents
+            {t('TeamSetupStep.inviteAgentsTitle')}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            They'll receive an email with a temporary password to sign in.
+            {t('TeamSetupStep.inviteAgentsDescription')}
           </Typography>
 
           {createMutation.isError && (
@@ -84,14 +89,14 @@ function InviteAgentForm() {
 
           <Stack direction="row" spacing={2}>
             <TextField
-              label="Full name"
+              label={t('TeamSetupStep.fullNameLabel')}
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
               required
               fullWidth
             />
             <TextField
-              label="Email"
+              label={t('TeamSetupStep.emailLabel')}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -105,11 +110,13 @@ function InviteAgentForm() {
             disabled={createMutation.isPending}
             sx={{ alignSelf: 'flex-start' }}
           >
-            {createMutation.isPending ? 'Inviting…' : 'Invite agent'}
+            {createMutation.isPending
+              ? t('TeamSetupStep.invitingButton')
+              : t('TeamSetupStep.inviteAgentButton')}
           </Button>
 
           {agentsQuery.data && agentsQuery.data.length > 0 && (
-            <List dense subheader="Agents on your team">
+            <List dense subheader={t('TeamSetupStep.agentsOnTeamSubheader')}>
               {agentsQuery.data.map((agent) => (
                 <ListItem key={agent.id}>
                   <ListItemAvatar>
@@ -127,6 +134,7 @@ function InviteAgentForm() {
 }
 
 function CreateDepartmentForm() {
+  const { t } = useTranslation('onboarding')
   const [name, setName] = useState('')
   const createMutation = useCreateDepartmentMutation()
   // Real, server-side departments — see InviteAgentForm's identical
@@ -143,7 +151,7 @@ function CreateDepartmentForm() {
       <CardContent>
         <Stack spacing={2} component="form" onSubmit={handleSubmit}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            Create departments
+            {t('TeamSetupStep.createDepartmentsTitle')}
           </Typography>
 
           {createMutation.isError && (
@@ -152,7 +160,7 @@ function CreateDepartmentForm() {
 
           <Stack direction="row" spacing={2}>
             <TextField
-              label="Department name"
+              label={t('TeamSetupStep.departmentNameLabel')}
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
@@ -164,7 +172,9 @@ function CreateDepartmentForm() {
               disabled={createMutation.isPending}
               sx={{ flexShrink: 0 }}
             >
-              {createMutation.isPending ? 'Creating…' : 'Create'}
+              {createMutation.isPending
+                ? t('TeamSetupStep.creatingButton')
+                : t('TeamSetupStep.createButton')}
             </Button>
           </Stack>
 

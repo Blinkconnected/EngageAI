@@ -1,0 +1,38 @@
+{
+  "NotificationBell": {
+    "title": "الإشعارات",
+    "ariaLabel": "الإشعارات",
+    "ariaLabelUnread": "الإشعارات ({{count}} غير مقروءة)",
+    "markAllReadButton": "تحديد الكل كمقروء",
+    "emptyStateTitle": "لا توجد إشعارات",
+    "viewAllButton": "عرض جميع الإشعارات"
+  },
+  "NotificationHistoryPanel": {
+    "loadingLabel": "جارٍ تحميل الإشعارات…",
+    "unreadOnlyLabel": "غير المقروءة فقط",
+    "markAllReadButton": "تحديد الكل كمقروء",
+    "emptyStateTitle": "لا توجد إشعارات",
+    "emptyStateDescriptionUnread": "لقد أنجزت كل شيء — لا توجد إشعارات غير مقروءة.",
+    "emptyStateDescriptionAll": "ستظهر هنا الإشعارات المتعلقة بمحادثاتك وسير عملك.",
+    "deleteTooltip": "حذف",
+    "deleteNotificationAriaLabel": "حذف الإشعار: {{title}}",
+    "loadMoreButton": "تحميل المزيد"
+  },
+  "NotificationPreferencesPanel": {
+    "loadingLabel": "جارٍ تحميل التفضيلات…",
+    "browserNotSupportedAlert": "إشعارات المتصفح غير مدعومة في هذا المتصفح.",
+    "browserBlockedAlert": "إشعارات المتصفح محظورة على مستوى المتصفح. فعِّلها من إعدادات المتصفح الخاصة بهذا الموقع لاستخدام هذه القناة.",
+    "notificationTypeColumnHeader": "نوع الإشعار",
+    "tableAriaLabel": "تفضيلات الإشعارات",
+    "channelLabelEmail": "البريد الإلكتروني",
+    "channelLabelBrowser": "المتصفح",
+    "channelLabelSound": "الصوت",
+    "toggleAriaLabel": "{{type}} عبر {{channel}}"
+  },
+  "NotificationsPage": {
+    "title": "الإشعارات",
+    "description": "كل ما تم إشعارك به، وكيف تودّ معرفة ذلك.",
+    "historyTab": "السجل",
+    "preferencesTab": "التفضيلات"
+  }
+}

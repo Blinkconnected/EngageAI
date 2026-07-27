@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Box,
   Button,
@@ -31,6 +32,7 @@ const PAGE_STEP = 20
 const MAX_VISIBLE = 100
 
 export function NotificationHistoryPanel() {
+  const { t } = useTranslation('notifications')
   const navigate = useNavigate()
   const [visibleCount, setVisibleCount] = useState(PAGE_STEP)
   const [unreadOnly, setUnreadOnly] = useState(false)
@@ -43,7 +45,9 @@ export function NotificationHistoryPanel() {
   const markAllReadMutation = useMarkAllNotificationsReadMutation()
   const deleteMutation = useDeleteNotificationMutation()
 
-  if (notificationsQuery.isPending) return <LoadingState label="Loading notifications…" />
+  if (notificationsQuery.isPending) {
+    return <LoadingState label={t('NotificationHistoryPanel.loadingLabel')} />
+  }
   if (notificationsQuery.isError) {
     return (
       <ErrorState error={notificationsQuery.error} onRetry={() => notificationsQuery.refetch()} />
@@ -61,7 +65,11 @@ export function NotificationHistoryPanel() {
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+      >
         <FormControlLabel
           control={
             <Switch
@@ -72,24 +80,20 @@ export function NotificationHistoryPanel() {
               }}
             />
           }
-          label="Unread only"
+          label={t('NotificationHistoryPanel.unreadOnlyLabel')}
         />
-        <Button
-          size="small"
-          disabled={total === 0}
-          onClick={() => markAllReadMutation.mutate()}
-        >
-          Mark all read
+        <Button size="small" disabled={total === 0} onClick={() => markAllReadMutation.mutate()}>
+          {t('NotificationHistoryPanel.markAllReadButton')}
         </Button>
       </Stack>
 
       {items.length === 0 && (
         <EmptyState
-          title="No notifications"
+          title={t('NotificationHistoryPanel.emptyStateTitle')}
           description={
             unreadOnly
-              ? "You're all caught up — no unread notifications."
-              : 'Notifications about your conversations and workflows will appear here.'
+              ? t('NotificationHistoryPanel.emptyStateDescriptionUnread')
+              : t('NotificationHistoryPanel.emptyStateDescriptionAll')
           }
         />
       )}
@@ -122,10 +126,12 @@ export function NotificationHistoryPanel() {
                 </Typography>
               </Stack>
             </ListItemButton>
-            <Tooltip title="Delete">
+            <Tooltip title={t('NotificationHistoryPanel.deleteTooltip')}>
               <IconButton
                 size="small"
-                aria-label={`Delete notification: ${notification.title}`}
+                aria-label={t('NotificationHistoryPanel.deleteNotificationAriaLabel', {
+                  title: notification.title,
+                })}
                 onClick={() => deleteMutation.mutate(notification.id)}
                 sx={{ alignSelf: 'flex-start', mt: 1.5, mr: 1.5 }}
               >
@@ -142,7 +148,7 @@ export function NotificationHistoryPanel() {
             onClick={() => setVisibleCount((count) => Math.min(count + PAGE_STEP, MAX_VISIBLE))}
             disabled={notificationsQuery.isFetching}
           >
-            Load more
+            {t('NotificationHistoryPanel.loadMoreButton')}
           </Button>
         </Box>
       )}

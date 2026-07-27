@@ -1,0 +1,39 @@
+{
+  "CustomerEditDialog": {
+    "title": "Edit customer",
+    "fullNameLabel": "Full name",
+    "emailLabel": "Email",
+    "phoneLabel": "Phone",
+    "tagsLabel": "Tags",
+    "tagsHelperText": "Comma-separated"
+  },
+  "CustomerProfilePage": {
+    "loadingLabel": "Loading customer…",
+    "backAriaLabel": "Back to customers",
+    "editButton": "Edit",
+    "timelineTab": "Timeline",
+    "erpTab": "ERPNext"
+  },
+  "CustomersPage": {
+    "nameColumn": "Name",
+    "emailColumn": "Email",
+    "phoneColumn": "Phone",
+    "tagsColumn": "Tags",
+    "title": "Customers",
+    "description": "Everyone who has reached out to your company.",
+    "searchLabel": "Search by name or email",
+    "emptyTitle": "No customers found",
+    "emptySearchDescription": "Try a different search.",
+    "emptyDefaultDescription": "Customers appear here automatically as conversations come in.",
+    "tableAriaLabel": "Customers"
+  },
+  "CustomerTimelinePanel": {
+    "loadingLabel": "Loading conversation history…",
+    "emptyTitle": "No conversations yet",
+    "emptyDescription": "This customer hasn't reached out on any connected channel.",
+    "recentCountLabel": "Showing the 50 most recent of {{total}} conversations.",
+    "conversationFallback": "Conversation",
+    "lastMessageLabel": "Last message {{time}}",
+    "startedLabel": "Started {{time}}"
+  }
+}

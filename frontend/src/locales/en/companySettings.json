@@ -1,0 +1,52 @@
+{
+  "CompanySettingsPage": {
+    "title": "Settings",
+    "description": "Manage your company's profile.",
+    "loadingLabel": "Loading settings…",
+    "tabGeneral": "General",
+    "tabBranding": "Branding",
+    "tabLanguage": "Language",
+    "tabTimezone": "Timezone",
+    "tabBusinessHours": "Business Hours",
+    "tabNotifications": "Notifications",
+    "tabMessaging": "Messaging",
+    "tabSecurity": "Security",
+    "tabAi": "AI",
+    "tabErp": "ERP"
+  },
+  "GeneralSettingsPanel": {
+    "savedMessage": "Saved.",
+    "companyNameLabel": "Company name",
+    "savingButton": "Saving…",
+    "saveChangesButton": "Save changes"
+  },
+  "BrandingSettingsPanel": {
+    "description": "Shown in the header next to your company name. Paste a link to an image already hosted elsewhere (your website, a CDN, etc.).",
+    "savedMessage": "Saved.",
+    "logoPreviewAlt": "Logo preview",
+    "logoUrlLabel": "Logo URL",
+    "logoUrlPlaceholder": "https://cdn.example.com/logo.png",
+    "savingButton": "Saving…",
+    "saveChangesButton": "Save changes",
+    "removeLogoButton": "Remove logo"
+  },
+  "LanguageSettingsPanel": {
+    "description": "Your company's default interface language, used by everyone signed in.",
+    "savedMessage": "Saved.",
+    "defaultLanguageLabel": "Default language",
+    "defaultLanguageHelperText": "More languages are on the way — only fully translated languages are offered here.",
+    "savingButton": "Saving…",
+    "saveChangesButton": "Save changes"
+  },
+  "TimezoneSettingsPanel": {
+    "description": "Used to display times consistently across reports and business hours.",
+    "savedMessage": "Saved.",
+    "timezoneLabel": "Timezone",
+    "savingButton": "Saving…",
+    "saveChangesButton": "Save changes"
+  },
+  "ErpEnableToggle": {
+    "enableLabel": "Enable ERP Integration",
+    "description": "Connect ERPNext to sync customer records. Once enabled, a new \"ERP\" tab appears here to configure the connection. Turning this off completely hides ERP everywhere — navigation, customer profiles, and reports — without losing a saved connection."
+  }
+}

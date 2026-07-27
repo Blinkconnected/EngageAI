@@ -10,6 +10,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import TelegramIcon from '@mui/icons-material/Telegram'
@@ -46,15 +47,12 @@ const CHANNEL_TYPE_ICONS: Record<string, IconType> = {
 
 type AggregateStatus = 'operational' | 'degraded' | 'not_tested' | 'inactive' | 'not_configured'
 
-const STATUS_META: Record<
-  AggregateStatus,
-  { label: string; color: 'success' | 'error' | 'default' }
-> = {
-  operational: { label: 'Operational', color: 'success' },
-  degraded: { label: 'Degraded', color: 'error' },
-  not_tested: { label: 'Not tested yet', color: 'default' },
-  inactive: { label: 'Inactive', color: 'default' },
-  not_configured: { label: 'Not configured', color: 'default' },
+const STATUS_COLOR: Record<AggregateStatus, 'success' | 'error' | 'default'> = {
+  operational: 'success',
+  degraded: 'error',
+  not_tested: 'default',
+  inactive: 'default',
+  not_configured: 'default',
 }
 
 /** One channel type's status is derived entirely from
@@ -99,6 +97,7 @@ function mostRecentCheck(configs: ChannelConfig[]): string | null {
 }
 
 export function StatusPage() {
+  const { t, i18n } = useTranslation('status')
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('channels.manage')
 
@@ -107,9 +106,18 @@ export function StatusPage() {
   const [checkingAll, setCheckingAll] = useState(false)
   const [checkAllError, setCheckAllError] = useState<string | null>(null)
 
-  const grouped = useMemo(
-    () => groupByChannelType(channelsQuery.data ?? []),
-    [channelsQuery.data],
+  const grouped = useMemo(() => groupByChannelType(channelsQuery.data ?? []), [channelsQuery.data])
+
+  const STATUS_LABEL: Record<AggregateStatus, string> = useMemo(
+    () => ({
+      operational: t('StatusPage.operationalStatus'),
+      degraded: t('StatusPage.degradedStatus'),
+      not_tested: t('StatusPage.notTestedStatus'),
+      inactive: t('StatusPage.inactiveStatus'),
+      not_configured: t('StatusPage.notConfiguredStatus'),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, i18n.language],
   )
 
   async function handleCheckAll() {
@@ -122,17 +130,15 @@ export function StatusPage() {
     )
     setCheckingAll(false)
     if (results.some((result) => result.status === 'rejected')) {
-      setCheckAllError(
-        'Some channels could not be checked just now — see their individual status below.',
-      )
+      setCheckAllError(t('StatusPage.checkAllErrorMessage'))
     }
   }
 
   return (
     <>
       <PageHeader
-        title="Provider & Service Status"
-        description="Live connectivity status for every messaging channel your company uses."
+        title={t('StatusPage.pageTitle')}
+        description={t('StatusPage.pageDescription')}
         actions={
           canManage && (
             <Button
@@ -141,7 +147,7 @@ export function StatusPage() {
               onClick={handleCheckAll}
               disabled={checkingAll || (channelsQuery.data?.length ?? 0) === 0}
             >
-              {checkingAll ? 'Checking…' : 'Check all now'}
+              {checkingAll ? t('StatusPage.checkingButton') : t('StatusPage.checkAllButton')}
             </Button>
           )
         }
@@ -153,7 +159,7 @@ export function StatusPage() {
         </Alert>
       )}
 
-      {channelsQuery.isPending && <LoadingState label="Loading provider status…" />}
+      {channelsQuery.isPending && <LoadingState label={t('StatusPage.loadingLabel')} />}
 
       {channelsQuery.isError && (
         <ErrorState error={channelsQuery.error} onRetry={() => channelsQuery.refetch()} />
@@ -164,7 +170,7 @@ export function StatusPage() {
           {Array.from(grouped.entries()).map(([channelType, configs]) => {
             const Icon = CHANNEL_TYPE_ICONS[channelType] ?? HubOutlinedIcon
             const status = aggregateStatus(configs)
-            const meta = STATUS_META[status]
+            const meta = { label: STATUS_LABEL[status], color: STATUS_COLOR[status] }
             const lastChecked = mostRecentCheck(configs)
             const label = channelTypeLabel(channelType)
 
@@ -172,11 +178,7 @@ export function StatusPage() {
               <Grid key={channelType} size={{ xs: 12, md: 6 }}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ alignItems: 'center', mb: 1.5 }}
-                    >
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1.5 }}>
                       <Icon fontSize="small" />
                       {/* `component="h2"` — directly under PageHeader's own
                           `h1`, same heading-order rationale as
@@ -199,7 +201,7 @@ export function StatusPage() {
 
                     {configs.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">
-                        No {label} channel connected yet.
+                        {t('StatusPage.noChannelConnectedMessage', { label })}
                       </Typography>
                     ) : (
                       <Stack spacing={1.5} divider={<Divider flexItem />}>
@@ -229,7 +231,9 @@ export function StatusPage() {
                         color="text.secondary"
                         sx={{ display: 'block', mt: 1.5 }}
                       >
-                        Last checked {new Date(lastChecked).toLocaleString()}
+                        {t('StatusPage.lastCheckedMessage', {
+                          date: new Date(lastChecked).toLocaleString(),
+                        })}
                       </Typography>
                     )}
                   </CardContent>

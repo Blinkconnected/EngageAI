@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MenuItem, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useAllDepartmentsQuery } from '../departments/api'
@@ -17,6 +18,7 @@ function parseTargetMinutes(value: string): number | null {
 }
 
 export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('queues')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [departmentId, setDepartmentId] = useState('')
@@ -63,8 +65,8 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
   return (
     <FormDialog
       open={open}
-      title="New queue"
-      submitLabel="Create queue"
+      title={t('QueueCreateDialog.title')}
+      submitLabel={t('QueueCreateDialog.submitLabel')}
       isSubmitting={createMutation.isPending}
       error={createMutation.error}
       errorMessage={createMutation.error ? extractErrorMessage(createMutation.error) : undefined}
@@ -72,7 +74,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
       onClose={handleClose}
     >
       <TextField
-        label="Name"
+        label={t('QueueCreateDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -80,7 +82,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         autoFocus
       />
       <TextField
-        label="Description"
+        label={t('QueueCreateDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
@@ -89,14 +91,14 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
       />
       <TextField
         select
-        label="Department"
+        label={t('QueueCreateDialog.departmentLabel')}
         value={departmentId}
         disabled={departmentsQuery.isPending}
         onChange={(event) => setDepartmentId(event.target.value)}
         fullWidth
-        helperText="Organizational label only — doesn't restrict who can pick up work here."
+        helperText={t('QueueCreateDialog.departmentHelperText')}
       >
-        <MenuItem value="">No department</MenuItem>
+        <MenuItem value="">{t('QueueCreateDialog.noDepartmentOption')}</MenuItem>
         {departmentsQuery.data?.map((department) => (
           <MenuItem key={department.id} value={department.id}>
             {department.name}
@@ -105,11 +107,11 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
       </TextField>
       <TextField
         select
-        label="Assignment strategy"
+        label={t('QueueCreateDialog.assignmentStrategyLabel')}
         value={assignmentStrategy}
         onChange={(event) => setAssignmentStrategy(event.target.value as QueueAssignmentStrategy)}
         fullWidth
-        helperText="Manual: conversations wait for an agent to pick them up. Round robin/Least load assign automatically."
+        helperText={t('QueueCreateDialog.assignmentStrategyHelperText')}
       >
         {QUEUE_ASSIGNMENT_STRATEGIES.map((strategy) => (
           <MenuItem key={strategy.value} value={strategy.value}>
@@ -119,15 +121,15 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
       </TextField>
       <TextField
         select
-        label="SLA policy"
+        label={t('QueueCreateDialog.slaPolicyLabel')}
         value={slaPolicyId}
         disabled={slaPoliciesQuery.isPending}
         onChange={(event) => setSlaPolicyId(event.target.value)}
         fullWidth
         slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-        helperText="Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See SLA Builder."
+        helperText={t('QueueCreateDialog.slaPolicyHelperText')}
       >
-        <MenuItem value="">None (use targets below)</MenuItem>
+        <MenuItem value="">{t('QueueCreateDialog.noSlaPolicyOption')}</MenuItem>
         {slaPoliciesQuery.data?.map((policy) => (
           <MenuItem key={policy.id} value={policy.id}>
             {policy.name}
@@ -135,21 +137,21 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         ))}
       </TextField>
       <TextField
-        label="First response target (minutes)"
+        label={t('QueueCreateDialog.firstResponseTargetLabel')}
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no first-response SLA on this queue. Ignored while an SLA policy above is set."
+        helperText={t('QueueCreateDialog.firstResponseTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
-        label="Resolution target (minutes)"
+        label={t('QueueCreateDialog.resolutionTargetLabel')}
         type="number"
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set."
+        helperText={t('QueueCreateDialog.resolutionTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
     </FormDialog>

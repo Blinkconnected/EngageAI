@@ -32,7 +32,10 @@ export const csatHandlers = [
   http.get(`${API_BASE_URL}/csat/:conversationId`, ({ params, request }) => {
     const token = new URL(request.url).searchParams.get('token')
     if (token === 'invalid-token') {
-      return HttpResponse.json({ detail: 'CSAT survey link is invalid or expired' }, { status: 401 })
+      return HttpResponse.json(
+        { detail: 'CSAT survey link is invalid or expired' },
+        { status: 401 },
+      )
     }
     const conversationId = params.conversationId as string
     const context = contexts[conversationId]

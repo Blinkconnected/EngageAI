@@ -1,5 +1,6 @@
 import { Card, CardContent, Grid, Stack, Typography } from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
+import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { ErrorState } from '../../../shared/components/ErrorState'
 import { LoadingState } from '../../../shared/components/LoadingState'
@@ -23,9 +24,10 @@ function aggregateByChannel(rows: ConversationStatsRow[]) {
 }
 
 export function ExecutiveDashboardPanel({ range }: { range: DateRange }) {
+  const { t } = useTranslation('reportsPanels')
   const query = useExecutiveDashboardQuery(range)
 
-  if (query.isPending) return <LoadingState label="Loading executive dashboard…" />
+  if (query.isPending) return <LoadingState label={t('ExecutiveDashboardPanel.loadingLabel')} />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
 
   const data = query.data
@@ -42,27 +44,48 @@ export function ExecutiveDashboardPanel({ range }: { range: DateRange }) {
       </Stack>
 
       <Grid container spacing={2}>
-        <StatCard label="Opened" value={data.conversations_opened} />
-        <StatCard label="Closed" value={data.conversations_closed} />
-        <StatCard label="Resolved" value={data.conversations_resolved} />
-        <StatCard label="Active agents" value={data.active_agent_count} />
-        <StatCard label="1st response breaches" value={data.first_response_breached} />
-        <StatCard label="Resolution breaches" value={data.resolution_breached} />
         <StatCard
-          label="CSAT average"
+          label={t('ExecutiveDashboardPanel.openedLabel')}
+          value={data.conversations_opened}
+        />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.closedLabel')}
+          value={data.conversations_closed}
+        />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.resolvedLabel')}
+          value={data.conversations_resolved}
+        />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.activeAgentsLabel')}
+          value={data.active_agent_count}
+        />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.firstResponseBreachesLabel')}
+          value={data.first_response_breached}
+        />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.resolutionBreachesLabel')}
+          value={data.resolution_breached}
+        />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.csatAverageLabel')}
           value={data.csat_average_rating != null ? data.csat_average_rating.toFixed(2) : '—'}
         />
-        <StatCard label="CSAT responses" value={data.csat_response_count} />
-        <StatCard label="AI calls" value={data.ai_calls_total} />
+        <StatCard
+          label={t('ExecutiveDashboardPanel.csatResponsesLabel')}
+          value={data.csat_response_count}
+        />
+        <StatCard label={t('ExecutiveDashboardPanel.aiCallsLabel')} value={data.ai_calls_total} />
       </Grid>
 
       <Card variant="outlined" sx={{ mt: 3 }}>
         <CardContent>
           <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }} gutterBottom>
-            Conversations by channel
+            {t('ExecutiveDashboardPanel.chartTitle')}
           </Typography>
           {channels.length === 0 ? (
-            <EmptyState title="No conversation activity in this range" />
+            <EmptyState title={t('ExecutiveDashboardPanel.emptyTitle')} />
           ) : (
             <BarChart
               height={320}
@@ -75,9 +98,9 @@ export function ExecutiveDashboardPanel({ range }: { range: DateRange }) {
                 },
               ]}
               series={[
-                { dataKey: 'opened', label: 'Opened' },
-                { dataKey: 'closed', label: 'Closed' },
-                { dataKey: 'resolved', label: 'Resolved' },
+                { dataKey: 'opened', label: t('ExecutiveDashboardPanel.openedLabel') },
+                { dataKey: 'closed', label: t('ExecutiveDashboardPanel.closedLabel') },
+                { dataKey: 'resolved', label: t('ExecutiveDashboardPanel.resolvedLabel') },
               ]}
             />
           )}

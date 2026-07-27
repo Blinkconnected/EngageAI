@@ -1,5 +1,6 @@
 import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined'
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined'
+import { useTranslation } from 'react-i18next'
 import { Alert, Button, Stack } from '@mui/material'
 import { useReportExport } from './api'
 import type { DateRange } from './types'
@@ -16,7 +17,12 @@ interface ReportExportButtonsProps {
  * on). The export always reflects the full date range regardless of any
  * client-side-only filter a panel applies to its on-screen table/chart.
  */
-export function ReportExportButtons({ path, range, fallbackFilenameBase }: ReportExportButtonsProps) {
+export function ReportExportButtons({
+  path,
+  range,
+  fallbackFilenameBase,
+}: ReportExportButtonsProps) {
+  const { t } = useTranslation('reportsCore')
   const { exportReport, isExporting, error } = useReportExport()
 
   return (
@@ -28,7 +34,7 @@ export function ReportExportButtons({ path, range, fallbackFilenameBase }: Repor
         disabled={isExporting}
         onClick={() => exportReport(path, range, 'pdf', `${fallbackFilenameBase}.pdf`)}
       >
-        PDF
+        {t('ReportExportButtons.pdfButton')}
       </Button>
       <Button
         size="small"
@@ -37,11 +43,11 @@ export function ReportExportButtons({ path, range, fallbackFilenameBase }: Repor
         disabled={isExporting}
         onClick={() => exportReport(path, range, 'xlsx', `${fallbackFilenameBase}.xlsx`)}
       >
-        Excel
+        {t('ReportExportButtons.excelButton')}
       </Button>
       {error != null && (
         <Alert severity="error" sx={{ py: 0 }}>
-          Export failed. Please try again.
+          {t('ReportExportButtons.exportFailedMessage')}
         </Alert>
       )}
     </Stack>

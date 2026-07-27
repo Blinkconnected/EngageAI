@@ -14,25 +14,13 @@ import {
 import CheckCircleOutlinedIcon from '@mui/icons-material/CheckCircleOutlined'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { usePaginationParams } from '../../shared/api/pagination'
 import { useConnectionLogsQuery } from './api'
 import type { ChannelConnectionLog } from './types'
-
-const EVENT_LABELS: Record<string, string> = {
-  created: 'Channel connected',
-  credentials_updated: 'Credentials updated',
-  activated: 'Activated',
-  deactivated: 'Deactivated',
-  test_connection_succeeded: 'Test connection succeeded',
-  test_connection_failed: 'Test connection failed',
-  health_check_initial: 'Initial health check',
-  health_check_recovered: 'Health check recovered',
-  health_check_became_unhealthy: 'Health check failed',
-  send_failed: 'Message send failed',
-}
 
 function LevelIcon({ level }: { level: ChannelConnectionLog['level'] }) {
   if (level === 'error') return <ErrorOutlineIcon color="error" fontSize="small" />
@@ -58,21 +46,35 @@ function ConnectionLogsDialogBody({
   channel: { id: string; display_name: string }
   onClose: () => void
 }) {
+  const { t } = useTranslation('channelsCore')
   const { page, pageSize, setPage, apiParams } = usePaginationParams(20)
   const logsQuery = useConnectionLogsQuery(channel.id, apiParams)
 
+  const EVENT_LABELS: Record<string, string> = {
+    created: t('ConnectionLogsDialog.eventCreated'),
+    credentials_updated: t('ConnectionLogsDialog.eventCredentialsUpdated'),
+    activated: t('ConnectionLogsDialog.eventActivated'),
+    deactivated: t('ConnectionLogsDialog.eventDeactivated'),
+    test_connection_succeeded: t('ConnectionLogsDialog.eventTestConnectionSucceeded'),
+    test_connection_failed: t('ConnectionLogsDialog.eventTestConnectionFailed'),
+    health_check_initial: t('ConnectionLogsDialog.eventHealthCheckInitial'),
+    health_check_recovered: t('ConnectionLogsDialog.eventHealthCheckRecovered'),
+    health_check_became_unhealthy: t('ConnectionLogsDialog.eventHealthCheckBecameUnhealthy'),
+    send_failed: t('ConnectionLogsDialog.eventSendFailed'),
+  }
+
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Connection logs — {channel.display_name}</DialogTitle>
+      <DialogTitle>{t('ConnectionLogsDialog.title', { name: channel.display_name })}</DialogTitle>
       <DialogContent>
-        {logsQuery.isPending && <LoadingState label="Loading connection logs…" />}
+        {logsQuery.isPending && <LoadingState label={t('ConnectionLogsDialog.loadingLabel')} />}
         {logsQuery.isError && (
           <ErrorState error={logsQuery.error} onRetry={() => logsQuery.refetch()} />
         )}
         {logsQuery.data && logsQuery.data.items.length === 0 && (
           <EmptyState
-            title="No activity yet"
-            description="Connection/credential changes, test connections, health checks, and send failures will show up here."
+            title={t('ConnectionLogsDialog.emptyStateTitle')}
+            description={t('ConnectionLogsDialog.emptyStateDescription')}
             icon={<CheckCircleOutlinedIcon fontSize="inherit" />}
           />
         )}
@@ -105,18 +107,18 @@ function ConnectionLogsDialogBody({
         {logsQuery.data && logsQuery.data.total > pageSize && (
           <Stack direction="row" spacing={1} sx={{ mr: 'auto' }}>
             <Button size="small" disabled={page === 0} onClick={() => setPage(page - 1)}>
-              Newer
+              {t('ConnectionLogsDialog.newerButton')}
             </Button>
             <Button
               size="small"
               disabled={(page + 1) * pageSize >= logsQuery.data.total}
               onClick={() => setPage(page + 1)}
             >
-              Older
+              {t('ConnectionLogsDialog.olderButton')}
             </Button>
           </Stack>
         )}
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('ConnectionLogsDialog.closeButton')}</Button>
       </DialogActions>
     </Dialog>
   )

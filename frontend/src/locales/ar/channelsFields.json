@@ -1,0 +1,57 @@
+{
+  "ChannelCredentialFields": {},
+  "EmailFields": {
+    "smtpSectionTitle": "الصادر (SMTP)",
+    "smtpHostLabel": "مضيف SMTP",
+    "smtpHostPlaceholder": "smtp.gmail.com",
+    "smtpHostHelperText": "خادم البريد الصادر لمزوّد صندوق بريدك",
+    "smtpPortLabel": "منفذ SMTP",
+    "useTlsLabel": "استخدام TLS",
+    "smtpUsernameLabel": "اسم مستخدم SMTP",
+    "smtpUsernamePlaceholder": "support@yourcompany.com",
+    "smtpPasswordLabel": "كلمة مرور SMTP",
+    "smtpPasswordHelperText": "عادةً ما تتطلب Gmail وOutlook وغيرهما كلمة مرور خاصة بالتطبيق، وليس كلمة مرور تسجيل الدخول المعتادة",
+    "fromAddressLabel": "عنوان المُرسِل",
+    "fromAddressHelperText": "يُستخدم اسم مستخدم SMTP تلقائيًا في حال تُرك فارغًا",
+    "imapToggleLabel": "استقبال الردود أيضًا (IMAP)",
+    "imapSectionTitle": "الوارد (IMAP)",
+    "imapHostLabel": "مضيف IMAP",
+    "imapHostPlaceholder": "imap.gmail.com",
+    "imapPortLabel": "منفذ IMAP",
+    "useSslLabel": "استخدام SSL",
+    "imapUsernameLabel": "اسم مستخدم IMAP",
+    "imapPasswordLabel": "كلمة مرور IMAP",
+    "imapFolderLabel": "مجلد IMAP"
+  },
+  "GenericJsonFields": {
+    "credentialsLabel": "بيانات الاعتماد (JSON)",
+    "invalidJsonError": "أدخل JSON صالحًا.",
+    "credentialsHelperText": "بيانات اعتماد خاصة بالمزوّد على هيئة كائن JSON"
+  },
+  "TelegramFields": {
+    "alertBeforeLink": "ليس لديك بوت بعد؟ راسل",
+    "alertLinkText": "@BotFather",
+    "alertAfterLink": "على تيليجرام، وأرسل",
+    "alertAfterCode": "، واتبع التعليمات — سيردّ عليك بالرمز أدناه. لا حاجة لإعداد أي webhook بعد ذلك؛ يقوم BlinkEngage بتسجيله تلقائيًا.",
+    "botTokenLabel": "رمز البوت",
+    "botTokenPlaceholder": "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+    "botTokenHelperText": "من @BotFather — الرمز الذي يظهر بعد إرسال /newbot (أو /token لبوت موجود مسبقًا)"
+  },
+  "WebChatFields": {
+    "infoAlert": "لا تحتاج الدردشة عبر الويب إلى أي بيانات اعتماد خارجية — فهي أداة الدردشة القابلة للتضمين الخاصة بهذا المنتج. ما عليك سوى الحفظ لإنشائها، ثم استخدام تفاصيل webhook/الجلسة في الشاشة التالية."
+  },
+  "WhatsAppFields": {
+    "alertBeforeLink": "تأتي كلتا القيمتين من",
+    "alertLinkText": "Meta for Developers",
+    "alertAfterLink": "→ تطبيقك → WhatsApp → إعداد API. استخدم رمز مستخدم نظام (System User) دائمًا، وليس الرمز المؤقت المعروض افتراضيًا (تنتهي صلاحيته خلال 24 ساعة).",
+    "phoneNumberIdLabel": "معرّف رقم الهاتف",
+    "phoneNumberIdPlaceholder": "109876543212345",
+    "phoneNumberIdHelperText": "من لوحة تحكم تطبيق WhatsApp Business في Meta",
+    "accessTokenLabel": "رمز الوصول",
+    "accessTokenPlaceholder": "EAAG...permanent-system-user-token",
+    "accessTokenHelperText": "رمز وصول دائم (System User)، وليس رمزًا قصير الأجل",
+    "verifyTokenLabel": "رمز التحقق",
+    "verifyTokenHelperText": "ستُدخل هذه القيمة نفسها في لوحة تحكم Meta",
+    "generateButton": "إنشاء"
+  }
+}

@@ -42,7 +42,10 @@ const SEED_PERMISSIONS: Permission[] = [
     description: 'Create/edit/delete queues, required skills, and routing rules',
   },
   { code: 'ai.use', description: 'Use AI Engine features' },
-  { code: 'erp.manage', description: 'Configure the ERPNext connection and trigger manual sync/pull' },
+  {
+    code: 'erp.manage',
+    description: 'Configure the ERPNext connection and trigger manual sync/pull',
+  },
 ]
 
 const ALL_CODES = SEED_PERMISSIONS.map((permission) => permission.code)
@@ -129,9 +132,7 @@ function withComputedMemberCount(role: Role): Role {
 export const rolesHandlers = [
   http.get(`${API_BASE_URL}/permissions`, () => HttpResponse.json(SEED_PERMISSIONS)),
 
-  http.get(`${API_BASE_URL}/roles`, () =>
-    HttpResponse.json(roles.map(withComputedMemberCount)),
-  ),
+  http.get(`${API_BASE_URL}/roles`, () => HttpResponse.json(roles.map(withComputedMemberCount))),
 
   http.post(`${API_BASE_URL}/roles`, async ({ request }) => {
     const payload = (await request.json()) as RoleCreateRequest

@@ -1,17 +1,13 @@
 import { useState } from 'react'
 import { MenuItem, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { CHANNEL_TYPES } from '../channels/types'
 import { useAllQueuesQuery, useCreateRoutingRuleMutation } from './api'
 
-export function RoutingRuleCreateDialog({
-  open,
-  onClose,
-}: {
-  open: boolean
-  onClose: () => void
-}) {
+export function RoutingRuleCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('queues')
   const [priority, setPriority] = useState('100')
   const [targetQueueId, setTargetQueueId] = useState('')
   const [channelType, setChannelType] = useState('')
@@ -50,8 +46,8 @@ export function RoutingRuleCreateDialog({
   return (
     <FormDialog
       open={open}
-      title="New routing rule"
-      submitLabel="Create rule"
+      title={t('RoutingRuleCreateDialog.title')}
+      submitLabel={t('RoutingRuleCreateDialog.submitLabel')}
       isSubmitting={createMutation.isPending}
       error={createMutation.error}
       errorMessage={createMutation.error ? extractErrorMessage(createMutation.error) : undefined}
@@ -59,19 +55,19 @@ export function RoutingRuleCreateDialog({
       onClose={handleClose}
     >
       <TextField
-        label="Priority"
+        label={t('RoutingRuleCreateDialog.priorityLabel')}
         type="number"
         value={priority}
         onChange={(event) => setPriority(event.target.value)}
         required
         fullWidth
         autoFocus
-        helperText="Lower numbers are evaluated first — the first matching rule wins."
+        helperText={t('RoutingRuleCreateDialog.priorityHelperText')}
         slotProps={{ htmlInput: { min: 0 } }}
       />
       <TextField
         select
-        label="Route to queue"
+        label={t('RoutingRuleCreateDialog.targetQueueLabel')}
         value={targetQueueId}
         disabled={queuesQuery.isPending}
         onChange={(event) => setTargetQueueId(event.target.value)}
@@ -86,13 +82,13 @@ export function RoutingRuleCreateDialog({
       </TextField>
       <TextField
         select
-        label="Channel type"
+        label={t('RoutingRuleCreateDialog.channelTypeLabel')}
         value={channelType}
         onChange={(event) => setChannelType(event.target.value)}
         fullWidth
-        helperText="Leave as 'Any channel' to match every channel type."
+        helperText={t('RoutingRuleCreateDialog.channelTypeHelperText')}
       >
-        <MenuItem value="">Any channel</MenuItem>
+        <MenuItem value="">{t('RoutingRuleCreateDialog.anyChannelOption')}</MenuItem>
         {CHANNEL_TYPES.map((type) => (
           <MenuItem key={type.value} value={type.value}>
             {type.label}
@@ -100,11 +96,11 @@ export function RoutingRuleCreateDialog({
         ))}
       </TextField>
       <TextField
-        label="Message contains"
+        label={t('RoutingRuleCreateDialog.bodyContainsLabel')}
         value={bodyContains}
         onChange={(event) => setBodyContains(event.target.value)}
         fullWidth
-        helperText="Optional — matches if the first message contains this text (case-insensitive)."
+        helperText={t('RoutingRuleCreateDialog.bodyContainsHelperText')}
       />
     </FormDialog>
   )

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom'
 import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { useAppSelector } from '../../app/hooks'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { Footer } from '../../shared/components/Footer'
@@ -9,6 +10,7 @@ import { selectIsAuthenticated } from './authSlice'
 import { useRegisterMutation } from './api'
 
 export function RegisterPage() {
+  const { t } = useTranslation('auth')
   const [companyName, setCompanyName] = useState('')
   const [ownerFullName, setOwnerFullName] = useState('')
   const [ownerEmail, setOwnerEmail] = useState('')
@@ -51,27 +53,24 @@ export function RegisterPage() {
           <Box
             component="img"
             src={logoLight}
-            alt="Blink Engage"
+            alt={t('RegisterPage.logoAlt')}
             sx={{ height: 80, width: 'auto', display: 'block', mx: 'auto', alignSelf: 'center' }}
           />
           <Typography variant="h5" component="h1" sx={{ fontWeight: 600, textAlign: 'center' }}>
-            Create your company
+            {t('RegisterPage.title')}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Set up your Blink Engage workspace. You'll be signed in as the owner immediately.
+            {t('RegisterPage.subtitle')}
           </Typography>
 
           {registerMutation.isError && (
             <Alert severity="error" data-testid="register-error">
-              {extractErrorMessage(
-                registerMutation.error,
-                'Could not create your company. Please check your details and try again.',
-              )}
+              {extractErrorMessage(registerMutation.error, t('RegisterPage.createCompanyError'))}
             </Alert>
           )}
 
           <TextField
-            label="Company name"
+            label={t('RegisterPage.companyNameLabel')}
             value={companyName}
             onChange={(event) => setCompanyName(event.target.value)}
             required
@@ -79,7 +78,7 @@ export function RegisterPage() {
             autoComplete="organization"
           />
           <TextField
-            label="Your full name"
+            label={t('RegisterPage.fullNameLabel')}
             value={ownerFullName}
             onChange={(event) => setOwnerFullName(event.target.value)}
             required
@@ -87,7 +86,7 @@ export function RegisterPage() {
             autoComplete="name"
           />
           <TextField
-            label="Email"
+            label={t('RegisterPage.emailLabel')}
             type="email"
             value={ownerEmail}
             onChange={(event) => setOwnerEmail(event.target.value)}
@@ -96,14 +95,14 @@ export function RegisterPage() {
             autoComplete="email"
           />
           <TextField
-            label="Password"
+            label={t('RegisterPage.passwordLabel')}
             type="password"
             value={ownerPassword}
             onChange={(event) => setOwnerPassword(event.target.value)}
             required
             fullWidth
             autoComplete="new-password"
-            helperText="At least 10 characters, including a letter and a digit."
+            helperText={t('RegisterPage.passwordHelperText')}
           />
           <Button
             type="submit"
@@ -112,12 +111,14 @@ export function RegisterPage() {
             fullWidth
             disabled={registerMutation.isPending}
           >
-            {registerMutation.isPending ? 'Creating your company…' : 'Create company'}
+            {registerMutation.isPending
+              ? t('RegisterPage.creatingCompany')
+              : t('RegisterPage.createCompany')}
           </Button>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-            Already have a workspace?{' '}
+            {t('RegisterPage.alreadyHaveWorkspace')}{' '}
             <Link component={RouterLink} to="/login">
-              Sign in
+              {t('RegisterPage.signInLink')}
             </Link>
           </Typography>
         </Stack>

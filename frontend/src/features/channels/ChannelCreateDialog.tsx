@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useCreateChannelMutation, useTestConnectionEphemeralMutation } from './api'
 import { ChannelCredentialFields } from './fields/ChannelCredentialFields'
@@ -26,6 +27,7 @@ function webhookUrlFor(channelConfigId: string): string {
 }
 
 function CopyableField({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation('channelsCore')
   const [copied, setCopied] = useState(false)
   return (
     <TextField
@@ -36,10 +38,16 @@ function CopyableField({ label, value }: { label: string; value: string }) {
         input: {
           readOnly: true,
           endAdornment: (
-            <Tooltip title={copied ? 'Copied!' : 'Copy'}>
+            <Tooltip
+              title={
+                copied
+                  ? t('ChannelCreateDialog.copiedTooltip')
+                  : t('ChannelCreateDialog.copyTooltip')
+              }
+            >
               <IconButton
                 edge="end"
-                aria-label={`Copy ${label}`}
+                aria-label={t('ChannelCreateDialog.copyFieldAriaLabel', { label })}
                 onClick={() => {
                   void navigator.clipboard.writeText(value)
                   setCopied(true)
@@ -67,6 +75,7 @@ export function ChannelCreateDialog({
    * "Connect WhatsApp"/"Connect Web Chat" shortcut buttons. */
   initialChannelType?: string
 }) {
+  const { t } = useTranslation('channelsCore')
   const [channelType, setChannelType] = useState(initialChannelType)
   const [displayName, setDisplayName] = useState('')
   const [credentials, setCredentials] = useState<Record<string, unknown>>({})
@@ -115,36 +124,46 @@ export function ChannelCreateDialog({
 
     return (
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-        <DialogTitle>Channel connected</DialogTitle>
+        <DialogTitle>{t('ChannelCreateDialog.channelConnectedTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="success">
-              {created.display_name} is set up.{' '}
               {needsManualDashboardStep
-                ? "Finish connecting it on the provider's side using the details below."
-                : "It's live — no further setup needed."}
+                ? t('ChannelCreateDialog.connectedAlertManual', { name: created.display_name })
+                : t('ChannelCreateDialog.connectedAlertReady', { name: created.display_name })}
             </Alert>
             {needsManualDashboardStep && (
               <>
-                <CopyableField label="Webhook URL" value={webhookUrlFor(created.id)} />
-                <CopyableField label="Webhook secret" value={created.webhook_secret} />
+                <CopyableField
+                  label={t('ChannelCreateDialog.webhookUrlLabel')}
+                  value={webhookUrlFor(created.id)}
+                />
+                <CopyableField
+                  label={t('ChannelCreateDialog.webhookSecretLabel')}
+                  value={created.webhook_secret}
+                />
               </>
             )}
             {isWhatsapp && created.verify_token && (
-              <CopyableField label="Verify token" value={created.verify_token} />
+              <CopyableField
+                label={t('ChannelCreateDialog.verifyTokenLabel')}
+                value={created.verify_token}
+              />
             )}
             <Typography variant="body2" color="text.secondary">
               {needsManualDashboardStep
-                ? `Paste the webhook URL, webhook secret${isWhatsapp ? ' and verify token' : ''} into your provider's dashboard to start receiving messages. These values are shown only once — copy them now.`
+                ? isWhatsapp
+                  ? t('ChannelCreateDialog.pasteInstructionsWithVerifyToken')
+                  : t('ChannelCreateDialog.pasteInstructionsBase')
                 : isTelegram
-                  ? 'Telegram has no dashboard for this — BlinkEngage already registered the webhook with your bot automatically. Send it a message to try it out.'
-                  : "There's nothing further to configure — this channel is live immediately."}
+                  ? t('ChannelCreateDialog.telegramAutoRegistered')
+                  : t('ChannelCreateDialog.noFurtherSetupNeeded')}
             </Typography>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="contained" onClick={handleClose}>
-            Done
+            {t('ChannelCreateDialog.doneButton')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -153,7 +172,7 @@ export function ChannelCreateDialog({
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>Connect a channel</DialogTitle>
+      <DialogTitle>{t('ChannelCreateDialog.dialogTitle')}</DialogTitle>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -167,7 +186,7 @@ export function ChannelCreateDialog({
             )}
 
             <TextField
-              label="Channel type"
+              label={t('ChannelCreateDialog.channelTypeFieldLabel')}
               select
               value={channelType}
               onChange={(event) => {
@@ -179,17 +198,25 @@ export function ChannelCreateDialog({
               {CHANNEL_TYPES.map((type) => (
                 <MenuItem key={type.value} value={type.value}>
                   {type.label}
-                  {!hasGuidedSetup(type.value) ? ' (manual JSON setup)' : ''}
+                  {!hasGuidedSetup(type.value)
+                    ? t('ChannelCreateDialog.manualJsonSetupSuffix')
+                    : ''}
                 </MenuItem>
               ))}
             </TextField>
             <TextField
-              label="Display name"
+              label={t('ChannelCreateDialog.displayNameLabel')}
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               required
               fullWidth
-              placeholder={guided ? `e.g. Support ${CHANNEL_TYPES.find((t) => t.value === channelType)?.label}` : undefined}
+              placeholder={
+                guided
+                  ? t('ChannelCreateDialog.displayNamePlaceholder', {
+                      label: CHANNEL_TYPES.find((ct) => ct.value === channelType)?.label,
+                    })
+                  : undefined
+              }
             />
 
             <ChannelCredentialFields
@@ -201,12 +228,12 @@ export function ChannelCreateDialog({
 
             {channelType !== 'web_chat' && (
               <TextField
-                label="Webhook secret"
+                label={t('ChannelCreateDialog.webhookSecretLabel')}
                 type="password"
                 value={webhookSecret}
                 onChange={(event) => setWebhookSecret(event.target.value)}
                 fullWidth
-                helperText="Used to verify inbound webhook signatures — leave blank to auto-generate a secure one"
+                helperText={t('ChannelCreateDialog.webhookSecretHelperText')}
               />
             )}
 
@@ -225,10 +252,12 @@ export function ChannelCreateDialog({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={handleClose} disabled={createMutation.isPending}>
-            Cancel
+            {t('ChannelCreateDialog.cancelButton')}
           </Button>
           <Button type="submit" variant="contained" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Connecting…' : 'Connect channel'}
+            {createMutation.isPending
+              ? t('ChannelCreateDialog.connectingButton')
+              : t('ChannelCreateDialog.connectChannelButton')}
           </Button>
         </DialogActions>
       </form>

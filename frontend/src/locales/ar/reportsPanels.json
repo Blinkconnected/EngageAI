@@ -1,0 +1,110 @@
+{
+  "AiReportPanel": {
+    "loadingLabel": "جارٍ تحميل تقرير استخدام الذكاء الاصطناعي…",
+    "emptyTitle": "لا يوجد استخدام للذكاء الاصطناعي",
+    "emptyDescription": "لم يتم استخدام أي ميزة من ميزات الذكاء الاصطناعي (اقتراحات الردود، الملخصات، الترجمة، وغيرها) خلال هذا النطاق الزمني.",
+    "chartTitle": "عدد الاستدعاءات حسب العملية",
+    "gridAriaLabel": "تقرير استخدام الذكاء الاصطناعي",
+    "columns": {
+      "operation": "العملية",
+      "calls": "الاستدعاءات"
+    }
+  },
+  "ConversationsReportPanel": {
+    "loadingLabel": "جارٍ تحميل تقرير المحادثات…",
+    "channelSelectLabel": "القناة",
+    "allChannelsOption": "جميع القنوات",
+    "exportsNotice": "تتضمن الملفات المُصدَّرة جميع القنوات لهذا النطاق الزمني، وليس {{channel}} فقط.",
+    "emptyTitle": "لا يوجد نشاط محادثات",
+    "emptyDescription": "لم يتم فتح أو إغلاق أو حل أي محادثة خلال هذا النطاق الزمني.",
+    "chartTitle": "الإجماليات حسب القناة",
+    "seriesOpened": "مفتوحة",
+    "seriesClosed": "مغلقة",
+    "seriesResolved": "تم الحل",
+    "gridAriaLabel": "تقرير المحادثات",
+    "columns": {
+      "date": "التاريخ",
+      "channel": "القناة",
+      "opened": "مفتوحة",
+      "closed": "مغلقة",
+      "resolved": "تم الحل",
+      "firstRespBreaches": "خروقات الرد الأول",
+      "resolutionBreaches": "خروقات الحل"
+    }
+  },
+  "CsatReportPanel": {
+    "loadingLabel": "جارٍ تحميل تقرير رضا العملاء…",
+    "agentColumn": "الوكيل",
+    "responsesLabel": "الردود",
+    "averageRatingLabel": "متوسط التقييم",
+    "emptyTitle": "لا توجد ردود على استبيان رضا العملاء",
+    "emptyDescription": "لم يقدّم أي عميل تقييم رضا خلال هذا النطاق الزمني.",
+    "chartTitle": "متوسط التقييم عبر الزمن",
+    "gridAriaLabel": "رضا العملاء حسب الوكيل"
+  },
+  "ExecutiveDashboardPanel": {
+    "loadingLabel": "جارٍ تحميل لوحة التحكم التنفيذية…",
+    "openedLabel": "مفتوحة",
+    "closedLabel": "مغلقة",
+    "resolvedLabel": "تم الحل",
+    "activeAgentsLabel": "الوكلاء النشطون",
+    "firstResponseBreachesLabel": "خروقات الرد الأول",
+    "resolutionBreachesLabel": "خروقات الحل",
+    "csatAverageLabel": "متوسط رضا العملاء",
+    "csatResponsesLabel": "ردود رضا العملاء",
+    "aiCallsLabel": "استدعاءات الذكاء الاصطناعي",
+    "chartTitle": "المحادثات حسب القناة",
+    "emptyTitle": "لا يوجد نشاط محادثات في هذا النطاق"
+  },
+  "MyPerformancePanel": {
+    "loadingLabel": "جارٍ تحميل أدائك…",
+    "noProfileTitle": "لا يوجد ملف وكيل",
+    "noProfileDescription": "حسابك غير مرتبط بملف وكيل، لذا لا توجد بيانات أداء شخصية لعرضها.",
+    "conversationsAssignedLabel": "المحادثات المُسنَدة",
+    "conversationsClosedLabel": "المحادثات المغلقة",
+    "messagesSentLabel": "الرسائل المُرسَلة"
+  },
+  "PerformanceReportPanel": {
+    "loadingLabel": "جارٍ تحميل تقرير أداء الوكلاء…",
+    "emptyTitle": "لا يوجد نشاط للوكلاء",
+    "emptyDescription": "لم يتم إسناد أو إغلاق أي محادثة من قِبل أي وكيل خلال هذا النطاق الزمني.",
+    "chartTitle": "المحادثات المغلقة حسب الوكيل",
+    "assignedLabel": "مُسنَدة",
+    "closedLabel": "مغلقة",
+    "gridAriaLabel": "تقرير أداء الوكلاء",
+    "columns": {
+      "agent": "الوكيل",
+      "messagesSent": "الرسائل المُرسَلة"
+    }
+  },
+  "QueuesReportPanel": {
+    "loadingLabel": "جارٍ تحميل تقرير قوائم الانتظار…",
+    "emptyTitle": "لا يوجد نشاط في قوائم الانتظار",
+    "emptyDescription": "لم تدخل أي محادثة إلى قائمة انتظار خلال هذا النطاق الزمني.",
+    "chartTitle": "حجم قوائم الانتظار وخروقات اتفاقية مستوى الخدمة",
+    "enteredSeriesLabel": "الداخلة",
+    "slaBreachedSeriesLabel": "خرق اتفاقية مستوى الخدمة",
+    "gridAriaLabel": "تقرير قوائم الانتظار",
+    "columns": {
+      "queue": "قائمة الانتظار",
+      "conversationsEntered": "المحادثات الداخلة",
+      "slaBreaches": "خروقات اتفاقية مستوى الخدمة"
+    }
+  },
+  "SlaReportPanel": {
+    "loadingLabel": "جارٍ تحميل تقرير اتفاقية مستوى الخدمة…",
+    "conversationsOpenedLabel": "المحادثات المفتوحة",
+    "firstResponseBreachesLabel": "خروقات الرد الأول",
+    "resolutionBreachesLabel": "خروقات الحل",
+    "emptyTitle": "لا يوجد نشاط في قوائم الانتظار",
+    "emptyDescription": "لم تدخل أي محادثة إلى قائمة انتظار خلال هذا النطاق الزمني.",
+    "chartTitle": "خروقات اتفاقية مستوى الخدمة حسب قائمة الانتظار",
+    "slaBreachedSeriesLabel": "خرق اتفاقية مستوى الخدمة",
+    "gridAriaLabel": "خروقات اتفاقية مستوى الخدمة حسب قائمة الانتظار",
+    "columns": {
+      "queue": "قائمة الانتظار",
+      "conversationsEntered": "المحادثات الداخلة",
+      "slaBreaches": "خروقات اتفاقية مستوى الخدمة"
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "BusinessHoursSettingsPanel": {
+    "description": "When your team is available. Displayed to customers and reserved for future SLA/ routing use.",
+    "savedAlert": "Saved.",
+    "enableBusinessHoursLabel": "Enable business hours",
+    "dayColumnHeader": "Day",
+    "closedColumnHeader": "Closed",
+    "openColumnHeader": "Open",
+    "closeColumnHeader": "Close",
+    "saveButton": "Save changes",
+    "savingButton": "Saving…",
+    "days": {
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "dayClosedAriaLabel": "{{day}} closed",
+    "dayOpensAtAriaLabel": "{{day}} opens at",
+    "dayClosesAtAriaLabel": "{{day}} closes at"
+  },
+  "SecuritySettingsPanel": {
+    "description": "Every password on the platform already requires at least {{minAllowed}} characters with a letter and a digit. Raise the minimum length further for your company here.",
+    "savedAlert": "Saved.",
+    "minPasswordLengthLabel": "Minimum password length",
+    "minPasswordLengthHelperError": "Must be between {{min}} and {{max}}",
+    "saveButton": "Save changes",
+    "savingButton": "Saving…"
+  },
+  "MessagingSettingsPanel": {
+    "typingIndicatorLabel": "Show agents' typing indicator to customers",
+    "description": "When on, customers see a live \"agent is typing…\" indicator on channels that support it (Web Chat, WhatsApp, Telegram)."
+  },
+  "NotificationsSettingsPanel": {
+    "loadingLabel": "Loading notification types…",
+    "description": "Turn a notification type off company-wide — no agent will receive it, even if they personally enabled it in their own preferences.",
+    "tableAriaLabel": "Company notification policy",
+    "enableTypeAriaLabel": "Enable {{label}}"
+  },
+  "AiSettingsPanel": {
+    "enableLabel": "Enable AI Engine features",
+    "description": "Reply suggestions, summaries, translation, sentiment, and other AI features for your agents. Turn this off if your organization needs to avoid AI-generated content (e.g. for compliance reasons) — this applies even when a provider is configured below.",
+    "loadErrorFallback": "Could not load the AI provider configuration.",
+    "providerCardTitle": "AI provider",
+    "providerCardDescription": "Bring your own OpenAI, Claude, or self-hosted Ollama account for this company, instead of using the platform's shared default.",
+    "savedAlert": "Saved.",
+    "providerLabel": "Provider",
+    "providerHelperText": "Leave as 'Platform default' to use whatever the platform itself is configured with.",
+    "platformDefaultOption": "Platform default",
+    "apiKeyLabel": "API Key",
+    "apiKeyHelperRequired": "An API key is required for this provider.",
+    "apiKeyHelperAlreadySaved": "A key is already saved — leave blank to keep it.",
+    "apiKeyHelperNeverShown": "Never shown again after saving.",
+    "modelLabel": "Model",
+    "modelHelperText": "Leave blank to use this provider's default model.",
+    "baseUrlLabel": "Base URL",
+    "baseUrlHelperOllama": "Your Ollama server's address, e.g. http://localhost:11434.",
+    "baseUrlHelperOptional": "Optional — only needed for a custom/self-hosted API endpoint.",
+    "saveButton": "Save changes",
+    "savingButton": "Saving…"
+  }
+}

@@ -35,9 +35,7 @@ describe('ChangelogPanel', () => {
     expect(screen.getByRole('heading', { name: 'Known Issues', level: 4 })).toBeInTheDocument()
     expect(screen.getByText(/Queue management — agents manually picking up/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Breaking Changes', level: 4 })).toBeInTheDocument()
-    expect(
-      screen.getByText('None yet (this is our first tracked release).'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('None yet (this is our first tracked release).')).toBeInTheDocument()
 
     // ...while its empty subsections (per the fixture, "Improved"/"Fixed"/
     // "Security"/"Deprecated" are all empty for 1.0.0-beta.1) do not.

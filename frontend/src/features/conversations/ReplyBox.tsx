@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Box,
@@ -27,6 +28,7 @@ export function ReplyBox({
   conversationId: string
   onTyping?: (isTyping: boolean) => void
 }) {
+  const { t } = useTranslation('conversationsCore')
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [sendFailure, setSendFailure] = useState<string | null>(null)
@@ -83,7 +85,7 @@ export function ReplyBox({
             setSendFailure(
               typeof errorDetail === 'string'
                 ? errorDetail
-                : 'The channel provider rejected this message.',
+                : t('ReplyBox.genericSendFailureFallback'),
             )
           }
         },
@@ -100,17 +102,17 @@ export function ReplyBox({
       )}
       {sendFailure && (
         <Alert severity="error" sx={{ mb: 1 }} onClose={() => setSendFailure(null)}>
-          Message not delivered: {sendFailure}
+          {t('ReplyBox.messageNotDeliveredLabel', { reason: sendFailure })}
         </Alert>
       )}
       {uploadMutation.isError && (
         <Alert severity="error" sx={{ mb: 1 }}>
-          {extractErrorMessage(uploadMutation.error, 'Attachment failed to upload.')}
+          {extractErrorMessage(uploadMutation.error, t('ReplyBox.uploadErrorFallback'))}
         </Alert>
       )}
       {suggestReplyMutation.isError && (
         <Alert severity="error" sx={{ mb: 1 }} onClose={() => suggestReplyMutation.reset()}>
-          {extractErrorMessage(suggestReplyMutation.error, 'Could not suggest a reply.')}
+          {extractErrorMessage(suggestReplyMutation.error, t('ReplyBox.suggestReplyErrorFallback'))}
         </Alert>
       )}
       {attachments.length > 0 && (
@@ -132,24 +134,24 @@ export function ReplyBox({
           type="file"
           hidden
           onChange={handleFileSelected}
-          aria-label="Attach a file"
+          aria-label={t('ReplyBox.attachFileLabel')}
         />
-        <Tooltip title="Attach a file">
+        <Tooltip title={t('ReplyBox.attachFileLabel')}>
           <IconButton
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending}
-            aria-label="Attach a file"
+            aria-label={t('ReplyBox.attachFileLabel')}
           >
             <AttachFileIcon />
           </IconButton>
         </Tooltip>
         {hasPermission('ai.use') && (
-          <Tooltip title="Suggest a reply with AI — replaces your draft, review before sending">
+          <Tooltip title={t('ReplyBox.suggestReplyTooltip')}>
             <span>
               <IconButton
                 onClick={handleSuggestReply}
                 disabled={suggestReplyMutation.isPending}
-                aria-label="Suggest a reply with AI"
+                aria-label={t('ReplyBox.suggestReplyAriaLabel')}
               >
                 {suggestReplyMutation.isPending ? (
                   <CircularProgress size={20} />
@@ -164,7 +166,7 @@ export function ReplyBox({
           multiline
           maxRows={4}
           fullWidth
-          placeholder="Write a reply…"
+          placeholder={t('ReplyBox.replyPlaceholder')}
           value={body}
           onChange={(event) => handleBodyChange(event.target.value)}
           onKeyDown={(event) => {
@@ -174,13 +176,13 @@ export function ReplyBox({
             }
           }}
         />
-        <Tooltip title="Send">
+        <Tooltip title={t('ReplyBox.sendTooltip')}>
           <span>
             <IconButton
               color="primary"
               onClick={handleSend}
               disabled={sendMutation.isPending || (!body.trim() && attachments.length === 0)}
-              aria-label="Send reply"
+              aria-label={t('ReplyBox.sendAriaLabel')}
             >
               <SendIcon />
             </IconButton>

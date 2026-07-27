@@ -1,0 +1,39 @@
+{
+  "CustomerEditDialog": {
+    "title": "تعديل العميل",
+    "fullNameLabel": "الاسم الكامل",
+    "emailLabel": "البريد الإلكتروني",
+    "phoneLabel": "الهاتف",
+    "tagsLabel": "الوسوم",
+    "tagsHelperText": "مفصولة بفواصل"
+  },
+  "CustomerProfilePage": {
+    "loadingLabel": "جارٍ تحميل العميل…",
+    "backAriaLabel": "العودة إلى العملاء",
+    "editButton": "تعديل",
+    "timelineTab": "الجدول الزمني",
+    "erpTab": "ERPNext"
+  },
+  "CustomersPage": {
+    "nameColumn": "الاسم",
+    "emailColumn": "البريد الإلكتروني",
+    "phoneColumn": "الهاتف",
+    "tagsColumn": "الوسوم",
+    "title": "العملاء",
+    "description": "كل من تواصل مع شركتك.",
+    "searchLabel": "البحث بالاسم أو البريد الإلكتروني",
+    "emptyTitle": "لم يتم العثور على عملاء",
+    "emptySearchDescription": "جرّب بحثًا مختلفًا.",
+    "emptyDefaultDescription": "يظهر العملاء هنا تلقائيًا عند ورود المحادثات.",
+    "tableAriaLabel": "العملاء"
+  },
+  "CustomerTimelinePanel": {
+    "loadingLabel": "جارٍ تحميل سجل المحادثات…",
+    "emptyTitle": "لا توجد محادثات بعد",
+    "emptyDescription": "لم يتواصل هذا العميل عبر أي قناة متصلة بعد.",
+    "recentCountLabel": "عرض أحدث 50 محادثة من إجمالي {{total}} محادثة.",
+    "conversationFallback": "محادثة",
+    "lastMessageLabel": "آخر رسالة {{time}}",
+    "startedLabel": "بدأت {{time}}"
+  }
+}

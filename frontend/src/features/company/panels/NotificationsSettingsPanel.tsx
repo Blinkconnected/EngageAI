@@ -11,6 +11,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { ErrorState } from '../../../shared/components/ErrorState'
 import { LoadingState } from '../../../shared/components/LoadingState'
 import { extractErrorMessage } from '../../../shared/api/errors'
@@ -25,11 +26,14 @@ import type { Company } from '../types'
  * the fixed catalog of (notification_type, label) pairs, since that's
  * already the single source of truth for it. */
 export function NotificationsSettingsPanel({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettingsExtra')
   const preferencesQuery = useNotificationPreferencesQuery()
   const updateMutation = useUpdateCompanyMutation()
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
 
-  if (preferencesQuery.isPending) return <LoadingState label="Loading notification types…" />
+  if (preferencesQuery.isPending) {
+    return <LoadingState label={t('NotificationsSettingsPanel.loadingLabel')} />
+  }
   if (preferencesQuery.isError) {
     return <ErrorState error={preferencesQuery.error} onRetry={() => preferencesQuery.refetch()} />
   }
@@ -73,15 +77,14 @@ export function NotificationsSettingsPanel({ company }: { company: Company }) {
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Turn a notification type off company-wide — no agent will receive it, even if they
-            personally enabled it in their own preferences.
+            {t('NotificationsSettingsPanel.description')}
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
 
-          <Table size="small" aria-label="Company notification policy">
+          <Table size="small" aria-label={t('NotificationsSettingsPanel.tableAriaLabel')}>
             <TableBody>
               {notificationTypes.map((notificationType) => (
                 <TableRow key={notificationType}>
@@ -91,7 +94,11 @@ export function NotificationsSettingsPanel({ company }: { company: Company }) {
                       checked={isEnabled(notificationType)}
                       onChange={(event) => handleToggle(notificationType, event.target.checked)}
                       slotProps={{
-                        input: { 'aria-label': `Enable ${labelByType.get(notificationType)}` },
+                        input: {
+                          'aria-label': t('NotificationsSettingsPanel.enableTypeAriaLabel', {
+                            label: labelByType.get(notificationType),
+                          }),
+                        },
                       }}
                     />
                   </TableCell>

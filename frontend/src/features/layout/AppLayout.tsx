@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Alert,
@@ -29,6 +30,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
+import { useLanguageSync } from '../../i18n/useLanguageSync'
 import { setDirection, toggleThemeMode } from '../ui/uiSlice'
 import { useAllAgentsQuery, useUpdateOwnAvailabilityMutation } from '../agents/api'
 import type { SelfAvailabilityStatus } from '../agents/types'
@@ -44,6 +46,7 @@ import { SideNav } from './SideNav'
 const DRAWER_WIDTH = 260
 
 export function AppLayout() {
+  const { t } = useTranslation('layout')
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -54,6 +57,7 @@ export function AppLayout() {
   const direction = useAppSelector((state) => state.ui.direction)
   const { data: currentUser } = useCurrentUserQuery()
   const { data: company } = useCompanyQuery()
+  useLanguageSync(company?.settings.language)
   const { hasPermission } = usePermissions()
   const onboardingIncomplete = useIsOnboardingIncomplete()
   const logout = useLogout()
@@ -118,7 +122,7 @@ export function AppLayout() {
                 {!isDesktop && (
                   <IconButton
                     edge="start"
-                    aria-label="Open navigation menu"
+                    aria-label={t('AppLayout.openNavigationMenu')}
                     onClick={() => setMobileNavOpen(true)}
                     sx={{ mr: 1 }}
                   >
@@ -129,7 +133,9 @@ export function AppLayout() {
                   <Box
                     component="img"
                     src={logoUrl}
-                    alt={`${currentUser?.company.name ?? 'Company'} logo`}
+                    alt={t('AppLayout.companyLogoAlt', {
+                      companyName: currentUser?.company.name ?? t('AppLayout.companyFallback'),
+                    })}
                     sx={{ height: 28, width: 28, mr: 1, borderRadius: 0.5, objectFit: 'contain' }}
                   />
                 )}
@@ -139,26 +145,29 @@ export function AppLayout() {
                   noWrap
                   sx={{ flexGrow: 1, minWidth: 0, fontWeight: 600 }}
                 >
-                  {currentUser?.company.name ?? 'Blink Engage'}
+                  {currentUser?.company.name ?? t('AppLayout.appName')}
                 </Typography>
                 <NotificationBell />
-                <Tooltip title="Toggle language direction">
+                <Tooltip title={t('AppLayout.toggleLanguageDirectionTooltip')}>
                   <IconButton
                     onClick={() => dispatch(setDirection(direction === 'ltr' ? 'rtl' : 'ltr'))}
-                    aria-label="toggle direction"
+                    aria-label={t('AppLayout.toggleDirectionAriaLabel')}
                   >
                     <TranslateIcon />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Toggle dark mode">
-                  <IconButton onClick={() => dispatch(toggleThemeMode())} aria-label="toggle theme">
+                <Tooltip title={t('AppLayout.toggleDarkModeTooltip')}>
+                  <IconButton
+                    onClick={() => dispatch(toggleThemeMode())}
+                    aria-label={t('AppLayout.toggleThemeAriaLabel')}
+                  >
                     {themeMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Account">
+                <Tooltip title={t('AppLayout.accountTooltip')}>
                   <IconButton
                     onClick={(event) => setUserMenuAnchor(event.currentTarget)}
-                    aria-label="account menu"
+                    aria-label={t('AppLayout.accountMenuAriaLabel')}
                     aria-haspopup="true"
                     sx={{ ml: 1 }}
                   >
@@ -196,7 +205,8 @@ export function AppLayout() {
                         component="div"
                         sx={{ mb: 0.5 }}
                       >
-                        Status{myAgent.status === 'offline' ? ' — Currently Offline' : ''}
+                        {t('AppLayout.statusLabel')}
+                        {myAgent.status === 'offline' ? t('AppLayout.statusOfflineSuffix') : ''}
                       </Typography>
                       <ToggleButtonGroup
                         size="small"
@@ -208,9 +218,9 @@ export function AppLayout() {
                           if (value) updateAvailabilityMutation.mutate(value)
                         }}
                       >
-                        <ToggleButton value="online">Online</ToggleButton>
-                        <ToggleButton value="away">Away</ToggleButton>
-                        <ToggleButton value="busy">Busy</ToggleButton>
+                        <ToggleButton value="online">{t('AppLayout.onlineStatus')}</ToggleButton>
+                        <ToggleButton value="away">{t('AppLayout.awayStatus')}</ToggleButton>
+                        <ToggleButton value="busy">{t('AppLayout.busyStatus')}</ToggleButton>
                       </ToggleButtonGroup>
                     </Box>
                   )}
@@ -224,7 +234,7 @@ export function AppLayout() {
                     <ListItemIcon>
                       <PersonOutlineIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>My Profile</ListItemText>
+                    <ListItemText>{t('AppLayout.myProfile')}</ListItemText>
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
@@ -235,7 +245,7 @@ export function AppLayout() {
                     <ListItemIcon>
                       <LogoutIcon fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>Sign out</ListItemText>
+                    <ListItemText>{t('AppLayout.signOut')}</ListItemText>
                   </MenuItem>
                 </Menu>
               </Toolbar>
@@ -243,9 +253,9 @@ export function AppLayout() {
             <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
               {showSetupBanner && (
                 <Alert severity="info" sx={{ mb: 2 }}>
-                  Your company setup isn't finished yet.{' '}
+                  {t('AppLayout.setupBannerMessage')}{' '}
                   <Link component={RouterLink} to="/onboarding">
-                    Complete setup
+                    {t('AppLayout.setupBannerLink')}
                   </Link>
                 </Alert>
               )}

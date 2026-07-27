@@ -1,29 +1,30 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Chip, List, ListItem, ListItemText, Stack, Typography } from '@mui/material'
 import { ChannelCreateDialog } from '../../channels/ChannelCreateDialog'
 import { channelTypeLabel } from '../../channels/types'
 import { useAllChannelsQuery } from '../../channels/api'
 
 export function ChannelsStep() {
+  const { t } = useTranslation('onboarding')
   const [dialogChannelType, setDialogChannelType] = useState<string | null>(null)
   const channelsQuery = useAllChannelsQuery()
 
   return (
     <Stack spacing={3}>
       <Typography variant="body2" color="text.secondary">
-        Connect the channels your team uses to talk to customers. All optional — you can add or
-        remove channels any time from Channels in the sidebar.
+        {t('ChannelsStep.description')}
       </Typography>
 
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
         <Button variant="outlined" onClick={() => setDialogChannelType('whatsapp')}>
-          Connect WhatsApp
+          {t('ChannelsStep.connectWhatsappButton')}
         </Button>
         <Button variant="outlined" onClick={() => setDialogChannelType('web_chat')}>
-          Connect Web Chat
+          {t('ChannelsStep.connectWebChatButton')}
         </Button>
         <Button variant="outlined" onClick={() => setDialogChannelType('telegram')}>
-          Add another channel
+          {t('ChannelsStep.addAnotherChannelButton')}
         </Button>
       </Stack>
 
@@ -36,7 +37,11 @@ export function ChannelsStep() {
                 secondary={channelTypeLabel(channel.channel_type)}
               />
               <Chip
-                label={channel.is_active ? 'Active' : 'Inactive'}
+                label={
+                  channel.is_active
+                    ? t('ChannelsStep.activeLabel')
+                    : t('ChannelsStep.inactiveLabel')
+                }
                 size="small"
                 color={channel.is_active ? 'success' : 'default'}
               />

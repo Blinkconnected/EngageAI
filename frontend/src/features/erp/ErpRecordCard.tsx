@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import {
   Card,
   CardContent,
@@ -17,6 +18,7 @@ import type { ErpSyncedRecord } from './types'
  * renders whatever key/value pairs the raw document actually has rather
  * than assuming any particular field set. */
 export function ErpRecordCard({ record }: { record: ErpSyncedRecord }) {
+  const { t } = useTranslation('erp')
   const entries = Object.entries(record.data)
 
   return (
@@ -47,7 +49,7 @@ export function ErpRecordCard({ record }: { record: ErpSyncedRecord }) {
           </Table>
         )}
         <Typography variant="caption" color="text.secondary">
-          Synced {formatRelativeTime(record.synced_at)}
+          {t('ErpRecordCard.syncedLabel', { time: formatRelativeTime(record.synced_at) })}
         </Typography>
       </CardContent>
     </Card>

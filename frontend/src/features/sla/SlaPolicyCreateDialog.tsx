@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Divider, FormControlLabel, Switch, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { EscalationRulesEditor } from './EscalationRulesEditor'
@@ -12,13 +13,8 @@ function parseTargetMinutes(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-export function SlaPolicyCreateDialog({
-  open,
-  onClose,
-}: {
-  open: boolean
-  onClose: () => void
-}) {
+export function SlaPolicyCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('sla')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [firstResponseTarget, setFirstResponseTarget] = useState('')
@@ -63,8 +59,8 @@ export function SlaPolicyCreateDialog({
   return (
     <FormDialog
       open={open}
-      title="New SLA policy"
-      submitLabel="Create policy"
+      title={t('SlaPolicyCreateDialog.dialogTitle')}
+      submitLabel={t('SlaPolicyCreateDialog.submitLabel')}
       isSubmitting={createMutation.isPending}
       error={createMutation.error}
       errorMessage={createMutation.error ? extractErrorMessage(createMutation.error) : undefined}
@@ -72,7 +68,7 @@ export function SlaPolicyCreateDialog({
       onClose={handleClose}
     >
       <TextField
-        label="Name"
+        label={t('SlaPolicyCreateDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -80,7 +76,7 @@ export function SlaPolicyCreateDialog({
         autoFocus
       />
       <TextField
-        label="Description"
+        label={t('SlaPolicyCreateDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
@@ -88,30 +84,30 @@ export function SlaPolicyCreateDialog({
         minRows={2}
       />
       <TextField
-        label="First response target (minutes)"
+        label={t('SlaPolicyCreateDialog.firstResponseTargetLabel')}
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no first-response SLA."
+        helperText={t('SlaPolicyCreateDialog.firstResponseTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
-        label="Resolution target (minutes)"
+        label={t('SlaPolicyCreateDialog.resolutionTargetLabel')}
         type="number"
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no resolution SLA."
+        helperText={t('SlaPolicyCreateDialog.resolutionTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
-        label="Warning threshold (%)"
+        label={t('SlaPolicyCreateDialog.warningThresholdLabel')}
         type="number"
         value={warningThreshold}
         onChange={(event) => setWarningThreshold(event.target.value)}
         fullWidth
-        helperText="Warn once this percentage of a target has elapsed, before it actually breaches."
+        helperText={t('SlaPolicyCreateDialog.warningThresholdHelperText')}
         slotProps={{ htmlInput: { min: 1, max: 100 } }}
       />
       <FormControlLabel
@@ -121,7 +117,7 @@ export function SlaPolicyCreateDialog({
             onChange={(event) => setBusinessHoursAware(event.target.checked)}
           />
         }
-        label="Business-hours aware"
+        label={t('SlaPolicyCreateDialog.businessHoursAwareLabel')}
       />
       <Divider />
       <EscalationRulesEditor rules={escalationRules} onChange={setEscalationRules} />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MenuItem, TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -17,12 +18,20 @@ export function AgentEditDialog({ agent, onClose }: { agent: Agent | null; onClo
 }
 
 function AgentEditDialogFields({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+  const { t } = useTranslation('agents')
   const [title, setTitle] = useState(agent.title ?? '')
   const [departmentId, setDepartmentId] = useState(agent.department_id ?? '')
   const [status, setStatus] = useState<AgentStatus>(agent.status)
 
   const departmentsQuery = useAllDepartmentsQuery()
   const updateMutation = useUpdateAgentMutation()
+
+  const STATUS_LABEL: Record<AgentStatus, string> = {
+    online: t('AgentEditDialog.statusOnline'),
+    away: t('AgentEditDialog.statusAway'),
+    busy: t('AgentEditDialog.statusBusy'),
+    offline: t('AgentEditDialog.statusOffline'),
+  }
 
   function handleSubmit() {
     updateMutation.mutate(
@@ -37,8 +46,8 @@ function AgentEditDialogFields({ agent, onClose }: { agent: Agent; onClose: () =
   return (
     <FormDialog
       open
-      title={`Edit ${agent.full_name}`}
-      submitLabel="Save changes"
+      title={t('AgentEditDialog.title', { name: agent.full_name })}
+      submitLabel={t('AgentEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -46,21 +55,21 @@ function AgentEditDialogFields({ agent, onClose }: { agent: Agent; onClose: () =
       onClose={onClose}
     >
       <TextField
-        label="Title"
+        label={t('AgentEditDialog.titleLabel')}
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         fullWidth
         autoFocus
       />
       <TextField
-        label="Department"
+        label={t('AgentEditDialog.departmentLabel')}
         select
         value={departmentId}
         onChange={(event) => setDepartmentId(event.target.value)}
         fullWidth
         disabled={departmentsQuery.isPending}
       >
-        <MenuItem value="">None</MenuItem>
+        <MenuItem value="">{t('AgentEditDialog.departmentNoneOption')}</MenuItem>
         {departmentsQuery.data?.map((department) => (
           <MenuItem key={department.id} value={department.id}>
             {department.name}
@@ -68,7 +77,7 @@ function AgentEditDialogFields({ agent, onClose }: { agent: Agent; onClose: () =
         ))}
       </TextField>
       <TextField
-        label="Status"
+        label={t('AgentEditDialog.statusLabel')}
         select
         value={status}
         onChange={(event) => setStatus(event.target.value as AgentStatus)}
@@ -76,7 +85,7 @@ function AgentEditDialogFields({ agent, onClose }: { agent: Agent; onClose: () =
       >
         {STATUS_OPTIONS.map((option) => (
           <MenuItem key={option} value={option}>
-            {option}
+            {STATUS_LABEL[option]}
           </MenuItem>
         ))}
       </TextField>

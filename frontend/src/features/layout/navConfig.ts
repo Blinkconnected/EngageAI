@@ -14,6 +14,8 @@ import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
 import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined'
 
 export interface NavItem {
+  /** An i18next key (`t(item.label)` in SideNav.tsx), not literal display
+   * text — namespace "layout", e.g. "SideNav.navDashboard". */
   label: string
   path: string
   icon: ComponentType<{ fontSize?: 'small' | 'medium' | 'large' | 'inherit' }>
@@ -37,67 +39,77 @@ export interface NavItem {
  * it, so there is never a nav item pointing at an unbuilt page.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/', icon: DashboardOutlinedIcon },
+  { label: 'SideNav.navDashboard', path: '/', icon: DashboardOutlinedIcon },
   {
-    label: 'Inbox',
+    label: 'SideNav.navInbox',
     path: '/conversations',
     icon: InboxOutlinedIcon,
     permission: 'conversations.read',
   },
   {
-    label: 'Customers',
+    label: 'SideNav.navCustomers',
     path: '/customers',
     icon: ContactsOutlinedIcon,
     permission: 'customers.read',
   },
-  { label: 'Agents', path: '/agents', icon: GroupOutlinedIcon, permission: 'agents.read' },
   {
-    label: 'Departments',
+    label: 'SideNav.navAgents',
+    path: '/agents',
+    icon: GroupOutlinedIcon,
+    permission: 'agents.read',
+  },
+  {
+    label: 'SideNav.navDepartments',
     path: '/departments',
     icon: ApartmentOutlinedIcon,
     permission: 'departments.read',
   },
-  { label: 'Channels', path: '/channels', icon: ForumOutlinedIcon, permission: 'channels.read' },
   {
-    label: 'Status',
+    label: 'SideNav.navChannels',
+    path: '/channels',
+    icon: ForumOutlinedIcon,
+    permission: 'channels.read',
+  },
+  {
+    label: 'SideNav.navStatus',
     path: '/status',
     icon: MonitorHeartOutlinedIcon,
     permission: 'channels.read',
   },
   {
-    label: 'Queues',
+    label: 'SideNav.navQueues',
     path: '/queues',
     icon: AltRouteOutlinedIcon,
     permission: 'queues.read',
   },
   {
-    label: 'Roles & Permissions',
+    label: 'SideNav.navRolesPermissions',
     path: '/roles',
     icon: AdminPanelSettingsOutlinedIcon,
     permission: 'roles.manage',
   },
   {
-    label: 'SLA Builder',
+    label: 'SideNav.navSlaBuilder',
     path: '/sla',
     icon: RuleOutlinedIcon,
     permission: 'sla_policies.read',
   },
   {
-    label: 'Reports',
+    label: 'SideNav.navReports',
     path: '/reports/executive',
     matchPath: '/reports',
     icon: AssessmentOutlinedIcon,
     permission: 'reports.read',
   },
   {
-    label: 'ERPNext',
+    label: 'SideNav.navErpNext',
     path: '/erp-configs',
     icon: SyncOutlinedIcon,
     permission: 'erp.manage',
     requiresErpEnabled: true,
   },
   {
-    label: 'Settings',
+    label: 'SideNav.navSettings',
     path: '/settings/company/general',
     matchPath: '/settings/company',
     icon: BusinessOutlinedIcon,

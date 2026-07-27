@@ -1,34 +1,29 @@
 import { useState } from 'react'
-import {
-  Collapse,
-  FormControlLabel,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material'
+import { Collapse, FormControlLabel, Stack, Switch, TextField, Typography } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { fieldBool, fieldValue, type ChannelFieldsProps } from './types'
 
 export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
+  const { t } = useTranslation('channelsFields')
   const [imapExpanded, setImapExpanded] = useState(Boolean(fieldValue(credentials, 'imap_host')))
 
   return (
     <Stack spacing={2}>
       <Typography variant="subtitle2" color="text.secondary">
-        Outbound (SMTP)
+        {t('EmailFields.smtpSectionTitle')}
       </Typography>
       <TextField
-        label="SMTP host"
+        label={t('EmailFields.smtpHostLabel')}
         value={fieldValue(credentials, 'smtp_host')}
         onChange={(event) => onChange({ ...credentials, smtp_host: event.target.value })}
         required
         fullWidth
-        placeholder="smtp.gmail.com"
-        helperText="Your mailbox provider's outbound mail server"
+        placeholder={t('EmailFields.smtpHostPlaceholder')}
+        helperText={t('EmailFields.smtpHostHelperText')}
       />
       <Stack direction="row" spacing={2}>
         <TextField
-          label="SMTP port"
+          label={t('EmailFields.smtpPortLabel')}
           value={fieldValue(credentials, 'smtp_port') || '587'}
           onChange={(event) => onChange({ ...credentials, smtp_port: event.target.value })}
           sx={{ width: 140 }}
@@ -40,37 +35,40 @@ export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
               onChange={(event) => onChange({ ...credentials, smtp_use_tls: event.target.checked })}
             />
           }
-          label="Use TLS"
+          label={t('EmailFields.useTlsLabel')}
         />
       </Stack>
       <TextField
-        label="SMTP username"
+        label={t('EmailFields.smtpUsernameLabel')}
         value={fieldValue(credentials, 'smtp_username')}
         onChange={(event) => onChange({ ...credentials, smtp_username: event.target.value })}
         fullWidth
-        placeholder="support@yourcompany.com"
+        placeholder={t('EmailFields.smtpUsernamePlaceholder')}
       />
       <TextField
-        label="SMTP password"
+        label={t('EmailFields.smtpPasswordLabel')}
         type="password"
         value={fieldValue(credentials, 'smtp_password')}
         onChange={(event) => onChange({ ...credentials, smtp_password: event.target.value })}
-        helperText="Gmail/Outlook/etc. usually require an app-specific password, not your regular login password"
+        helperText={t('EmailFields.smtpPasswordHelperText')}
         fullWidth
       />
       <TextField
-        label="From address"
+        label={t('EmailFields.fromAddressLabel')}
         value={fieldValue(credentials, 'from_address')}
         onChange={(event) => onChange({ ...credentials, from_address: event.target.value })}
         fullWidth
-        helperText="Defaults to the SMTP username if left blank"
+        helperText={t('EmailFields.fromAddressHelperText')}
       />
 
       <FormControlLabel
         control={
-          <Switch checked={imapExpanded} onChange={(event) => setImapExpanded(event.target.checked)} />
+          <Switch
+            checked={imapExpanded}
+            onChange={(event) => setImapExpanded(event.target.checked)}
+          />
         }
-        label="Also receive replies (IMAP)"
+        label={t('EmailFields.imapToggleLabel')}
       />
       <Collapse in={imapExpanded}>
         {/* Conditionally MOUNTED, not just visually collapsed — see the
@@ -82,18 +80,18 @@ export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
         {imapExpanded && (
           <Stack spacing={2}>
             <Typography variant="subtitle2" color="text.secondary">
-              Inbound (IMAP)
+              {t('EmailFields.imapSectionTitle')}
             </Typography>
             <TextField
-              label="IMAP host"
+              label={t('EmailFields.imapHostLabel')}
               value={fieldValue(credentials, 'imap_host')}
               onChange={(event) => onChange({ ...credentials, imap_host: event.target.value })}
               fullWidth
-              placeholder="imap.gmail.com"
+              placeholder={t('EmailFields.imapHostPlaceholder')}
             />
             <Stack direction="row" spacing={2}>
               <TextField
-                label="IMAP port"
+                label={t('EmailFields.imapPortLabel')}
                 value={fieldValue(credentials, 'imap_port') || '993'}
                 onChange={(event) => onChange({ ...credentials, imap_port: event.target.value })}
                 sx={{ width: 140 }}
@@ -107,24 +105,24 @@ export function EmailFields({ credentials, onChange }: ChannelFieldsProps) {
                     }
                   />
                 }
-                label="Use SSL"
+                label={t('EmailFields.useSslLabel')}
               />
             </Stack>
             <TextField
-              label="IMAP username"
+              label={t('EmailFields.imapUsernameLabel')}
               value={fieldValue(credentials, 'imap_username')}
               onChange={(event) => onChange({ ...credentials, imap_username: event.target.value })}
               fullWidth
             />
             <TextField
-              label="IMAP password"
+              label={t('EmailFields.imapPasswordLabel')}
               type="password"
               value={fieldValue(credentials, 'imap_password')}
               onChange={(event) => onChange({ ...credentials, imap_password: event.target.value })}
               fullWidth
             />
             <TextField
-              label="IMAP folder"
+              label={t('EmailFields.imapFolderLabel')}
               value={fieldValue(credentials, 'imap_folder') || 'INBOX'}
               onChange={(event) => onChange({ ...credentials, imap_folder: event.target.value })}
               fullWidth

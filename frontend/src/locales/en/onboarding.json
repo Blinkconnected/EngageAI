@@ -1,0 +1,40 @@
+{
+  "OnboardingWizardPage": {
+    "loadingLabel": "Loading…",
+    "setupTitle": "Set up {{companyName}}",
+    "setupDescription": "A few quick steps to get your workspace ready. You can change any of this later in Settings.",
+    "steps": {
+      "companyInformation": "Company Information",
+      "teamSetup": "Team Setup",
+      "channels": "Channels",
+      "erpIntegration": "ERP Integration"
+    },
+    "skipSetupButton": "Skip setup",
+    "backButton": "Back",
+    "nextButton": "Next",
+    "finishButton": "Finish",
+    "finishingButton": "Finishing…"
+  },
+  "ChannelsStep": {
+    "description": "Connect the channels your team uses to talk to customers. All optional — you can add or remove channels any time from Channels in the sidebar.",
+    "connectWhatsappButton": "Connect WhatsApp",
+    "connectWebChatButton": "Connect Web Chat",
+    "addAnotherChannelButton": "Add another channel",
+    "activeLabel": "Active",
+    "inactiveLabel": "Inactive"
+  },
+  "TeamSetupStep": {
+    "ownerChip": "Owner",
+    "inviteAgentsTitle": "Invite agents",
+    "inviteAgentsDescription": "They'll receive an email with a temporary password to sign in.",
+    "fullNameLabel": "Full name",
+    "emailLabel": "Email",
+    "inviteAgentButton": "Invite agent",
+    "invitingButton": "Inviting…",
+    "agentsOnTeamSubheader": "Agents on your team",
+    "createDepartmentsTitle": "Create departments",
+    "departmentNameLabel": "Department name",
+    "createButton": "Create",
+    "creatingButton": "Creating…"
+  }
+}

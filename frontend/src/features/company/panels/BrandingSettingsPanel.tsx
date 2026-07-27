@@ -10,11 +10,13 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import type { Company } from '../types'
 
 export function BrandingSettingsPanel({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettings')
   const [logoUrl, setLogoUrl] = useState(company.settings.branding?.logo_url ?? '')
   const updateMutation = useUpdateCompanyMutation()
   const savedLogoUrl = company.settings.branding?.logo_url ?? ''
@@ -29,31 +31,32 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            Shown in the header next to your company name. Paste a link to an image already hosted
-            elsewhere (your website, a CDN, etc.).
+            {t('BrandingSettingsPanel.description')}
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && (
+            <Alert severity="success">{t('BrandingSettingsPanel.savedMessage')}</Alert>
+          )}
 
           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
             <Avatar
               variant="rounded"
               src={logoUrl || undefined}
-              alt="Logo preview"
+              alt={t('BrandingSettingsPanel.logoPreviewAlt')}
               sx={{ width: 56, height: 56, bgcolor: 'action.hover' }}
             >
               {company.name.charAt(0).toUpperCase()}
             </Avatar>
             <Box sx={{ flexGrow: 1 }}>
               <TextField
-                label="Logo URL"
+                label={t('BrandingSettingsPanel.logoUrlLabel')}
                 value={logoUrl}
                 onChange={(event) => setLogoUrl(event.target.value)}
                 fullWidth
-                placeholder="https://cdn.example.com/logo.png"
+                placeholder={t('BrandingSettingsPanel.logoUrlPlaceholder')}
               />
             </Box>
           </Stack>
@@ -64,7 +67,9 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
               disabled={updateMutation.isPending || !isDirty}
               onClick={handleSave}
             >
-              {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+              {updateMutation.isPending
+                ? t('BrandingSettingsPanel.savingButton')
+                : t('BrandingSettingsPanel.saveChangesButton')}
             </Button>
             {savedLogoUrl && (
               <Button
@@ -76,7 +81,7 @@ export function BrandingSettingsPanel({ company }: { company: Company }) {
                   updateMutation.mutate({ settings: { branding: { logo_url: null } } })
                 }}
               >
-                Remove logo
+                {t('BrandingSettingsPanel.removeLogoButton')}
               </Button>
             )}
           </Stack>

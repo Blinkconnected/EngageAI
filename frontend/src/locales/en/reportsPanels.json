@@ -1,0 +1,110 @@
+{
+  "AiReportPanel": {
+    "loadingLabel": "Loading AI usage report…",
+    "emptyTitle": "No AI usage",
+    "emptyDescription": "No AI feature (reply suggestions, summaries, translation, etc.) was used in this date range.",
+    "chartTitle": "Calls by operation",
+    "gridAriaLabel": "AI usage report",
+    "columns": {
+      "operation": "Operation",
+      "calls": "Calls"
+    }
+  },
+  "ConversationsReportPanel": {
+    "loadingLabel": "Loading conversations report…",
+    "channelSelectLabel": "Channel",
+    "allChannelsOption": "All channels",
+    "exportsNotice": "Exports include all channels for this date range, not just {{channel}}.",
+    "emptyTitle": "No conversation activity",
+    "emptyDescription": "No conversations were opened, closed, or resolved in this date range.",
+    "chartTitle": "Totals by channel",
+    "seriesOpened": "Opened",
+    "seriesClosed": "Closed",
+    "seriesResolved": "Resolved",
+    "gridAriaLabel": "Conversations report",
+    "columns": {
+      "date": "Date",
+      "channel": "Channel",
+      "opened": "Opened",
+      "closed": "Closed",
+      "resolved": "Resolved",
+      "firstRespBreaches": "1st resp. breaches",
+      "resolutionBreaches": "Resolution breaches"
+    }
+  },
+  "CsatReportPanel": {
+    "loadingLabel": "Loading CSAT report…",
+    "agentColumn": "Agent",
+    "responsesLabel": "Responses",
+    "averageRatingLabel": "Average rating",
+    "emptyTitle": "No CSAT responses",
+    "emptyDescription": "No customer submitted a satisfaction rating in this date range.",
+    "chartTitle": "Average rating over time",
+    "gridAriaLabel": "CSAT by agent"
+  },
+  "ExecutiveDashboardPanel": {
+    "loadingLabel": "Loading executive dashboard…",
+    "openedLabel": "Opened",
+    "closedLabel": "Closed",
+    "resolvedLabel": "Resolved",
+    "activeAgentsLabel": "Active agents",
+    "firstResponseBreachesLabel": "1st response breaches",
+    "resolutionBreachesLabel": "Resolution breaches",
+    "csatAverageLabel": "CSAT average",
+    "csatResponsesLabel": "CSAT responses",
+    "aiCallsLabel": "AI calls",
+    "chartTitle": "Conversations by channel",
+    "emptyTitle": "No conversation activity in this range"
+  },
+  "MyPerformancePanel": {
+    "loadingLabel": "Loading your performance…",
+    "noProfileTitle": "No agent profile",
+    "noProfileDescription": "Your account isn't linked to an agent profile, so there's no personal performance data to show.",
+    "conversationsAssignedLabel": "Conversations assigned",
+    "conversationsClosedLabel": "Conversations closed",
+    "messagesSentLabel": "Messages sent"
+  },
+  "PerformanceReportPanel": {
+    "loadingLabel": "Loading agent performance report…",
+    "emptyTitle": "No agent activity",
+    "emptyDescription": "No agent was assigned to or closed a conversation in this date range.",
+    "chartTitle": "Conversations closed by agent",
+    "assignedLabel": "Assigned",
+    "closedLabel": "Closed",
+    "gridAriaLabel": "Agent performance report",
+    "columns": {
+      "agent": "Agent",
+      "messagesSent": "Messages sent"
+    }
+  },
+  "QueuesReportPanel": {
+    "loadingLabel": "Loading queues report…",
+    "emptyTitle": "No queue activity",
+    "emptyDescription": "No conversation entered a queue in this date range.",
+    "chartTitle": "Queue volume and SLA breaches",
+    "enteredSeriesLabel": "Entered",
+    "slaBreachedSeriesLabel": "SLA breached",
+    "gridAriaLabel": "Queues report",
+    "columns": {
+      "queue": "Queue",
+      "conversationsEntered": "Conversations entered",
+      "slaBreaches": "SLA breaches"
+    }
+  },
+  "SlaReportPanel": {
+    "loadingLabel": "Loading SLA report…",
+    "conversationsOpenedLabel": "Conversations opened",
+    "firstResponseBreachesLabel": "1st response breaches",
+    "resolutionBreachesLabel": "Resolution breaches",
+    "emptyTitle": "No queue activity",
+    "emptyDescription": "No conversation entered a queue in this date range.",
+    "chartTitle": "SLA breaches by queue",
+    "slaBreachedSeriesLabel": "SLA breached",
+    "gridAriaLabel": "SLA breaches by queue",
+    "columns": {
+      "queue": "Queue",
+      "conversationsEntered": "Conversations entered",
+      "slaBreaches": "SLA breaches"
+    }
+  }
+}

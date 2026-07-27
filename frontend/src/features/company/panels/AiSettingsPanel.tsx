@@ -12,6 +12,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useAiConfigQuery, useUpdateAiConfigMutation } from '../aiConfigApi'
 import { useUpdateCompanyMutation } from '../api'
@@ -19,6 +20,7 @@ import { AI_CONFIG_PROVIDERS, type AiConfig, type AiConfigProvider } from '../ty
 import type { Company } from '../types'
 
 export function AiSettingsPanel({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettingsExtra')
   const [enabled, setEnabled] = useState(company.settings.ai?.enabled ?? true)
   const updateMutation = useUpdateCompanyMutation()
 
@@ -41,14 +43,15 @@ export function AiSettingsPanel({ company }: { company: Company }) {
 
             <FormControlLabel
               control={
-                <Switch checked={enabled} onChange={(event) => handleChange(event.target.checked)} />
+                <Switch
+                  checked={enabled}
+                  onChange={(event) => handleChange(event.target.checked)}
+                />
               }
-              label="Enable AI Engine features"
+              label={t('AiSettingsPanel.enableLabel')}
             />
             <Typography variant="body2" color="text.secondary">
-              Reply suggestions, summaries, translation, sentiment, and other AI features for your
-              agents. Turn this off if your organization needs to avoid AI-generated content (e.g.
-              for compliance reasons) — this applies even when a provider is configured below.
+              {t('AiSettingsPanel.description')}
             </Typography>
           </Stack>
         </CardContent>
@@ -60,13 +63,14 @@ export function AiSettingsPanel({ company }: { company: Company }) {
 }
 
 function AiProviderConfigCard() {
+  const { t } = useTranslation('companySettingsExtra')
   const aiConfigQuery = useAiConfigQuery()
 
   if (aiConfigQuery.isPending) return null
   if (aiConfigQuery.isError) {
     return (
       <Alert severity="error">
-        {extractErrorMessage(aiConfigQuery.error, 'Could not load the AI provider configuration.')}
+        {extractErrorMessage(aiConfigQuery.error, t('AiSettingsPanel.loadErrorFallback'))}
       </Alert>
     )
   }
@@ -80,6 +84,7 @@ function AiProviderConfigCard() {
 }
 
 function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
+  const { t } = useTranslation('companySettingsExtra')
   const updateMutation = useUpdateAiConfigMutation()
 
   const [provider, setProvider] = useState<AiConfigProvider | ''>(aiConfig.provider ?? '')
@@ -121,22 +126,23 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
                 other heading levels), an axe heading-order violation.
                 This is a bolded section label, not a real heading. */}
             <Typography variant="subtitle1" component="p" sx={{ fontWeight: 600 }}>
-              AI provider
+              {t('AiSettingsPanel.providerCardTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Bring your own OpenAI, Claude, or self-hosted Ollama account for this company,
-              instead of using the platform's shared default.
+              {t('AiSettingsPanel.providerCardDescription')}
             </Typography>
           </div>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && (
+            <Alert severity="success">{t('AiSettingsPanel.savedAlert')}</Alert>
+          )}
 
           <TextField
             select
-            label="Provider"
+            label={t('AiSettingsPanel.providerLabel')}
             value={provider}
             onChange={(event) => setProvider(event.target.value as AiConfigProvider | '')}
             fullWidth
@@ -148,9 +154,9 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
             // an empty-string value it would sit un-shrunk, overlapping
             // the displayed "Platform default" text.
             slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-            helperText="Leave as 'Platform default' to use whatever the platform itself is configured with."
+            helperText={t('AiSettingsPanel.providerHelperText')}
           >
-            <MenuItem value="">Platform default</MenuItem>
+            <MenuItem value="">{t('AiSettingsPanel.platformDefaultOption')}</MenuItem>
             {AI_CONFIG_PROVIDERS.map((option) => (
               <MenuItem key={option.value} value={option.value}>
                 {option.label}
@@ -163,7 +169,7 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
               <Divider />
               {needsApiKey && (
                 <TextField
-                  label="API Key"
+                  label={t('AiSettingsPanel.apiKeyLabel')}
                   type="password"
                   value={apiKeyInput}
                   onChange={(event) => setApiKeyInput(event.target.value)}
@@ -172,29 +178,29 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
                   error={!isValid}
                   helperText={
                     !isValid
-                      ? 'An API key is required for this provider.'
+                      ? t('AiSettingsPanel.apiKeyHelperRequired')
                       : savedApiKeySet
-                        ? 'A key is already saved — leave blank to keep it.'
-                        : 'Never shown again after saving.'
+                        ? t('AiSettingsPanel.apiKeyHelperAlreadySaved')
+                        : t('AiSettingsPanel.apiKeyHelperNeverShown')
                   }
                 />
               )}
               <TextField
-                label="Model"
+                label={t('AiSettingsPanel.modelLabel')}
                 value={model}
                 onChange={(event) => setModel(event.target.value)}
                 fullWidth
-                helperText="Leave blank to use this provider's default model."
+                helperText={t('AiSettingsPanel.modelHelperText')}
               />
               <TextField
-                label="Base URL"
+                label={t('AiSettingsPanel.baseUrlLabel')}
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 fullWidth
                 helperText={
                   provider === 'ollama'
-                    ? "Your Ollama server's address, e.g. http://localhost:11434."
-                    : 'Optional — only needed for a custom/self-hosted API endpoint.'
+                    ? t('AiSettingsPanel.baseUrlHelperOllama')
+                    : t('AiSettingsPanel.baseUrlHelperOptional')
                 }
               />
             </>
@@ -206,7 +212,9 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
             onClick={handleSave}
             sx={{ alignSelf: 'flex-start' }}
           >
-            {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+            {updateMutation.isPending
+              ? t('AiSettingsPanel.savingButton')
+              : t('AiSettingsPanel.saveButton')}
           </Button>
         </Stack>
       </CardContent>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Alert, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -15,6 +16,7 @@ export function RoleEditDialog({ role, onClose }: { role: Role | null; onClose: 
 }
 
 function RoleEditDialogFields({ role, onClose }: { role: Role; onClose: () => void }) {
+  const { t } = useTranslation('roles')
   const [name, setName] = useState(role.name)
   const [description, setDescription] = useState(role.description ?? '')
   const [permissionCodes, setPermissionCodes] = useState<Set<string>>(
@@ -43,8 +45,8 @@ function RoleEditDialogFields({ role, onClose }: { role: Role; onClose: () => vo
   return (
     <FormDialog
       open
-      title={`Edit ${role.name}`}
-      submitLabel="Save changes"
+      title={t('RoleEditDialog.title', { name: role.name })}
+      submitLabel={t('RoleEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -52,17 +54,17 @@ function RoleEditDialogFields({ role, onClose }: { role: Role; onClose: () => vo
       onClose={onClose}
     >
       <TextField
-        label="Name"
+        label={t('RoleEditDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
         fullWidth
         autoFocus={!role.is_system}
         disabled={role.is_system}
-        helperText={role.is_system ? "A system role's name can't be changed." : undefined}
+        helperText={role.is_system ? t('RoleEditDialog.systemRoleNameHelperText') : undefined}
       />
       <TextField
-        label="Description"
+        label={t('RoleEditDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
@@ -72,12 +74,10 @@ function RoleEditDialogFields({ role, onClose }: { role: Role; onClose: () => vo
         // the first field actually editable in that case.
         autoFocus={role.is_system}
       />
-      {isOwner && (
-        <Alert severity="info">
-          The Owner role always has every permission and can't be changed.
-        </Alert>
+      {isOwner && <Alert severity="info">{t('RoleEditDialog.ownerRoleInfo')}</Alert>}
+      {permissionsQuery.isPending && (
+        <LoadingState label={t('RoleEditDialog.loadingPermissions')} />
       )}
-      {permissionsQuery.isPending && <LoadingState label="Loading permissions…" />}
       {permissionsQuery.data && (
         <PermissionChecklist
           permissions={permissionsQuery.data}

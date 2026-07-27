@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FormControlLabel, MenuItem, Switch, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { CHANNEL_TYPES } from '../channels/types'
@@ -25,6 +26,7 @@ function RoutingRuleEditDialogFields({
   rule: RoutingRule
   onClose: () => void
 }) {
+  const { t } = useTranslation('queues')
   const [priority, setPriority] = useState(rule.priority.toString())
   const [targetQueueId, setTargetQueueId] = useState(rule.target_queue_id)
   const [channelType, setChannelType] = useState(rule.conditions.channel_type ?? '')
@@ -55,8 +57,8 @@ function RoutingRuleEditDialogFields({
   return (
     <FormDialog
       open
-      title="Edit routing rule"
-      submitLabel="Save changes"
+      title={t('RoutingRuleEditDialog.title')}
+      submitLabel={t('RoutingRuleEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -64,19 +66,19 @@ function RoutingRuleEditDialogFields({
       onClose={onClose}
     >
       <TextField
-        label="Priority"
+        label={t('RoutingRuleEditDialog.priorityLabel')}
         type="number"
         value={priority}
         onChange={(event) => setPriority(event.target.value)}
         required
         fullWidth
         autoFocus
-        helperText="Lower numbers are evaluated first — the first matching rule wins."
+        helperText={t('RoutingRuleEditDialog.priorityHelperText')}
         slotProps={{ htmlInput: { min: 0 } }}
       />
       <TextField
         select
-        label="Route to queue"
+        label={t('RoutingRuleEditDialog.targetQueueLabel')}
         value={targetQueueId}
         disabled={queuesQuery.isPending}
         onChange={(event) => setTargetQueueId(event.target.value)}
@@ -91,13 +93,13 @@ function RoutingRuleEditDialogFields({
       </TextField>
       <TextField
         select
-        label="Channel type"
+        label={t('RoutingRuleEditDialog.channelTypeLabel')}
         value={channelType}
         onChange={(event) => setChannelType(event.target.value)}
         fullWidth
-        helperText="Leave as 'Any channel' to match every channel type."
+        helperText={t('RoutingRuleEditDialog.channelTypeHelperText')}
       >
-        <MenuItem value="">Any channel</MenuItem>
+        <MenuItem value="">{t('RoutingRuleEditDialog.anyChannelOption')}</MenuItem>
         {CHANNEL_TYPES.map((type) => (
           <MenuItem key={type.value} value={type.value}>
             {type.label}
@@ -105,17 +107,17 @@ function RoutingRuleEditDialogFields({
         ))}
       </TextField>
       <TextField
-        label="Message contains"
+        label={t('RoutingRuleEditDialog.bodyContainsLabel')}
         value={bodyContains}
         onChange={(event) => setBodyContains(event.target.value)}
         fullWidth
-        helperText="Optional — matches if the first message contains this text (case-insensitive)."
+        helperText={t('RoutingRuleEditDialog.bodyContainsHelperText')}
       />
       <FormControlLabel
         control={
           <Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
         }
-        label="Active"
+        label={t('RoutingRuleEditDialog.activeLabel')}
       />
     </FormDialog>
   )

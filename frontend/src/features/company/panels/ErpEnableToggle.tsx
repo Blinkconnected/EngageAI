@@ -8,6 +8,7 @@ import {
   Switch,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import type { Company } from '../types'
@@ -18,6 +19,7 @@ import type { Company } from '../types'
  * enabled, a dedicated "ERP" tab appears with the actual connection
  * form. See docs/architecture/company-onboarding.md. */
 export function ErpEnableToggle({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettings')
   const [enabled, setEnabled] = useState(company.settings.erp?.enabled ?? false)
   const updateMutation = useUpdateCompanyMutation()
 
@@ -41,12 +43,10 @@ export function ErpEnableToggle({ company }: { company: Company }) {
             control={
               <Switch checked={enabled} onChange={(event) => handleChange(event.target.checked)} />
             }
-            label="Enable ERP Integration"
+            label={t('ErpEnableToggle.enableLabel')}
           />
           <Typography variant="body2" color="text.secondary">
-            Connect ERPNext to sync customer records. Once enabled, a new "ERP" tab appears here
-            to configure the connection. Turning this off completely hides ERP everywhere —
-            navigation, customer profiles, and reports — without losing a saved connection.
+            {t('ErpEnableToggle.description')}
           </Typography>
         </Stack>
       </CardContent>

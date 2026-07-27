@@ -1,0 +1,59 @@
+{
+  "CustomerErpPanel": {
+    "loadingLabel": "Loading ERP records…",
+    "syncingButton": "Syncing…",
+    "syncButton": "Sync customer to ERP",
+    "doctypeLabel": "Doctype",
+    "doctypePlaceholder": "e.g. Sales Invoice",
+    "pullingButton": "Pulling…",
+    "pullButton": "Pull records",
+    "emptyStateTitle": "No ERPNext records yet",
+    "emptyStateDescription": "Sync this customer or pull records for a specific doctype to see them here."
+  },
+  "ErpConfigEditDialog": {
+    "dialogTitle": "Edit ERPNext connection",
+    "submitLabel": "Save changes",
+    "siteUrlLabel": "ERPNext site URL",
+    "activeLabel": "Active",
+    "updateCredentialsLabel": "Update credentials (reconnect)",
+    "credentialsInfoAlert": "Credentials are write-only and never shown once saved — enter new values to replace them, then Test Connection to confirm they work before saving.",
+    "apiKeyLabel": "API key",
+    "apiSecretLabel": "API secret",
+    "webhookSecretLabel": "Webhook secret",
+    "webhookSecretHelperText": "Leave blank to keep the current secret",
+    "connectionSuccessAlert": "Connection successful.",
+    "connectionFailedAlert": "Connection failed.",
+    "testingButton": "Testing…",
+    "testConnectionButton": "Test Connection"
+  },
+  "ErpConfigSettingsPage": {
+    "title": "ERPNext integration",
+    "description": "Sync customer records with ERPNext."
+  },
+  "ErpConnectionPanel": {
+    "connectFormDescription": "Connect your ERPNext instance to view customer invoices, orders, and more from their profile.",
+    "siteUrlLabel": "ERPNext site URL",
+    "siteUrlPlaceholder": "https://your-site.erpnext.com",
+    "apiKeyLabel": "API key",
+    "apiSecretLabel": "API secret",
+    "webhookSecretLabel": "Webhook secret",
+    "webhookSecretHelperText": "Shared secret ERPNext sends in the X-Webhook-Secret header",
+    "connectionSuccessAlert": "Connection successful.",
+    "connectionFailedAlert": "Connection failed.",
+    "testingButton": "Testing…",
+    "testConnectionButton": "Test Connection",
+    "connectingButton": "Connecting…",
+    "connectButton": "Connect ERPNext",
+    "loadingLabel": "Loading ERPNext connection…",
+    "activeChip": "Active",
+    "inactiveChip": "Inactive",
+    "editButton": "Edit",
+    "disconnectButton": "Disconnect",
+    "disconnectDialogTitle": "Disconnect ERPNext",
+    "disconnectDialogDescription": "Customer profiles will stop showing ERPNext records until you reconnect.",
+    "disconnectConfirmLabel": "Yes, disconnect"
+  },
+  "ErpRecordCard": {
+    "syncedLabel": "Synced {{time}}"
+  }
+}

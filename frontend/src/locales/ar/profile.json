@@ -1,0 +1,17 @@
+{
+  "ProfilePage": {
+    "pageTitle": "ملفي الشخصي",
+    "pageDescription": "بيانات حسابك وإعدادات الأمان.",
+    "changePasswordHeading": "تغيير كلمة المرور",
+    "changePasswordDescription": "سيتم تسجيل خروجك من كل جهاز وستحتاج إلى تسجيل الدخول مرة أخرى.",
+    "changePasswordErrorFallback": "تعذر تغيير كلمة المرور.",
+    "passwordMismatchError": "كلمتا المرور الجديدتان غير متطابقتين.",
+    "currentPasswordLabel": "كلمة المرور الحالية",
+    "newPasswordLabel": "كلمة المرور الجديدة",
+    "newPasswordHelperText": "10 أحرف على الأقل، تتضمن حرفًا ورقمًا.",
+    "confirmPasswordLabel": "تأكيد كلمة المرور الجديدة",
+    "changingButton": "جارٍ التغيير…",
+    "changePasswordButton": "تغيير كلمة المرور",
+    "passwordChangedMessage": "تم تغيير كلمة المرور. يرجى تسجيل الدخول بكلمة المرور الجديدة."
+  }
+}

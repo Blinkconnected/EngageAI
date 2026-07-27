@@ -11,6 +11,8 @@ import {
   TableRow,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
@@ -44,25 +46,26 @@ function StatCard({ label, value }: { label: string; value: number }) {
  * `avg_wait_seconds`/`longest_wait_seconds` are computed averages the
  * backend returns as floats — rounding here is purely a display concern
  * (the raw value is still what gets sent anywhere it matters). */
-function formatWaitSeconds(seconds: number | null): string {
-  if (seconds == null) return '—'
+function formatWaitSeconds(seconds: number | null, t: TFunction): string {
+  if (seconds == null) return t('DashboardPage.dashPlaceholder')
   const total = Math.round(seconds)
   const minutes = Math.floor(total / 60)
   const remainingSeconds = total % 60
-  if (minutes === 0) return `${remainingSeconds}s`
-  return `${minutes}m ${remainingSeconds}s`
+  if (minutes === 0) return t('DashboardPage.secondsFormat', { seconds: remainingSeconds })
+  return t('DashboardPage.minutesSecondsFormat', { minutes, seconds: remainingSeconds })
 }
 
 function AgentWorkloadTable({ workload }: { workload: AgentWorkload[] }) {
+  const { t } = useTranslation('dashboard')
   return (
     <TableContainer>
-      <Table size="small" aria-label="Team workload">
+      <Table size="small" aria-label={t('DashboardPage.teamWorkloadHeading')}>
         <TableHead>
           <TableRow>
-            <TableCell>Agent</TableCell>
-            <TableCell align="right">Open</TableCell>
-            <TableCell align="right">Pending</TableCell>
-            <TableCell align="right">Total</TableCell>
+            <TableCell>{t('DashboardPage.agentColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.openColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.pendingColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.totalColumnHeader')}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -87,31 +90,34 @@ function AgentWorkloadTable({ workload }: { workload: AgentWorkload[] }) {
 }
 
 function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
+  const { t } = useTranslation('dashboard')
   return (
     <TableContainer>
-      <Table size="small" aria-label="Queue depth">
+      <Table size="small" aria-label={t('DashboardPage.queueDepthHeading')}>
         <TableHead>
           <TableRow>
-            <TableCell>Queue</TableCell>
-            <TableCell>Department</TableCell>
-            <TableCell align="right">Open</TableCell>
-            <TableCell align="right">Waiting</TableCell>
-            <TableCell align="right">Avg wait</TableCell>
-            <TableCell align="right">Longest waiting</TableCell>
-            <TableCell align="right">SLA breached</TableCell>
+            <TableCell>{t('DashboardPage.queueColumnHeader')}</TableCell>
+            <TableCell>{t('DashboardPage.departmentColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.openColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.waitingColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.avgWaitColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.longestWaitingColumnHeader')}</TableCell>
+            <TableCell align="right">{t('DashboardPage.slaBreachedColumnHeader')}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {queues.map((queue) => (
             <TableRow key={queue.queue_id}>
               <TableCell>{queue.queue_name}</TableCell>
-              <TableCell>{queue.department_name ?? '—'}</TableCell>
+              <TableCell>{queue.department_name ?? t('DashboardPage.dashPlaceholder')}</TableCell>
               <TableCell align="right">
                 <Chip label={queue.open_conversations} size="small" color="primary" />
               </TableCell>
               <TableCell align="right">{queue.waiting_count}</TableCell>
-              <TableCell align="right">{formatWaitSeconds(queue.avg_wait_seconds)}</TableCell>
-              <TableCell align="right">{formatWaitSeconds(queue.longest_wait_seconds)}</TableCell>
+              <TableCell align="right">{formatWaitSeconds(queue.avg_wait_seconds, t)}</TableCell>
+              <TableCell align="right">
+                {formatWaitSeconds(queue.longest_wait_seconds, t)}
+              </TableCell>
               <TableCell align="right">
                 {queue.sla_breached_count > 0 ? (
                   <Chip label={queue.sla_breached_count} size="small" color="error" />
@@ -128,16 +134,14 @@ function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
 }
 
 export function DashboardPage() {
+  const { t } = useTranslation('dashboard')
   const liveDashboardQuery = useLiveDashboardQuery()
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        description="A live snapshot of conversations, agents, and queues across your company."
-      />
+      <PageHeader title={t('DashboardPage.title')} description={t('DashboardPage.description')} />
 
-      {liveDashboardQuery.isPending && <LoadingState label="Loading live dashboard…" />}
+      {liveDashboardQuery.isPending && <LoadingState label={t('DashboardPage.loadingLabel')} />}
 
       {liveDashboardQuery.isError && (
         <ErrorState error={liveDashboardQuery.error} onRetry={() => liveDashboardQuery.refetch()} />
@@ -146,19 +150,34 @@ export function DashboardPage() {
       {liveDashboardQuery.data && (
         <Grid container spacing={2}>
           <StatCard
-            label="Total conversations"
+            label={t('DashboardPage.totalConversationsLabel')}
             value={liveDashboardQuery.data.conversations.total}
           />
           <StatCard
-            label="Active (open + pending)"
+            label={t('DashboardPage.activeLabel')}
             value={liveDashboardQuery.data.conversations.active}
           />
-          <StatCard label="Unassigned" value={liveDashboardQuery.data.conversations.unassigned} />
+          <StatCard
+            label={t('DashboardPage.unassignedLabel')}
+            value={liveDashboardQuery.data.conversations.unassigned}
+          />
 
-          <StatCard label="Open" value={liveDashboardQuery.data.conversations.open} />
-          <StatCard label="Pending" value={liveDashboardQuery.data.conversations.pending} />
-          <StatCard label="Resolved" value={liveDashboardQuery.data.conversations.resolved} />
-          <StatCard label="Closed" value={liveDashboardQuery.data.conversations.closed} />
+          <StatCard
+            label={t('DashboardPage.openStatLabel')}
+            value={liveDashboardQuery.data.conversations.open}
+          />
+          <StatCard
+            label={t('DashboardPage.pendingStatLabel')}
+            value={liveDashboardQuery.data.conversations.pending}
+          />
+          <StatCard
+            label={t('DashboardPage.resolvedLabel')}
+            value={liveDashboardQuery.data.conversations.resolved}
+          />
+          <StatCard
+            label={t('DashboardPage.closedLabel')}
+            value={liveDashboardQuery.data.conversations.closed}
+          />
 
           <Grid size={{ xs: 12, md: 4 }}>
             <Card variant="outlined">
@@ -171,12 +190,14 @@ export function DashboardPage() {
                   sx={{ fontWeight: 600 }}
                   gutterBottom
                 >
-                  Agents
+                  {t('DashboardPage.agentsHeading')}
                 </Typography>
                 <Grid container spacing={1}>
                   <Grid size={3}>
                     <Chip
-                      label={`${liveDashboardQuery.data.agents.online} online`}
+                      label={t('DashboardPage.onlineChip', {
+                        num: liveDashboardQuery.data.agents.online,
+                      })}
                       color="success"
                       variant="outlined"
                       sx={{ width: '100%' }}
@@ -184,7 +205,9 @@ export function DashboardPage() {
                   </Grid>
                   <Grid size={3}>
                     <Chip
-                      label={`${liveDashboardQuery.data.agents.away} away`}
+                      label={t('DashboardPage.awayChip', {
+                        num: liveDashboardQuery.data.agents.away,
+                      })}
                       color="warning"
                       variant="outlined"
                       sx={{ width: '100%' }}
@@ -192,7 +215,9 @@ export function DashboardPage() {
                   </Grid>
                   <Grid size={3}>
                     <Chip
-                      label={`${liveDashboardQuery.data.agents.busy} busy`}
+                      label={t('DashboardPage.busyChip', {
+                        num: liveDashboardQuery.data.agents.busy,
+                      })}
                       color="error"
                       variant="outlined"
                       sx={{ width: '100%' }}
@@ -200,7 +225,9 @@ export function DashboardPage() {
                   </Grid>
                   <Grid size={3}>
                     <Chip
-                      label={`${liveDashboardQuery.data.agents.offline} offline`}
+                      label={t('DashboardPage.offlineChip', {
+                        num: liveDashboardQuery.data.agents.offline,
+                      })}
                       variant="outlined"
                       sx={{ width: '100%' }}
                     />
@@ -219,12 +246,12 @@ export function DashboardPage() {
                   sx={{ fontWeight: 600 }}
                   gutterBottom
                 >
-                  Team workload
+                  {t('DashboardPage.teamWorkloadHeading')}
                 </Typography>
                 {liveDashboardQuery.data.agent_workload.length === 0 ? (
                   <EmptyState
-                    title="No agents yet"
-                    description="Each agent's live open/pending conversation count will appear here once your team is set up."
+                    title={t('DashboardPage.noAgentsTitle')}
+                    description={t('DashboardPage.noAgentsDescription')}
                   />
                 ) : (
                   <AgentWorkloadTable workload={liveDashboardQuery.data.agent_workload} />
@@ -242,12 +269,12 @@ export function DashboardPage() {
                   sx={{ fontWeight: 600 }}
                   gutterBottom
                 >
-                  Queue depth
+                  {t('DashboardPage.queueDepthHeading')}
                 </Typography>
                 {liveDashboardQuery.data.queues.length === 0 ? (
                   <EmptyState
-                    title="No queues yet"
-                    description="Queues will appear here once conversations start routing through them."
+                    title={t('DashboardPage.noQueuesTitle')}
+                    description={t('DashboardPage.noQueuesDescription')}
                   />
                 ) : (
                   <QueueDepthTable queues={liveDashboardQuery.data.queues} />

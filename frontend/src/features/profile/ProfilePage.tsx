@@ -12,6 +12,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useLogout } from '../auth/api'
@@ -19,6 +20,7 @@ import { useCurrentUserQuery } from '../session/api'
 import { useChangePasswordMutation } from './api'
 
 export function ProfilePage() {
+  const { t } = useTranslation('profile')
   const { data: currentUser } = useCurrentUserQuery()
   const navigate = useNavigate()
   const logout = useLogout()
@@ -43,7 +45,7 @@ export function ProfilePage() {
           await logout()
           navigate('/login', {
             replace: true,
-            state: { message: 'Password changed. Please sign in with your new password.' },
+            state: { message: t('ProfilePage.passwordChangedMessage') },
           })
         },
       },
@@ -52,7 +54,10 @@ export function ProfilePage() {
 
   return (
     <>
-      <PageHeader title="My Profile" description="Your account details and security settings." />
+      <PageHeader
+        title={t('ProfilePage.pageTitle')}
+        description={t('ProfilePage.pageDescription')}
+      />
 
       <Stack spacing={3} sx={{ maxWidth: 480 }}>
         {currentUser && (
@@ -77,23 +82,28 @@ export function ProfilePage() {
           <Stack spacing={2}>
             <Box>
               <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600 }}>
-                Change password
+                {t('ProfilePage.changePasswordHeading')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                You'll be signed out of every device and need to sign in again.
+                {t('ProfilePage.changePasswordDescription')}
               </Typography>
             </Box>
             <Divider />
 
             {changePasswordMutation.isError && (
               <Alert severity="error">
-                {extractErrorMessage(changePasswordMutation.error, 'Could not change password.')}
+                {extractErrorMessage(
+                  changePasswordMutation.error,
+                  t('ProfilePage.changePasswordErrorFallback'),
+                )}
               </Alert>
             )}
-            {mismatchError && <Alert severity="error">New passwords do not match.</Alert>}
+            {mismatchError && (
+              <Alert severity="error">{t('ProfilePage.passwordMismatchError')}</Alert>
+            )}
 
             <TextField
-              label="Current password"
+              label={t('ProfilePage.currentPasswordLabel')}
               type="password"
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
@@ -102,17 +112,17 @@ export function ProfilePage() {
               autoComplete="current-password"
             />
             <TextField
-              label="New password"
+              label={t('ProfilePage.newPasswordLabel')}
               type="password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
               required
               fullWidth
               autoComplete="new-password"
-              helperText="At least 10 characters, including a letter and a digit."
+              helperText={t('ProfilePage.newPasswordHelperText')}
             />
             <TextField
-              label="Confirm new password"
+              label={t('ProfilePage.confirmPasswordLabel')}
               type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
@@ -122,7 +132,9 @@ export function ProfilePage() {
             />
             <Box>
               <Button type="submit" variant="contained" disabled={changePasswordMutation.isPending}>
-                {changePasswordMutation.isPending ? 'Changing…' : 'Change password'}
+                {changePasswordMutation.isPending
+                  ? t('ProfilePage.changingButton')
+                  : t('ProfilePage.changePasswordButton')}
               </Button>
             </Box>
           </Stack>

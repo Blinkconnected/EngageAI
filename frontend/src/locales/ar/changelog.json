@@ -1,0 +1,22 @@
+{
+  "ChangelogPanel": {
+    "title": "ما الجديد",
+    "loadingLabel": "جارٍ تحميل سجل التغييرات…",
+    "currentlyRunningLabel": "الإصدار الحالي قيد التشغيل",
+    "releasedLabel": "صدر في {{date}}",
+    "noReleasesTitle": "لا توجد إصدارات بعد",
+    "noReleasesDescription": "سيظهر سجل الإصدارات المنشورة هنا بمجرد إصدار نسخة جديدة.",
+    "unreleasedLabel": "لم يُصدر بعد",
+    "addedLabel": "إضافات",
+    "improvedLabel": "تحسينات",
+    "fixedLabel": "إصلاحات",
+    "securityLabel": "الأمان",
+    "breakingChangesLabel": "تغييرات جذرية",
+    "deprecatedLabel": "إهمال",
+    "knownIssuesLabel": "مشكلات معروفة",
+    "stableChannelLabel": "مستقر",
+    "betaChannelLabel": "تجريبي",
+    "releaseCandidateChannelLabel": "مرشح للإصدار",
+    "developmentChannelLabel": "قيد التطوير"
+  }
+}

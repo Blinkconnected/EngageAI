@@ -1,0 +1,17 @@
+{
+  "StatusPage": {
+    "pageTitle": "Provider & Service Status",
+    "pageDescription": "Live connectivity status for every messaging channel your company uses.",
+    "checkingButton": "Checking…",
+    "checkAllButton": "Check all now",
+    "checkAllErrorMessage": "Some channels could not be checked just now — see their individual status below.",
+    "loadingLabel": "Loading provider status…",
+    "operationalStatus": "Operational",
+    "degradedStatus": "Degraded",
+    "notTestedStatus": "Not tested yet",
+    "inactiveStatus": "Inactive",
+    "notConfiguredStatus": "Not configured",
+    "noChannelConnectedMessage": "No {{label}} channel connected yet.",
+    "lastCheckedMessage": "Last checked {{date}}"
+  }
+}

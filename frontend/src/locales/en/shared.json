@@ -1,0 +1,22 @@
+{
+  "ConfirmDialog": {
+    "cancelButton": "Cancel",
+    "confirmButton": "Confirm"
+  },
+  "ErrorState": {
+    "defaultTitle": "Something went wrong",
+    "retryButton": "Retry"
+  },
+  "Footer": {
+    "copyright": "© Blink Engage {{year}}"
+  },
+  "FormDialog": {
+    "cancelButton": "Cancel",
+    "saveButton": "Save",
+    "savingButton": "Saving…",
+    "saveFailedMessage": "Save failed."
+  },
+  "LoadingState": {
+    "label": "Loading…"
+  }
+}

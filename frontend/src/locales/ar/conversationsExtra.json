@@ -1,0 +1,47 @@
+{
+  "NotesPanel": {
+    "loadingLabel": "جارٍ تحميل الملاحظات…",
+    "emptyTitle": "لا توجد ملاحظات داخلية",
+    "emptyDescription": "الملاحظات مرئية لفريقك فقط، ولا تظهر أبدًا للعميل.",
+    "addNoteErrorFallback": "تعذّرت إضافة هذه الملاحظة.",
+    "notePlaceholder": "أضف ملاحظة داخلية (غير مرئية للعميل)…",
+    "addNoteButton": "إضافة ملاحظة"
+  },
+  "AttachmentList": {
+    "previewUnavailable": "المعاينة غير متاحة",
+    "downloadAriaLabel": "تنزيل {{filename}}",
+    "downloadTooltip": "تنزيل"
+  },
+  "ConversationCells": {},
+  "TransferDialog": {
+    "title": "نقل المحادثة",
+    "transferErrorFallback": "تعذّر نقل هذه المحادثة.",
+    "agentToggle": "وكيل",
+    "departmentToggle": "قسم",
+    "searchAgentsLabel": "البحث عن وكلاء",
+    "searchDepartmentsLabel": "البحث عن أقسام",
+    "noteLabel": "ملاحظة (اختياري)",
+    "noteHelperText": "مرئية للمستلم ومسجّلة في سجل عمليات النقل.",
+    "confirmPrefix": "نقل هذه المحادثة إلى",
+    "departmentSuffix": "(قسم)",
+    "notePreview": "ملاحظة: \"{{note}}\"",
+    "cancelButton": "إلغاء",
+    "continueButton": "متابعة",
+    "backButton": "رجوع",
+    "confirmButton": "تأكيد النقل",
+    "transferringButton": "جارٍ النقل…"
+  },
+  "TransferHistoryPanel": {
+    "loadingLabel": "جارٍ تحميل سجل عمليات النقل…",
+    "emptyTitle": "لا توجد عمليات نقل بعد",
+    "emptyDescription": "لم يتم نقل هذه المحادثة قط إلى وكيل أو قسم آخر.",
+    "agentFallback": "وكيل",
+    "departmentFallback": "قسم",
+    "departmentWord": "قسم",
+    "queueFallback": "قائمة انتظار",
+    "transferredToPrefix": "تم النقل إلى",
+    "byYouSuffix": "بواسطتك",
+    "notePreview": "\"{{note}}\"",
+    "offlineChipLabel": "كان المستلم غير متصل"
+  }
+}

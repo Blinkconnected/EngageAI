@@ -1,0 +1,22 @@
+{
+  "FeedbackPage": {
+    "invalidLinkMessage": "رابط التقييم غير صالح.",
+    "expiredLinkFallback": "رابط التقييم غير صالح أو منتهي الصلاحية.",
+    "thankYouHeading": "شكرًا لك على ملاحظاتك!",
+    "thankYouDescription": "نقدّر تخصيصك الوقت لمساعدتنا على التحسّن.",
+    "beforeYouGoHeading": "قبل أن تذهب",
+    "beforeYouGoDescription": "كيف يمكننا التواصل معك إذا احتجنا للمتابعة؟ يرجى مشاركة بريدك الإلكتروني أو رقم هاتفك.",
+    "emailLabel": "البريد الإلكتروني",
+    "phoneLabel": "الهاتف",
+    "savingButton": "جارٍ الحفظ…",
+    "continueButton": "متابعة",
+    "ratingHeading": "كيف كانت تجربتك؟",
+    "ratingDescription": "ملاحظاتك تساعدنا على خدمتك بشكل أفضل.",
+    "selectedOneStarMessage": "لقد اخترت نجمة واحدة.",
+    "selectedStarsMessage": "لقد اخترت {{count}} نجوم.",
+    "noRatingSelectedMessage": "اختر تقييمًا لتفعيل إرسال ملاحظاتك.",
+    "commentsLabel": "تعليقات إضافية (اختياري)",
+    "submittingButton": "جارٍ الإرسال…",
+    "submitFeedbackButton": "إرسال الملاحظات"
+  }
+}

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Chip, Paper, Stack, Typography } from '@mui/material'
 import PersonOutlinedIcon from '@mui/icons-material/PersonOutlined'
 import ApartmentOutlinedIcon from '@mui/icons-material/ApartmentOutlined'
@@ -13,6 +14,7 @@ import { useTransfersQuery } from './api'
 import type { ConversationTransfer } from './types'
 
 export function TransferHistoryPanel({ conversationId }: { conversationId: string }) {
+  const { t } = useTranslation('conversationsExtra')
   const transfersQuery = useTransfersQuery(conversationId, { page: 1, page_size: 50 })
   const agentsQuery = useAllAgentsQuery()
   const departmentsQuery = useAllDepartmentsQuery()
@@ -32,24 +34,24 @@ export function TransferHistoryPanel({ conversationId }: { conversationId: strin
 
   function describeTarget(transfer: ConversationTransfer): string {
     if (transfer.target_type === 'agent' && transfer.to_agent_id) {
-      return agentNameById.get(transfer.to_agent_id) ?? 'an agent'
+      return agentNameById.get(transfer.to_agent_id) ?? t('TransferHistoryPanel.agentFallback')
     }
     if (transfer.target_type === 'department' && transfer.to_department_id) {
-      return `${departmentNameById.get(transfer.to_department_id) ?? 'a department'} department`
+      return `${departmentNameById.get(transfer.to_department_id) ?? t('TransferHistoryPanel.departmentFallback')} ${t('TransferHistoryPanel.departmentWord')}`
     }
-    return 'a queue'
+    return t('TransferHistoryPanel.queueFallback')
   }
 
   return (
     <Stack sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }} spacing={2}>
-      {transfersQuery.isPending && <LoadingState label="Loading transfer history…" />}
+      {transfersQuery.isPending && <LoadingState label={t('TransferHistoryPanel.loadingLabel')} />}
       {transfersQuery.isError && (
         <ErrorState error={transfersQuery.error} onRetry={() => transfersQuery.refetch()} />
       )}
       {transfersQuery.data?.total === 0 && (
         <EmptyState
-          title="No transfers yet"
-          description="This conversation has never been transferred to another agent or department."
+          title={t('TransferHistoryPanel.emptyTitle')}
+          description={t('TransferHistoryPanel.emptyDescription')}
         />
       )}
       {transfersQuery.data?.items.map((transfer) => (
@@ -62,12 +64,15 @@ export function TransferHistoryPanel({ conversationId }: { conversationId: strin
             )}
             <Stack sx={{ flexGrow: 1, minWidth: 0 }} spacing={0.5}>
               <Typography variant="body2">
-                Transferred to <strong>{describeTarget(transfer)}</strong>
-                {transfer.transferred_by_user_id === currentUser?.id ? ' by you' : ''}
+                {t('TransferHistoryPanel.transferredToPrefix')}{' '}
+                <strong>{describeTarget(transfer)}</strong>
+                {transfer.transferred_by_user_id === currentUser?.id
+                  ? ` ${t('TransferHistoryPanel.byYouSuffix')}`
+                  : ''}
               </Typography>
               {transfer.note && (
                 <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                  "{transfer.note}"
+                  {t('TransferHistoryPanel.notePreview', { note: transfer.note })}
                 </Typography>
               )}
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -75,7 +80,11 @@ export function TransferHistoryPanel({ conversationId }: { conversationId: strin
                   {formatRelativeTime(transfer.created_at)}
                 </Typography>
                 {!transfer.recipient_was_online && transfer.target_type !== 'queue' && (
-                  <Chip label="Recipient was offline" size="small" variant="outlined" />
+                  <Chip
+                    label={t('TransferHistoryPanel.offlineChipLabel')}
+                    size="small"
+                    variant="outlined"
+                  />
                 )}
               </Stack>
             </Stack>

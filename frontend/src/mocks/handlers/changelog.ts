@@ -26,7 +26,7 @@ export const MOCK_RELEASES: Release[] = [
     release_date: '2026-07-26',
     channel: 'beta',
     summary:
-      "These are the first public release notes for Blink Engage, shared ahead of our pilot testing. This entry covers everything built so far in one place; from here on, new changes will first appear above under \"Unreleased\" as they're completed, then get moved down to a new dated entry like this one once they officially ship.",
+      'These are the first public release notes for Blink Engage, shared ahead of our pilot testing. This entry covers everything built so far in one place; from here on, new changes will first appear above under "Unreleased" as they\'re completed, then get moved down to a new dated entry like this one once they officially ship.',
     added: [
       "**Sign-In, Access & Company Setup**: secure sign-in for your team that keeps people logged in without constant hassle, different access levels for owners, admins, and agents, and complete separation between different companies' data. New companies are guided through a simple 4-step setup wizard (company details, team setup, channels, business system connection), and company settings cover everything from branding, language, and time zone to business hours, notifications, messaging, security, AI, and business system connection.",
       '**Companies, Departments, Teams & Agents**: create, view, update, and remove companies, departments, teams, and agents, see whether each agent is available, busy, or offline, and organize agents into departments and teams.',

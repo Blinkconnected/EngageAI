@@ -59,7 +59,10 @@ export const notificationsHandlers = [
       channel: string
       enabled: boolean
     }
-    preferenceOverrides.set(preferenceKey(payload.notification_type, payload.channel), payload.enabled)
+    preferenceOverrides.set(
+      preferenceKey(payload.notification_type, payload.channel),
+      payload.enabled,
+    )
     return new HttpResponse(null, { status: 204 })
   }),
 

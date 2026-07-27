@@ -1,0 +1,22 @@
+{
+  "ChangelogPanel": {
+    "title": "What's new",
+    "loadingLabel": "Loading changelog…",
+    "currentlyRunningLabel": "Currently running",
+    "releasedLabel": "Released {{date}}",
+    "noReleasesTitle": "No releases yet",
+    "noReleasesDescription": "Published release history will appear here once a release is cut.",
+    "unreleasedLabel": "Unreleased",
+    "addedLabel": "Added",
+    "improvedLabel": "Improved",
+    "fixedLabel": "Fixed",
+    "securityLabel": "Security",
+    "breakingChangesLabel": "Breaking Changes",
+    "deprecatedLabel": "Deprecated",
+    "knownIssuesLabel": "Known Issues",
+    "stableChannelLabel": "Stable",
+    "betaChannelLabel": "Beta",
+    "releaseCandidateChannelLabel": "Release candidate",
+    "developmentChannelLabel": "Development"
+  }
+}

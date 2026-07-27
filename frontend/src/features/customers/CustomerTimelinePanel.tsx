@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Chip, List, ListItemButton, ListItemText, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
@@ -17,6 +18,7 @@ const STATUS_COLOR: Record<ConversationStatus, 'info' | 'warning' | 'success' | 
 }
 
 export function CustomerTimelinePanel({ customerId }: { customerId: string }) {
+  const { t } = useTranslation('customers')
   const navigate = useNavigate()
   const conversationsQuery = useConversationsQuery({
     page: 1,
@@ -31,7 +33,8 @@ export function CustomerTimelinePanel({ customerId }: { customerId: string }) {
     return map
   }, [channelsQuery.data])
 
-  if (conversationsQuery.isPending) return <LoadingState label="Loading conversation history…" />
+  if (conversationsQuery.isPending)
+    return <LoadingState label={t('CustomerTimelinePanel.loadingLabel')} />
   if (conversationsQuery.isError) {
     return (
       <ErrorState error={conversationsQuery.error} onRetry={() => conversationsQuery.refetch()} />
@@ -41,8 +44,8 @@ export function CustomerTimelinePanel({ customerId }: { customerId: string }) {
   if (conversationsQuery.data.items.length === 0) {
     return (
       <EmptyState
-        title="No conversations yet"
-        description="This customer hasn't reached out on any connected channel."
+        title={t('CustomerTimelinePanel.emptyTitle')}
+        description={t('CustomerTimelinePanel.emptyDescription')}
       />
     )
   }
@@ -53,7 +56,7 @@ export function CustomerTimelinePanel({ customerId }: { customerId: string }) {
     <List>
       {total > 50 && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Showing the 50 most recent of {total} conversations.
+          {t('CustomerTimelinePanel.recentCountLabel', { total })}
         </Typography>
       )}
       {conversationsQuery.data.items.map((conversation) => (
@@ -63,11 +66,18 @@ export function CustomerTimelinePanel({ customerId }: { customerId: string }) {
           sx={{ borderRadius: 2, mb: 0.5 }}
         >
           <ListItemText
-            primary={channelById.get(conversation.channel_config_id) ?? 'Conversation'}
+            primary={
+              channelById.get(conversation.channel_config_id) ??
+              t('CustomerTimelinePanel.conversationFallback')
+            }
             secondary={
               conversation.last_message_at
-                ? `Last message ${formatRelativeTime(conversation.last_message_at)}`
-                : `Started ${formatRelativeTime(conversation.created_at)}`
+                ? t('CustomerTimelinePanel.lastMessageLabel', {
+                    time: formatRelativeTime(conversation.last_message_at),
+                  })
+                : t('CustomerTimelinePanel.startedLabel', {
+                    time: formatRelativeTime(conversation.created_at),
+                  })
             }
           />
           <Chip

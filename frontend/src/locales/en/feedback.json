@@ -1,0 +1,22 @@
+{
+  "FeedbackPage": {
+    "invalidLinkMessage": "This feedback link is invalid.",
+    "expiredLinkFallback": "This feedback link is invalid or has expired.",
+    "thankYouHeading": "Thank you for your feedback!",
+    "thankYouDescription": "We appreciate you taking the time to help us improve.",
+    "beforeYouGoHeading": "Before you go",
+    "beforeYouGoDescription": "How can we reach you if we need to follow up? Please share your email address or phone number.",
+    "emailLabel": "Email",
+    "phoneLabel": "Phone",
+    "savingButton": "Saving…",
+    "continueButton": "Continue",
+    "ratingHeading": "How was your experience?",
+    "ratingDescription": "Your feedback helps us serve you better.",
+    "selectedOneStarMessage": "You selected {{count}} star.",
+    "selectedStarsMessage": "You selected {{count}} stars.",
+    "noRatingSelectedMessage": "Select a rating to enable submitting your feedback.",
+    "commentsLabel": "Additional comments (optional)",
+    "submittingButton": "Submitting…",
+    "submitFeedbackButton": "Submit feedback"
+  }
+}

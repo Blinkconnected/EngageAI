@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Box, IconButton, Stack, Tab, Tabs } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { PageHeader } from '../../shared/components/PageHeader'
@@ -15,6 +16,7 @@ import { NotesPanel } from './NotesPanel'
 import { TransferHistoryPanel } from './TransferHistoryPanel'
 
 export function ConversationViewPage() {
+  const { t } = useTranslation('conversationsCore')
   const { conversationId } = useParams<{ conversationId: string }>()
   const navigate = useNavigate()
   const [tab, setTab] = useState<'messages' | 'notes' | 'transfers'>('messages')
@@ -23,7 +25,9 @@ export function ConversationViewPage() {
   const customerQuery = useCustomerQuery(conversationQuery.data?.customer_id)
   const { sendTyping } = useRealtime()
 
-  if (conversationQuery.isPending) return <LoadingState label="Loading conversation…" />
+  if (conversationQuery.isPending) {
+    return <LoadingState label={t('ConversationViewPage.loadingLabel')} />
+  }
   if (conversationQuery.isError) {
     return (
       <ErrorState error={conversationQuery.error} onRetry={() => conversationQuery.refetch()} />
@@ -37,7 +41,7 @@ export function ConversationViewPage() {
       <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
         <IconButton
           onClick={() => navigate('/conversations')}
-          aria-label="Back to inbox"
+          aria-label={t('ConversationViewPage.backButtonAriaLabel')}
           sx={{ mt: 0.5 }}
         >
           <ArrowBackIcon />
@@ -46,7 +50,9 @@ export function ConversationViewPage() {
             every other page in the app renders its title through — this
             page previously hand-rolled a smaller, non-h1 title. */}
         <Box sx={{ flexGrow: 1 }}>
-          <PageHeader title={customerQuery.data?.full_name ?? 'Conversation'} />
+          <PageHeader
+            title={customerQuery.data?.full_name ?? t('ConversationViewPage.defaultTitle')}
+          />
         </Box>
       </Stack>
 
@@ -60,9 +66,9 @@ export function ConversationViewPage() {
             onChange={(_event, value) => setTab(value)}
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
-            <Tab label="Messages" value="messages" />
-            <Tab label="Internal notes" value="notes" />
-            <Tab label="Transfer history" value="transfers" />
+            <Tab label={t('ConversationViewPage.messagesTab')} value="messages" />
+            <Tab label={t('ConversationViewPage.internalNotesTab')} value="notes" />
+            <Tab label={t('ConversationViewPage.transferHistoryTab')} value="transfers" />
           </Tabs>
 
           {tab === 'messages' && (
@@ -94,7 +100,7 @@ export function ConversationViewPage() {
         >
           <ConversationSidebar
             conversation={conversation}
-            customerName={customerQuery.data?.full_name ?? '—'}
+            customerName={customerQuery.data?.full_name ?? t('ConversationViewPage.emptyValue')}
           />
         </Box>
       </Stack>

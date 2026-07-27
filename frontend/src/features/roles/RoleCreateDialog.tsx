@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -7,6 +8,7 @@ import { PermissionChecklist } from './PermissionChecklist'
 import { useCreateRoleMutation, usePermissionsQuery } from './api'
 
 export function RoleCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('roles')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [permissionCodes, setPermissionCodes] = useState<Set<string>>(new Set())
@@ -40,8 +42,8 @@ export function RoleCreateDialog({ open, onClose }: { open: boolean; onClose: ()
   return (
     <FormDialog
       open={open}
-      title="New role"
-      submitLabel="Create role"
+      title={t('RoleCreateDialog.title')}
+      submitLabel={t('RoleCreateDialog.submitLabel')}
       isSubmitting={createMutation.isPending}
       error={createMutation.error}
       errorMessage={createMutation.error ? extractErrorMessage(createMutation.error) : undefined}
@@ -49,7 +51,7 @@ export function RoleCreateDialog({ open, onClose }: { open: boolean; onClose: ()
       onClose={handleClose}
     >
       <TextField
-        label="Name"
+        label={t('RoleCreateDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -57,14 +59,16 @@ export function RoleCreateDialog({ open, onClose }: { open: boolean; onClose: ()
         autoFocus
       />
       <TextField
-        label="Description"
+        label={t('RoleCreateDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
         multiline
         minRows={2}
       />
-      {permissionsQuery.isPending && <LoadingState label="Loading permissions…" />}
+      {permissionsQuery.isPending && (
+        <LoadingState label={t('RoleCreateDialog.loadingPermissions')} />
+      )}
       {permissionsQuery.data && (
         <PermissionChecklist
           permissions={permissionsQuery.data}

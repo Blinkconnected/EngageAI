@@ -77,9 +77,7 @@ describe('AppLayout', () => {
     renderLayout()
 
     await user.click(await screen.findByRole('link', { name: /complete setup/i }))
-    await waitFor(() =>
-      expect(screen.getByText('Onboarding wizard content')).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText('Onboarding wizard content')).toBeInTheDocument())
   })
 
   describe('account menu availability picker', () => {

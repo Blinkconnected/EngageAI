@@ -8,7 +8,11 @@ export function fieldValue(credentials: Record<string, unknown>, key: string): s
   return value == null ? '' : String(value)
 }
 
-export function fieldBool(credentials: Record<string, unknown>, key: string, fallback: boolean): boolean {
+export function fieldBool(
+  credentials: Record<string, unknown>,
+  key: string,
+  fallback: boolean,
+): boolean {
   const value = credentials[key]
   return typeof value === 'boolean' ? value : fallback
 }

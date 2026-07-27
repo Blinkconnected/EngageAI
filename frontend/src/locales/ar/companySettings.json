@@ -1,0 +1,52 @@
+{
+  "CompanySettingsPage": {
+    "title": "الإعدادات",
+    "description": "إدارة ملف تعريف شركتك.",
+    "loadingLabel": "جارٍ تحميل الإعدادات…",
+    "tabGeneral": "عام",
+    "tabBranding": "العلامة التجارية",
+    "tabLanguage": "اللغة",
+    "tabTimezone": "المنطقة الزمنية",
+    "tabBusinessHours": "ساعات العمل",
+    "tabNotifications": "الإشعارات",
+    "tabMessaging": "المراسلة",
+    "tabSecurity": "الأمان",
+    "tabAi": "الذكاء الاصطناعي",
+    "tabErp": "ERP"
+  },
+  "GeneralSettingsPanel": {
+    "savedMessage": "تم الحفظ.",
+    "companyNameLabel": "اسم الشركة",
+    "savingButton": "جارٍ الحفظ…",
+    "saveChangesButton": "حفظ التغييرات"
+  },
+  "BrandingSettingsPanel": {
+    "description": "يظهر في الترويسة بجانب اسم شركتك. الصق رابطًا لصورة مستضافة مسبقًا في مكان آخر (موقعك الإلكتروني، أو شبكة توصيل محتوى (CDN)، إلخ).",
+    "savedMessage": "تم الحفظ.",
+    "logoPreviewAlt": "معاينة الشعار",
+    "logoUrlLabel": "رابط الشعار",
+    "logoUrlPlaceholder": "https://cdn.example.com/logo.png",
+    "savingButton": "جارٍ الحفظ…",
+    "saveChangesButton": "حفظ التغييرات",
+    "removeLogoButton": "إزالة الشعار"
+  },
+  "LanguageSettingsPanel": {
+    "description": "لغة الواجهة الافتراضية لشركتك، يستخدمها جميع المستخدمين المسجّلين.",
+    "savedMessage": "تم الحفظ.",
+    "defaultLanguageLabel": "اللغة الافتراضية",
+    "defaultLanguageHelperText": "المزيد من اللغات قريبًا — لا تُعرض هنا سوى اللغات المترجمة بالكامل.",
+    "savingButton": "جارٍ الحفظ…",
+    "saveChangesButton": "حفظ التغييرات"
+  },
+  "TimezoneSettingsPanel": {
+    "description": "تُستخدم لعرض الأوقات بشكل متسق عبر التقارير وساعات العمل.",
+    "savedMessage": "تم الحفظ.",
+    "timezoneLabel": "المنطقة الزمنية",
+    "savingButton": "جارٍ الحفظ…",
+    "saveChangesButton": "حفظ التغييرات"
+  },
+  "ErpEnableToggle": {
+    "enableLabel": "تفعيل تكامل ERP",
+    "description": "اربط ERPNext لمزامنة سجلات العملاء. بمجرد التفعيل، يظهر هنا تبويب جديد باسم \"ERP\" لإعداد الاتصال. تعطيل هذا الخيار يُخفي ERP تمامًا من كل مكان — التنقل، وملفات تعريف العملاء، والتقارير — دون فقدان الاتصال المحفوظ."
+  }
+}

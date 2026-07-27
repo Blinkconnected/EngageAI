@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
@@ -14,18 +16,24 @@ const CHANNEL_COLOR: Record<ReleaseChannel, 'success' | 'info' | 'warning' | 'de
   development: 'default',
 }
 
-const CHANNEL_LABEL: Record<ReleaseChannel, string> = {
-  stable: 'Stable',
-  beta: 'Beta',
-  'release-candidate': 'Release candidate',
-  development: 'Development',
+function channelLabel(channel: ReleaseChannel, t: TFunction): string {
+  switch (channel) {
+    case 'stable':
+      return t('ChangelogPanel.stableChannelLabel')
+    case 'beta':
+      return t('ChangelogPanel.betaChannelLabel')
+    case 'release-candidate':
+      return t('ChangelogPanel.releaseCandidateChannelLabel')
+    case 'development':
+      return t('ChangelogPanel.developmentChannelLabel')
+  }
 }
 
 /** Release dates are day-granular (an ISO calendar date, not a timestamp),
  * so this formats a plain calendar date rather than reusing
  * `formatRelativeTime` (used elsewhere for "2 hours ago"-style timestamps). */
-function formatReleaseDate(isoDate: string | null): string {
-  if (!isoDate) return 'Unreleased'
+function formatReleaseDate(isoDate: string | null, t: TFunction): string {
+  if (!isoDate) return t('ChangelogPanel.unreleasedLabel')
   // Parsed and displayed as UTC so the date shown matches the ISO calendar
   // date verbatim regardless of the viewer's timezone — a plain
   // `new Date(isoDate)` would otherwise render a day earlier for any
@@ -53,13 +61,7 @@ function renderBulletText(text: string): ReactNode {
 }
 
 type SubsectionKey =
-  | 'added'
-  | 'improved'
-  | 'fixed'
-  | 'security'
-  | 'breaking_changes'
-  | 'deprecated'
-  | 'known_issues'
+  'added' | 'improved' | 'fixed' | 'security' | 'breaking_changes' | 'deprecated' | 'known_issues'
 
 interface SubsectionSpec {
   key: SubsectionKey
@@ -70,15 +72,34 @@ interface SubsectionSpec {
   severe?: boolean
 }
 
-const SUBSECTIONS: SubsectionSpec[] = [
-  { key: 'added', label: 'Added' },
-  { key: 'improved', label: 'Improved' },
-  { key: 'fixed', label: 'Fixed' },
-  { key: 'security', label: 'Security', severe: true },
-  { key: 'breaking_changes', label: 'Breaking Changes', severe: true },
-  { key: 'deprecated', label: 'Deprecated' },
-  { key: 'known_issues', label: 'Known Issues' },
+const SUBSECTION_KEYS: { key: SubsectionKey; severe?: boolean }[] = [
+  { key: 'added' },
+  { key: 'improved' },
+  { key: 'fixed' },
+  { key: 'security', severe: true },
+  { key: 'breaking_changes', severe: true },
+  { key: 'deprecated' },
+  { key: 'known_issues' },
 ]
+
+function subsectionLabel(key: SubsectionKey, t: TFunction): string {
+  switch (key) {
+    case 'added':
+      return t('ChangelogPanel.addedLabel')
+    case 'improved':
+      return t('ChangelogPanel.improvedLabel')
+    case 'fixed':
+      return t('ChangelogPanel.fixedLabel')
+    case 'security':
+      return t('ChangelogPanel.securityLabel')
+    case 'breaking_changes':
+      return t('ChangelogPanel.breakingChangesLabel')
+    case 'deprecated':
+      return t('ChangelogPanel.deprecatedLabel')
+    case 'known_issues':
+      return t('ChangelogPanel.knownIssuesLabel')
+  }
+}
 
 function ReleaseSubsection({ spec, items }: { spec: SubsectionSpec; items: string[] }) {
   if (items.length === 0) return null
@@ -114,6 +135,7 @@ function ReleaseSubsection({ spec, items }: { spec: SubsectionSpec; items: strin
 }
 
 function ReleaseCard({ release }: { release: Release }) {
+  const { t } = useTranslation('changelog')
   return (
     <Card variant="outlined">
       <CardContent>
@@ -129,12 +151,12 @@ function ReleaseCard({ release }: { release: Release }) {
             {release.version}
           </Typography>
           <Chip
-            label={CHANNEL_LABEL[release.channel]}
+            label={channelLabel(release.channel, t)}
             size="small"
             color={CHANNEL_COLOR[release.channel]}
           />
           <Typography variant="body2" color="text.secondary">
-            {formatReleaseDate(release.release_date)}
+            {formatReleaseDate(release.release_date, t)}
           </Typography>
         </Stack>
 
@@ -144,8 +166,12 @@ function ReleaseCard({ release }: { release: Release }) {
           </Typography>
         )}
 
-        {SUBSECTIONS.map((spec) => (
-          <ReleaseSubsection key={spec.key} spec={spec} items={release[spec.key]} />
+        {SUBSECTION_KEYS.map((spec) => (
+          <ReleaseSubsection
+            key={spec.key}
+            spec={{ key: spec.key, label: subsectionLabel(spec.key, t), severe: spec.severe }}
+            items={release[spec.key]}
+          />
         ))}
       </CardContent>
     </Card>
@@ -161,6 +187,7 @@ function ReleaseCard({ release }: { release: Release }) {
  * none — see the heading-order comments below).
  */
 export function ChangelogPanel() {
+  const { t } = useTranslation('changelog')
   const versionQuery = useVersionQuery()
   const releasesQuery = useReleasesQuery()
 
@@ -175,10 +202,10 @@ export function ChangelogPanel() {
           heading below descends from it (h2 -> h3 -> h4), never skipping
           a level, matching DashboardPage.tsx's documented discipline. */}
       <Typography variant="h5" component="h1" sx={{ fontWeight: 700, mb: 2 }}>
-        What's new
+        {t('ChangelogPanel.title')}
       </Typography>
 
-      {isPending && <LoadingState label="Loading changelog…" />}
+      {isPending && <LoadingState label={t('ChangelogPanel.loadingLabel')} />}
 
       {isError && (
         <ErrorState
@@ -197,7 +224,7 @@ export function ChangelogPanel() {
                 above, same heading-order rationale as DashboardPage.tsx's
                 StatCard headings. */}
             <Typography color="text.secondary" variant="body2" gutterBottom>
-              Currently running
+              {t('ChangelogPanel.currentlyRunningLabel')}
             </Typography>
             <Stack
               component="div"
@@ -209,12 +236,14 @@ export function ChangelogPanel() {
                 {versionQuery.data.version}
               </Typography>
               <Chip
-                label={CHANNEL_LABEL[versionQuery.data.release_channel]}
+                label={channelLabel(versionQuery.data.release_channel, t)}
                 size="small"
                 color={CHANNEL_COLOR[versionQuery.data.release_channel]}
               />
               <Typography variant="body2" color="text.secondary">
-                Released {formatReleaseDate(versionQuery.data.release_date)}
+                {t('ChangelogPanel.releasedLabel', {
+                  date: formatReleaseDate(versionQuery.data.release_date, t),
+                })}
               </Typography>
             </Stack>
           </CardContent>
@@ -224,8 +253,8 @@ export function ChangelogPanel() {
       {releasesQuery.data &&
         (releasesQuery.data.length === 0 ? (
           <EmptyState
-            title="No releases yet"
-            description="Published release history will appear here once a release is cut."
+            title={t('ChangelogPanel.noReleasesTitle')}
+            description={t('ChangelogPanel.noReleasesDescription')}
           />
         ) : (
           <Stack spacing={2}>

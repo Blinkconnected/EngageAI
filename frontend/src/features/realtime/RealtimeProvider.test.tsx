@@ -179,7 +179,9 @@ describe('RealtimeProvider', () => {
       })
     })
 
-    await waitFor(() => expect(browserSpy).toHaveBeenCalledWith('New conversation assigned', 'Take a look.'))
+    await waitFor(() =>
+      expect(browserSpy).toHaveBeenCalledWith('New conversation assigned', 'Take a look.'),
+    )
     expect(soundSpy).not.toHaveBeenCalled()
   })
 

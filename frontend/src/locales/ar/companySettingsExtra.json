@@ -1,0 +1,65 @@
+{
+  "BusinessHoursSettingsPanel": {
+    "description": "متى يكون فريقك متاحًا. يُعرض هذا للعملاء وهو محجوز لاستخدام مستقبلي يتعلق باتفاقية مستوى الخدمة والتوجيه.",
+    "savedAlert": "تم الحفظ.",
+    "enableBusinessHoursLabel": "تفعيل ساعات العمل",
+    "dayColumnHeader": "اليوم",
+    "closedColumnHeader": "مغلق",
+    "openColumnHeader": "الفتح",
+    "closeColumnHeader": "الإغلاق",
+    "saveButton": "حفظ التغييرات",
+    "savingButton": "جارٍ الحفظ…",
+    "days": {
+      "monday": "الاثنين",
+      "tuesday": "الثلاثاء",
+      "wednesday": "الأربعاء",
+      "thursday": "الخميس",
+      "friday": "الجمعة",
+      "saturday": "السبت",
+      "sunday": "الأحد"
+    },
+    "dayClosedAriaLabel": "{{day}} مغلق",
+    "dayOpensAtAriaLabel": "وقت فتح {{day}}",
+    "dayClosesAtAriaLabel": "وقت إغلاق {{day}}"
+  },
+  "SecuritySettingsPanel": {
+    "description": "تتطلب كل كلمة مرور على المنصة بالفعل {{minAllowed}} أحرف على الأقل تحتوي على حرف ورقم. يمكنك هنا زيادة الحد الأدنى للطول لشركتك.",
+    "savedAlert": "تم الحفظ.",
+    "minPasswordLengthLabel": "الحد الأدنى لطول كلمة المرور",
+    "minPasswordLengthHelperError": "يجب أن يكون بين {{min}} و{{max}}",
+    "saveButton": "حفظ التغييرات",
+    "savingButton": "جارٍ الحفظ…"
+  },
+  "MessagingSettingsPanel": {
+    "typingIndicatorLabel": "إظهار مؤشر كتابة الوكلاء للعملاء",
+    "description": "عند التفعيل، يرى العملاء مؤشرًا حيًا بعبارة \"الوكيل يكتب…\" على القنوات التي تدعم ذلك (الدردشة عبر الويب، واتساب، تيليجرام)."
+  },
+  "NotificationsSettingsPanel": {
+    "loadingLabel": "جارٍ تحميل أنواع الإشعارات…",
+    "description": "أوقف نوع إشعار على مستوى الشركة بالكامل — لن يتلقاه أي وكيل، حتى لو كان قد فعّله بنفسه في تفضيلاته الشخصية.",
+    "tableAriaLabel": "سياسة إشعارات الشركة",
+    "enableTypeAriaLabel": "تفعيل {{label}}"
+  },
+  "AiSettingsPanel": {
+    "enableLabel": "تفعيل ميزات محرك الذكاء الاصطناعي",
+    "description": "اقتراحات الردود، والملخصات، والترجمة، وتحليل المشاعر، وميزات أخرى مدعومة بالذكاء الاصطناعي لوكلائك. أوقف هذه الميزة إذا كانت مؤسستك بحاجة إلى تجنب المحتوى الذي يُنشئه الذكاء الاصطناعي (لأسباب تتعلق بالامتثال مثلاً) — وينطبق ذلك حتى عند إعداد مزود أدناه.",
+    "loadErrorFallback": "تعذّر تحميل إعدادات مزود الذكاء الاصطناعي.",
+    "providerCardTitle": "مزود الذكاء الاصطناعي",
+    "providerCardDescription": "استخدم حساب OpenAI أو Claude أو Ollama ذاتي الاستضافة الخاص بك لهذه الشركة، بدلاً من استخدام الإعداد الافتراضي المشترك للمنصة.",
+    "savedAlert": "تم الحفظ.",
+    "providerLabel": "المزود",
+    "providerHelperText": "اتركه على 'الإعداد الافتراضي للمنصة' لاستخدام الإعدادات المكوّنة في المنصة نفسها.",
+    "platformDefaultOption": "الإعداد الافتراضي للمنصة",
+    "apiKeyLabel": "مفتاح API",
+    "apiKeyHelperRequired": "مفتاح API مطلوب لهذا المزود.",
+    "apiKeyHelperAlreadySaved": "تم حفظ مفتاح بالفعل — اتركه فارغًا للاحتفاظ به.",
+    "apiKeyHelperNeverShown": "لن يُعرض مرة أخرى بعد الحفظ.",
+    "modelLabel": "النموذج",
+    "modelHelperText": "اتركه فارغًا لاستخدام النموذج الافتراضي لهذا المزود.",
+    "baseUrlLabel": "عنوان URL الأساسي",
+    "baseUrlHelperOllama": "عنوان خادم Ollama الخاص بك، مثال: http://localhost:11434.",
+    "baseUrlHelperOptional": "اختياري — مطلوب فقط لنقطة نهاية API مخصصة أو ذاتية الاستضافة.",
+    "saveButton": "حفظ التغييرات",
+    "savingButton": "جارٍ الحفظ…"
+  }
+}

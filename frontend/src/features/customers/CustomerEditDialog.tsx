@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -23,6 +24,7 @@ function CustomerEditDialogFields({
   customer: Customer
   onClose: () => void
 }) {
+  const { t } = useTranslation('customers')
   const [fullName, setFullName] = useState(customer.full_name)
   const [email, setEmail] = useState(customer.email ?? '')
   const [phone, setPhone] = useState(customer.phone ?? '')
@@ -47,7 +49,7 @@ function CustomerEditDialogFields({
   return (
     <FormDialog
       open
-      title="Edit customer"
+      title={t('CustomerEditDialog.title')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -55,7 +57,7 @@ function CustomerEditDialogFields({
       onClose={onClose}
     >
       <TextField
-        label="Full name"
+        label={t('CustomerEditDialog.fullNameLabel')}
         value={fullName}
         onChange={(event) => setFullName(event.target.value)}
         required
@@ -63,24 +65,24 @@ function CustomerEditDialogFields({
         autoFocus
       />
       <TextField
-        label="Email"
+        label={t('CustomerEditDialog.emailLabel')}
         type="email"
         value={email}
         onChange={(event) => setEmail(event.target.value)}
         fullWidth
       />
       <TextField
-        label="Phone"
+        label={t('CustomerEditDialog.phoneLabel')}
         value={phone}
         onChange={(event) => setPhone(event.target.value)}
         fullWidth
       />
       <TextField
-        label="Tags"
+        label={t('CustomerEditDialog.tagsLabel')}
         value={tags}
         onChange={(event) => setTags(event.target.value)}
         fullWidth
-        helperText="Comma-separated"
+        helperText={t('CustomerEditDialog.tagsHelperText')}
       />
     </FormDialog>
   )

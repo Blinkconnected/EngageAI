@@ -113,13 +113,58 @@ Query (`features/session/api.ts`'s `useCurrentUserQuery`, query key
   permission — pure UX defense-in-depth; the backend enforces every
   permission independently and is the real gate.
 
-## RTL / i18n readiness
+## Localization (i18n) and RTL
 
-Direction (`ltr`/`rtl`) is a first-class piece of `ui` state. Toggling it
-flips `document.documentElement[dir]`, swaps the Emotion cache (so MUI's
-`sx`/`styled` output gets RTL-flipped via `stylis-plugin-rtl`), and MUI's
-`theme.direction` is kept in sync so component internals (e.g. drawer
-anchoring) also flip.
+Full interface translation, not just RTL layout mirroring:
+
+- **`i18next` + `react-i18next`** (`src/i18n/index.ts`) register one
+  namespace per feature directory (`src/locales/en/<ns>.json` /
+  `src/locales/ar/<ns>.json`, e.g. `agents`, `conversationsCore`,
+  `companySettings` — a few larger directories are split into two
+  namespaces, e.g. `channelsCore`/`channelsFields`; see the file for the
+  full list). All namespaces are bundled and registered up front — no
+  lazy backend/HTTP loading — so `i18next.init()` resolves synchronously
+  and `t(...)` is correct on a component's very first render, in both the
+  real app and in vitest.
+- Each JSON catalog's top-level keys are the component's filename (e.g.
+  `{"AgentsPage": {"title": "...", ...}}`); every component using
+  translated text calls `const { t } = useTranslation('<namespace>')` and
+  renders `t('ComponentName.keyName')`. A `useMemo` that builds
+  translated content (e.g. DataGrid `columns`) must include `i18n.language`
+  in its dependency array alongside `t` — otherwise memoized content
+  won't re-translate if the language changes while already mounted
+  (`t` itself doesn't change identity on a language change, so ESLint's
+  `react-hooks/exhaustive-deps` can't see this dependency and flags it as
+  "unnecessary" — suppressed per-line with an explanatory comment where
+  this applies, rather than disabling the rule project-wide).
+- **Language source of truth**: `company.settings.language` (Settings →
+  Language), the same company-wide setting every other Settings tab
+  already uses (Branding, Timezone, Business Hours) — not a personal
+  per-browser preference. `useLanguageSync` (`src/i18n/useLanguageSync.ts`,
+  mounted once in `AppLayout`) calls `i18next.changeLanguage(...)`
+  whenever `company.settings.language` changes, and defaults direction
+  to match (`ar` → `rtl`, everything else → `ltr`). Only languages with a
+  real translation catalog are offered in the Settings dropdown
+  (`SUPPORTED_I18N_LANGUAGES` in `src/i18n/index.ts`, currently `en`/`ar`)
+  — `company/types.ts`'s `SUPPORTED_LANGUAGE` type still lists a couple
+  more (kept for backward compatibility with any already-stored value)
+  that aren't offered until they have their own catalog.
+- Direction (`ltr`/`rtl`) itself remains independent `ui` Redux state, as
+  before — the topbar's manual "Toggle language direction" button still
+  works as a same-session override after the language-driven default is
+  applied. Toggling it flips `document.documentElement[dir]`, swaps the
+  Emotion cache (so MUI's `sx`/`styled` output gets RTL-flipped via
+  `stylis-plugin-rtl`), and MUI's `theme.direction` is kept in sync so
+  component internals (e.g. drawer anchoring) also flip.
+- **Scope of this pass**: the full authenticated app shell and every
+  feature page's UI chrome. Deliberately out of scope: the small set of
+  public/pre-auth pages with no company context to source a language
+  from (login, register, the public Changelog, the customer-facing CSAT
+  feedback page — these stay English-only for now); backend-generated
+  dynamic text (notification titles/bodies, since `Notification` has no
+  locale field); and a handful of `.ts` (non-component) utility functions
+  that map a data code to a human label (e.g. `channelTypeLabel()`),
+  which still return English.
 
 ## Routing map
 
@@ -267,6 +312,14 @@ earns its keep.
 - `eslint` (flat config: `typescript-eslint`, `react-hooks`,
   `react-refresh`, `eslint-config-prettier`), `prettier`, and `tsc --noEmit`
   must all pass before a milestone is committed.
+- `test/setup.ts` imports `src/i18n` (same synchronous bootstrap the real
+  app uses) and resets `i18n.language` back to `'en'` in `afterEach` —
+  i18next is a module-level singleton, so a test that exercises the
+  Language setting would otherwise leak its language into every
+  subsequent test in the same run. Every existing test's English string
+  assertions (`getByText`, `getByRole(..., {name})`, `getByLabelText`)
+  keep passing unmodified because every `en.json` value is required to
+  be byte-identical to the string it replaced.
 
 ## Deployment
 

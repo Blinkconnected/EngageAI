@@ -1,0 +1,68 @@
+{
+  "AgentCreateDialog": {
+    "title": "وكيل جديد",
+    "submitLabel": "إنشاء وكيل",
+    "fullNameLabel": "الاسم الكامل",
+    "emailLabel": "البريد الإلكتروني",
+    "initialPasswordLabel": "كلمة المرور الأولية",
+    "initialPasswordHelperText": "10 أحرف على الأقل، تتضمن حرفًا ورقمًا.",
+    "titleLabel": "المسمى الوظيفي",
+    "departmentLabel": "القسم",
+    "departmentNoneOption": "بلا"
+  },
+  "AgentEditDialog": {
+    "title": "تعديل {{name}}",
+    "submitLabel": "حفظ التغييرات",
+    "titleLabel": "المسمى الوظيفي",
+    "departmentLabel": "القسم",
+    "departmentNoneOption": "بلا",
+    "statusLabel": "الحالة",
+    "statusOnline": "متصل",
+    "statusAway": "بعيد",
+    "statusBusy": "مشغول",
+    "statusOffline": "غير متصل"
+  },
+  "AgentResetPasswordDialog": {
+    "title": "إعادة تعيين كلمة المرور لـ {{name}}",
+    "submitLabel": "إعادة تعيين كلمة المرور",
+    "newPasswordLabel": "كلمة المرور الجديدة",
+    "newPasswordHelperText": "10 أحرف على الأقل، تتضمن حرفًا ورقمًا. سيتم تسجيل خروج الوكيل من جميع الأجهزة، ويجب عليه استخدام كلمة المرور هذه لتسجيل الدخول مجددًا."
+  },
+  "AgentRoleDialog": {
+    "changeRoleTitle": "تغيير الدور",
+    "loadingLabel": "جارٍ التحميل…",
+    "title": "تغيير دور {{name}}",
+    "submitLabel": "حفظ التغييرات",
+    "roleLabel": "الدور"
+  },
+  "AgentsPage": {
+    "columnName": "الاسم",
+    "columnEmail": "البريد الإلكتروني",
+    "columnTitle": "المسمى الوظيفي",
+    "columnDepartment": "القسم",
+    "columnStatus": "الحالة",
+    "columnActions": "الإجراءات",
+    "emptyValue": "—",
+    "statusOnline": "متصل",
+    "statusAway": "بعيد",
+    "statusBusy": "مشغول",
+    "statusOffline": "غير متصل",
+    "actionEdit": "تعديل",
+    "actionResetPassword": "إعادة تعيين كلمة المرور",
+    "actionChangeRole": "تغيير الدور",
+    "actionDelete": "حذف",
+    "pageTitle": "الوكلاء",
+    "pageDescription": "كل من في شركتك يمكنه التعامل مع المحادثات.",
+    "newAgentButton": "وكيل جديد",
+    "searchLabel": "بحث عن الوكلاء",
+    "searchPlaceholder": "الاسم أو البريد الإلكتروني أو المسمى الوظيفي",
+    "emptyStateTitleSearch": "لم يتم العثور على وكلاء",
+    "emptyStateTitleDefault": "لا يوجد وكلاء بعد",
+    "emptyStateDescriptionSearch": "جرّب بحثًا مختلفًا.",
+    "emptyStateDescriptionDefault": "أنشئ أول وكيل لديك لبدء التعامل مع المحادثات.",
+    "dataTableAriaLabel": "الوكلاء",
+    "removeAgentTitle": "إزالة الوكيل",
+    "removeAgentDescription": "هل تريد إزالة {{name}} من شركتك؟ سيفقد الوصول فورًا.",
+    "removeAgentConfirmLabel": "إزالة"
+  }
+}

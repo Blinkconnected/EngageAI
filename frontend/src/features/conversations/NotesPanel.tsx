@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Alert, Box, Button, Paper, Stack, TextField, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
@@ -8,6 +9,7 @@ import { formatRelativeTime } from '../../shared/utils/formatRelativeTime'
 import { useCreateNoteMutation, useNotesQuery } from './api'
 
 export function NotesPanel({ conversationId }: { conversationId: string }) {
+  const { t } = useTranslation('conversationsExtra')
   const [body, setBody] = useState('')
   const notesQuery = useNotesQuery(conversationId, { page: 1, page_size: 50 })
   const createMutation = useCreateNoteMutation(conversationId)
@@ -25,14 +27,14 @@ export function NotesPanel({ conversationId }: { conversationId: string }) {
 
   return (
     <Stack sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }} spacing={2}>
-      {notesQuery.isPending && <LoadingState label="Loading notes…" />}
+      {notesQuery.isPending && <LoadingState label={t('NotesPanel.loadingLabel')} />}
       {notesQuery.isError && (
         <ErrorState error={notesQuery.error} onRetry={() => notesQuery.refetch()} />
       )}
       {notesQuery.data?.total === 0 && (
         <EmptyState
-          title="No internal notes"
-          description="Notes are visible only to your team, never to the customer."
+          title={t('NotesPanel.emptyTitle')}
+          description={t('NotesPanel.emptyDescription')}
         />
       )}
       {orderedNotes.map((note) => (
@@ -49,14 +51,14 @@ export function NotesPanel({ conversationId }: { conversationId: string }) {
       <Box sx={{ mt: 'auto' }}>
         {createMutation.isError && (
           <Alert severity="error" sx={{ mb: 1 }} onClose={() => createMutation.reset()}>
-            {extractErrorMessage(createMutation.error, 'Could not add this note.')}
+            {extractErrorMessage(createMutation.error, t('NotesPanel.addNoteErrorFallback'))}
           </Alert>
         )}
         <TextField
           multiline
           minRows={2}
           fullWidth
-          placeholder="Add an internal note (not visible to the customer)…"
+          placeholder={t('NotesPanel.notePlaceholder')}
           value={body}
           onChange={(event) => setBody(event.target.value)}
         />
@@ -67,7 +69,7 @@ export function NotesPanel({ conversationId }: { conversationId: string }) {
           onClick={handleSubmit}
           disabled={createMutation.isPending || !body.trim()}
         >
-          Add note
+          {t('NotesPanel.addNoteButton')}
         </Button>
       </Box>
     </Stack>

@@ -9,9 +9,14 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
-import { useTestConnectionEphemeralMutation, useTestConnectionMutation, useUpdateChannelMutation } from './api'
+import {
+  useTestConnectionEphemeralMutation,
+  useTestConnectionMutation,
+  useUpdateChannelMutation,
+} from './api'
 import { ChannelCredentialFields } from './fields/ChannelCredentialFields'
 import { ChannelHealthBadge } from './ChannelHealthBadge'
 import { TestConnectionButton } from './TestConnectionButton'
@@ -35,6 +40,7 @@ function ChannelEditDialogFields({
   channel: ChannelConfig
   onClose: () => void
 }) {
+  const { t } = useTranslation('channelsCore')
   const [displayName, setDisplayName] = useState(channel.display_name)
   const [isActive, setIsActive] = useState(channel.is_active)
   const [rotatingCredentials, setRotatingCredentials] = useState(false)
@@ -57,8 +63,8 @@ function ChannelEditDialogFields({
   return (
     <FormDialog
       open
-      title={`Edit ${channel.display_name}`}
-      submitLabel="Save changes"
+      title={t('ChannelEditDialog.title', { name: channel.display_name })}
+      submitLabel={t('ChannelEditDialog.saveChangesButton')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -72,7 +78,7 @@ function ChannelEditDialogFields({
         <ChannelHealthBadge channel={channel} />
       </Stack>
       <TextField
-        label="Display name"
+        label={t('ChannelEditDialog.displayNameLabel')}
         value={displayName}
         onChange={(event) => setDisplayName(event.target.value)}
         required
@@ -83,7 +89,7 @@ function ChannelEditDialogFields({
         control={
           <Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
         }
-        label="Active"
+        label={t('ChannelEditDialog.activeLabel')}
       />
 
       {channel.channel_type !== 'web_chat' && (
@@ -94,7 +100,7 @@ function ChannelEditDialogFields({
               onChange={(event) => setRotatingCredentials(event.target.checked)}
             />
           }
-          label="Update credentials (reconnect)"
+          label={t('ChannelEditDialog.updateCredentialsLabel')}
         />
       )}
       <Collapse in={rotatingCredentials}>
@@ -106,22 +112,19 @@ function ChannelEditDialogFields({
             from ever submitting. */}
         {rotatingCredentials && (
           <Stack spacing={2}>
-            <Alert severity="info">
-              Credentials are write-only and never shown once saved — enter new values to replace
-              them, then Test Connection to confirm they work before saving.
-            </Alert>
+            <Alert severity="info">{t('ChannelEditDialog.credentialsInfoAlert')}</Alert>
             <ChannelCredentialFields
               channelType={channel.channel_type}
               credentials={credentials}
               onChange={setCredentials}
             />
             <TextField
-              label="Webhook secret"
+              label={t('ChannelEditDialog.webhookSecretLabel')}
               type="password"
               value={webhookSecret}
               onChange={(event) => setWebhookSecret(event.target.value)}
               fullWidth
-              helperText="Leave blank to keep the current secret"
+              helperText={t('ChannelEditDialog.webhookSecretHelperText')}
             />
           </Stack>
         )}

@@ -16,6 +16,13 @@ for more detail on how this page is put together.
 
 ### Added
 
+- Full Arabic translation of the entire signed-in application — every
+  page, dialog, menu, table, and form across the app now renders in
+  Arabic, with the interface laid out right-to-left to match. Set it in
+  Settings → Language (applies to everyone signed in to the company);
+  English remains the default. The sign-in/registration pages, the
+  public Changelog, and the customer-facing satisfaction survey page
+  aren't translated yet and stay in English for this release.
 - Manual pickup and release for queued conversations, so agents can claim
   or hand back work directly from the Inbox, with a new "Busy" status
   agents can set for themselves.
@@ -86,6 +93,9 @@ for more detail on how this page is put together.
 
 ### Changed
 
+- Settings → Language now only offers languages with a complete
+  translation (English and Arabic) rather than listing French and
+  Spanish alongside them with no actual translated text behind them.
 - The "+ New" button for Queues, Routing Rules, SLA Policies, and
   Holidays now lives in the page header instead of inside each tab, so
   it stays put as you switch tabs.

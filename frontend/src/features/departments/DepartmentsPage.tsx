@@ -5,6 +5,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
+import { useTranslation } from 'react-i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
@@ -19,6 +20,7 @@ import { useDeleteDepartmentMutation, useDepartmentsQuery } from './api'
 import type { Department } from './types'
 
 export function DepartmentsPage() {
+  const { t, i18n } = useTranslation('departments')
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('departments.manage')
 
@@ -48,17 +50,17 @@ export function DepartmentsPage() {
 
   const columns: GridColDef<Department>[] = useMemo(
     () => [
-      { field: 'name', headerName: 'Name', flex: 1, minWidth: 160 },
+      { field: 'name', headerName: t('DepartmentsPage.columnName'), flex: 1, minWidth: 160 },
       {
         field: 'description',
-        headerName: 'Description',
+        headerName: t('DepartmentsPage.columnDescription'),
         flex: 1.5,
         minWidth: 200,
-        valueGetter: (_value, row) => row.description ?? '—',
+        valueGetter: (_value, row) => row.description ?? t('DepartmentsPage.noValuePlaceholder'),
       },
       {
         field: 'agent_count',
-        headerName: 'Agents',
+        headerName: t('DepartmentsPage.columnAgents'),
         width: 100,
         valueGetter: (_value, row) => agentCountByDepartment.get(row.id) ?? 0,
         renderCell: (params) => (
@@ -67,18 +69,23 @@ export function DepartmentsPage() {
             label={params.value}
             size="small"
             variant="outlined"
-            aria-label={`View ${params.value} agent(s) in ${(params.row as Department).name}`}
+            aria-label={t('DepartmentsPage.agentCountAriaLabel', {
+              count: params.value,
+              name: (params.row as Department).name,
+            })}
             onClick={() => setViewingAgentsDepartment(params.row as Department)}
           />
         ),
       },
       {
         field: 'is_active',
-        headerName: 'Status',
+        headerName: t('DepartmentsPage.columnStatus'),
         width: 110,
         renderCell: (params) => (
           <Chip
-            label={params.value ? 'Active' : 'Inactive'}
+            label={
+              params.value ? t('DepartmentsPage.statusActive') : t('DepartmentsPage.statusInactive')
+            }
             size="small"
             color={params.value ? 'success' : 'default'}
           />
@@ -89,19 +96,19 @@ export function DepartmentsPage() {
             {
               field: 'actions',
               type: 'actions' as const,
-              headerName: 'Actions',
+              headerName: t('DepartmentsPage.columnActions'),
               width: 80,
               getActions: (params: { row: Department }) => [
                 <GridActionsCellItem
                   key="edit"
                   icon={<EditOutlinedIcon fontSize="small" />}
-                  label="Edit"
+                  label={t('DepartmentsPage.editAction')}
                   onClick={() => setEditingDepartment(params.row)}
                 />,
                 <GridActionsCellItem
                   key="delete"
                   icon={<DeleteOutlineIcon fontSize="small" />}
-                  label="Delete"
+                  label={t('DepartmentsPage.deleteAction')}
                   onClick={() => setDeletingDepartment(params.row)}
                 />,
               ],
@@ -109,26 +116,29 @@ export function DepartmentsPage() {
           ]
         : []),
     ],
-    [canManage, agentCountByDepartment],
+    // i18n.language isn't referenced by name in this callback, but t()'s
+    // output depends on it, so it must stay a real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage, agentCountByDepartment, t, i18n.language],
   )
 
   return (
     <>
       <PageHeader
-        title="Departments"
-        description="Organize agents into departments to prepare for routing, queues and reporting."
+        title={t('DepartmentsPage.pageTitle')}
+        description={t('DepartmentsPage.pageDescription')}
         actions={
           canManage && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-              New department
+              {t('DepartmentsPage.newDepartmentButton')}
             </Button>
           )
         }
       />
 
       <TextField
-        label="Search departments"
-        placeholder="Name or description"
+        label={t('DepartmentsPage.searchLabel')}
+        placeholder={t('DepartmentsPage.searchPlaceholder')}
         size="small"
         value={search}
         onChange={(event) => {
@@ -140,24 +150,26 @@ export function DepartmentsPage() {
 
       {departmentsQuery.data?.total === 0 ? (
         <EmptyState
-          title={search ? 'No departments found' : 'No departments yet'}
+          title={
+            search ? t('DepartmentsPage.emptyTitleSearch') : t('DepartmentsPage.emptyTitleNoSearch')
+          }
           description={
             search
-              ? 'Try a different search.'
-              : 'Create your first department to start organizing agents.'
+              ? t('DepartmentsPage.emptyDescriptionSearch')
+              : t('DepartmentsPage.emptyDescriptionNoSearch')
           }
           action={
             !search &&
             canManage && (
               <Button variant="contained" onClick={() => setCreateOpen(true)}>
-                New department
+                {t('DepartmentsPage.newDepartmentButton')}
               </Button>
             )
           }
         />
       ) : (
         <DataTable
-          ariaLabel="Departments"
+          ariaLabel={t('DepartmentsPage.dataTableAriaLabel')}
           rows={departmentsQuery.data?.items ?? []}
           columns={columns}
           getRowId={(row) => row.id}
@@ -181,13 +193,18 @@ export function DepartmentsPage() {
           />
           <ConfirmDialog
             open={Boolean(deletingDepartment)}
-            title="Remove department"
+            title={t('DepartmentsPage.deleteDialogTitle')}
             description={
               deletingDepartmentAgentCount > 0
-                ? `Remove ${deletingDepartment?.name ?? ''}? ${deletingDepartmentAgentCount} agent(s) currently assigned to it will be unassigned.`
-                : `Remove ${deletingDepartment?.name ?? ''}? This cannot be undone.`
+                ? t('DepartmentsPage.deleteDialogDescriptionWithAgents', {
+                    name: deletingDepartment?.name ?? '',
+                    count: deletingDepartmentAgentCount,
+                  })
+                : t('DepartmentsPage.deleteDialogDescriptionNoAgents', {
+                    name: deletingDepartment?.name ?? '',
+                  })
             }
-            confirmLabel="Remove"
+            confirmLabel={t('DepartmentsPage.deleteDialogConfirmLabel')}
             confirmColor="error"
             isConfirming={deleteMutation.isPending}
             onConfirm={() => {

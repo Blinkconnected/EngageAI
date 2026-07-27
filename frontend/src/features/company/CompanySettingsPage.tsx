@@ -1,5 +1,6 @@
 import { Box, Stack, Tab, Tabs } from '@mui/material'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
@@ -17,34 +18,43 @@ import { SecuritySettingsPanel } from './panels/SecuritySettingsPanel'
 import { TimezoneSettingsPanel } from './panels/TimezoneSettingsPanel'
 import type { Company } from './types'
 
-const BASE_TABS = [
-  { value: 'general', label: 'General' },
-  { value: 'branding', label: 'Branding' },
-  { value: 'language', label: 'Language' },
-  { value: 'timezone', label: 'Timezone' },
-  { value: 'business-hours', label: 'Business Hours' },
-  { value: 'notifications', label: 'Notifications' },
-  { value: 'messaging', label: 'Messaging' },
-  { value: 'security', label: 'Security' },
-  { value: 'ai', label: 'AI' },
-] as const
+function baseTabsFor(t: (key: string) => string) {
+  return [
+    { value: 'general', label: t('CompanySettingsPage.tabGeneral') },
+    { value: 'branding', label: t('CompanySettingsPage.tabBranding') },
+    { value: 'language', label: t('CompanySettingsPage.tabLanguage') },
+    { value: 'timezone', label: t('CompanySettingsPage.tabTimezone') },
+    { value: 'business-hours', label: t('CompanySettingsPage.tabBusinessHours') },
+    { value: 'notifications', label: t('CompanySettingsPage.tabNotifications') },
+    { value: 'messaging', label: t('CompanySettingsPage.tabMessaging') },
+    { value: 'security', label: t('CompanySettingsPage.tabSecurity') },
+    { value: 'ai', label: t('CompanySettingsPage.tabAi') },
+  ] as const
+}
 
-const ERP_TAB = { value: 'erp', label: 'ERP' } as const
+function erpTabFor(t: (key: string) => string) {
+  return { value: 'erp', label: t('CompanySettingsPage.tabErp') } as const
+}
 
-function visibleTabsFor(company: Company) {
-  return company.settings.erp?.enabled ? [...BASE_TABS, ERP_TAB] : BASE_TABS
+function visibleTabsFor(company: Company, t: (key: string) => string) {
+  const baseTabs = baseTabsFor(t)
+  return company.settings.erp?.enabled ? [...baseTabs, erpTabFor(t)] : baseTabs
 }
 
 export function CompanySettingsPage() {
+  const { t } = useTranslation('companySettings')
   const { tab } = useParams<{ tab?: string }>()
   const navigate = useNavigate()
   const companyQuery = useCompanyQuery()
 
   return (
     <>
-      <PageHeader title="Settings" description="Manage your company's profile." />
+      <PageHeader
+        title={t('CompanySettingsPage.title')}
+        description={t('CompanySettingsPage.description')}
+      />
 
-      {companyQuery.isPending && <LoadingState label="Loading settings…" />}
+      {companyQuery.isPending && <LoadingState label={t('CompanySettingsPage.loadingLabel')} />}
       {companyQuery.isError && (
         <ErrorState error={companyQuery.error} onRetry={() => companyQuery.refetch()} />
       )}
@@ -65,8 +75,9 @@ function CompanySettingsTabs({
   tab: string | undefined
   navigate: (path: string) => void
 }) {
-  const visibleTabs = visibleTabsFor(company)
-  const activeTab = visibleTabs.find((t) => t.value === tab)
+  const { t } = useTranslation('companySettings')
+  const visibleTabs = visibleTabsFor(company, t)
+  const activeTab = visibleTabs.find((tabItem) => tabItem.value === tab)
 
   if (!activeTab) {
     return <Navigate to={`/settings/company/${visibleTabs[0].value}`} replace />
@@ -81,8 +92,13 @@ function CompanySettingsTabs({
         scrollButtons="auto"
         sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
       >
-        {visibleTabs.map((t) => (
-          <Tab key={t.value} value={t.value} label={t.label} id={`company-settings-tab-${t.value}`} />
+        {visibleTabs.map((tabItem) => (
+          <Tab
+            key={tabItem.value}
+            value={tabItem.value}
+            label={tabItem.label}
+            id={`company-settings-tab-${tabItem.value}`}
+          />
         ))}
       </Tabs>
 

@@ -17,19 +17,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import { WEEKDAYS, type BusinessHoursDay, type Company, type Weekday } from '../types'
-
-const DAY_LABELS: Record<Weekday, string> = {
-  monday: 'Monday',
-  tuesday: 'Tuesday',
-  wednesday: 'Wednesday',
-  thursday: 'Thursday',
-  friday: 'Friday',
-  saturday: 'Saturday',
-  sunday: 'Sunday',
-}
 
 const DEFAULT_DAY: BusinessHoursDay = { open: '09:00', close: '17:00', closed: false }
 
@@ -47,11 +38,22 @@ function fullWeekSchedule(
 }
 
 export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettingsExtra')
   const [enabled, setEnabled] = useState(company.settings.business_hours?.enabled ?? false)
   const [schedule, setSchedule] = useState(() =>
     fullWeekSchedule(company.settings.business_hours?.schedule),
   )
   const updateMutation = useUpdateCompanyMutation()
+
+  const dayLabels: Record<Weekday, string> = {
+    monday: t('BusinessHoursSettingsPanel.days.monday'),
+    tuesday: t('BusinessHoursSettingsPanel.days.tuesday'),
+    wednesday: t('BusinessHoursSettingsPanel.days.wednesday'),
+    thursday: t('BusinessHoursSettingsPanel.days.thursday'),
+    friday: t('BusinessHoursSettingsPanel.days.friday'),
+    saturday: t('BusinessHoursSettingsPanel.days.saturday'),
+    sunday: t('BusinessHoursSettingsPanel.days.sunday'),
+  }
 
   const savedEnabled = company.settings.business_hours?.enabled ?? false
   const savedSchedule = fullWeekSchedule(company.settings.business_hours?.schedule)
@@ -71,20 +73,21 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
       <CardContent>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">
-            When your team is available. Displayed to customers and reserved for future SLA/ routing
-            use.
+            {t('BusinessHoursSettingsPanel.description')}
           </Typography>
 
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && (
+            <Alert severity="success">{t('BusinessHoursSettingsPanel.savedAlert')}</Alert>
+          )}
 
           <FormControlLabel
             control={
               <Switch checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
             }
-            label="Enable business hours"
+            label={t('BusinessHoursSettingsPanel.enableBusinessHoursLabel')}
           />
 
           {enabled && (
@@ -92,10 +95,10 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Day</TableCell>
-                    <TableCell>Closed</TableCell>
-                    <TableCell>Open</TableCell>
-                    <TableCell>Close</TableCell>
+                    <TableCell>{t('BusinessHoursSettingsPanel.dayColumnHeader')}</TableCell>
+                    <TableCell>{t('BusinessHoursSettingsPanel.closedColumnHeader')}</TableCell>
+                    <TableCell>{t('BusinessHoursSettingsPanel.openColumnHeader')}</TableCell>
+                    <TableCell>{t('BusinessHoursSettingsPanel.closeColumnHeader')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -103,13 +106,19 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
                     const dayValue = schedule[day]
                     return (
                       <TableRow key={day}>
-                        <TableCell>{DAY_LABELS[day]}</TableCell>
+                        <TableCell>{dayLabels[day]}</TableCell>
                         <TableCell>
                           <Checkbox
                             size="small"
                             checked={dayValue.closed}
                             onChange={(event) => updateDay(day, { closed: event.target.checked })}
-                            slotProps={{ input: { 'aria-label': `${DAY_LABELS[day]} closed` } }}
+                            slotProps={{
+                              input: {
+                                'aria-label': t('BusinessHoursSettingsPanel.dayClosedAriaLabel', {
+                                  day: dayLabels[day],
+                                }),
+                              },
+                            }}
                           />
                         </TableCell>
                         <TableCell>
@@ -120,7 +129,11 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
                             disabled={dayValue.closed}
                             onChange={(event) => updateDay(day, { open: event.target.value })}
                             slotProps={{
-                              htmlInput: { 'aria-label': `${DAY_LABELS[day]} opens at` },
+                              htmlInput: {
+                                'aria-label': t('BusinessHoursSettingsPanel.dayOpensAtAriaLabel', {
+                                  day: dayLabels[day],
+                                }),
+                              },
                             }}
                           />
                         </TableCell>
@@ -132,7 +145,11 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
                             disabled={dayValue.closed}
                             onChange={(event) => updateDay(day, { close: event.target.value })}
                             slotProps={{
-                              htmlInput: { 'aria-label': `${DAY_LABELS[day]} closes at` },
+                              htmlInput: {
+                                'aria-label': t('BusinessHoursSettingsPanel.dayClosesAtAriaLabel', {
+                                  day: dayLabels[day],
+                                }),
+                              },
                             }}
                           />
                         </TableCell>
@@ -150,7 +167,9 @@ export function BusinessHoursSettingsPanel({ company }: { company: Company }) {
             onClick={handleSave}
             sx={{ alignSelf: 'flex-start' }}
           >
-            {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+            {updateMutation.isPending
+              ? t('BusinessHoursSettingsPanel.savingButton')
+              : t('BusinessHoursSettingsPanel.saveButton')}
           </Button>
         </Stack>
       </CardContent>

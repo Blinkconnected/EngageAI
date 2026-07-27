@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogTitle, MenuItem, TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { LoadingState } from '../../shared/components/LoadingState'
@@ -9,6 +10,7 @@ import type { Role } from '../roles/types'
 import type { Agent } from './types'
 
 export function AgentRoleDialog({ agent, onClose }: { agent: Agent | null; onClose: () => void }) {
+  const { t } = useTranslation('agents')
   const agentRoleQuery = useAgentRoleQuery(agent?.id ?? null)
   const rolesQuery = useRolesQuery()
 
@@ -17,7 +19,7 @@ export function AgentRoleDialog({ agent, onClose }: { agent: Agent | null; onClo
   if (agentRoleQuery.isError || rolesQuery.isError) {
     return (
       <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-        <DialogTitle>Change role</DialogTitle>
+        <DialogTitle>{t('AgentRoleDialog.changeRoleTitle')}</DialogTitle>
         <DialogContent>
           <ErrorState error={agentRoleQuery.error ?? rolesQuery.error} />
         </DialogContent>
@@ -28,9 +30,9 @@ export function AgentRoleDialog({ agent, onClose }: { agent: Agent | null; onClo
   if (!agentRoleQuery.data || !rolesQuery.data) {
     return (
       <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-        <DialogTitle>Change role</DialogTitle>
+        <DialogTitle>{t('AgentRoleDialog.changeRoleTitle')}</DialogTitle>
         <DialogContent>
-          <LoadingState label="Loading…" />
+          <LoadingState label={t('AgentRoleDialog.loadingLabel')} />
         </DialogContent>
       </Dialog>
     )
@@ -62,6 +64,7 @@ function AgentRoleDialogFields({
   roles: Role[]
   onClose: () => void
 }) {
+  const { t } = useTranslation('agents')
   const [roleId, setRoleId] = useState(currentRoleId)
   const updateMutation = useUpdateAgentRoleMutation()
 
@@ -72,8 +75,8 @@ function AgentRoleDialogFields({
   return (
     <FormDialog
       open
-      title={`Change ${agent.full_name}'s role`}
-      submitLabel="Save changes"
+      title={t('AgentRoleDialog.title', { name: agent.full_name })}
+      submitLabel={t('AgentRoleDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -82,7 +85,7 @@ function AgentRoleDialogFields({
     >
       <TextField
         select
-        label="Role"
+        label={t('AgentRoleDialog.roleLabel')}
         value={roleId}
         onChange={(event) => setRoleId(event.target.value)}
         fullWidth

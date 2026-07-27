@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link as RouterLink, Navigate, useLocation } from 'react-router-dom'
 import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { useAppSelector } from '../../app/hooks'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { Footer } from '../../shared/components/Footer'
@@ -9,6 +10,7 @@ import { selectIsAuthenticated } from './authSlice'
 import { useLoginMutation } from './api'
 
 export function LoginPage() {
+  const { t } = useTranslation('auth')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
@@ -44,7 +46,7 @@ export function LoginPage() {
           <Box
             component="img"
             src={logoLight}
-            alt="Blink Engage"
+            alt={t('LoginPage.logoAlt')}
             sx={{ height: 80, width: 'auto', display: 'block', mx: 'auto', alignSelf: 'center' }}
           />
           <Typography
@@ -53,7 +55,7 @@ export function LoginPage() {
             color="text.secondary"
             sx={{ textAlign: 'center' }}
           >
-            Sign in to your workspace
+            {t('LoginPage.subtitle')}
           </Typography>
 
           {!loginMutation.isError && flashMessage && (
@@ -64,12 +66,12 @@ export function LoginPage() {
 
           {loginMutation.isError && (
             <Alert severity="error" data-testid="login-error">
-              {extractErrorMessage(loginMutation.error, 'Invalid email or password.')}
+              {extractErrorMessage(loginMutation.error, t('LoginPage.invalidCredentials'))}
             </Alert>
           )}
 
           <TextField
-            label="Email"
+            label={t('LoginPage.emailLabel')}
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -78,7 +80,7 @@ export function LoginPage() {
             autoComplete="username"
           />
           <TextField
-            label="Password"
+            label={t('LoginPage.passwordLabel')}
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -93,17 +95,17 @@ export function LoginPage() {
             fullWidth
             disabled={loginMutation.isPending}
           >
-            {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
+            {loginMutation.isPending ? t('LoginPage.signingIn') : t('LoginPage.signIn')}
           </Button>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-            New to Blink Engage?{' '}
+            {t('LoginPage.newToBlinkEngage')}{' '}
             <Link component={RouterLink} to="/register">
-              Create your company
+              {t('LoginPage.createYourCompanyLink')}
             </Link>
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
             <Link component={RouterLink} to="/changelog">
-              What's new in this release
+              {t('LoginPage.whatsNewLink')}
             </Link>
           </Typography>
         </Stack>

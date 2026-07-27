@@ -1,0 +1,40 @@
+{
+  "AppLayout": {
+    "openNavigationMenu": "Open navigation menu",
+    "companyLogoAlt": "{{companyName}} logo",
+    "companyFallback": "Company",
+    "appName": "Blink Engage",
+    "toggleLanguageDirectionTooltip": "Toggle language direction",
+    "toggleDirectionAriaLabel": "toggle direction",
+    "toggleDarkModeTooltip": "Toggle dark mode",
+    "toggleThemeAriaLabel": "toggle theme",
+    "accountTooltip": "Account",
+    "accountMenuAriaLabel": "account menu",
+    "statusLabel": "Status",
+    "statusOfflineSuffix": " — Currently Offline",
+    "onlineStatus": "Online",
+    "awayStatus": "Away",
+    "busyStatus": "Busy",
+    "myProfile": "My Profile",
+    "signOut": "Sign out",
+    "setupBannerMessage": "Your company setup isn't finished yet.",
+    "setupBannerLink": "Complete setup"
+  },
+  "SideNav": {
+    "logoAlt": "Blink Engage",
+    "mainNavigationAriaLabel": "Main navigation",
+    "navDashboard": "Dashboard",
+    "navInbox": "Inbox",
+    "navCustomers": "Customers",
+    "navAgents": "Agents",
+    "navDepartments": "Departments",
+    "navChannels": "Channels",
+    "navStatus": "Status",
+    "navQueues": "Queues",
+    "navRolesPermissions": "Roles & Permissions",
+    "navSlaBuilder": "SLA Builder",
+    "navReports": "Reports",
+    "navErpNext": "ERPNext",
+    "navSettings": "Settings"
+  }
+}

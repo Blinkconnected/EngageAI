@@ -17,7 +17,9 @@ function channelsPage(items: ChannelConfig[]) {
   return HttpResponse.json({ items, total: items.length, page: 1, page_size: 100 })
 }
 
-function channel(overrides: Partial<ChannelConfig> & Pick<ChannelConfig, 'id' | 'channel_type'>): ChannelConfig {
+function channel(
+  overrides: Partial<ChannelConfig> & Pick<ChannelConfig, 'id' | 'channel_type'>,
+): ChannelConfig {
   return {
     display_name: overrides.channel_type,
     is_active: true,
@@ -87,17 +89,13 @@ describe('StatusPage', () => {
     expect(within(whatsappCard).getByTestId('channel-type-status')).toHaveTextContent('Degraded')
 
     const emailCard = cardFor('Email')
-    expect(within(emailCard).getByTestId('channel-type-status')).toHaveTextContent(
-      'Not tested yet',
-    )
+    expect(within(emailCard).getByTestId('channel-type-status')).toHaveTextContent('Not tested yet')
 
     const smsCard = cardFor('SMS')
     expect(within(smsCard).getByTestId('channel-type-status')).toHaveTextContent('Inactive')
 
     const telegramCard = cardFor('Telegram')
-    expect(within(telegramCard).getByTestId('channel-type-status')).toHaveTextContent(
-      'Operational',
-    )
+    expect(within(telegramCard).getByTestId('channel-type-status')).toHaveTextContent('Operational')
 
     // Instagram and Facebook Messenger have no connected channel at all.
     const instagramCard = cardFor('Instagram')

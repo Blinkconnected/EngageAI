@@ -11,6 +11,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { Footer } from '../../shared/components/Footer'
 import { extractErrorMessage } from '../../shared/api/errors'
 import logoLight from '../../assets/logo-light.png'
@@ -84,6 +85,7 @@ function PageShell({ children }: { children: ReactNode }) {
 }
 
 export function FeedbackPage() {
+  const { t } = useTranslation('feedback')
   const { conversationId = '' } = useParams()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') ?? ''
@@ -116,7 +118,7 @@ export function FeedbackPage() {
     return (
       <PageShell>
         <Alert severity="error" data-testid="feedback-invalid-link">
-          This feedback link is invalid.
+          {t('FeedbackPage.invalidLinkMessage')}
         </Alert>
       </PageShell>
     )
@@ -136,10 +138,7 @@ export function FeedbackPage() {
     return (
       <PageShell>
         <Alert severity="error" data-testid="feedback-error">
-          {extractErrorMessage(
-            contextQuery.error,
-            'This feedback link is invalid or has expired.',
-          )}
+          {extractErrorMessage(contextQuery.error, t('FeedbackPage.expiredLinkFallback'))}
         </Alert>
       </PageShell>
     )
@@ -150,9 +149,9 @@ export function FeedbackPage() {
   if (csatMutation.isSuccess || context.already_responded) {
     return (
       <PageShell>
-        <StepHeading key="thank-you">Thank you for your feedback!</StepHeading>
+        <StepHeading key="thank-you">{t('FeedbackPage.thankYouHeading')}</StepHeading>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-          We appreciate you taking the time to help us improve.
+          {t('FeedbackPage.thankYouDescription')}
         </Typography>
       </PageShell>
     )
@@ -161,10 +160,9 @@ export function FeedbackPage() {
   if (context.needs_contact_info && !contactInfoProvided) {
     return (
       <PageShell>
-        <StepHeading key="contact-info">Before you go</StepHeading>
+        <StepHeading key="contact-info">{t('FeedbackPage.beforeYouGoHeading')}</StepHeading>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-          How can we reach you if we need to follow up? Please share your email address or
-          phone number.
+          {t('FeedbackPage.beforeYouGoDescription')}
         </Typography>
         {contactInfoMutation.isError && (
           <Alert severity="error" data-testid="contact-info-error">
@@ -174,14 +172,14 @@ export function FeedbackPage() {
         <Box component="form" onSubmit={handleContactInfoSubmit}>
           <Stack spacing={2}>
             <TextField
-              label="Email"
+              label={t('FeedbackPage.emailLabel')}
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               fullWidth
             />
             <TextField
-              label="Phone"
+              label={t('FeedbackPage.phoneLabel')}
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               fullWidth
@@ -193,7 +191,9 @@ export function FeedbackPage() {
               fullWidth
               disabled={contactInfoMutation.isPending || (!email.trim() && !phone.trim())}
             >
-              {contactInfoMutation.isPending ? 'Saving…' : 'Continue'}
+              {contactInfoMutation.isPending
+                ? t('FeedbackPage.savingButton')
+                : t('FeedbackPage.continueButton')}
             </Button>
           </Stack>
         </Box>
@@ -203,9 +203,9 @@ export function FeedbackPage() {
 
   return (
     <PageShell>
-      <StepHeading key="rating">How was your experience?</StepHeading>
+      <StepHeading key="rating">{t('FeedbackPage.ratingHeading')}</StepHeading>
       <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-        Your feedback helps us serve you better.
+        {t('FeedbackPage.ratingDescription')}
       </Typography>
       {csatMutation.isError && (
         <Alert severity="error" data-testid="csat-submit-error">
@@ -223,11 +223,16 @@ export function FeedbackPage() {
           />
           <Typography id="csat-rating-hint" variant="caption" color="text.secondary">
             {rating
-              ? `You selected ${rating} star${rating === 1 ? '' : 's'}.`
-              : 'Select a rating to enable submitting your feedback.'}
+              ? t(
+                  rating === 1
+                    ? 'FeedbackPage.selectedOneStarMessage'
+                    : 'FeedbackPage.selectedStarsMessage',
+                  { count: rating },
+                )
+              : t('FeedbackPage.noRatingSelectedMessage')}
           </Typography>
           <TextField
-            label="Additional comments (optional)"
+            label={t('FeedbackPage.commentsLabel')}
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             multiline
@@ -241,7 +246,9 @@ export function FeedbackPage() {
             fullWidth
             disabled={!rating || csatMutation.isPending}
           >
-            {csatMutation.isPending ? 'Submitting…' : 'Submit feedback'}
+            {csatMutation.isPending
+              ? t('FeedbackPage.submittingButton')
+              : t('FeedbackPage.submitFeedbackButton')}
           </Button>
         </Stack>
       </Box>

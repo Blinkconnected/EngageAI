@@ -1,0 +1,17 @@
+{
+  "StatusPage": {
+    "pageTitle": "حالة مزودي الخدمة والخدمات",
+    "pageDescription": "حالة الاتصال الحية لكل قناة مراسلة تستخدمها شركتك.",
+    "checkingButton": "جارٍ الفحص…",
+    "checkAllButton": "فحص الكل الآن",
+    "checkAllErrorMessage": "تعذر فحص بعض القنوات الآن — راجع حالتها الفردية أدناه.",
+    "loadingLabel": "جارٍ تحميل حالة مزودي الخدمة…",
+    "operationalStatus": "تعمل بكفاءة",
+    "degradedStatus": "متدهورة",
+    "notTestedStatus": "لم يتم اختبارها بعد",
+    "inactiveStatus": "غير نشطة",
+    "notConfiguredStatus": "غير مُهيأة",
+    "noChannelConnectedMessage": "لا توجد قناة {{label}} متصلة بعد.",
+    "lastCheckedMessage": "آخر فحص {{date}}"
+  }
+}

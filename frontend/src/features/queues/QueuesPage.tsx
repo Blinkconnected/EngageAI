@@ -19,6 +19,8 @@ import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
@@ -56,6 +58,7 @@ function QueuesTab({
   onOpenCreate: () => void
   onCloseCreate: () => void
 }) {
+  const { t, i18n } = useTranslation('queues')
   const { page, pageSize, setPage, setPageSize, apiParams } = usePaginationParams()
   const queuesQuery = useQueuesQuery(apiParams)
   const routingRulesQuery = useRoutingRulesQuery()
@@ -79,34 +82,38 @@ function QueuesTab({
 
   const columns: GridColDef<Queue>[] = useMemo(
     () => [
-      { field: 'name', headerName: 'Name', flex: 1, minWidth: 160 },
+      { field: 'name', headerName: t('QueuesPage.columnName'), flex: 1, minWidth: 160 },
       {
         field: 'assignment_strategy',
-        headerName: 'Assignment',
+        headerName: t('QueuesPage.columnAssignment'),
         width: 150,
         valueGetter: (_value, row) => assignmentStrategyLabel(row.assignment_strategy),
       },
       {
         field: 'first_response_target_minutes',
-        headerName: 'First response SLA',
+        headerName: t('QueuesPage.columnFirstResponseSla'),
         width: 150,
         valueGetter: (_value, row) =>
-          row.first_response_target_minutes ? `${row.first_response_target_minutes} min` : '—',
+          row.first_response_target_minutes
+            ? t('QueuesPage.minutesValue', { count: row.first_response_target_minutes })
+            : t('QueuesPage.noValuePlaceholder'),
       },
       {
         field: 'resolution_target_minutes',
-        headerName: 'Resolution SLA',
+        headerName: t('QueuesPage.columnResolutionSla'),
         width: 140,
         valueGetter: (_value, row) =>
-          row.resolution_target_minutes ? `${row.resolution_target_minutes} min` : '—',
+          row.resolution_target_minutes
+            ? t('QueuesPage.minutesValue', { count: row.resolution_target_minutes })
+            : t('QueuesPage.noValuePlaceholder'),
       },
       {
         field: 'is_active',
-        headerName: 'Status',
+        headerName: t('QueuesPage.columnStatus'),
         width: 110,
         renderCell: (params) => (
           <Chip
-            label={params.value ? 'Active' : 'Inactive'}
+            label={params.value ? t('QueuesPage.statusActive') : t('QueuesPage.statusInactive')}
             size="small"
             color={params.value ? 'success' : 'default'}
           />
@@ -117,25 +124,25 @@ function QueuesTab({
             {
               field: 'actions',
               type: 'actions' as const,
-              headerName: 'Actions',
+              headerName: t('QueuesPage.columnActions'),
               width: 80,
               getActions: (params: { row: Queue }) => {
                 const ruleCount = ruleCountByQueue.get(params.row.id) ?? 0
                 const blockedReason =
                   ruleCount > 0
-                    ? `${ruleCount} routing rule(s) still target this queue — repoint them before deleting it.`
+                    ? t('QueuesPage.deleteQueueBlockedReason', { count: ruleCount })
                     : null
                 return [
                   <GridActionsCellItem
                     key="edit"
                     icon={<EditOutlinedIcon fontSize="small" />}
-                    label="Edit"
+                    label={t('QueuesPage.editAction')}
                     onClick={() => setEditingQueue(params.row)}
                   />,
                   <GridActionsCellItem
                     key="delete"
                     icon={<DeleteOutlineIcon fontSize="small" />}
-                    label={blockedReason ?? 'Delete'}
+                    label={blockedReason ?? t('QueuesPage.deleteAction')}
                     disabled={blockedReason !== null}
                     onClick={() => setDeletingQueue(params.row)}
                   />,
@@ -145,23 +152,26 @@ function QueuesTab({
           ]
         : []),
     ],
-    [canManage, ruleCountByQueue],
+    // i18n.language isn't referenced by name in this callback, but t()'s
+    // output depends on it, so it must stay a real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage, ruleCountByQueue, t, i18n.language],
   )
 
   return (
     <>
-      {queuesQuery.isPending && <LoadingState label="Loading queues…" />}
+      {queuesQuery.isPending && <LoadingState label={t('QueuesPage.loadingQueues')} />}
       {queuesQuery.isError && (
         <ErrorState error={queuesQuery.error} onRetry={() => queuesQuery.refetch()} />
       )}
       {queuesQuery.data?.total === 0 ? (
         <EmptyState
-          title="No queues yet"
-          description="Create your first queue to start routing conversations."
+          title={t('QueuesPage.emptyQueuesTitle')}
+          description={t('QueuesPage.emptyQueuesDescription')}
           action={
             canManage && (
               <Button variant="contained" onClick={onOpenCreate}>
-                New queue
+                {t('QueuesPage.newQueueButton')}
               </Button>
             )
           }
@@ -169,7 +179,7 @@ function QueuesTab({
       ) : (
         queuesQuery.data && (
           <DataTable
-            ariaLabel="Queues"
+            ariaLabel={t('QueuesPage.queuesTableAriaLabel')}
             rows={queuesQuery.data.items}
             columns={columns}
             getRowId={(row) => row.id}
@@ -189,9 +199,11 @@ function QueuesTab({
           <QueueEditDialog queue={editingQueue} onClose={() => setEditingQueue(null)} />
           <ConfirmDialog
             open={Boolean(deletingQueue)}
-            title="Remove queue"
-            description={`Remove ${deletingQueue?.name ?? ''}? Conversations currently in this queue keep their history but will no longer route through it. This cannot be undone.`}
-            confirmLabel="Remove"
+            title={t('QueuesPage.removeQueueDialogTitle')}
+            description={t('QueuesPage.removeQueueDialogDescription', {
+              name: deletingQueue?.name ?? '',
+            })}
+            confirmLabel={t('QueuesPage.removeDialogConfirmLabel')}
             confirmColor="error"
             isConfirming={deleteMutation.isPending}
             onConfirm={() => {
@@ -207,15 +219,21 @@ function QueuesTab({
   )
 }
 
-function conditionsSummary(rule: RoutingRule): string {
+function conditionsSummary(rule: RoutingRule, t: TFunction<'queues'>): string {
   const parts: string[] = []
   if (rule.conditions.channel_type) {
-    parts.push(`Channel is ${channelTypeLabel(rule.conditions.channel_type)}`)
+    parts.push(
+      t('QueuesPage.conditionChannelIs', {
+        channel: channelTypeLabel(rule.conditions.channel_type),
+      }),
+    )
   }
   if (rule.conditions.body_contains) {
-    parts.push(`Message contains "${rule.conditions.body_contains}"`)
+    parts.push(t('QueuesPage.conditionMessageContains', { text: rule.conditions.body_contains }))
   }
-  return parts.length > 0 ? parts.join(' and ') : 'Matches every conversation'
+  return parts.length > 0
+    ? parts.join(t('QueuesPage.conditionsJoiner'))
+    : t('QueuesPage.conditionsMatchAll')
 }
 
 function RoutingRulesTab({
@@ -229,6 +247,7 @@ function RoutingRulesTab({
   onOpenCreate: () => void
   onCloseCreate: () => void
 }) {
+  const { t } = useTranslation('queues')
   const rulesQuery = useRoutingRulesQuery()
   const queuesQuery = useAllQueuesQuery()
   const deleteMutation = useDeleteRoutingRuleMutation()
@@ -251,18 +270,18 @@ function RoutingRulesTab({
 
   return (
     <>
-      {rulesQuery.isPending && <LoadingState label="Loading routing rules…" />}
+      {rulesQuery.isPending && <LoadingState label={t('QueuesPage.loadingRoutingRules')} />}
       {rulesQuery.isError && (
         <ErrorState error={rulesQuery.error} onRetry={() => rulesQuery.refetch()} />
       )}
       {rulesQuery.data && sortedRules.length === 0 && (
         <EmptyState
-          title="No routing rules yet"
-          description="New conversations with no matching rule aren't routed to a queue automatically."
+          title={t('QueuesPage.emptyRulesTitle')}
+          description={t('QueuesPage.emptyRulesDescription')}
           action={
             canManage && (
               <Button variant="contained" onClick={onOpenCreate}>
-                New routing rule
+                {t('QueuesPage.newRoutingRuleButton')}
               </Button>
             )
           }
@@ -270,25 +289,31 @@ function RoutingRulesTab({
       )}
       {sortedRules.length > 0 && (
         <TableContainer>
-          <Table size="small" aria-label="Routing rules">
+          <Table size="small" aria-label={t('QueuesPage.routingRulesTableAriaLabel')}>
             <TableHead>
               <TableRow>
-                <TableCell>Priority</TableCell>
-                <TableCell>Condition</TableCell>
-                <TableCell>Routes to</TableCell>
-                <TableCell>Status</TableCell>
-                {canManage && <TableCell align="right">Actions</TableCell>}
+                <TableCell>{t('QueuesPage.columnPriority')}</TableCell>
+                <TableCell>{t('QueuesPage.columnCondition')}</TableCell>
+                <TableCell>{t('QueuesPage.columnRoutesTo')}</TableCell>
+                <TableCell>{t('QueuesPage.columnStatus')}</TableCell>
+                {canManage && <TableCell align="right">{t('QueuesPage.columnActions')}</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
               {sortedRules.map((rule) => (
                 <TableRow key={rule.id}>
                   <TableCell>{rule.priority}</TableCell>
-                  <TableCell>{conditionsSummary(rule)}</TableCell>
-                  <TableCell>{queueNameById.get(rule.target_queue_id) ?? '—'}</TableCell>
+                  <TableCell>{conditionsSummary(rule, t)}</TableCell>
+                  <TableCell>
+                    {queueNameById.get(rule.target_queue_id) ?? t('QueuesPage.noValuePlaceholder')}
+                  </TableCell>
                   <TableCell>
                     <Chip
-                      label={rule.is_active ? 'Active' : 'Inactive'}
+                      label={
+                        rule.is_active
+                          ? t('QueuesPage.statusActive')
+                          : t('QueuesPage.statusInactive')
+                      }
                       size="small"
                       color={rule.is_active ? 'success' : 'default'}
                     />
@@ -296,20 +321,20 @@ function RoutingRulesTab({
                   {canManage && (
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-                        <Tooltip title="Edit">
+                        <Tooltip title={t('QueuesPage.editTooltip')}>
                           <IconButton
                             size="small"
                             onClick={() => setEditingRule(rule)}
-                            aria-label="Edit routing rule"
+                            aria-label={t('QueuesPage.editRuleAriaLabel')}
                           >
                             <EditOutlinedIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Delete">
+                        <Tooltip title={t('QueuesPage.deleteTooltip')}>
                           <IconButton
                             size="small"
                             onClick={() => setDeletingRule(rule)}
-                            aria-label="Delete routing rule"
+                            aria-label={t('QueuesPage.deleteRuleAriaLabel')}
                           >
                             <DeleteOutlineIcon fontSize="small" />
                           </IconButton>
@@ -330,9 +355,9 @@ function RoutingRulesTab({
           <RoutingRuleEditDialog rule={editingRule} onClose={() => setEditingRule(null)} />
           <ConfirmDialog
             open={Boolean(deletingRule)}
-            title="Remove routing rule"
-            description="Remove this routing rule? New conversations matching it will fall through to the next rule instead. This cannot be undone."
-            confirmLabel="Remove"
+            title={t('QueuesPage.removeRuleDialogTitle')}
+            description={t('QueuesPage.removeRuleDialogDescription')}
+            confirmLabel={t('QueuesPage.removeDialogConfirmLabel')}
             confirmColor="error"
             isConfirming={deleteMutation.isPending}
             onConfirm={() => {
@@ -349,6 +374,7 @@ function RoutingRulesTab({
 }
 
 export function QueuesPage() {
+  const { t } = useTranslation('queues')
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('queues.manage')
   const [tab, setTab] = useState<'queues' | 'rules'>('queues')
@@ -361,8 +387,8 @@ export function QueuesPage() {
   return (
     <>
       <PageHeader
-        title="Queues & Routing"
-        description="Decide where new conversations go, and how they're assigned to agents."
+        title={t('QueuesPage.pageTitle')}
+        description={t('QueuesPage.pageDescription')}
         actions={
           canManage &&
           (tab === 'queues' ? (
@@ -371,7 +397,7 @@ export function QueuesPage() {
               startIcon={<AddIcon />}
               onClick={() => setQueueCreateOpen(true)}
             >
-              New queue
+              {t('QueuesPage.newQueueButton')}
             </Button>
           ) : (
             <Button
@@ -379,15 +405,15 @@ export function QueuesPage() {
               startIcon={<AddIcon />}
               onClick={() => setRuleCreateOpen(true)}
             >
-              New routing rule
+              {t('QueuesPage.newRoutingRuleButton')}
             </Button>
           ))
         }
       />
 
       <Tabs value={tab} onChange={(_event, value) => setTab(value)} sx={{ mb: 2 }}>
-        <Tab label="Queues" value="queues" />
-        <Tab label="Routing Rules" value="rules" />
+        <Tab label={t('QueuesPage.queuesTabLabel')} value="queues" />
+        <Tab label={t('QueuesPage.routingRulesTabLabel')} value="rules" />
       </Tabs>
 
       {tab === 'queues' && (
@@ -401,8 +427,7 @@ export function QueuesPage() {
       {tab === 'rules' && (
         <>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            A new conversation is routed to the first active rule (in priority order) whose
-            conditions match. Conversations that match no rule aren't routed to a queue.
+            {t('QueuesPage.routingRulesInfoText')}
           </Typography>
           <RoutingRulesTab
             canManage={canManage}

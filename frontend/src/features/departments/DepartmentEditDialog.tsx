@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FormControlLabel, Switch, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useUpdateDepartmentMutation } from './api'
@@ -15,7 +16,9 @@ export function DepartmentEditDialog({
   if (!department) return null
   // Keying on department.id remounts fresh whenever a different
   // department is opened, so fields simply initialize from props.
-  return <DepartmentEditDialogFields department={department} onClose={onClose} key={department.id} />
+  return (
+    <DepartmentEditDialogFields department={department} onClose={onClose} key={department.id} />
+  )
 }
 
 function DepartmentEditDialogFields({
@@ -25,6 +28,7 @@ function DepartmentEditDialogFields({
   department: Department
   onClose: () => void
 }) {
+  const { t } = useTranslation('departments')
   const [name, setName] = useState(department.name)
   const [description, setDescription] = useState(department.description ?? '')
   const [isActive, setIsActive] = useState(department.is_active)
@@ -44,8 +48,8 @@ function DepartmentEditDialogFields({
   return (
     <FormDialog
       open
-      title={`Edit ${department.name}`}
-      submitLabel="Save changes"
+      title={t('DepartmentEditDialog.title', { name: department.name })}
+      submitLabel={t('DepartmentEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -53,7 +57,7 @@ function DepartmentEditDialogFields({
       onClose={onClose}
     >
       <TextField
-        label="Name"
+        label={t('DepartmentEditDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -61,7 +65,7 @@ function DepartmentEditDialogFields({
         autoFocus
       />
       <TextField
-        label="Description"
+        label={t('DepartmentEditDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
@@ -72,7 +76,7 @@ function DepartmentEditDialogFields({
         control={
           <Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
         }
-        label="Active"
+        label={t('DepartmentEditDialog.activeLabel')}
       />
     </FormDialog>
   )

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Box,
@@ -24,6 +25,7 @@ import {
 } from './api'
 
 function ConnectErpForm() {
+  const { t } = useTranslation('erp')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [apiSecret, setApiSecret] = useState('')
@@ -45,29 +47,28 @@ function ConnectErpForm() {
       <CardContent>
         <Stack spacing={2} component="form" onSubmit={handleSubmit}>
           <Typography variant="body2" color="text.secondary">
-            Connect your ERPNext instance to view customer invoices, orders, and more from their
-            profile.
+            {t('ErpConnectionPanel.connectFormDescription')}
           </Typography>
           {createMutation.isError && (
             <Alert severity="error">{extractErrorMessage(createMutation.error)}</Alert>
           )}
           <TextField
-            label="ERPNext site URL"
+            label={t('ErpConnectionPanel.siteUrlLabel')}
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
             required
             fullWidth
-            placeholder="https://your-site.erpnext.com"
+            placeholder={t('ErpConnectionPanel.siteUrlPlaceholder')}
           />
           <TextField
-            label="API key"
+            label={t('ErpConnectionPanel.apiKeyLabel')}
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
             required
             fullWidth
           />
           <TextField
-            label="API secret"
+            label={t('ErpConnectionPanel.apiSecretLabel')}
             type="password"
             value={apiSecret}
             onChange={(event) => setApiSecret(event.target.value)}
@@ -75,19 +76,20 @@ function ConnectErpForm() {
             fullWidth
           />
           <TextField
-            label="Webhook secret"
+            label={t('ErpConnectionPanel.webhookSecretLabel')}
             type="password"
             value={webhookSecret}
             onChange={(event) => setWebhookSecret(event.target.value)}
             fullWidth
-            helperText="Shared secret ERPNext sends in the X-Webhook-Secret header"
+            helperText={t('ErpConnectionPanel.webhookSecretHelperText')}
           />
 
           {testConnectionMutation.data && (
             <Alert severity={testConnectionMutation.data.healthy ? 'success' : 'error'}>
               {testConnectionMutation.data.healthy
-                ? 'Connection successful.'
-                : (testConnectionMutation.data.detail ?? 'Connection failed.')}
+                ? t('ErpConnectionPanel.connectionSuccessAlert')
+                : (testConnectionMutation.data.detail ??
+                  t('ErpConnectionPanel.connectionFailedAlert'))}
             </Alert>
           )}
           <Button
@@ -101,7 +103,9 @@ function ConnectErpForm() {
             }
             sx={{ alignSelf: 'flex-start' }}
           >
-            {testConnectionMutation.isPending ? 'Testing…' : 'Test Connection'}
+            {testConnectionMutation.isPending
+              ? t('ErpConnectionPanel.testingButton')
+              : t('ErpConnectionPanel.testConnectionButton')}
           </Button>
 
           <Button
@@ -110,7 +114,9 @@ function ConnectErpForm() {
             disabled={createMutation.isPending}
             sx={{ alignSelf: 'flex-start' }}
           >
-            {createMutation.isPending ? 'Connecting…' : 'Connect ERPNext'}
+            {createMutation.isPending
+              ? t('ErpConnectionPanel.connectingButton')
+              : t('ErpConnectionPanel.connectButton')}
           </Button>
         </Stack>
       </CardContent>
@@ -124,6 +130,7 @@ function ConnectErpForm() {
  * `docs/architecture/company-onboarding.md`). Extracted so neither one
  * duplicates the CRUD/test-connection logic. */
 export function ErpConnectionPanel() {
+  const { t } = useTranslation('erp')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [editing, setEditing] = useState(false)
   const configsQuery = useErpConfigsQuery({ page: 1, page_size: 1 })
@@ -131,7 +138,7 @@ export function ErpConnectionPanel() {
   const testConnectionMutation = useTestErpConnectionMutation()
   const config = configsQuery.data?.items[0]
 
-  if (configsQuery.isPending) return <LoadingState label="Loading ERPNext connection…" />
+  if (configsQuery.isPending) return <LoadingState label={t('ErpConnectionPanel.loadingLabel')} />
   if (configsQuery.isError) {
     return <ErrorState error={configsQuery.error} onRetry={() => configsQuery.refetch()} />
   }
@@ -148,7 +155,11 @@ export function ErpConnectionPanel() {
                 {config.base_url}
               </Typography>
               <Chip
-                label={config.is_active ? 'Active' : 'Inactive'}
+                label={
+                  config.is_active
+                    ? t('ErpConnectionPanel.activeChip')
+                    : t('ErpConnectionPanel.inactiveChip')
+                }
                 size="small"
                 color={config.is_active ? 'success' : 'default'}
                 sx={{ mt: 1 }}
@@ -157,8 +168,9 @@ export function ErpConnectionPanel() {
             {testConnectionMutation.data && (
               <Alert severity={testConnectionMutation.data.healthy ? 'success' : 'error'}>
                 {testConnectionMutation.data.healthy
-                  ? 'Connection successful.'
-                  : (testConnectionMutation.data.detail ?? 'Connection failed.')}
+                  ? t('ErpConnectionPanel.connectionSuccessAlert')
+                  : (testConnectionMutation.data.detail ??
+                    t('ErpConnectionPanel.connectionFailedAlert'))}
               </Alert>
             )}
             <Stack direction="row" spacing={2}>
@@ -167,17 +179,15 @@ export function ErpConnectionPanel() {
                 disabled={testConnectionMutation.isPending}
                 onClick={() => testConnectionMutation.mutate(config.id)}
               >
-                {testConnectionMutation.isPending ? 'Testing…' : 'Test Connection'}
+                {testConnectionMutation.isPending
+                  ? t('ErpConnectionPanel.testingButton')
+                  : t('ErpConnectionPanel.testConnectionButton')}
               </Button>
               <Button variant="outlined" onClick={() => setEditing(true)}>
-                Edit
+                {t('ErpConnectionPanel.editButton')}
               </Button>
-              <Button
-                color="error"
-                variant="outlined"
-                onClick={() => setConfirmingDelete(true)}
-              >
-                Disconnect
+              <Button color="error" variant="outlined" onClick={() => setConfirmingDelete(true)}>
+                {t('ErpConnectionPanel.disconnectButton')}
               </Button>
             </Stack>
           </Stack>
@@ -188,9 +198,9 @@ export function ErpConnectionPanel() {
 
       <ConfirmDialog
         open={confirmingDelete}
-        title="Disconnect ERPNext"
-        description="Customer profiles will stop showing ERPNext records until you reconnect."
-        confirmLabel="Yes, disconnect"
+        title={t('ErpConnectionPanel.disconnectDialogTitle')}
+        description={t('ErpConnectionPanel.disconnectDialogDescription')}
+        confirmLabel={t('ErpConnectionPanel.disconnectConfirmLabel')}
         confirmColor="error"
         isConfirming={deleteMutation.isPending}
         onConfirm={() => {

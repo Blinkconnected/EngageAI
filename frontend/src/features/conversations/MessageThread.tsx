@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Box, Button, Chip, Paper, Stack, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
@@ -18,6 +19,7 @@ const PAGE_STEP = 20
 const MAX_VISIBLE = 100
 
 function MessageBubble({ message, conversationId }: { message: Message; conversationId: string }) {
+  const { t } = useTranslation('conversationsCore')
   const isOutbound = message.direction === 'outbound'
   return (
     <Box sx={{ display: 'flex', justifyContent: isOutbound ? 'flex-end' : 'flex-start' }}>
@@ -49,11 +51,11 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
             {formatRelativeTime(message.created_at)}
           </Typography>
           {isOutbound && message.status === 'failed' && (
-            <Chip label="Failed to send" size="small" color="error" />
+            <Chip label={t('MessageThread.failedToSendLabel')} size="small" color="error" />
           )}
           {isOutbound && message.delivery_status === 'delivered' && (
             <Typography variant="caption" sx={{ opacity: 0.8 }}>
-              · Delivered
+              {t('MessageThread.deliveredLabel')}
             </Typography>
           )}
         </Stack>
@@ -66,7 +68,7 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
           <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.25 }}>
             {typeof message.message_metadata.error === 'string'
               ? message.message_metadata.error
-              : 'The channel provider rejected this message — its credentials may need attention.'}
+              : t('MessageThread.genericErrorFallback')}
           </Typography>
         )}
       </Paper>
@@ -75,6 +77,7 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
 }
 
 export function MessageThread({ conversationId }: { conversationId: string }) {
+  const { t } = useTranslation('conversationsCore')
   const [visibleCount, setVisibleCount] = useState(PAGE_STEP)
   const messagesQuery = useMessagesQuery(conversationId, { page: 1, page_size: visibleCount })
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -92,7 +95,7 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
     if (lastMessageId) bottomRef.current?.scrollIntoView?.({ block: 'end' })
   }, [lastMessageId])
 
-  if (messagesQuery.isPending) return <LoadingState label="Loading messages…" />
+  if (messagesQuery.isPending) return <LoadingState label={t('MessageThread.loadingLabel')} />
   if (messagesQuery.isError) {
     return <ErrorState error={messagesQuery.error} onRetry={() => messagesQuery.refetch()} />
   }
@@ -104,7 +107,10 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   if (orderedMessages.length === 0) {
     return (
       <>
-        <EmptyState title="No messages yet" description="This conversation has no messages." />
+        <EmptyState
+          title={t('MessageThread.noMessagesTitle')}
+          description={t('MessageThread.noMessagesDescription')}
+        />
         {customerTyping && <TypingIndicator />}
       </>
     )
@@ -118,7 +124,7 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
           onClick={() => setVisibleCount((count) => Math.min(count + PAGE_STEP, MAX_VISIBLE))}
           sx={{ alignSelf: 'center' }}
         >
-          Load older messages
+          {t('MessageThread.loadOlderButton')}
         </Button>
       )}
       {orderedMessages.map((message) => (
@@ -131,6 +137,7 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
 }
 
 function TypingIndicator() {
+  const { t } = useTranslation('conversationsCore')
   return (
     <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
       <Typography
@@ -139,7 +146,7 @@ function TypingIndicator() {
         sx={{ fontStyle: 'italic', px: 1.5 }}
         role="status"
       >
-        Customer is typing…
+        {t('MessageThread.customerTypingLabel')}
       </Typography>
     </Box>
   )

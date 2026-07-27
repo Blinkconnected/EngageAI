@@ -5,6 +5,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
+import { useTranslation } from 'react-i18next'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
@@ -19,6 +20,7 @@ import { useChannelsQuery, useDeleteChannelMutation } from './api'
 import { channelTypeLabel, type ChannelConfig } from './types'
 
 export function ChannelsPage() {
+  const { t, i18n } = useTranslation('channelsCore')
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('channels.manage')
 
@@ -33,21 +35,21 @@ export function ChannelsPage() {
 
   const columns: GridColDef<ChannelConfig>[] = useMemo(
     () => [
-      { field: 'display_name', headerName: 'Name', flex: 1, minWidth: 180 },
+      { field: 'display_name', headerName: t('ChannelsPage.nameColumn'), flex: 1, minWidth: 180 },
       {
         field: 'channel_type',
-        headerName: 'Type',
+        headerName: t('ChannelsPage.typeColumn'),
         flex: 1,
         minWidth: 160,
         valueGetter: (_value, row) => channelTypeLabel(row.channel_type),
       },
       {
         field: 'is_active',
-        headerName: 'Status',
+        headerName: t('ChannelsPage.statusColumn'),
         width: 110,
         renderCell: (params) => (
           <Chip
-            label={params.value ? 'Active' : 'Inactive'}
+            label={params.value ? t('ChannelsPage.activeLabel') : t('ChannelsPage.inactiveLabel')}
             size="small"
             color={params.value ? 'success' : 'default'}
           />
@@ -55,7 +57,7 @@ export function ChannelsPage() {
       },
       {
         field: 'last_health_status',
-        headerName: 'Connection',
+        headerName: t('ChannelsPage.connectionColumn'),
         width: 150,
         sortable: false,
         renderCell: (params) => <ChannelHealthBadge channel={params.row} />,
@@ -63,13 +65,13 @@ export function ChannelsPage() {
       {
         field: 'actions',
         type: 'actions' as const,
-        headerName: 'Actions',
+        headerName: t('ChannelsPage.actionsColumn'),
         width: canManage ? 140 : 60,
         getActions: (params: { row: ChannelConfig }) => [
           <GridActionsCellItem
             key="logs"
             icon={<HistoryOutlinedIcon fontSize="small" />}
-            label="Connection logs"
+            label={t('ChannelsPage.connectionLogsAction')}
             onClick={() => setLogsChannel(params.row)}
           />,
           ...(canManage
@@ -77,13 +79,13 @@ export function ChannelsPage() {
                 <GridActionsCellItem
                   key="edit"
                   icon={<EditOutlinedIcon fontSize="small" />}
-                  label="Edit"
+                  label={t('ChannelsPage.editAction')}
                   onClick={() => setEditingChannel(params.row)}
                 />,
                 <GridActionsCellItem
                   key="delete"
                   icon={<DeleteOutlineIcon fontSize="small" />}
-                  label="Delete"
+                  label={t('ChannelsPage.deleteAction')}
                   onClick={() => setDeletingChannel(params.row)}
                 />,
               ]
@@ -91,18 +93,21 @@ export function ChannelsPage() {
         ],
       },
     ],
-    [canManage],
+    // i18n.language isn't referenced by name in this callback, but t()'s
+    // output depends on it, so it must stay a real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage, t, i18n.language],
   )
 
   return (
     <>
       <PageHeader
-        title="Channels"
-        description="Connect WhatsApp and other channels your customers reach you on."
+        title={t('ChannelsPage.pageTitle')}
+        description={t('ChannelsPage.pageDescription')}
         actions={
           canManage && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-              Connect channel
+              {t('ChannelsPage.connectChannelButton')}
             </Button>
           )
         }
@@ -110,19 +115,19 @@ export function ChannelsPage() {
 
       {channelsQuery.data?.total === 0 ? (
         <EmptyState
-          title="No channels connected yet"
-          description="Connect WhatsApp or another channel to start receiving conversations."
+          title={t('ChannelsPage.emptyStateTitle')}
+          description={t('ChannelsPage.emptyStateDescription')}
           action={
             canManage && (
               <Button variant="contained" onClick={() => setCreateOpen(true)}>
-                Connect channel
+                {t('ChannelsPage.connectChannelButton')}
               </Button>
             )
           }
         />
       ) : (
         <DataTable
-          ariaLabel="Channels"
+          ariaLabel={t('ChannelsPage.gridAriaLabel')}
           rows={channelsQuery.data?.items ?? []}
           columns={columns}
           getRowId={(row) => row.id}
@@ -143,9 +148,11 @@ export function ChannelsPage() {
           <ChannelEditDialog channel={editingChannel} onClose={() => setEditingChannel(null)} />
           <ConfirmDialog
             open={Boolean(deletingChannel)}
-            title="Disconnect channel"
-            description={`Disconnect ${deletingChannel?.display_name ?? ''}? Its webhook will stop receiving messages immediately.`}
-            confirmLabel="Disconnect"
+            title={t('ChannelsPage.disconnectDialogTitle')}
+            description={t('ChannelsPage.disconnectDialogDescription', {
+              name: deletingChannel?.display_name ?? '',
+            })}
+            confirmLabel={t('ChannelsPage.disconnectButton')}
             confirmColor="error"
             isConfirming={deleteMutation.isPending}
             onConfirm={() => {

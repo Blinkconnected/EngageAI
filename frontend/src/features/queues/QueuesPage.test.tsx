@@ -177,9 +177,7 @@ describe('QueuesPage', () => {
       await user.click(within(row as HTMLElement).getByLabelText('Delete routing rule'))
       await user.click(await screen.findByRole('button', { name: /^remove$/i }))
 
-      await waitFor(() =>
-        expect(screen.queryByText('Channel is Web Chat')).not.toBeInTheDocument(),
-      )
+      await waitFor(() => expect(screen.queryByText('Channel is Web Chat')).not.toBeInTheDocument())
       expect(await screen.findByText('No routing rules yet')).toBeInTheDocument()
     })
   })

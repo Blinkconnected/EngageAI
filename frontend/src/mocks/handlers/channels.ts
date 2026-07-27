@@ -60,7 +60,11 @@ export function resetChannelsMock() {
 }
 
 function addLog(channelConfigId: string, entry: Omit<ChannelConnectionLog, 'id' | 'created_at'>) {
-  const log: ChannelConnectionLog = { ...entry, id: `log-${nextLogId}`, created_at: '2026-01-02T00:00:00Z' }
+  const log: ChannelConnectionLog = {
+    ...entry,
+    id: `log-${nextLogId}`,
+    created_at: '2026-01-02T00:00:00Z',
+  }
   nextLogId += 1
   logs[channelConfigId] = [log, ...(logs[channelConfigId] ?? [])]
 }
@@ -107,7 +111,8 @@ export const channelsHandlers = [
       webhook_secret: payload.webhook_secret || 'mock-generated-webhook-secret',
       verify_token:
         payload.channel_type === 'whatsapp'
-          ? ((payload.credentials.verify_token as string | undefined) ?? 'mock-generated-verify-token')
+          ? ((payload.credentials.verify_token as string | undefined) ??
+            'mock-generated-verify-token')
           : null,
     }
     nextId += 1
@@ -163,19 +168,22 @@ export const channelsHandlers = [
     return HttpResponse.json(result)
   }),
 
-  http.get(`${API_BASE_URL}/channel-configs/:channelConfigId/connection-logs`, ({ params, request }) => {
-    const channelConfigId = String(params.channelConfigId)
-    const url = new URL(request.url)
-    const page = Number(url.searchParams.get('page') ?? '1')
-    const pageSize = Number(url.searchParams.get('page_size') ?? '20')
-    const items = logs[channelConfigId] ?? []
-    const start = (page - 1) * pageSize
-    const body: Page<ChannelConnectionLog> = {
-      items: items.slice(start, start + pageSize),
-      total: items.length,
-      page,
-      page_size: pageSize,
-    }
-    return HttpResponse.json(body)
-  }),
+  http.get(
+    `${API_BASE_URL}/channel-configs/:channelConfigId/connection-logs`,
+    ({ params, request }) => {
+      const channelConfigId = String(params.channelConfigId)
+      const url = new URL(request.url)
+      const page = Number(url.searchParams.get('page') ?? '1')
+      const pageSize = Number(url.searchParams.get('page_size') ?? '20')
+      const items = logs[channelConfigId] ?? []
+      const start = (page - 1) * pageSize
+      const body: Page<ChannelConnectionLog> = {
+        items: items.slice(start, start + pageSize),
+        total: items.length,
+        page,
+        page_size: pageSize,
+      }
+      return HttpResponse.json(body)
+    },
+  ),
 ]

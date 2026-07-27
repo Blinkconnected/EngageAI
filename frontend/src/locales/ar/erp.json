@@ -1,0 +1,59 @@
+{
+  "CustomerErpPanel": {
+    "loadingLabel": "جارٍ تحميل سجلات ERP…",
+    "syncingButton": "جارٍ المزامنة…",
+    "syncButton": "مزامنة العميل مع ERP",
+    "doctypeLabel": "نوع المستند",
+    "doctypePlaceholder": "مثال: فاتورة مبيعات",
+    "pullingButton": "جارٍ السحب…",
+    "pullButton": "سحب السجلات",
+    "emptyStateTitle": "لا توجد سجلات ERPNext بعد",
+    "emptyStateDescription": "قم بمزامنة هذا العميل أو سحب السجلات لنوع مستند معين لتظهر هنا."
+  },
+  "ErpConfigEditDialog": {
+    "dialogTitle": "تعديل اتصال ERPNext",
+    "submitLabel": "حفظ التغييرات",
+    "siteUrlLabel": "رابط موقع ERPNext",
+    "activeLabel": "نشط",
+    "updateCredentialsLabel": "تحديث بيانات الاعتماد (إعادة الاتصال)",
+    "credentialsInfoAlert": "بيانات الاعتماد للكتابة فقط ولا تُعرض بعد حفظها — أدخل قيمًا جديدة لاستبدالها، ثم اختبر الاتصال للتأكد من صحتها قبل الحفظ.",
+    "apiKeyLabel": "مفتاح API",
+    "apiSecretLabel": "سر API",
+    "webhookSecretLabel": "سر Webhook",
+    "webhookSecretHelperText": "اتركه فارغًا للاحتفاظ بالسر الحالي",
+    "connectionSuccessAlert": "تم الاتصال بنجاح.",
+    "connectionFailedAlert": "فشل الاتصال.",
+    "testingButton": "جارٍ الاختبار…",
+    "testConnectionButton": "اختبار الاتصال"
+  },
+  "ErpConfigSettingsPage": {
+    "title": "تكامل ERPNext",
+    "description": "مزامنة سجلات العملاء مع ERPNext."
+  },
+  "ErpConnectionPanel": {
+    "connectFormDescription": "اربط نظام ERPNext الخاص بك لعرض فواتير العملاء وطلباتهم والمزيد من ملفهم الشخصي.",
+    "siteUrlLabel": "رابط موقع ERPNext",
+    "siteUrlPlaceholder": "https://your-site.erpnext.com",
+    "apiKeyLabel": "مفتاح API",
+    "apiSecretLabel": "سر API",
+    "webhookSecretLabel": "سر Webhook",
+    "webhookSecretHelperText": "السر المشترك الذي يرسله ERPNext في ترويسة X-Webhook-Secret",
+    "connectionSuccessAlert": "تم الاتصال بنجاح.",
+    "connectionFailedAlert": "فشل الاتصال.",
+    "testingButton": "جارٍ الاختبار…",
+    "testConnectionButton": "اختبار الاتصال",
+    "connectingButton": "جارٍ الاتصال…",
+    "connectButton": "اتصال بـ ERPNext",
+    "loadingLabel": "جارٍ تحميل اتصال ERPNext…",
+    "activeChip": "نشط",
+    "inactiveChip": "غير نشط",
+    "editButton": "تعديل",
+    "disconnectButton": "قطع الاتصال",
+    "disconnectDialogTitle": "قطع الاتصال بـ ERPNext",
+    "disconnectDialogDescription": "ستتوقف ملفات العملاء عن عرض سجلات ERPNext حتى تُعيد الاتصال.",
+    "disconnectConfirmLabel": "نعم، قطع الاتصال"
+  },
+  "ErpRecordCard": {
+    "syncedLabel": "تمت المزامنة {{time}}"
+  }
+}

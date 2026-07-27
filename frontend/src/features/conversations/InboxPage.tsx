@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
+import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Chip,
@@ -38,13 +39,15 @@ const STATUS_COLOR: Record<ConversationStatus, 'info' | 'warning' | 'success' | 
   closed: 'default',
 }
 
-const TABS: { label: string; value: ConversationStatus | 'all' }[] = [
-  { label: 'All', value: 'all' },
-  ...CONVERSATION_STATUSES.map((status) => ({
-    label: status[0].toUpperCase() + status.slice(1),
-    value: status,
-  })),
-]
+// Maps each status to the i18n key holding its tab label — the label
+// itself can't live in this module-scope map since translation requires
+// the `t` function, which is only available inside the component.
+const STATUS_TAB_KEY: Record<ConversationStatus, string> = {
+  open: 'tabOpen',
+  pending: 'tabPending',
+  resolved: 'tabResolved',
+  closed: 'tabClosed',
+}
 
 type FilterMode = 'status' | 'queue'
 
@@ -56,9 +59,18 @@ type FilterMode = 'status' | 'queue'
 const QUEUE_MODE_REFETCH_INTERVAL_MS = 10_000
 
 export function InboxPage() {
+  const { t, i18n } = useTranslation('conversationsCore')
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
   const canPick = hasPermission('conversations.pick')
+
+  const tabs: { label: string; value: ConversationStatus | 'all' }[] = [
+    { label: t('InboxPage.tabAll'), value: 'all' },
+    ...CONVERSATION_STATUSES.map((status) => ({
+      label: t(`InboxPage.${STATUS_TAB_KEY[status]}`),
+      value: status,
+    })),
+  ]
 
   // Filter/queue/page state lives in the URL, not local useState — this is
   // the app's highest-frequency workflow (agents constantly open a
@@ -142,7 +154,7 @@ export function InboxPage() {
     setActionError(null)
     pickMutation.mutate(conversationId, {
       onError: (error) => {
-        setActionError(extractErrorMessage(error, 'Could not pick up this conversation.'))
+        setActionError(extractErrorMessage(error, t('InboxPage.pickErrorFallback')))
         // A 409 means someone else claimed it between this page's last
         // poll and the click — the row shown is already stale, so refetch
         // immediately instead of leaving it visible for up to another
@@ -158,28 +170,28 @@ export function InboxPage() {
     () => [
       {
         field: 'customer_id',
-        headerName: 'Customer',
+        headerName: t('InboxPage.columnCustomer'),
         flex: 1,
         minWidth: 160,
         renderCell: (params) => <CustomerNameCell customerId={params.row.customer_id} />,
       },
       {
         field: 'channel_config_id',
-        headerName: 'Channel',
+        headerName: t('InboxPage.columnChannel'),
         flex: 1,
         minWidth: 140,
         valueGetter: (_value, row) => {
           const name = channelById.get(row.channel_config_id)
-          return name ?? '—'
+          return name ?? t('InboxPage.emptyValue')
         },
       },
       {
         field: 'status',
-        headerName: 'Status',
+        headerName: t('InboxPage.columnStatus'),
         width: 120,
         renderCell: (params) => (
           <Chip
-            label={params.value}
+            label={t(`InboxPage.${STATUS_TAB_KEY[params.value as ConversationStatus]}`)}
             size="small"
             color={STATUS_COLOR[params.value as ConversationStatus]}
           />
@@ -187,22 +199,26 @@ export function InboxPage() {
       },
       {
         field: 'last_message_at',
-        headerName: 'Last message',
+        headerName: t('InboxPage.columnLastMessage'),
         width: 150,
         valueGetter: (_value, row) =>
-          row.last_message_at ? formatRelativeTime(row.last_message_at) : '—',
+          row.last_message_at ? formatRelativeTime(row.last_message_at) : t('InboxPage.emptyValue'),
       },
       {
         field: 'assigned_agent_id',
-        headerName: 'Assigned to',
+        headerName: t('InboxPage.columnAssignedTo'),
         flex: 1,
         minWidth: 150,
         valueGetter: (_value, row) => {
-          if (row.assigned_agent_id) return agentById.get(row.assigned_agent_id) ?? 'Unassigned'
-          if (row.department_id) {
-            return `${departmentById.get(row.department_id) ?? 'Unknown'} (department)`
+          if (row.assigned_agent_id) {
+            return agentById.get(row.assigned_agent_id) ?? t('InboxPage.unassignedValue')
           }
-          return 'Unassigned'
+          if (row.department_id) {
+            return t('InboxPage.departmentSuffixLabel', {
+              departmentName: departmentById.get(row.department_id) ?? t('InboxPage.unknownValue'),
+            })
+          }
+          return t('InboxPage.unassignedValue')
         },
       },
       ...(canPick
@@ -210,7 +226,7 @@ export function InboxPage() {
             {
               field: 'actions',
               type: 'actions' as const,
-              headerName: 'Actions',
+              headerName: t('InboxPage.columnActions'),
               width: 90,
               getActions: (params: { row: Conversation }) => {
                 // Only offered on a queued, unassigned conversation — once
@@ -221,7 +237,7 @@ export function InboxPage() {
                   <GridActionsCellItem
                     key="pick"
                     icon={<AssignmentIndOutlinedIcon fontSize="small" />}
-                    label="Pick"
+                    label={t('InboxPage.actionPick')}
                     onClick={(event) => {
                       // The grid's own row click navigates to the
                       // conversation — this action instead claims it
@@ -241,12 +257,12 @@ export function InboxPage() {
     // mutate/refetch functions), so it's intentionally left off this list
     // rather than churning column identity every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [channelById, agentById, departmentById, canPick],
+    [channelById, agentById, departmentById, canPick, t, i18n.language],
   )
 
   return (
     <>
-      <PageHeader title="Inbox" description="Conversations across every connected channel." />
+      <PageHeader title={t('InboxPage.pageTitle')} description={t('InboxPage.pageDescription')} />
 
       {actionError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
@@ -279,10 +295,10 @@ export function InboxPage() {
             onChange={(_event, value: FilterMode | null) => {
               if (value) updateParams({ mode: value === 'status' ? null : value, page: null })
             }}
-            aria-label="Filter mode"
+            aria-label={t('InboxPage.filterModeAriaLabel')}
           >
-            <ToggleButton value="status">Status</ToggleButton>
-            <ToggleButton value="queue">Queue</ToggleButton>
+            <ToggleButton value="status">{t('InboxPage.statusFilterOption')}</ToggleButton>
+            <ToggleButton value="queue">{t('InboxPage.queueFilterOption')}</ToggleButton>
           </ToggleButtonGroup>
 
           {filterMode === 'status' ? (
@@ -292,7 +308,7 @@ export function InboxPage() {
                 updateParams({ status: value === 'open' ? null : value, page: null })
               }}
             >
-              {TABS.map((tab) => (
+              {tabs.map((tab) => (
                 <Tab key={tab.value} label={tab.label} value={tab.value} />
               ))}
             </Tabs>
@@ -300,7 +316,7 @@ export function InboxPage() {
             <TextField
               select
               size="small"
-              label="Queue"
+              label={t('InboxPage.queueFieldLabel')}
               value={queueFilterId}
               disabled={queuesQuery.isPending}
               onChange={(event) => {
@@ -308,7 +324,7 @@ export function InboxPage() {
               }}
               sx={{ minWidth: 200 }}
             >
-              <MenuItem value="">All queues</MenuItem>
+              <MenuItem value="">{t('InboxPage.allQueuesOption')}</MenuItem>
               {queuesQuery.data?.map((queue) => (
                 <MenuItem key={queue.id} value={queue.id}>
                   {queue.name}
@@ -329,7 +345,7 @@ export function InboxPage() {
                 }}
               />
             }
-            label="My conversations only"
+            label={t('InboxPage.myConversationsOnlyLabel')}
           />
         ) : (
           <FormControlLabel
@@ -342,24 +358,24 @@ export function InboxPage() {
                 }}
               />
             }
-            label="Unassigned only"
+            label={t('InboxPage.unassignedOnlyLabel')}
           />
         )}
       </Stack>
 
       {hasNoAgentProfile ? (
         <EmptyState
-          title="No agent profile"
-          description="Your account isn't set up as an agent, so no conversations can be assigned to you."
+          title={t('InboxPage.noAgentProfileTitle')}
+          description={t('InboxPage.noAgentProfileDescription')}
         />
       ) : conversationsQuery.data?.total === 0 ? (
         <EmptyState
-          title="No conversations here"
-          description="New conversations will appear here as customers reach out on your connected channels."
+          title={t('InboxPage.noConversationsTitle')}
+          description={t('InboxPage.noConversationsDescription')}
         />
       ) : (
         <DataTable
-          ariaLabel="Inbox"
+          ariaLabel={t('InboxPage.dataTableAriaLabel')}
           rows={conversationsQuery.data?.items ?? []}
           columns={columns}
           getRowId={(row) => row.id}

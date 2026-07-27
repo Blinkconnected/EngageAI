@@ -6,6 +6,7 @@ import {
   DialogContentText,
   DialogTitle,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -22,12 +23,15 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = 'Confirm',
+  confirmLabel,
   confirmColor = 'primary',
   isConfirming = false,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation('shared')
+  const resolvedConfirmLabel = confirmLabel ?? t('ConfirmDialog.confirmButton')
+
   return (
     <Dialog open={open} onClose={onClose} aria-labelledby="confirm-dialog-title">
       <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
@@ -36,10 +40,10 @@ export function ConfirmDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isConfirming}>
-          Cancel
+          {t('ConfirmDialog.cancelButton')}
         </Button>
         <Button onClick={onConfirm} color={confirmColor} disabled={isConfirming} autoFocus>
-          {confirmLabel}
+          {resolvedConfirmLabel}
         </Button>
       </DialogActions>
     </Dialog>

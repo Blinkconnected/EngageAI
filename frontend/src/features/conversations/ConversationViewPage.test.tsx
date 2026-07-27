@@ -216,9 +216,7 @@ describe('ConversationViewPage', () => {
         http.get(`${API_BASE_URL}/auth/me`, () =>
           HttpResponse.json({
             ...MOCK_USER,
-            permissions: MOCK_USER.permissions.filter(
-              (code) => code !== 'conversations.transfer',
-            ),
+            permissions: MOCK_USER.permissions.filter((code) => code !== 'conversations.transfer'),
           }),
         ),
         http.get(`${API_BASE_URL}/conversations/:conversationId`, () =>
@@ -319,7 +317,10 @@ describe('ConversationViewPage', () => {
       const user = userEvent.setup()
       server.use(
         http.post(`${API_BASE_URL}/ai/conversations/:conversationId/reply-suggestion`, () =>
-          HttpResponse.json({ detail: 'AI features are not enabled for your company.' }, { status: 503 }),
+          HttpResponse.json(
+            { detail: 'AI features are not enabled for your company.' },
+            { status: 503 },
+          ),
         ),
       )
       renderConversationView()

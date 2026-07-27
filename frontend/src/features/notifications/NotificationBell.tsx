@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   Badge,
   Box,
@@ -23,6 +24,7 @@ import {
 import type { Notification } from './types'
 
 export function NotificationBell() {
+  const { t } = useTranslation('notifications')
   const navigate = useNavigate()
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const unreadCountQuery = useUnreadCountQuery()
@@ -41,7 +43,11 @@ export function NotificationBell() {
     <>
       <IconButton
         onClick={(event) => setAnchorEl(event.currentTarget)}
-        aria-label={`Notifications${unreadCountQuery.data ? ` (${unreadCountQuery.data} unread)` : ''}`}
+        aria-label={
+          unreadCountQuery.data
+            ? t('NotificationBell.ariaLabelUnread', { count: unreadCountQuery.data })
+            : t('NotificationBell.ariaLabel')
+        }
       >
         <Badge badgeContent={unreadCountQuery.data ?? 0} color="error">
           <NotificationsOutlinedIcon />
@@ -67,18 +73,18 @@ export function NotificationBell() {
           }}
         >
           <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-            Notifications
+            {t('NotificationBell.title')}
           </Typography>
           {Boolean(unreadCountQuery.data) && (
             <Button size="small" onClick={() => markAllReadMutation.mutate()}>
-              Mark all read
+              {t('NotificationBell.markAllReadButton')}
             </Button>
           )}
         </Box>
         <Divider />
         {notificationsQuery.data?.items.length === 0 && (
           <Box sx={{ px: 2 }}>
-            <EmptyState title="No notifications" />
+            <EmptyState title={t('NotificationBell.emptyStateTitle')} />
           </Box>
         )}
         {notificationsQuery.data?.items.map((notification) => (
@@ -116,7 +122,7 @@ export function NotificationBell() {
               navigate('/notifications')
             }}
           >
-            View all notifications
+            {t('NotificationBell.viewAllButton')}
           </Button>
         </Box>
       </Menu>

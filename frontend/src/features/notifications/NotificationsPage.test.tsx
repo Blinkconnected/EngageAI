@@ -59,12 +59,16 @@ describe('NotificationsPage', () => {
 
     await user.click(screen.getByRole('tab', { name: /preferences/i }))
 
-    expect(await screen.findByRole('table', { name: /notification preferences/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('table', { name: /notification preferences/i }),
+    ).toBeInTheDocument()
     const table = screen.getByRole('table', { name: /notification preferences/i })
     expect(within(table).getByText('New conversation assigned')).toBeInTheDocument()
-    expect(within(table).getAllByRole('switch').every((el) => (el as HTMLInputElement).checked)).toBe(
-      true,
-    )
+    expect(
+      within(table)
+        .getAllByRole('switch')
+        .every((el) => (el as HTMLInputElement).checked),
+    ).toBe(true)
   })
 
   it('toggling a preference switch off persists it', async () => {

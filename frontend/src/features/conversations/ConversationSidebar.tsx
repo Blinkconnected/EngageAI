@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
+import { useTranslation } from 'react-i18next'
 import { Alert, Button, Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -18,7 +19,17 @@ import {
   useUpdateConversationMutation,
 } from './api'
 import { TransferDialog } from './TransferDialog'
-import { CONVERSATION_STATUSES, type Conversation } from './types'
+import { CONVERSATION_STATUSES, type Conversation, type ConversationStatus } from './types'
+
+// Maps each status to the i18n key holding its dropdown label — the label
+// itself can't live in this module-scope map since translation requires
+// the `t` function, which is only available inside the component.
+const STATUS_OPTION_KEY: Record<ConversationStatus, string> = {
+  open: 'statusOpen',
+  pending: 'statusPending',
+  resolved: 'statusResolved',
+  closed: 'statusClosed',
+}
 
 export function ConversationSidebar({
   conversation,
@@ -27,6 +38,7 @@ export function ConversationSidebar({
   conversation: Conversation
   customerName: string
 }) {
+  const { t } = useTranslation('conversationsCore')
   const { hasPermission } = usePermissions()
   const canTransfer = hasPermission('conversations.transfer')
   const [transferOpen, setTransferOpen] = useState(false)
@@ -59,7 +71,7 @@ export function ConversationSidebar({
     setReleaseError(null)
     releaseMutation.mutate(conversation.id, {
       onError: (error) => {
-        setReleaseError(extractErrorMessage(error, 'Could not release this conversation.'))
+        setReleaseError(extractErrorMessage(error, t('ConversationSidebar.releaseErrorFallback')))
         // A 409 means the conversation's assignment already changed
         // server-side (e.g. transferred away) since this sidebar last
         // loaded it — refetch immediately rather than leaving the stale
@@ -81,13 +93,13 @@ export function ConversationSidebar({
       {releaseError && <Alert severity="error">{releaseError}</Alert>}
       {updateMutation.isError && (
         <Alert severity="error" onClose={() => updateMutation.reset()}>
-          {extractErrorMessage(updateMutation.error, 'Could not update this conversation.')}
+          {extractErrorMessage(updateMutation.error, t('ConversationSidebar.updateErrorFallback'))}
         </Alert>
       )}
 
       <div>
         <Typography variant="overline" color="text.secondary">
-          Customer
+          {t('ConversationSidebar.customerLabel')}
         </Typography>
         {/* `component="p"` — MUI's default subtitle1 mapping is `<h6>`,
             which (now that ConversationViewPage renders a real `<h1>`
@@ -100,15 +112,17 @@ export function ConversationSidebar({
       </div>
       <div>
         <Typography variant="overline" color="text.secondary">
-          Channel
+          {t('ConversationSidebar.channelLabel')}
         </Typography>
-        <Typography variant="body2">{channel?.display_name ?? '—'}</Typography>
+        <Typography variant="body2">
+          {channel?.display_name ?? t('ConversationSidebar.emptyValue')}
+        </Typography>
       </div>
 
       {hasPermission('ai.use') && (
         <div>
           <Typography variant="overline" color="text.secondary">
-            AI Summary
+            {t('ConversationSidebar.aiSummaryLabel')}
           </Typography>
           {summaryMutation.isError && (
             <Alert
@@ -116,7 +130,10 @@ export function ConversationSidebar({
               sx={{ mt: 0.5, mb: 0.5 }}
               onClose={() => summaryMutation.reset()}
             >
-              {extractErrorMessage(summaryMutation.error, 'Could not summarize this conversation.')}
+              {extractErrorMessage(
+                summaryMutation.error,
+                t('ConversationSidebar.summarizeErrorFallback'),
+              )}
             </Alert>
           )}
           {summaryMutation.data ? (
@@ -130,7 +147,9 @@ export function ConversationSidebar({
               disabled={summaryMutation.isPending}
               sx={{ px: 0 }}
             >
-              {summaryMutation.isPending ? 'Summarizing…' : 'Generate summary'}
+              {summaryMutation.isPending
+                ? t('ConversationSidebar.summarizingButton')
+                : t('ConversationSidebar.generateSummaryButton')}
             </Button>
           )}
         </div>
@@ -140,7 +159,7 @@ export function ConversationSidebar({
 
       <TextField
         select
-        label="Status"
+        label={t('ConversationSidebar.statusLabel')}
         size="small"
         value={conversation.status}
         onChange={(event) =>
@@ -149,18 +168,22 @@ export function ConversationSidebar({
       >
         {CONVERSATION_STATUSES.map((status) => (
           <MenuItem key={status} value={status}>
-            {status[0].toUpperCase() + status.slice(1)}
+            {t(`ConversationSidebar.${STATUS_OPTION_KEY[status]}`)}
           </MenuItem>
         ))}
       </TextField>
 
       <div>
         <Typography variant="overline" color="text.secondary">
-          Assigned to
+          {t('ConversationSidebar.assignedToLabel')}
         </Typography>
         <Typography variant="body2">
           {assignedAgent?.full_name ??
-            (assignedDepartment ? `${assignedDepartment.name} (department)` : 'Unassigned')}
+            (assignedDepartment
+              ? t('ConversationSidebar.departmentSuffixLabel', {
+                  departmentName: assignedDepartment.name,
+                })
+              : t('ConversationSidebar.unassignedValue'))}
         </Typography>
         {/* Reassignment always goes through the Transfer dialog, not a
             free-form dropdown — see TransferDialog.tsx's docstring on why
@@ -171,7 +194,7 @@ export function ConversationSidebar({
         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
           {canTransfer && (
             <Button size="small" onClick={() => setTransferOpen(true)}>
-              Transfer…
+              {t('ConversationSidebar.transferButton')}
             </Button>
           )}
           {/* Only offered once someone actually holds the conversation —
@@ -187,7 +210,9 @@ export function ConversationSidebar({
               disabled={releaseMutation.isPending}
               onClick={handleRelease}
             >
-              {releaseMutation.isPending ? 'Releasing…' : 'Release'}
+              {releaseMutation.isPending
+                ? t('ConversationSidebar.releasingButton')
+                : t('ConversationSidebar.releaseButton')}
             </Button>
           )}
         </Stack>
@@ -195,13 +220,13 @@ export function ConversationSidebar({
 
       <TextField
         select
-        label="Queue"
+        label={t('ConversationSidebar.queueLabel')}
         size="small"
         value={conversation.queue_id ?? ''}
         disabled={queuesQuery.isPending}
         onChange={(event) => updateMutation.mutate({ queue_id: event.target.value || null })}
       >
-        <MenuItem value="">No queue</MenuItem>
+        <MenuItem value="">{t('ConversationSidebar.noQueueOption')}</MenuItem>
         {queuesQuery.data?.map((queue) => (
           <MenuItem key={queue.id} value={queue.id}>
             {queue.name}

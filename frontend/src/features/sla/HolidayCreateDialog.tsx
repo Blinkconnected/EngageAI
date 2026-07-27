@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { FormControlLabel, Switch, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useCreateHolidayMutation } from './api'
 
 export function HolidayCreateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('sla')
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
   const [recursAnnually, setRecursAnnually] = useState(false)
@@ -33,8 +35,8 @@ export function HolidayCreateDialog({ open, onClose }: { open: boolean; onClose:
   return (
     <FormDialog
       open={open}
-      title="New holiday"
-      submitLabel="Add holiday"
+      title={t('HolidayCreateDialog.dialogTitle')}
+      submitLabel={t('HolidayCreateDialog.submitLabel')}
       isSubmitting={createMutation.isPending}
       error={createMutation.error}
       errorMessage={createMutation.error ? extractErrorMessage(createMutation.error) : undefined}
@@ -42,7 +44,7 @@ export function HolidayCreateDialog({ open, onClose }: { open: boolean; onClose:
       onClose={handleClose}
     >
       <TextField
-        label="Name"
+        label={t('HolidayCreateDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -50,7 +52,7 @@ export function HolidayCreateDialog({ open, onClose }: { open: boolean; onClose:
         autoFocus
       />
       <TextField
-        label="Date"
+        label={t('HolidayCreateDialog.dateLabel')}
         type="date"
         value={date}
         onChange={(event) => setDate(event.target.value)}
@@ -65,7 +67,7 @@ export function HolidayCreateDialog({ open, onClose }: { open: boolean; onClose:
             onChange={(event) => setRecursAnnually(event.target.checked)}
           />
         }
-        label="Repeats every year"
+        label={t('HolidayCreateDialog.recursAnnuallyLabel')}
       />
     </FormDialog>
   )

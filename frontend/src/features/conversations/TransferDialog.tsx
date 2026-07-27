@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Alert,
   Autocomplete,
@@ -30,10 +31,10 @@ export function TransferDialog({
   conversation: Conversation
   onClose: () => void
 }) {
+  const { t } = useTranslation('conversationsExtra')
   const [step, setStep] = useState<Step>('select')
-  const [targetType, setTargetType] = useState<Extract<TransferTargetType, 'agent' | 'department'>>(
-    'agent',
-  )
+  const [targetType, setTargetType] =
+    useState<Extract<TransferTargetType, 'agent' | 'department'>>('agent')
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null)
   const [note, setNote] = useState('')
@@ -65,12 +66,15 @@ export function TransferDialog({
 
   return (
     <Dialog open onClose={handleClose} fullWidth maxWidth="sm">
-      <DialogTitle>Transfer conversation</DialogTitle>
+      <DialogTitle>{t('TransferDialog.title')}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {transferMutation.isError && (
             <Alert severity="error">
-              {extractErrorMessage(transferMutation.error, 'Could not transfer this conversation.')}
+              {extractErrorMessage(
+                transferMutation.error,
+                t('TransferDialog.transferErrorFallback'),
+              )}
             </Alert>
           )}
 
@@ -84,8 +88,10 @@ export function TransferDialog({
                   if (value) setTargetType(value)
                 }}
               >
-                <ToggleButton value="agent">Agent</ToggleButton>
-                <ToggleButton value="department">Department</ToggleButton>
+                <ToggleButton value="agent">{t('TransferDialog.agentToggle')}</ToggleButton>
+                <ToggleButton value="department">
+                  {t('TransferDialog.departmentToggle')}
+                </ToggleButton>
               </ToggleButtonGroup>
 
               {targetType === 'agent' ? (
@@ -96,7 +102,11 @@ export function TransferDialog({
                   onChange={(_event, value) => setSelectedAgent(value)}
                   loading={agentsQuery.isPending}
                   renderInput={(params) => (
-                    <TextField {...params} label="Search agents" autoFocus />
+                    <TextField
+                      {...params}
+                      label={t('TransferDialog.searchAgentsLabel')}
+                      autoFocus
+                    />
                   )}
                 />
               ) : (
@@ -107,33 +117,37 @@ export function TransferDialog({
                   onChange={(_event, value) => setSelectedDepartment(value)}
                   loading={departmentsQuery.isPending}
                   renderInput={(params) => (
-                    <TextField {...params} label="Search departments" autoFocus />
+                    <TextField
+                      {...params}
+                      label={t('TransferDialog.searchDepartmentsLabel')}
+                      autoFocus
+                    />
                   )}
                 />
               )}
 
               <TextField
-                label="Note (optional)"
+                label={t('TransferDialog.noteLabel')}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 fullWidth
                 multiline
                 minRows={2}
-                helperText="Visible to the recipient and recorded in the transfer history."
+                helperText={t('TransferDialog.noteHelperText')}
               />
             </>
           ) : (
             <Stack spacing={1}>
               <Typography>
-                Transfer this conversation to{' '}
+                {t('TransferDialog.confirmPrefix')}{' '}
                 <Typography component="span" sx={{ fontWeight: 600 }}>
                   {targetLabel}
                 </Typography>
-                {targetType === 'department' ? ' (department)' : ''}?
+                {targetType === 'department' ? ` ${t('TransferDialog.departmentSuffix')}` : ''}?
               </Typography>
               {note.trim() && (
                 <Typography variant="body2" color="text.secondary">
-                  Note: "{note.trim()}"
+                  {t('TransferDialog.notePreview', { note: note.trim() })}
                 </Typography>
               )}
             </Stack>
@@ -142,23 +156,25 @@ export function TransferDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={handleClose} disabled={transferMutation.isPending}>
-          Cancel
+          {t('TransferDialog.cancelButton')}
         </Button>
         {step === 'select' ? (
           <Button variant="contained" disabled={!canContinue} onClick={() => setStep('confirm')}>
-            Continue
+            {t('TransferDialog.continueButton')}
           </Button>
         ) : (
           <>
             <Button onClick={() => setStep('select')} disabled={transferMutation.isPending}>
-              Back
+              {t('TransferDialog.backButton')}
             </Button>
             <Button
               variant="contained"
               onClick={handleConfirm}
               disabled={transferMutation.isPending}
             >
-              {transferMutation.isPending ? 'Transferring…' : 'Confirm transfer'}
+              {transferMutation.isPending
+                ? t('TransferDialog.transferringButton')
+                : t('TransferDialog.confirmButton')}
             </Button>
           </>
         )}

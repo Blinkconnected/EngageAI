@@ -1,0 +1,40 @@
+{
+  "OnboardingWizardPage": {
+    "loadingLabel": "جارٍ التحميل...",
+    "setupTitle": "إعداد {{companyName}}",
+    "setupDescription": "بضع خطوات سريعة لتجهيز مساحة عملك. يمكنك تغيير أي من ذلك لاحقًا من الإعدادات.",
+    "steps": {
+      "companyInformation": "معلومات الشركة",
+      "teamSetup": "إعداد الفريق",
+      "channels": "القنوات",
+      "erpIntegration": "تكامل نظام تخطيط الموارد (ERP)"
+    },
+    "skipSetupButton": "تخطي الإعداد",
+    "backButton": "رجوع",
+    "nextButton": "التالي",
+    "finishButton": "إنهاء",
+    "finishingButton": "جارٍ الإنهاء..."
+  },
+  "ChannelsStep": {
+    "description": "اربط القنوات التي يستخدمها فريقك للتواصل مع العملاء. جميعها اختيارية — يمكنك إضافة القنوات أو إزالتها في أي وقت من صفحة القنوات في الشريط الجانبي.",
+    "connectWhatsappButton": "ربط واتساب",
+    "connectWebChatButton": "ربط الدردشة عبر الويب",
+    "addAnotherChannelButton": "إضافة قناة أخرى",
+    "activeLabel": "نشط",
+    "inactiveLabel": "غير نشط"
+  },
+  "TeamSetupStep": {
+    "ownerChip": "المالك",
+    "inviteAgentsTitle": "دعوة الوكلاء",
+    "inviteAgentsDescription": "سيتلقون بريدًا إلكترونيًا يحتوي على كلمة مرور مؤقتة لتسجيل الدخول.",
+    "fullNameLabel": "الاسم الكامل",
+    "emailLabel": "البريد الإلكتروني",
+    "inviteAgentButton": "دعوة وكيل",
+    "invitingButton": "جارٍ الدعوة...",
+    "agentsOnTeamSubheader": "الوكلاء في فريقك",
+    "createDepartmentsTitle": "إنشاء الأقسام",
+    "departmentNameLabel": "اسم القسم",
+    "createButton": "إنشاء",
+    "creatingButton": "جارٍ الإنشاء..."
+  }
+}

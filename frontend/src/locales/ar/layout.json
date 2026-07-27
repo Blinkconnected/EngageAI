@@ -1,0 +1,40 @@
+{
+  "AppLayout": {
+    "openNavigationMenu": "فتح قائمة التنقل",
+    "companyLogoAlt": "شعار {{companyName}}",
+    "companyFallback": "الشركة",
+    "appName": "Blink Engage",
+    "toggleLanguageDirectionTooltip": "تبديل اتجاه اللغة",
+    "toggleDirectionAriaLabel": "تبديل الاتجاه",
+    "toggleDarkModeTooltip": "تبديل الوضع الداكن",
+    "toggleThemeAriaLabel": "تبديل المظهر",
+    "accountTooltip": "الحساب",
+    "accountMenuAriaLabel": "قائمة الحساب",
+    "statusLabel": "الحالة",
+    "statusOfflineSuffix": " — غير متصل حاليًا",
+    "onlineStatus": "متصل",
+    "awayStatus": "بعيد",
+    "busyStatus": "مشغول",
+    "myProfile": "ملفي الشخصي",
+    "signOut": "تسجيل الخروج",
+    "setupBannerMessage": "لم يكتمل إعداد شركتك بعد.",
+    "setupBannerLink": "إكمال الإعداد"
+  },
+  "SideNav": {
+    "logoAlt": "Blink Engage",
+    "mainNavigationAriaLabel": "التنقل الرئيسي",
+    "navDashboard": "لوحة التحكم",
+    "navInbox": "صندوق الوارد",
+    "navCustomers": "العملاء",
+    "navAgents": "الوكلاء",
+    "navDepartments": "الأقسام",
+    "navChannels": "القنوات",
+    "navStatus": "الحالة",
+    "navQueues": "قوائم الانتظار",
+    "navRolesPermissions": "الأدوار والصلاحيات",
+    "navSlaBuilder": "أداة اتفاقيات مستوى الخدمة",
+    "navReports": "التقارير",
+    "navErpNext": "ERPNext",
+    "navSettings": "الإعدادات"
+  }
+}

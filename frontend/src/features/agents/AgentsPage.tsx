@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Chip, TextField } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
@@ -28,6 +29,7 @@ const STATUS_COLOR: Record<AgentStatus, 'success' | 'warning' | 'default'> = {
 }
 
 export function AgentsPage() {
+  const { t, i18n } = useTranslation('agents')
   const { hasPermission } = usePermissions()
   const canManage = hasPermission('agents.manage')
   const canManageRoles = hasPermission('roles.manage')
@@ -51,105 +53,117 @@ export function AgentsPage() {
   }, [departmentsQuery.data])
 
   const columns: GridColDef<Agent>[] = useMemo(
-    () => [
-      { field: 'full_name', headerName: 'Name', flex: 1, minWidth: 160 },
-      { field: 'email', headerName: 'Email', flex: 1, minWidth: 200 },
-      {
-        field: 'title',
-        headerName: 'Title',
-        flex: 1,
-        minWidth: 140,
-        valueGetter: (_value, row) => row.title ?? '—',
-      },
-      {
-        field: 'department_id',
-        headerName: 'Department',
-        flex: 1,
-        minWidth: 140,
-        valueGetter: (_value, row) =>
-          (row.department_id && departmentNameById.get(row.department_id)) || '—',
-      },
-      {
-        field: 'status',
-        headerName: 'Status',
-        width: 120,
-        renderCell: (params) => (
-          <Chip
-            label={params.value}
-            size="small"
-            color={STATUS_COLOR[params.value as AgentStatus]}
-          />
-        ),
-      },
-      ...(canManage || canManageRoles
-        ? [
-            {
-              field: 'actions',
-              type: 'actions' as const,
-              headerName: 'Actions',
-              width: (canManage ? 130 : 0) + (canManageRoles ? 40 : 0),
-              getActions: (params: { row: Agent }) => [
-                ...(canManage
-                  ? [
-                      <GridActionsCellItem
-                        key="edit"
-                        icon={<EditOutlinedIcon fontSize="small" />}
-                        label="Edit"
-                        onClick={() => setEditingAgent(params.row)}
-                      />,
-                      <GridActionsCellItem
-                        key="reset-password"
-                        icon={<LockResetOutlinedIcon fontSize="small" />}
-                        label="Reset password"
-                        onClick={() => setResettingPasswordAgent(params.row)}
-                      />,
-                    ]
-                  : []),
-                ...(canManageRoles
-                  ? [
-                      <GridActionsCellItem
-                        key="change-role"
-                        icon={<BadgeOutlinedIcon fontSize="small" />}
-                        label="Change role"
-                        onClick={() => setChangingRoleAgent(params.row)}
-                      />,
-                    ]
-                  : []),
-                ...(canManage
-                  ? [
-                      <GridActionsCellItem
-                        key="delete"
-                        icon={<DeleteOutlineIcon fontSize="small" />}
-                        label="Delete"
-                        onClick={() => setDeletingAgent(params.row)}
-                      />,
-                    ]
-                  : []),
-              ],
-            },
-          ]
-        : []),
-    ],
-    [canManage, canManageRoles, departmentNameById],
+    () => {
+      const STATUS_LABEL: Record<AgentStatus, string> = {
+        online: t('AgentsPage.statusOnline'),
+        away: t('AgentsPage.statusAway'),
+        busy: t('AgentsPage.statusBusy'),
+        offline: t('AgentsPage.statusOffline'),
+      }
+      return [
+        { field: 'full_name', headerName: t('AgentsPage.columnName'), flex: 1, minWidth: 160 },
+        { field: 'email', headerName: t('AgentsPage.columnEmail'), flex: 1, minWidth: 200 },
+        {
+          field: 'title',
+          headerName: t('AgentsPage.columnTitle'),
+          flex: 1,
+          minWidth: 140,
+          valueGetter: (_value, row) => row.title ?? t('AgentsPage.emptyValue'),
+        },
+        {
+          field: 'department_id',
+          headerName: t('AgentsPage.columnDepartment'),
+          flex: 1,
+          minWidth: 140,
+          valueGetter: (_value, row) =>
+            (row.department_id && departmentNameById.get(row.department_id)) ||
+            t('AgentsPage.emptyValue'),
+        },
+        {
+          field: 'status',
+          headerName: t('AgentsPage.columnStatus'),
+          width: 120,
+          renderCell: (params) => (
+            <Chip
+              label={STATUS_LABEL[params.value as AgentStatus]}
+              size="small"
+              color={STATUS_COLOR[params.value as AgentStatus]}
+            />
+          ),
+        },
+        ...(canManage || canManageRoles
+          ? [
+              {
+                field: 'actions',
+                type: 'actions' as const,
+                headerName: t('AgentsPage.columnActions'),
+                width: (canManage ? 130 : 0) + (canManageRoles ? 40 : 0),
+                getActions: (params: { row: Agent }) => [
+                  ...(canManage
+                    ? [
+                        <GridActionsCellItem
+                          key="edit"
+                          icon={<EditOutlinedIcon fontSize="small" />}
+                          label={t('AgentsPage.actionEdit')}
+                          onClick={() => setEditingAgent(params.row)}
+                        />,
+                        <GridActionsCellItem
+                          key="reset-password"
+                          icon={<LockResetOutlinedIcon fontSize="small" />}
+                          label={t('AgentsPage.actionResetPassword')}
+                          onClick={() => setResettingPasswordAgent(params.row)}
+                        />,
+                      ]
+                    : []),
+                  ...(canManageRoles
+                    ? [
+                        <GridActionsCellItem
+                          key="change-role"
+                          icon={<BadgeOutlinedIcon fontSize="small" />}
+                          label={t('AgentsPage.actionChangeRole')}
+                          onClick={() => setChangingRoleAgent(params.row)}
+                        />,
+                      ]
+                    : []),
+                  ...(canManage
+                    ? [
+                        <GridActionsCellItem
+                          key="delete"
+                          icon={<DeleteOutlineIcon fontSize="small" />}
+                          label={t('AgentsPage.actionDelete')}
+                          onClick={() => setDeletingAgent(params.row)}
+                        />,
+                      ]
+                    : []),
+                ],
+              },
+            ]
+          : []),
+      ]
+    },
+    // i18n.language isn't referenced by name in this callback, but t()'s
+    // output depends on it, so it must stay a real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canManage, canManageRoles, departmentNameById, t, i18n.language],
   )
 
   return (
     <>
       <PageHeader
-        title="Agents"
-        description="Everyone in your company who can handle conversations."
+        title={t('AgentsPage.pageTitle')}
+        description={t('AgentsPage.pageDescription')}
         actions={
           canManage && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-              New agent
+              {t('AgentsPage.newAgentButton')}
             </Button>
           )
         }
       />
 
       <TextField
-        label="Search agents"
-        placeholder="Name, email, or title"
+        label={t('AgentsPage.searchLabel')}
+        placeholder={t('AgentsPage.searchPlaceholder')}
         size="small"
         value={search}
         onChange={(event) => {
@@ -161,24 +175,26 @@ export function AgentsPage() {
 
       {agentsQuery.data?.total === 0 ? (
         <EmptyState
-          title={search ? 'No agents found' : 'No agents yet'}
+          title={
+            search ? t('AgentsPage.emptyStateTitleSearch') : t('AgentsPage.emptyStateTitleDefault')
+          }
           description={
             search
-              ? 'Try a different search.'
-              : 'Create your first agent to start handling conversations.'
+              ? t('AgentsPage.emptyStateDescriptionSearch')
+              : t('AgentsPage.emptyStateDescriptionDefault')
           }
           action={
             !search &&
             canManage && (
               <Button variant="contained" onClick={() => setCreateOpen(true)}>
-                New agent
+                {t('AgentsPage.newAgentButton')}
               </Button>
             )
           }
         />
       ) : (
         <DataTable
-          ariaLabel="Agents"
+          ariaLabel={t('AgentsPage.dataTableAriaLabel')}
           rows={agentsQuery.data?.items ?? []}
           columns={columns}
           getRowId={(row) => row.id}
@@ -203,9 +219,11 @@ export function AgentsPage() {
           />
           <ConfirmDialog
             open={Boolean(deletingAgent)}
-            title="Remove agent"
-            description={`Remove ${deletingAgent?.full_name ?? ''} from your company? They will lose access immediately.`}
-            confirmLabel="Remove"
+            title={t('AgentsPage.removeAgentTitle')}
+            description={t('AgentsPage.removeAgentDescription', {
+              name: deletingAgent?.full_name ?? '',
+            })}
+            confirmLabel={t('AgentsPage.removeAgentConfirmLabel')}
             confirmColor="error"
             isConfirming={deleteMutation.isPending}
             onConfirm={() => {

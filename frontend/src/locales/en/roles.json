@@ -1,0 +1,55 @@
+{
+  "RoleCreateDialog": {
+    "title": "New role",
+    "submitLabel": "Create role",
+    "loadingPermissions": "Loading permissions…",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description"
+  },
+  "RoleEditDialog": {
+    "title": "Edit {{name}}",
+    "submitLabel": "Save changes",
+    "nameLabel": "Name",
+    "systemRoleNameHelperText": "A system role's name can't be changed.",
+    "descriptionLabel": "Description",
+    "ownerRoleInfo": "The Owner role always has every permission and can't be changed.",
+    "loadingPermissions": "Loading permissions…"
+  },
+  "RoleMembersDialog": {
+    "membersTitle": "{{name}} members",
+    "membersTitleFallback": "Members",
+    "loadingMembers": "Loading members…",
+    "emptyTitle": "No one has this role",
+    "emptyDescription": "Assign it from the Agents page.",
+    "goToAgentsButton": "Go to Agents",
+    "closeButton": "Close"
+  },
+  "RolesPage": {
+    "pageTitle": "Roles & Permissions",
+    "pageDescription": "Define custom roles alongside the built-in Owner, Admin, and Agent roles, and control exactly what each one can do.",
+    "newRoleButton": "New role",
+    "loadingRoles": "Loading roles…",
+    "tableAriaLabel": "Roles",
+    "columnName": "Name",
+    "columnDescription": "Description",
+    "columnType": "Type",
+    "columnPermissions": "Permissions",
+    "columnMembers": "Members",
+    "columnActions": "Actions",
+    "noValuePlaceholder": "—",
+    "typeSystem": "System",
+    "typeCustom": "Custom",
+    "membersTooltip": "Members",
+    "viewMembersAriaLabel": "View {{name}} members",
+    "editTooltip": "Edit",
+    "editAriaLabel": "Edit {{name}}",
+    "deleteTooltip": "Delete",
+    "deleteAriaLabel": "Delete {{name}}",
+    "systemRoleDeleteBlocked": "System roles can't be deleted.",
+    "reassignMemberSingular": "Reassign its member before deleting this role.",
+    "reassignMemberPlural": "Reassign all its members before deleting this role.",
+    "removeRoleDialogTitle": "Remove role",
+    "removeRoleDialogDescription": "Remove {{name}}? This cannot be undone.",
+    "removeButton": "Remove"
+  }
+}

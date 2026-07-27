@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Divider, FormControlLabel, Switch, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { EscalationRulesEditor } from './EscalationRulesEditor'
@@ -33,6 +34,7 @@ function SlaPolicyEditDialogFields({
   policy: SlaPolicy
   onClose: () => void
 }) {
+  const { t } = useTranslation('sla')
   const [name, setName] = useState(policy.name)
   const [description, setDescription] = useState(policy.description ?? '')
   const [firstResponseTarget, setFirstResponseTarget] = useState(
@@ -46,9 +48,7 @@ function SlaPolicyEditDialogFields({
   )
   const [businessHoursAware, setBusinessHoursAware] = useState(policy.business_hours_aware)
   const [isActive, setIsActive] = useState(policy.is_active)
-  const [escalationRules, setEscalationRules] = useState<EscalationRule[]>(
-    policy.escalation_rules,
-  )
+  const [escalationRules, setEscalationRules] = useState<EscalationRule[]>(policy.escalation_rules)
 
   const updateMutation = useUpdateSlaPolicyMutation()
 
@@ -74,8 +74,8 @@ function SlaPolicyEditDialogFields({
   return (
     <FormDialog
       open
-      title={`Edit ${policy.name}`}
-      submitLabel="Save changes"
+      title={t('SlaPolicyEditDialog.dialogTitle', { name: policy.name })}
+      submitLabel={t('SlaPolicyEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -83,7 +83,7 @@ function SlaPolicyEditDialogFields({
       onClose={onClose}
     >
       <TextField
-        label="Name"
+        label={t('SlaPolicyEditDialog.nameLabel')}
         value={name}
         onChange={(event) => setName(event.target.value)}
         required
@@ -91,7 +91,7 @@ function SlaPolicyEditDialogFields({
         autoFocus
       />
       <TextField
-        label="Description"
+        label={t('SlaPolicyEditDialog.descriptionLabel')}
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         fullWidth
@@ -99,30 +99,30 @@ function SlaPolicyEditDialogFields({
         minRows={2}
       />
       <TextField
-        label="First response target (minutes)"
+        label={t('SlaPolicyEditDialog.firstResponseTargetLabel')}
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no first-response SLA."
+        helperText={t('SlaPolicyEditDialog.firstResponseTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
-        label="Resolution target (minutes)"
+        label={t('SlaPolicyEditDialog.resolutionTargetLabel')}
         type="number"
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no resolution SLA."
+        helperText={t('SlaPolicyEditDialog.resolutionTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
-        label="Warning threshold (%)"
+        label={t('SlaPolicyEditDialog.warningThresholdLabel')}
         type="number"
         value={warningThreshold}
         onChange={(event) => setWarningThreshold(event.target.value)}
         fullWidth
-        helperText="Warn once this percentage of a target has elapsed, before it actually breaches."
+        helperText={t('SlaPolicyEditDialog.warningThresholdHelperText')}
         slotProps={{ htmlInput: { min: 1, max: 100 } }}
       />
       <FormControlLabel
@@ -132,13 +132,13 @@ function SlaPolicyEditDialogFields({
             onChange={(event) => setBusinessHoursAware(event.target.checked)}
           />
         }
-        label="Business-hours aware"
+        label={t('SlaPolicyEditDialog.businessHoursAwareLabel')}
       />
       <FormControlLabel
         control={
           <Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
         }
-        label="Active"
+        label={t('SlaPolicyEditDialog.activeLabel')}
       />
       <Divider />
       <EscalationRulesEditor rules={escalationRules} onChange={setEscalationRules} />

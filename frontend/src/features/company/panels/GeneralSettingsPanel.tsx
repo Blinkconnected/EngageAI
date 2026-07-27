@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Alert, Button, Card, CardContent, Chip, Stack, TextField, Typography } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
 import { useUpdateCompanyMutation } from '../api'
 import type { Company } from '../types'
@@ -11,6 +12,7 @@ const STATUS_COLOR = {
 } as const
 
 export function GeneralSettingsPanel({ company }: { company: Company }) {
+  const { t } = useTranslation('companySettings')
   const [name, setName] = useState(company.name)
   const updateMutation = useUpdateCompanyMutation()
   const isDirty = name !== company.name
@@ -34,10 +36,12 @@ export function GeneralSettingsPanel({ company }: { company: Company }) {
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
-          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
+          {updateMutation.isSuccess && !isDirty && (
+            <Alert severity="success">{t('GeneralSettingsPanel.savedMessage')}</Alert>
+          )}
 
           <TextField
-            label="Company name"
+            label={t('GeneralSettingsPanel.companyNameLabel')}
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
@@ -49,7 +53,9 @@ export function GeneralSettingsPanel({ company }: { company: Company }) {
             disabled={updateMutation.isPending || !isDirty}
             sx={{ alignSelf: 'flex-start' }}
           >
-            {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+            {updateMutation.isPending
+              ? t('GeneralSettingsPanel.savingButton')
+              : t('GeneralSettingsPanel.saveChangesButton')}
           </Button>
         </Stack>
       </CardContent>

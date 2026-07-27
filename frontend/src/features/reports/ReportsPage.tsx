@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Alert, Box, Tab, Tabs } from '@mui/material'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { useCurrentUserQuery } from '../session/api'
@@ -15,14 +16,14 @@ import { QueuesReportPanel } from './panels/QueuesReportPanel'
 import { SlaReportPanel } from './panels/SlaReportPanel'
 
 const TABS = [
-  { value: 'executive', label: 'Executive', agentOnly: false },
-  { value: 'conversations', label: 'Conversations', agentOnly: false },
-  { value: 'performance', label: 'Agent Performance', agentOnly: false },
-  { value: 'queues', label: 'Queues', agentOnly: false },
-  { value: 'sla', label: 'SLA', agentOnly: false },
-  { value: 'csat', label: 'CSAT', agentOnly: false },
-  { value: 'ai', label: 'AI Usage', agentOnly: false },
-  { value: 'my-performance', label: 'My Performance', agentOnly: true },
+  { value: 'executive', labelKey: 'tabExecutive', agentOnly: false },
+  { value: 'conversations', labelKey: 'tabConversations', agentOnly: false },
+  { value: 'performance', labelKey: 'tabAgentPerformance', agentOnly: false },
+  { value: 'queues', labelKey: 'tabQueues', agentOnly: false },
+  { value: 'sla', labelKey: 'tabSla', agentOnly: false },
+  { value: 'csat', labelKey: 'tabCsat', agentOnly: false },
+  { value: 'ai', labelKey: 'tabAiUsage', agentOnly: false },
+  { value: 'my-performance', labelKey: 'tabMyPerformance', agentOnly: true },
 ] as const
 
 /**
@@ -32,6 +33,7 @@ const TABS = [
  * reports side by side. See docs/architecture/frontend.md's Reports section.
  */
 export function ReportsPage() {
+  const { t } = useTranslation('reportsCore')
   const { tab } = useParams<{ tab?: string }>()
   const navigate = useNavigate()
   const { data: currentUser } = useCurrentUserQuery()
@@ -39,8 +41,8 @@ export function ReportsPage() {
 
   const [range, setRange] = useState(defaultDateRange)
 
-  const visibleTabs = TABS.filter((t) => !t.agentOnly || isAgent)
-  const activeTab = visibleTabs.find((t) => t.value === tab)
+  const visibleTabs = TABS.filter((tabDef) => !tabDef.agentOnly || isAgent)
+  const activeTab = visibleTabs.find((tabDef) => tabDef.value === tab)
 
   if (!activeTab) {
     return <Navigate to={`/reports/${visibleTabs[0].value}`} replace />
@@ -48,10 +50,7 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Reports"
-        description="Executive, operational, and AI usage reporting across your company."
-      />
+      <PageHeader title={t('ReportsPage.title')} description={t('ReportsPage.description')} />
 
       <DateRangeFilter range={range} onChange={setRange} />
 
@@ -62,13 +61,13 @@ export function ReportsPage() {
         scrollButtons="auto"
         sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}
       >
-        {visibleTabs.map((t) => (
+        {visibleTabs.map((tabDef) => (
           <Tab
-            key={t.value}
-            value={t.value}
-            label={t.label}
-            id={`reports-tab-${t.value}`}
-            aria-controls={`reports-tabpanel-${t.value}`}
+            key={tabDef.value}
+            value={tabDef.value}
+            label={t(`ReportsPage.${tabDef.labelKey}`)}
+            id={`reports-tab-${tabDef.value}`}
+            aria-controls={`reports-tabpanel-${tabDef.value}`}
           />
         ))}
       </Tabs>
@@ -79,7 +78,7 @@ export function ReportsPage() {
         aria-labelledby={`reports-tab-${activeTab.value}`}
       >
         {!isValidDateRange(range) ? (
-          <Alert severity="warning">Fix the date range above to see this report.</Alert>
+          <Alert severity="warning">{t('ReportsPage.invalidDateRangeWarning')}</Alert>
         ) : (
           <>
             {activeTab.value === 'executive' && <ExecutiveDashboardPanel range={range} />}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Box, Button, Chip, IconButton, Stack, Tab, Tabs, Typography } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -13,6 +14,7 @@ import { CustomerEditDialog } from './CustomerEditDialog'
 import { CustomerTimelinePanel } from './CustomerTimelinePanel'
 
 export function CustomerProfilePage() {
+  const { t } = useTranslation('customers')
   const { customerId } = useParams<{ customerId: string }>()
   const navigate = useNavigate()
   const [tab, setTab] = useState<'timeline' | 'erp'>('timeline')
@@ -22,7 +24,7 @@ export function CustomerProfilePage() {
 
   const customerQuery = useCustomerQuery(customerId)
 
-  if (customerQuery.isPending) return <LoadingState label="Loading customer…" />
+  if (customerQuery.isPending) return <LoadingState label={t('CustomerProfilePage.loadingLabel')} />
   if (customerQuery.isError) {
     return <ErrorState error={customerQuery.error} onRetry={() => customerQuery.refetch()} />
   }
@@ -34,7 +36,7 @@ export function CustomerProfilePage() {
       <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
         <IconButton
           onClick={() => navigate('/customers')}
-          aria-label="Back to customers"
+          aria-label={t('CustomerProfilePage.backAriaLabel')}
           sx={{ mt: 0.5 }}
         >
           <ArrowBackIcon />
@@ -46,7 +48,7 @@ export function CustomerProfilePage() {
             actions={
               hasPermission('customers.manage') && (
                 <Button variant="outlined" onClick={() => setEditing(true)}>
-                  Edit
+                  {t('CustomerProfilePage.editButton')}
                 </Button>
               )
             }
@@ -73,8 +75,8 @@ export function CustomerProfilePage() {
         onChange={(_event, value) => setTab(value)}
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label="Timeline" value="timeline" />
-        {isErpEnabled && <Tab label="ERPNext" value="erp" />}
+        <Tab label={t('CustomerProfilePage.timelineTab')} value="timeline" />
+        {isErpEnabled && <Tab label={t('CustomerProfilePage.erpTab')} value="erp" />}
       </Tabs>
 
       {tab === 'erp' && isErpEnabled ? (

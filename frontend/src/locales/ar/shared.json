@@ -1,0 +1,22 @@
+{
+  "ConfirmDialog": {
+    "cancelButton": "إلغاء",
+    "confirmButton": "تأكيد"
+  },
+  "ErrorState": {
+    "defaultTitle": "حدث خطأ ما",
+    "retryButton": "إعادة المحاولة"
+  },
+  "Footer": {
+    "copyright": "© Blink Engage {{year}}"
+  },
+  "FormDialog": {
+    "cancelButton": "إلغاء",
+    "saveButton": "حفظ",
+    "savingButton": "جارٍ الحفظ…",
+    "saveFailedMessage": "فشل الحفظ."
+  },
+  "LoadingState": {
+    "label": "جارٍ التحميل…"
+  }
+}

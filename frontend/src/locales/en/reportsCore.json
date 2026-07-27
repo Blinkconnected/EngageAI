@@ -1,0 +1,29 @@
+{
+  "ReportsPage": {
+    "title": "Reports",
+    "description": "Executive, operational, and AI usage reporting across your company.",
+    "tabExecutive": "Executive",
+    "tabConversations": "Conversations",
+    "tabAgentPerformance": "Agent Performance",
+    "tabQueues": "Queues",
+    "tabSla": "SLA",
+    "tabCsat": "CSAT",
+    "tabAiUsage": "AI Usage",
+    "tabMyPerformance": "My Performance",
+    "invalidDateRangeWarning": "Fix the date range above to see this report."
+  },
+  "DateRangeFilter": {
+    "fromLabel": "From",
+    "toLabel": "To",
+    "fromToHelperText": "\"From\" must be on or before \"To\".",
+    "quickPresetsAriaLabel": "Quick date range presets",
+    "preset7d": "7d",
+    "preset30d": "30d",
+    "preset90d": "90d"
+  },
+  "ReportExportButtons": {
+    "pdfButton": "PDF",
+    "excelButton": "Excel",
+    "exportFailedMessage": "Export failed. Please try again."
+  }
+}

@@ -66,7 +66,9 @@ describe('AttachmentList', () => {
   })
 
   it('renders a document attachment with filename, size and a download button', async () => {
-    renderAuthenticated(<AttachmentList conversationId="conv-1" attachments={[DOCUMENT_ATTACHMENT]} />)
+    renderAuthenticated(
+      <AttachmentList conversationId="conv-1" attachments={[DOCUMENT_ATTACHMENT]} />,
+    )
 
     expect(screen.getByText('invoice.pdf')).toBeInTheDocument()
     expect(screen.getByText('50 KB')).toBeInTheDocument()
@@ -78,7 +80,10 @@ describe('AttachmentList', () => {
 
   it('renders multiple attachments, each with its own controls', async () => {
     renderAuthenticated(
-      <AttachmentList conversationId="conv-1" attachments={[IMAGE_ATTACHMENT, DOCUMENT_ATTACHMENT]} />,
+      <AttachmentList
+        conversationId="conv-1"
+        attachments={[IMAGE_ATTACHMENT, DOCUMENT_ATTACHMENT]}
+      />,
     )
 
     await waitFor(() =>

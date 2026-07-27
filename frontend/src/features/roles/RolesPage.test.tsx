@@ -77,7 +77,7 @@ describe('RolesPage', () => {
     expect(screen.getByText(/owner role always has every permission/i)).toBeInTheDocument()
   })
 
-  it("disables deleting system roles and roles that still have members", async () => {
+  it('disables deleting system roles and roles that still have members', async () => {
     renderAuthenticated(<RolesPage />)
     const ownerRow = (await screen.findByText('Owner')).closest('tr') as HTMLElement
     expect(within(ownerRow).getByLabelText(/^delete owner$/i)).toBeDisabled()

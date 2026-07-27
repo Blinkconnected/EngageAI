@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Alert, Button, Collapse, FormControlLabel, Stack, Switch, TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
@@ -27,6 +28,7 @@ function ErpConfigEditDialogFields({
   config: ErpConfig
   onClose: () => void
 }) {
+  const { t } = useTranslation('erp')
   const [baseUrl, setBaseUrl] = useState(config.base_url)
   const [isActive, setIsActive] = useState(config.is_active)
   const [rotatingCredentials, setRotatingCredentials] = useState(false)
@@ -68,8 +70,8 @@ function ErpConfigEditDialogFields({
   return (
     <FormDialog
       open
-      title="Edit ERPNext connection"
-      submitLabel="Save changes"
+      title={t('ErpConfigEditDialog.dialogTitle')}
+      submitLabel={t('ErpConfigEditDialog.submitLabel')}
       isSubmitting={updateMutation.isPending}
       error={updateMutation.error}
       errorMessage={updateMutation.error ? extractErrorMessage(updateMutation.error) : undefined}
@@ -77,7 +79,7 @@ function ErpConfigEditDialogFields({
       onClose={onClose}
     >
       <TextField
-        label="ERPNext site URL"
+        label={t('ErpConfigEditDialog.siteUrlLabel')}
         value={baseUrl}
         onChange={(event) => setBaseUrl(event.target.value)}
         required
@@ -88,7 +90,7 @@ function ErpConfigEditDialogFields({
         control={
           <Switch checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
         }
-        label="Active"
+        label={t('ErpConfigEditDialog.activeLabel')}
       />
 
       <FormControlLabel
@@ -98,7 +100,7 @@ function ErpConfigEditDialogFields({
             onChange={(event) => setRotatingCredentials(event.target.checked)}
           />
         }
-        label="Update credentials (reconnect)"
+        label={t('ErpConfigEditDialog.updateCredentialsLabel')}
       />
       <Collapse in={rotatingCredentials}>
         {/* Conditionally MOUNTED, not just visually collapsed — see
@@ -107,19 +109,16 @@ function ErpConfigEditDialogFields({
             hidden. */}
         {rotatingCredentials && (
           <Stack spacing={2}>
-            <Alert severity="info">
-              Credentials are write-only and never shown once saved — enter new values to replace
-              them, then Test Connection to confirm they work before saving.
-            </Alert>
+            <Alert severity="info">{t('ErpConfigEditDialog.credentialsInfoAlert')}</Alert>
             <TextField
-              label="API key"
+              label={t('ErpConfigEditDialog.apiKeyLabel')}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
               required
               fullWidth
             />
             <TextField
-              label="API secret"
+              label={t('ErpConfigEditDialog.apiSecretLabel')}
               type="password"
               value={apiSecret}
               onChange={(event) => setApiSecret(event.target.value)}
@@ -127,12 +126,12 @@ function ErpConfigEditDialogFields({
               fullWidth
             />
             <TextField
-              label="Webhook secret"
+              label={t('ErpConfigEditDialog.webhookSecretLabel')}
               type="password"
               value={webhookSecret}
               onChange={(event) => setWebhookSecret(event.target.value)}
               fullWidth
-              helperText="Leave blank to keep the current secret"
+              helperText={t('ErpConfigEditDialog.webhookSecretHelperText')}
             />
           </Stack>
         )}
@@ -140,7 +139,9 @@ function ErpConfigEditDialogFields({
 
       {testResult && (
         <Alert severity={testResult.healthy ? 'success' : 'error'}>
-          {testResult.healthy ? 'Connection successful.' : (testResult.detail ?? 'Connection failed.')}
+          {testResult.healthy
+            ? t('ErpConfigEditDialog.connectionSuccessAlert')
+            : (testResult.detail ?? t('ErpConfigEditDialog.connectionFailedAlert'))}
         </Alert>
       )}
       <Button
@@ -149,7 +150,9 @@ function ErpConfigEditDialogFields({
         onClick={handleTestConnection}
         sx={{ alignSelf: 'flex-start' }}
       >
-        {testPending ? 'Testing…' : 'Test Connection'}
+        {testPending
+          ? t('ErpConfigEditDialog.testingButton')
+          : t('ErpConfigEditDialog.testConnectionButton')}
       </Button>
     </FormDialog>
   )

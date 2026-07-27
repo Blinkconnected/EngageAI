@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { TextField } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
@@ -10,6 +11,7 @@ import { useCustomersQuery } from './api'
 import type { Customer } from './types'
 
 export function CustomersPage() {
+  const { t, i18n } = useTranslation('customers')
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const { page, pageSize, setPage, setPageSize, apiParams } = usePaginationParams()
@@ -18,38 +20,41 @@ export function CustomersPage() {
 
   const columns: GridColDef<Customer>[] = useMemo(
     () => [
-      { field: 'full_name', headerName: 'Name', flex: 1, minWidth: 180 },
+      { field: 'full_name', headerName: t('CustomersPage.nameColumn'), flex: 1, minWidth: 180 },
       {
         field: 'email',
-        headerName: 'Email',
+        headerName: t('CustomersPage.emailColumn'),
         flex: 1,
         minWidth: 200,
         valueGetter: (_value, row) => row.email ?? '—',
       },
       {
         field: 'phone',
-        headerName: 'Phone',
+        headerName: t('CustomersPage.phoneColumn'),
         flex: 1,
         minWidth: 150,
         valueGetter: (_value, row) => row.phone ?? '—',
       },
       {
         field: 'tags',
-        headerName: 'Tags',
+        headerName: t('CustomersPage.tagsColumn'),
         flex: 1,
         minWidth: 150,
         valueGetter: (_value, row) => row.tags.join(', ') || '—',
       },
     ],
-    [],
+    // i18n.language isn't referenced by name in this callback, but t()'s
+    // output depends on it, so it must stay a real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, i18n.language],
   )
 
   return (
     <>
-      <PageHeader title="Customers" description="Everyone who has reached out to your company." />
+      <PageHeader title={t('CustomersPage.title')} description={t('CustomersPage.description')} />
 
       <TextField
-        label="Search by name or email"
+        label={t('CustomersPage.searchLabel')}
         size="small"
         value={search}
         onChange={(event) => {
@@ -61,16 +66,16 @@ export function CustomersPage() {
 
       {customersQuery.data?.total === 0 ? (
         <EmptyState
-          title="No customers found"
+          title={t('CustomersPage.emptyTitle')}
           description={
             search
-              ? 'Try a different search.'
-              : 'Customers appear here automatically as conversations come in.'
+              ? t('CustomersPage.emptySearchDescription')
+              : t('CustomersPage.emptyDefaultDescription')
           }
         />
       ) : (
         <DataTable
-          ariaLabel="Customers"
+          ariaLabel={t('CustomersPage.tableAriaLabel')}
           rows={customersQuery.data?.items ?? []}
           columns={columns}
           getRowId={(row) => row.id}

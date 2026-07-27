@@ -1,26 +1,29 @@
 import { Alert, Link, Stack, TextField } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import { fieldValue, type ChannelFieldsProps } from './types'
 
 export function TelegramFields({ credentials, onChange }: ChannelFieldsProps) {
+  const { t } = useTranslation('channelsFields')
+
   return (
     <Stack spacing={2}>
       <Alert severity="info">
-        Don't have a bot yet? Message{' '}
+        {t('TelegramFields.alertBeforeLink')}{' '}
         <Link href="https://t.me/botfather" target="_blank" rel="noopener noreferrer">
-          @BotFather
+          {t('TelegramFields.alertLinkText')}
         </Link>{' '}
-        on Telegram, send <code>/newbot</code>, and follow the prompts — it replies with the
-        token below. No webhook setup needed afterward; BlinkEngage registers it automatically.
+        {t('TelegramFields.alertAfterLink')} <code>/newbot</code>
+        {t('TelegramFields.alertAfterCode')}
       </Alert>
       <TextField
-        label="Bot token"
+        label={t('TelegramFields.botTokenLabel')}
         type="password"
         value={fieldValue(credentials, 'bot_token')}
         onChange={(event) => onChange({ ...credentials, bot_token: event.target.value })}
         required
         fullWidth
-        placeholder="123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
-        helperText="From @BotFather — the token printed after /newbot (or /token for an existing bot)"
+        placeholder={t('TelegramFields.botTokenPlaceholder')}
+        helperText={t('TelegramFields.botTokenHelperText')}
       />
     </Stack>
   )

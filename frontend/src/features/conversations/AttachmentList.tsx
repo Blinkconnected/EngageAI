@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Box, IconButton, Skeleton, Stack, Tooltip, Typography } from '@mui/material'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined'
@@ -32,6 +33,7 @@ function ImageAttachment({
   conversationId: string
   attachment: Attachment
 }) {
+  const { t } = useTranslation('conversationsExtra')
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -71,7 +73,7 @@ function ImageAttachment({
         spacing={0.5}
       >
         <BrokenImageOutlinedIcon />
-        <Typography variant="caption">Preview unavailable</Typography>
+        <Typography variant="caption">{t('AttachmentList.previewUnavailable')}</Typography>
       </Stack>
     )
   }
@@ -85,7 +87,7 @@ function ImageAttachment({
       component="button"
       type="button"
       onClick={() => void downloadAttachment(conversationId, attachment)}
-      aria-label={`Download ${attachment.filename}`}
+      aria-label={t('AttachmentList.downloadAriaLabel', { filename: attachment.filename })}
       sx={{
         p: 0,
         border: 'none',
@@ -113,6 +115,7 @@ function DocumentAttachment({
   conversationId: string
   attachment: Attachment
 }) {
+  const { t } = useTranslation('conversationsExtra')
   return (
     <Stack
       direction="row"
@@ -135,10 +138,10 @@ function DocumentAttachment({
           {formatFileSize(attachment.size_bytes)}
         </Typography>
       </Stack>
-      <Tooltip title="Download">
+      <Tooltip title={t('AttachmentList.downloadTooltip')}>
         <IconButton
           size="small"
-          aria-label={`Download ${attachment.filename}`}
+          aria-label={t('AttachmentList.downloadAriaLabel', { filename: attachment.filename })}
           onClick={() => void downloadAttachment(conversationId, attachment)}
         >
           <DownloadOutlinedIcon fontSize="small" />

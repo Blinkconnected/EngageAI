@@ -1,0 +1,47 @@
+{
+  "NotesPanel": {
+    "loadingLabel": "Loading notes…",
+    "emptyTitle": "No internal notes",
+    "emptyDescription": "Notes are visible only to your team, never to the customer.",
+    "addNoteErrorFallback": "Could not add this note.",
+    "notePlaceholder": "Add an internal note (not visible to the customer)…",
+    "addNoteButton": "Add note"
+  },
+  "AttachmentList": {
+    "previewUnavailable": "Preview unavailable",
+    "downloadAriaLabel": "Download {{filename}}",
+    "downloadTooltip": "Download"
+  },
+  "ConversationCells": {},
+  "TransferDialog": {
+    "title": "Transfer conversation",
+    "transferErrorFallback": "Could not transfer this conversation.",
+    "agentToggle": "Agent",
+    "departmentToggle": "Department",
+    "searchAgentsLabel": "Search agents",
+    "searchDepartmentsLabel": "Search departments",
+    "noteLabel": "Note (optional)",
+    "noteHelperText": "Visible to the recipient and recorded in the transfer history.",
+    "confirmPrefix": "Transfer this conversation to",
+    "departmentSuffix": "(department)",
+    "notePreview": "Note: \"{{note}}\"",
+    "cancelButton": "Cancel",
+    "continueButton": "Continue",
+    "backButton": "Back",
+    "confirmButton": "Confirm transfer",
+    "transferringButton": "Transferring…"
+  },
+  "TransferHistoryPanel": {
+    "loadingLabel": "Loading transfer history…",
+    "emptyTitle": "No transfers yet",
+    "emptyDescription": "This conversation has never been transferred to another agent or department.",
+    "agentFallback": "an agent",
+    "departmentFallback": "a department",
+    "departmentWord": "department",
+    "queueFallback": "a queue",
+    "transferredToPrefix": "Transferred to",
+    "byYouSuffix": "by you",
+    "notePreview": "\"{{note}}\"",
+    "offlineChipLabel": "Recipient was offline"
+  }
+}
