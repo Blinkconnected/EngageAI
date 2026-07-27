@@ -16,6 +16,7 @@ from blinkengage.infrastructure.database.base import (
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
+from blinkengage.infrastructure.database.encrypted_json import EncryptedJSON
 
 if TYPE_CHECKING:
     from blinkengage.infrastructure.database.models.rbac import Role
@@ -48,6 +49,17 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     # is expected to grow and none of it needs to be queried/filtered on
     # (see docs/architecture/administration.md).
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # A per-company override of the platform's default AI provider — its
+    # own dedicated encrypted column (not a key inside `settings` above)
+    # because, unlike every other admin setting, this dict carries a real
+    # secret (the provider API key). `None` means "no override; use the
+    # platform-level settings.ai_provider default." Shape:
+    # {"provider": "openai"|"claude"|"ollama", "api_key": str | None,
+    #  "model": str | None, "base_url": str | None} — see
+    # docs/architecture/ai-engine.md.
+    ai_config: Mapped[dict[str, Any] | None] = mapped_column(
+        EncryptedJSON, nullable=True, default=None
+    )
 
     users: Mapped[list["User"]] = relationship(back_populates="company")
     roles: Mapped[list["Role"]] = relationship(back_populates="company")

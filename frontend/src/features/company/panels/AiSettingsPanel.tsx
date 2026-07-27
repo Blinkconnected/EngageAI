@@ -3,13 +3,19 @@ import {
   Alert,
   Card,
   CardContent,
+  Button,
+  Divider,
   FormControlLabel,
+  MenuItem,
   Stack,
   Switch,
+  TextField,
   Typography,
 } from '@mui/material'
 import { extractErrorMessage } from '../../../shared/api/errors'
+import { useAiConfigQuery, useUpdateAiConfigMutation } from '../aiConfigApi'
 import { useUpdateCompanyMutation } from '../api'
+import { AI_CONFIG_PROVIDERS, type AiConfig, type AiConfigProvider } from '../types'
 import type { Company } from '../types'
 
 export function AiSettingsPanel({ company }: { company: Company }) {
@@ -25,25 +31,183 @@ export function AiSettingsPanel({ company }: { company: Company }) {
   }
 
   return (
-    <Card variant="outlined" sx={{ maxWidth: 520 }}>
+    <Stack spacing={3} sx={{ maxWidth: 520 }}>
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            {updateMutation.isError && (
+              <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
+            )}
+
+            <FormControlLabel
+              control={
+                <Switch checked={enabled} onChange={(event) => handleChange(event.target.checked)} />
+              }
+              label="Enable AI Engine features"
+            />
+            <Typography variant="body2" color="text.secondary">
+              Reply suggestions, summaries, translation, sentiment, and other AI features for your
+              agents. Turn this off if your organization needs to avoid AI-generated content (e.g.
+              for compliance reasons) — this applies even when a provider is configured below.
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <AiProviderConfigCard />
+    </Stack>
+  )
+}
+
+function AiProviderConfigCard() {
+  const aiConfigQuery = useAiConfigQuery()
+
+  if (aiConfigQuery.isPending) return null
+  if (aiConfigQuery.isError) {
+    return (
+      <Alert severity="error">
+        {extractErrorMessage(aiConfigQuery.error, 'Could not load the AI provider configuration.')}
+      </Alert>
+    )
+  }
+
+  // Local form state is only ever initialized from `aiConfig` (never
+  // re-synced from a later refetch via an effect — see
+  // QueueEditDialog/QueueEditDialogFields for the same "key remounts
+  // fresh" split, used here in place of an effect since there's no
+  // natural entity id to key on beyond "the config exists now").
+  return <AiProviderConfigForm aiConfig={aiConfigQuery.data} />
+}
+
+function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
+  const updateMutation = useUpdateAiConfigMutation()
+
+  const [provider, setProvider] = useState<AiConfigProvider | ''>(aiConfig.provider ?? '')
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [model, setModel] = useState(aiConfig.model ?? '')
+  const [baseUrl, setBaseUrl] = useState(aiConfig.base_url ?? '')
+
+  const savedApiKeySet = aiConfig.api_key_set
+  const needsApiKey = provider === 'openai' || provider === 'claude'
+  const hasUsableKey = savedApiKeySet || apiKeyInput.trim().length > 0
+  const isValid = !needsApiKey || hasUsableKey
+
+  const isDirty =
+    provider !== (aiConfig.provider ?? '') ||
+    model !== (aiConfig.model ?? '') ||
+    baseUrl !== (aiConfig.base_url ?? '') ||
+    apiKeyInput.trim().length > 0
+
+  function handleSave() {
+    updateMutation.mutate(
+      {
+        provider: provider || null,
+        ...(apiKeyInput.trim() ? { api_key: apiKeyInput.trim() } : {}),
+        model: model.trim() || null,
+        base_url: baseUrl.trim() || null,
+      },
+      { onSuccess: () => setApiKeyInput('') },
+    )
+  }
+
+  return (
+    <Card variant="outlined">
       <CardContent>
         <Stack spacing={2}>
+          <div>
+            {/* `component="p"` — `subtitle1` maps to `h6` by default,
+                which would skip straight from this page's own top-level
+                heading with nothing in between (this panel introduces no
+                other heading levels), an axe heading-order violation.
+                This is a bolded section label, not a real heading. */}
+            <Typography variant="subtitle1" component="p" sx={{ fontWeight: 600 }}>
+              AI provider
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Bring your own OpenAI, Claude, or self-hosted Ollama account for this company,
+              instead of using the platform's shared default.
+            </Typography>
+          </div>
+
           {updateMutation.isError && (
             <Alert severity="error">{extractErrorMessage(updateMutation.error)}</Alert>
           )}
+          {updateMutation.isSuccess && !isDirty && <Alert severity="success">Saved.</Alert>}
 
-          <FormControlLabel
-            control={
-              <Switch checked={enabled} onChange={(event) => handleChange(event.target.checked)} />
-            }
-            label="Enable AI Engine features"
-          />
-          <Typography variant="body2" color="text.secondary">
-            Reply suggestions, summaries, translation, sentiment, and other AI features for your
-            agents. Turn this off if your organization needs to avoid AI-generated content (e.g.
-            for compliance reasons) — this applies even when the platform has an AI provider
-            configured.
-          </Typography>
+          <TextField
+            select
+            label="Provider"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as AiConfigProvider | '')}
+            fullWidth
+            // MUI's Select renders blank for an empty-string value unless
+            // told otherwise — without this, the "Platform default"
+            // MenuItem's own label would never actually be shown. The
+            // label must also be forced to `shrink` here: it otherwise
+            // only shrinks for a truthy value, so with `displayEmpty` and
+            // an empty-string value it would sit un-shrunk, overlapping
+            // the displayed "Platform default" text.
+            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+            helperText="Leave as 'Platform default' to use whatever the platform itself is configured with."
+          >
+            <MenuItem value="">Platform default</MenuItem>
+            {AI_CONFIG_PROVIDERS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          {provider && (
+            <>
+              <Divider />
+              {needsApiKey && (
+                <TextField
+                  label="API Key"
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(event) => setApiKeyInput(event.target.value)}
+                  fullWidth
+                  autoComplete="off"
+                  error={!isValid}
+                  helperText={
+                    !isValid
+                      ? 'An API key is required for this provider.'
+                      : savedApiKeySet
+                        ? 'A key is already saved — leave blank to keep it.'
+                        : 'Never shown again after saving.'
+                  }
+                />
+              )}
+              <TextField
+                label="Model"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                fullWidth
+                helperText="Leave blank to use this provider's default model."
+              />
+              <TextField
+                label="Base URL"
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                fullWidth
+                helperText={
+                  provider === 'ollama'
+                    ? "Your Ollama server's address, e.g. http://localhost:11434."
+                    : 'Optional — only needed for a custom/self-hosted API endpoint.'
+                }
+              />
+            </>
+          )}
+
+          <Button
+            variant="contained"
+            disabled={updateMutation.isPending || !isDirty || !isValid}
+            onClick={handleSave}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+          </Button>
         </Stack>
       </CardContent>
     </Card>

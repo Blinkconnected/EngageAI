@@ -1,11 +1,12 @@
-"""Builds the platform's single active ``AiProvider`` from
-``settings.ai_provider`` — unlike ``ChannelProviderFactory``, there's no
-per-company config row here; the AI Engine is a platform-level capability
-(see ``docs/architecture/ai-engine.md`` for why). Imports
-``infrastructure.ai.providers`` to trigger provider registration, the same
-"blanket import registers everything" pattern ``sms.py`` established for
-``SmsGatewayRegistry``.
+"""Builds the active ``AiProvider`` from ``settings.ai_provider`` (the
+platform default) or, when a company has configured its own provider and
+key (``Company.ai_config`` — see ``docs/architecture/ai-engine.md``),
+from that instead. Imports ``infrastructure.ai.providers`` to trigger
+provider registration, the same "blanket import registers everything"
+pattern ``sms.py`` established for ``SmsGatewayRegistry``.
 """
+
+from typing import Any
 
 import blinkengage.infrastructure.ai.providers  # noqa: F401 - registers built-in AI providers
 from blinkengage.core.config import Settings
@@ -31,3 +32,32 @@ def build_ai_provider(settings: Settings) -> AiProvider | None:
     if provider_cls is None:
         return None
     return provider_cls(credentials=_credentials_for(settings), model=settings.ai_model)
+
+
+def build_ai_provider_for_company(
+    settings: Settings, company_ai_config: dict[str, Any] | None
+) -> AiProvider | None:
+    """Prefers a company's own provider override when one is configured
+    (``company_ai_config["provider"]`` set — see ``Company.ai_config``),
+    falling back to the platform-level ``build_ai_provider`` otherwise.
+    Every field in the override is optional except ``provider`` itself:
+    a missing ``model``/``base_url`` falls back to the platform's own
+    default for that same setting, so a company can override just the
+    provider/key without also having to restate everything else."""
+    if not company_ai_config or not company_ai_config.get("provider"):
+        return build_ai_provider(settings)
+
+    provider_name = company_ai_config["provider"]
+    provider_cls = AiProviderRegistry.get(provider_name)
+    if provider_cls is None:
+        return None
+
+    if provider_name == "ollama":
+        credentials = {"base_url": company_ai_config.get("base_url") or settings.ollama_base_url}
+    else:
+        credentials = {"api_key": company_ai_config.get("api_key") or ""}
+        if company_ai_config.get("base_url"):
+            credentials["base_url"] = company_ai_config["base_url"]
+
+    model = company_ai_config.get("model") or settings.ai_model
+    return provider_cls(credentials=credentials, model=model)

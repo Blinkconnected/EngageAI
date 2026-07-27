@@ -189,4 +189,75 @@ describe('CompanySettingsPage', () => {
     await user.click(toggle)
     expect(toggle).not.toBeChecked()
   })
+
+  describe('AI provider configuration', () => {
+    it('defaults to Platform default with no key field shown', async () => {
+      renderWithRoutes('/settings/company/ai')
+
+      await screen.findByLabelText(/^provider/i)
+      expect(screen.getByText('Platform default')).toBeInTheDocument()
+      expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument()
+    })
+
+    it('requires an API key before saving OpenAI/Claude, and saves once one is entered', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+
+      await user.click(await screen.findByLabelText(/^provider/i))
+      await user.click(await screen.findByRole('option', { name: 'OpenAI' }))
+
+      const saveButton = screen.getByRole('button', { name: /save changes/i })
+      expect(saveButton).toBeDisabled()
+
+      await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-value')
+      expect(saveButton).toBeEnabled()
+
+      await user.click(saveButton)
+      expect(await screen.findByText('Saved.')).toBeInTheDocument()
+      // The key itself is never echoed back into the DOM anywhere.
+      expect(screen.queryByDisplayValue('sk-test-key-value')).not.toBeInTheDocument()
+    })
+
+    it('does not require re-entering the key when only changing the model', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+
+      await user.click(await screen.findByLabelText(/^provider/i))
+      await user.click(await screen.findByRole('option', { name: 'OpenAI' }))
+      await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-value')
+      await user.click(screen.getByRole('button', { name: /save changes/i }))
+      await screen.findByText('Saved.')
+
+      await user.type(screen.getByLabelText(/^model/i), 'gpt-4o')
+      const saveButton = screen.getByRole('button', { name: /save changes/i })
+      expect(saveButton).toBeEnabled()
+      await user.click(saveButton)
+
+      expect(await screen.findByText('Saved.')).toBeInTheDocument()
+      expect(screen.getByLabelText(/api key/i)).toHaveAccessibleDescription(/already saved/i)
+    })
+
+    it('ollama does not require an API key', async () => {
+      const user = userEvent.setup()
+      renderWithRoutes('/settings/company/ai')
+
+      await user.click(await screen.findByLabelText(/^provider/i))
+      await user.click(await screen.findByRole('option', { name: /ollama/i }))
+
+      expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument()
+      await user.type(screen.getByLabelText(/base url/i), 'http://localhost:11434')
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeEnabled()
+    })
+
+    it('has no detectable accessibility violations with the provider section expanded', async () => {
+      const user = userEvent.setup()
+      const { container } = renderWithRoutes('/settings/company/ai')
+
+      await user.click(await screen.findByLabelText(/^provider/i))
+      await user.click(await screen.findByRole('option', { name: 'OpenAI' }))
+      await screen.findByLabelText(/api key/i)
+
+      expect(await axe(container)).toHaveNoViolations()
+    })
+  })
 })

@@ -33,6 +33,9 @@ for more detail on how this page is put together.
   (assignment method, response/resolution time targets) and author the
   rules that decide which queue a new conversation lands in — previously
   only possible by calling the API directly.
+- Owners and admins can now connect their own OpenAI, Claude, or
+  self-hosted Ollama account for AI features, instead of relying on the
+  platform's shared default provider (Company Settings → AI).
 
 ### Fixed
 
@@ -44,6 +47,14 @@ for more detail on how this page is put together.
 - Changelog entries with a bolded label (for example, "**Conversations**:
   ...") were showing the literal `**` characters instead of real bold
   text.
+- The AI provider dropdown in Company Settings showed a blank box
+  instead of "Platform default" when no company-specific provider was
+  configured.
+
+### Security
+
+- A company's own AI provider API key is encrypted at rest and never
+  sent back to the browser after saving — only whether one is set.
 
 ## [1.0.0-beta.1] - 2026-07-26
 

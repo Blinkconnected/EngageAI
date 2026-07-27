@@ -74,27 +74,78 @@ exactly: `@AiProviderRegistry.register("openai"|"claude"|"ollama")` class
 decorators, discovered via a blanket
 `import infrastructure.ai.providers  # noqa: F401` at the point of use.
 
-## Platform-level configuration, not per-company
+## Platform-level configuration, with an optional per-company override
 
 `ChannelConfig` (WhatsApp, Telegram, email, ...) is inherently
 per-tenant — each company has its own WhatsApp Business number, its own
-SMTP box. The AI Engine is different: it's a platform capability a
-company either has turned on or doesn't, with one shared API key/model
-per deployment. New `settings.ai_provider`
+SMTP box. The AI Engine started differently: a platform capability a
+company either had turned on or didn't, with one shared API key/model
+per deployment. `settings.ai_provider`
 (`"openai" | "claude" | "ollama" | "disabled"`, defaulting to
 `"disabled"`), `settings.ai_model`, `settings.ai_default_max_tokens`, and
 per-provider credential/base-URL settings
 (`openai_api_key`/`anthropic_api_key`/`ollama_base_url`/...) follow the
 same environment-configured pattern `settings.smtp_*` (M21) already
-established for platform-level, not per-tenant, capabilities. A
-per-company "bring your own AI provider" model is a real possible future
-need but isn't built speculatively here — nothing about `AiProvider`'s
-credential-carrying constructor blocks adding it later without a breaking
-change.
+established for platform-level, not per-tenant, capabilities — this
+remains the *default* every company gets out of the box.
+
+What's since been added: a company can now **bring its own provider and
+key** instead (see "Per-company provider override" below) — this was
+named at the time as "a real possible future need... nothing about
+`AiProvider`'s credential-carrying constructor blocks adding it later
+without a breaking change," and that held true; the override layers on
+top of the platform default rather than replacing this section's design.
 
 `build_ai_provider(settings) -> AiProvider | None` returns `None` when
 `ai_provider == "disabled"` — the default, meaning a fresh deployment has
-AI Engine features off until an operator configures a provider.
+AI Engine features off until an operator configures a provider (or a
+company configures its own, per below).
+
+## Per-company provider override
+
+`Company.ai_config` — a *dedicated encrypted column*
+(`infrastructure.database.encrypted_json.EncryptedJSON`, the same
+AES-256-GCM-at-rest mechanism `ChannelConfig.credentials` already uses),
+**not** a key inside the plain-JSON `Company.settings` blob, because
+unlike every other admin setting this one carries a real secret (the
+provider API key). Shape: `{"provider": "openai"|"claude"|"ollama",
+"api_key": str | None, "model": str | None, "base_url": str | None}`, or
+`None` for "no override, use the platform default."
+
+- **Precedence**: `infrastructure/ai/factory.py`'s
+  `build_ai_provider_for_company(settings, company_ai_config)` — falls
+  back to the plain `build_ai_provider(settings)` (platform default)
+  whenever the company has no override (`ai_config` is `None`/has no
+  `provider`) or when an individual field (`model`/`base_url`) is left
+  unset on an override that does exist. `api/deps.py`'s `get_ai_provider`
+  dependency now looks up the caller's `Company` and calls this instead
+  of the old platform-only path, so every `/ai/*` endpoint transparently
+  picks up a company's own key with zero changes to `AiService` itself.
+- **Never returned to the frontend**: `GET /company/ai-config`
+  (`api.schemas.company.AiConfigResponse`) exposes `provider`/`model`/
+  `base_url` and a boolean `api_key_set` — never the key. Write-only,
+  same convention as channel credentials. `PUT /company/ai-config`
+  (`company.manage`) accepts an optional `api_key`; omitting it leaves
+  whatever was previously saved untouched (`CompanyService
+  .update_ai_config`), so changing just the model doesn't force
+  re-entering a key that hasn't changed. Setting `provider: null` clears
+  the override entirely — there's deliberately no way to clear *only*
+  the key while keeping a provider selected, since a
+  stored-but-unusable half-configured provider is a worse state than "no
+  override."
+- **Audit-safe**: `company.ai_config_updated` (published on every
+  `PUT /company/ai-config`) carries `{"provider": ..., "api_key_set":
+  bool}` — never the raw key — since this codebase's audit-log consumer
+  subscribes to *every* domain event unconditionally (`ROUTING_KEYS =
+  ["#"]"`, see `docs/architecture/administration.md`) and a leaked key in
+  an audit row would defeat the whole point of encrypting it at rest.
+- **Frontend**: `frontend/src/features/company/panels/AiSettingsPanel.tsx`
+  — a Provider select ("Platform default" plus the three registered
+  providers), a password-masked API Key field (shown only for
+  OpenAI/Claude — Ollama needs no key, only a Base URL), a Model field,
+  and a Base URL field, with an explicit Save button (disabled until the
+  form is both dirty and valid — OpenAI/Claude require *some* usable key,
+  either already-saved or freshly entered, before Save is enabled).
 
 ## Fails as 503, not 404/400/500
 
@@ -256,3 +307,22 @@ verified against the real running Postgres via
 re-upgrade cycle. No docker-compose changes were needed — the AI Engine
 is synchronous request/response only, with no new Celery consumer
 process, unlike M19/M21's event-bus consumers.
+
+### Per-company provider override
+
+15 new tests: `tests/unit/test_ai_factory.py` (7) — precedence between a
+company override and the platform default across all three providers,
+including the "override present but missing a field falls back to that
+one platform setting" case and Ollama's base-URL-only (no API key)
+credential shape. `tests/integration/test_company_api.py`'s new
+`TestAiConfig` class (8) — default (no-override) state, view-but-not-edit
+for a non-`company.manage` caller, the raw key never appearing in any
+response body, changing the model without resending the key preserving
+it, clearing the provider reverting to the default state, Ollama needing
+no key, and a 422 on an unrecognized provider name.
+
+The new migration (`b2c3d4e5f6a7`, adding `companies.ai_config` as a
+`LargeBinary` column) was verified against the real running Postgres via
+`docker compose exec backend alembic upgrade head` and a downgrade/
+re-upgrade cycle, the same bar every migration in this codebase is held
+to.

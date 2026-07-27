@@ -255,3 +255,139 @@ class TestUpdate:
         # should behave exactly as if "erp" had never been set.
         follow_up = await client.get("/api/v1/erp-configs", headers=owner_headers)
         assert follow_up.status_code == 503
+
+
+class TestAiConfig:
+    async def test_defaults_to_no_override(self, client: AsyncClient, owner_headers: dict) -> None:
+        response = await client.get("/api/v1/company/ai-config", headers=owner_headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body == {
+            "provider": None,
+            "model": None,
+            "base_url": None,
+            "api_key_set": False,
+        }
+
+    async def test_agent_can_view_but_not_edit(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        await client.post(
+            "/api/v1/agents",
+            json={
+                "email": "ai-config-view-agent@acme.example",
+                "full_name": "Agent",
+                "password": "correct-horse-battery-9",
+            },
+            headers=owner_headers,
+        )
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "ai-config-view-agent@acme.example",
+                "password": "correct-horse-battery-9",
+            },
+        )
+        agent_headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+
+        get_response = await client.get("/api/v1/company/ai-config", headers=agent_headers)
+        assert get_response.status_code == 200
+
+        put_response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "openai", "api_key": "sk-should-not-work"},
+            headers=agent_headers,
+        )
+        assert put_response.status_code == 403
+
+    async def test_setting_a_provider_and_key_never_returns_the_raw_key(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "openai", "api_key": "sk-super-secret-value", "model": "gpt-4o"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["provider"] == "openai"
+        assert body["model"] == "gpt-4o"
+        assert body["api_key_set"] is True
+        assert "sk-super-secret-value" not in response.text
+
+        get_response = await client.get("/api/v1/company/ai-config", headers=owner_headers)
+        assert "sk-super-secret-value" not in get_response.text
+        assert get_response.json()["api_key_set"] is True
+
+    async def test_changing_the_model_without_resending_the_key_keeps_it_set(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "openai", "api_key": "sk-original-key"},
+            headers=owner_headers,
+        )
+
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "openai", "model": "gpt-4o-mini"},
+            headers=owner_headers,
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["model"] == "gpt-4o-mini"
+        # Still set — the second PUT didn't include api_key, so the
+        # previously-saved one must survive, not be wiped.
+        assert body["api_key_set"] is True
+
+    async def test_clearing_the_provider_reverts_to_no_override(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "claude", "api_key": "sk-ant-key"},
+            headers=owner_headers,
+        )
+
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": None},
+            headers=owner_headers,
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "provider": None,
+            "model": None,
+            "base_url": None,
+            "api_key_set": False,
+        }
+
+    async def test_ollama_provider_does_not_require_an_api_key(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "ollama", "base_url": "http://ollama.internal:11434"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["provider"] == "ollama"
+        assert body["base_url"] == "http://ollama.internal:11434"
+        assert body["api_key_set"] is False
+
+    async def test_rejects_an_unrecognized_provider(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "not-a-real-provider", "api_key": "x"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_requires_authentication(self, client: AsyncClient) -> None:
+        response = await client.get("/api/v1/company/ai-config")
+        assert response.status_code in (401, 403)

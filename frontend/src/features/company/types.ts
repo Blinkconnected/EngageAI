@@ -87,3 +87,30 @@ export interface CompanyUpdateRequest {
   name?: string
   settings?: CompanySettings
 }
+
+export type AiConfigProvider = 'openai' | 'claude' | 'ollama'
+
+export const AI_CONFIG_PROVIDERS: { value: AiConfigProvider; label: string }[] = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'claude', label: 'Claude (Anthropic)' },
+  { value: 'ollama', label: 'Ollama (self-hosted)' },
+]
+
+/** Matches the backend's `AiConfigResponse` (`GET /company/ai-config`) —
+ * never carries the raw API key, only whether one is saved. */
+export interface AiConfig {
+  provider: AiConfigProvider | null
+  model: string | null
+  base_url: string | null
+  api_key_set: boolean
+}
+
+/** `provider: null` clears the override entirely (reverts to the
+ * platform default). `api_key` omitted/undefined leaves any previously
+ * saved key untouched — see the backend schema's own docstring. */
+export interface AiConfigUpdateRequest {
+  provider: AiConfigProvider | null
+  api_key?: string
+  model?: string | null
+  base_url?: string | null
+}

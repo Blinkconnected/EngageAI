@@ -51,7 +51,7 @@ from blinkengage.domain.ai_provider import AiProvider
 from blinkengage.domain.company_settings import is_ai_enabled
 from blinkengage.domain.exceptions import AiNotConfiguredError
 from blinkengage.domain.rbac import is_known_permission
-from blinkengage.infrastructure.ai.factory import build_ai_provider
+from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -519,8 +519,17 @@ def get_notification_preference_service(
     return NotificationPreferenceService(preferences=NotificationPreferenceRepository(session))
 
 
-def get_ai_provider(settings: Annotated[Settings, Depends(get_settings_dep)]) -> AiProvider | None:
-    return build_ai_provider(settings)
+async def get_ai_provider(
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AiProvider | None:
+    """Prefers the calling company's own provider override
+    (``Company.ai_config``) over the platform-level default — see
+    ``build_ai_provider_for_company``."""
+    company = await CompanyRepository(session).get_by_id(auth.company_id)
+    company_ai_config = company.ai_config if company else None
+    return build_ai_provider_for_company(settings, company_ai_config)
 
 
 def get_ai_service(

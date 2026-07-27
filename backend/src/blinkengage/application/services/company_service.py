@@ -85,3 +85,48 @@ class CompanyService:
             )
         )
         return company
+
+    async def update_ai_config(
+        self,
+        *,
+        company_id: UUID,
+        provider: str | None,
+        api_key: str | None,
+        model: str | None,
+        base_url: str | None,
+        actor_user_id: UUID | None = None,
+    ) -> Company:
+        """``provider=None`` clears the override entirely (reverts to the
+        platform default) — ``api_key=None`` otherwise means "leave
+        whatever was already saved," so switching models doesn't force
+        re-entering a key that hasn't changed. See
+        ``api.schemas.company.AiConfigUpdateRequest``'s docstring for why
+        there's no separate "clear just the key" operation."""
+        company = await self.get(company_id)
+        if provider is None:
+            company.ai_config = None
+        else:
+            existing = company.ai_config or {}
+            company.ai_config = {
+                "provider": provider,
+                "api_key": api_key if api_key else existing.get("api_key"),
+                "model": model,
+                "base_url": base_url,
+            }
+        await self._companies.save(company)
+        # Never the key itself — only whether one ended up set, same as
+        # what GET /company/ai-config itself is willing to reveal.
+        await self._events.publish(
+            DomainEvent(
+                event_type="company.ai_config_updated",
+                company_id=company_id,
+                aggregate_type="company",
+                aggregate_id=company_id,
+                actor_user_id=actor_user_id,
+                payload={
+                    "provider": provider,
+                    "api_key_set": bool(company.ai_config and company.ai_config.get("api_key")),
+                },
+            )
+        )
+        return company
