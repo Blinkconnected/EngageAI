@@ -6,7 +6,7 @@
  * hand-built fakes over a mocking library wherever a simple one suffices
  * (e.g. the backend's `_FakeWebSocket` for the agent gateway tests).
  */
-import { act } from 'react'
+import { act, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -18,10 +18,12 @@ import { queryClient } from '../../app/queryClient'
 import { authenticated, loggedOut } from '../auth/authSlice'
 import { server } from '../../mocks/server'
 import { API_BASE_URL } from '../../mocks/apiBaseUrl'
+import { CONVERSATIONS_LIST_KEY, MESSAGES_KEY } from '../conversations/api'
 import { NOTIFICATIONS_KEY, PREFERENCES_KEY, UNREAD_COUNT_KEY } from '../notifications/api'
 import * as deliveryEffects from '../notifications/deliveryEffects'
 import { NotificationToastProvider } from '../notifications/NotificationToastProvider'
 import { RealtimeProvider } from './RealtimeProvider'
+import { useRealtime } from './context'
 
 class FakeWebSocket {
   static OPEN = 1
@@ -51,19 +53,25 @@ class FakeWebSocket {
   }
 }
 
-function renderProvider() {
+function renderProvider(children: ReactNode = <div />) {
   store.dispatch(authenticated({ accessToken: 'mock-access-token', refreshToken: 'mock-refresh' }))
   return render(
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
         <NotificationToastProvider>
-          <RealtimeProvider>
-            <div />
-          </RealtimeProvider>
+          <RealtimeProvider>{children}</RealtimeProvider>
         </NotificationToastProvider>
       </QueryClientProvider>
     </Provider>,
   )
+}
+
+/** Reads `isCustomerTyping` for a fixed conversation id via the real
+ * context (not a re-implementation) so tests assert on exactly what a
+ * real consumer like MessageThread would see. */
+function TypingProbe({ conversationId }: { conversationId: string }) {
+  const { isCustomerTyping } = useRealtime()
+  return <div data-testid="typing-probe">{String(isCustomerTyping(conversationId))}</div>
 }
 
 /** RealtimeProvider fetches preferences itself on mount (so every tab's
@@ -278,5 +286,68 @@ describe('RealtimeProvider', () => {
     expect(() => {
       FakeWebSocket.instances[0].onmessage?.({ data: 'not json' })
     }).not.toThrow()
+  })
+
+  it('invalidates a conversation\'s messages and the Inbox list on a "message_received" frame', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    renderProvider()
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      FakeWebSocket.instances[0].emit({
+        type: 'message_received',
+        conversation_id: 'c1',
+        message_id: 'm1',
+        direction: 'inbound',
+        body: 'Are you still there?',
+      })
+    })
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: MESSAGES_KEY('c1') })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: CONVERSATIONS_LIST_KEY })
+    })
+  })
+
+  it('exposes customer-typing state via isCustomerTyping, scoped per conversation', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    renderProvider(<TypingProbe conversationId="c1" />)
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    expect(screen.getByTestId('typing-probe')).toHaveTextContent('false')
+
+    act(() => {
+      FakeWebSocket.instances[0].emit({
+        type: 'customer_typing',
+        conversation_id: 'c1',
+        is_typing: true,
+      })
+    })
+    await waitFor(() => expect(screen.getByTestId('typing-probe')).toHaveTextContent('true'))
+
+    act(() => {
+      FakeWebSocket.instances[0].emit({
+        type: 'customer_typing',
+        conversation_id: 'c1',
+        is_typing: false,
+      })
+    })
+    await waitFor(() => expect(screen.getByTestId('typing-probe')).toHaveTextContent('false'))
+  })
+
+  it('does not conflate typing on a different conversation', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    renderProvider(<TypingProbe conversationId="c1" />)
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+
+    act(() => {
+      FakeWebSocket.instances[0].emit({
+        type: 'customer_typing',
+        conversation_id: 'some-other-conversation',
+        is_typing: true,
+      })
+    })
+
+    expect(screen.getByTestId('typing-probe')).toHaveTextContent('false')
   })
 })

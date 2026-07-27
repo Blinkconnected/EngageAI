@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAppSelector } from '../../app/hooks'
 import { selectIsAuthenticated } from '../auth/authSlice'
 import { store } from '../../app/store'
+import { CONVERSATIONS_LIST_KEY, MESSAGES_KEY } from '../conversations/api'
 import { playNotificationSound, showBrowserNotification } from '../notifications/deliveryEffects'
 import {
   NOTIFICATIONS_KEY,
@@ -16,12 +17,18 @@ import { RealtimeContext } from './context'
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL ?? '/api/v1/ws'
 const RECONNECT_DELAY_MS = 3000
+// Safety net for a "stopped typing" frame that never arrives (e.g. the
+// customer's tab/connection drops mid-type) — clears the indicator on
+// its own rather than leaving it stuck showing forever.
+const TYPING_STALE_MS = 8000
 
-interface NotificationFrame {
+interface RealtimeFrame {
   type?: string
   notification_type?: string
   title?: string
   body?: string
+  conversation_id?: string
+  is_typing?: boolean
 }
 
 /** Absence of a cached preference (not yet fetched, or never
@@ -48,13 +55,18 @@ function isChannelEnabled(
  * GET /notifications remains the durable source of truth those queries
  * poll independently either way.
  *
- * Two frame types drive this: `notification` (a brand-new notification —
+ * Four frame types drive this: `notification` (a brand-new notification —
  * also triggers the browser-notification/sound delivery effects, each
- * gated by that notification_type's cached preference) and
- * `notifications_changed` (read-state changed on *this* user's inbox
- * from some other connection — a mark-read/mark-all-read in another
- * browser tab or device — which only needs a cache refresh, never a
- * sound/popup for something that isn't new).
+ * gated by that notification_type's cached preference); `notifications_changed`
+ * (read-state changed on *this* user's inbox from some other connection —
+ * a mark-read/mark-all-read in another browser tab or device — which only
+ * needs a cache refresh, never a sound/popup for something that isn't
+ * new); `message_received` (a new message, either direction, on any
+ * conversation — invalidates that conversation's messages and the Inbox
+ * list, the fix for "a customer's new message doesn't appear until you
+ * refresh or send your own reply"); and `customer_typing` (web_chat only
+ * — see docs/architecture/web-chat.md — exposed via `isCustomerTyping`
+ * for `ConversationViewPage`/`MessageThread` to render a live indicator).
  */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
@@ -70,6 +82,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const closedIntentionallyRef = useRef(false)
+  const [customerTyping, setCustomerTyping] = useState<Record<string, boolean>>({})
+  const typingTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => {
     if (!isAuthenticated) return undefined
@@ -85,7 +99,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       socket.onmessage = (event) => {
         try {
-          const frame = JSON.parse(event.data as string) as NotificationFrame
+          const frame = JSON.parse(event.data as string) as RealtimeFrame
           if (frame.type === 'notification' || frame.type === 'notifications_changed') {
             void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY })
             void queryClient.invalidateQueries({ queryKey: UNREAD_COUNT_KEY })
@@ -100,6 +114,30 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             }
             if (isChannelEnabled(queryClient, frame.notification_type, 'sound')) {
               playNotificationSound()
+            }
+          }
+          if (frame.type === 'message_received' && frame.conversation_id) {
+            // A new message (either direction — a customer's inbound
+            // message, or an agent's own reply seen from a second tab/
+            // teammate) — refresh this conversation's transcript and the
+            // Inbox list's last-message preview/ordering live, instead of
+            // waiting for their independent polling intervals.
+            void queryClient.invalidateQueries({
+              queryKey: MESSAGES_KEY(frame.conversation_id),
+            })
+            void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+          }
+          if (frame.type === 'customer_typing' && frame.conversation_id) {
+            const conversationId = frame.conversation_id
+            const isTyping = Boolean(frame.is_typing)
+            setCustomerTyping((current) => ({ ...current, [conversationId]: isTyping }))
+
+            const existingTimer = typingTimersRef.current[conversationId]
+            if (existingTimer) clearTimeout(existingTimer)
+            if (isTyping) {
+              typingTimersRef.current[conversationId] = setTimeout(() => {
+                setCustomerTyping((current) => ({ ...current, [conversationId]: false }))
+              }, TYPING_STALE_MS)
             }
           }
         } catch {
@@ -123,6 +161,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       socketRef.current?.close()
       socketRef.current = null
+      Object.values(typingTimersRef.current).forEach(clearTimeout)
+      typingTimersRef.current = {}
     }
   }, [isAuthenticated, queryClient, showToast])
 
@@ -134,5 +174,14 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  return <RealtimeContext.Provider value={{ sendTyping }}>{children}</RealtimeContext.Provider>
+  const isCustomerTyping = useCallback(
+    (conversationId: string) => Boolean(customerTyping[conversationId]),
+    [customerTyping],
+  )
+
+  return (
+    <RealtimeContext.Provider value={{ sendTyping, isCustomerTyping }}>
+      {children}
+    </RealtimeContext.Provider>
+  )
 }

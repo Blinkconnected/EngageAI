@@ -7,7 +7,7 @@ token every REST call uses (as a ``?token=`` query param — browsers can't
 set arbitrary headers on a WebSocket handshake), and is keyed by the
 authenticated user.
 
-Three things happen over one connection:
+Four things happen over one connection:
 
 1. **Presence** — connecting flips ``Agent.status`` from ``OFFLINE`` to
    ``ONLINE`` (never overriding an explicit ``AWAY``); disconnecting
@@ -16,7 +16,16 @@ Three things happen over one connection:
 2. **Notifications** — the connection subscribes to the user's personal
    realtime channel and forwards whatever ``NotificationService.create``
    publishes there, live.
-3. **Typing** — the only inbound frame type. Forwarded to
+3. **Live conversation updates** — the connection also subscribes to its
+   company's shared realtime channel
+   (``realtime_channels.company_realtime_channel_name``) and forwards
+   ``message_received``/``customer_typing`` frames verbatim; the
+   frontend filters by the frame's own ``conversation_id`` rather than
+   this gateway managing per-conversation subscriptions — see
+   ``docs/architecture/notifications.md``'s "Live conversation updates"
+   section for why a broad, filter-on-the-client broadcast was chosen
+   over a dynamic subscribe/unsubscribe protocol.
+4. **Typing** — the only inbound frame type. Forwarded to
    ``ConversationService.send_typing_indicator``, finally invoking
    ``ChannelProvider.typing_indicator`` for real.
 """
@@ -40,7 +49,10 @@ from blinkengage.api.deps import (
 from blinkengage.api.schemas.realtime import TypingFrameIn
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.conversation_service import ConversationService
-from blinkengage.application.services.notification_service import notification_channel_name
+from blinkengage.application.services.realtime_channels import (
+    company_realtime_channel_name,
+    notification_channel_name,
+)
 from blinkengage.core.config import Settings
 from blinkengage.core.logging import get_logger
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
@@ -100,7 +112,9 @@ async def agent_gateway(
         await session.commit()
 
     async def _forward() -> None:
-        async with realtime.subscribe(notification_channel_name(user_id)) as pubsub:
+        async with realtime.subscribe(
+            notification_channel_name(user_id), company_realtime_channel_name(company_id)
+        ) as pubsub:
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     data = message["data"]

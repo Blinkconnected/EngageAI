@@ -49,16 +49,35 @@ would conflate two different trust domains for a shallow reason (both are
 ## The chat widget contract
 
 The WebSocket gateway (`WS /ws/webchat/{channel_config_id}?token=...`)
-speaks a small JSON frame protocol (`api/schemas/web_chat.py`):
+speaks a small JSON frame protocol (`api/schemas/web_chat.py`). No widget
+UI ships in this codebase — this is a protocol spec any embeddable
+widget implements against, verified here only via a hand-built fake
+WebSocket calling the gateway coroutine directly (see "Tested" below).
 
-- Inbound (`WidgetMessageIn`): `{"body": str, "reply_to_external_message_id": str | None}`.
+- Inbound (`WidgetMessageIn`): a discriminated `type`, defaulting to
+  `"message"` so a client written before this field existed (sending no
+  `type` key at all) is still valid —
+  `{"type": "message" | "typing", "body": str | None,
+  "reply_to_external_message_id": str | None, "is_typing": bool | None}`.
+  A `"message"` frame requires `body`; a `"typing"` frame requires
+  `is_typing` (added 2026-07-27, see
+  `docs/architecture/notifications.md`'s "Live conversation updates").
 - Outbound (`WidgetMessageOut`): `{"type": "message" | "typing", "body": ..., "is_typing": ...}`.
 
 The gateway validates the token against `ChatSessionStore` before
 accepting the connection (closes with code 4401 if missing/invalid/
-mismatched `channel_config_id`), then loops: each inbound frame goes
+mismatched `channel_config_id`), then loops: a `"message"` frame goes
 through `WebChatProvider.receive_message` → a `message.received`
-`DomainEvent` on the M10 bus, same as every other channel.
+`DomainEvent` on the M10 bus, same as every other channel. A `"typing"`
+frame takes a different, ephemeral-only path: no durable event, no
+message row — the conversation is looked up (by this same
+`channel_config_id`+`external_thread_id` pair) and, if one already
+exists, `{"type": "customer_typing", "conversation_id", "is_typing"}` is
+published to the company-wide realtime channel for the agent-facing
+`/ws/agent` gateway to forward. Silently skipped if no conversation
+exists yet (nothing to associate a pre-first-message typing signal
+with) — never crashes the connection, matching this gateway's existing
+"malformed frame → ignore, don't drop the connection" convention.
 
 ## Horizontal scaling: Redis pub/sub fanout, not a connection registry
 

@@ -15,7 +15,11 @@ import type {
 
 export const CONVERSATIONS_LIST_KEY = ['conversations', 'list']
 export const CONVERSATION_KEY = (id: string) => ['conversations', 'detail', id]
-const MESSAGES_KEY = (conversationId: string) => ['conversations', conversationId, 'messages']
+export const MESSAGES_KEY = (conversationId: string) => [
+  'conversations',
+  conversationId,
+  'messages',
+]
 const NOTES_KEY = (conversationId: string) => ['conversations', conversationId, 'notes']
 const TRANSFERS_KEY = (conversationId: string) => ['conversations', conversationId, 'transfers']
 

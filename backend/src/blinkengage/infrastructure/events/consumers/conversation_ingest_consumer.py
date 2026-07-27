@@ -19,10 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.events import DomainEvent, DomainEventPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
+from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
@@ -42,6 +44,7 @@ from blinkengage.infrastructure.database.session import (
 )
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
+from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
@@ -68,6 +71,23 @@ QUEUE_NAME = "conversation-ingest"
 ROUTING_KEYS = ["message.received"]
 
 _REOPEN_ON_NEW_MESSAGE = frozenset({ConversationStatus.RESOLVED, ConversationStatus.CLOSED})
+
+
+class _NoopRealtimePublisher:
+    """Default for ``handle_message_received``'s ``realtime`` param —
+    this handler is called directly (not through DI) from ~25 existing
+    tests exercising routing/assignment/reporting/etc. that have nothing
+    to do with live delivery; giving them all a throwaway Redis-backed
+    publisher just to satisfy this parameter would be pure churn.
+    Production's own call site (``main()``, below) always passes a real
+    ``RealtimePublisher`` explicitly — this default is only ever reached
+    by a test that doesn't care."""
+
+    async def publish(self, channel: str, payload: dict[str, Any]) -> None:
+        return None
+
+
+_NOOP_REALTIME = _NoopRealtimePublisher()
 
 #: Channels whose external id is itself a phone number worth seeding onto
 #: ``Customer.phone`` on first contact (best-effort convenience only —
@@ -191,7 +211,12 @@ async def _publish_customer_created(
     )
 
 
-async def handle_message_received(event: dict[str, Any], session: AsyncSession) -> None:
+async def handle_message_received(
+    event: dict[str, Any],
+    session: AsyncSession,
+    *,
+    realtime: RealtimeSignalPublisher = _NOOP_REALTIME,
+) -> None:
     company_id_raw = event.get("company_id")
     if company_id_raw is None:
         logger.warning("message_received_skipped_no_company")
@@ -339,6 +364,22 @@ async def handle_message_received(event: dict[str, Any], session: AsyncSession) 
             },
         )
     )
+    # Ephemeral, not the durable event above — the one thing that makes
+    # an already-open Inbox/conversation view update live instead of
+    # waiting for its next poll. See docs/architecture/notifications.md's
+    # "Live conversation updates" section and
+    # ConversationService.send_reply's matching broadcast for the
+    # agent-sent-message direction.
+    await realtime.publish(
+        company_realtime_channel_name(company_id),
+        {
+            "type": "message_received",
+            "conversation_id": str(conversation.id),
+            "message_id": str(message.id),
+            "direction": "inbound",
+            "body": message.body,
+        },
+    )
 
     if is_new_conversation:
         await _route_and_assign(
@@ -429,11 +470,12 @@ async def main() -> None:
     settings = get_settings()
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
+    realtime = RealtimePublisher(create_redis_client(settings))
 
     async def _handler(message: AbstractIncomingMessage) -> None:
         event = orjson.loads(message.body)
         async with session_scope(session_factory) as session:
-            await handle_message_received(event, session)
+            await handle_message_received(event, session, realtime=realtime)
 
     await run_consumer(settings, queue_name=QUEUE_NAME, routing_keys=ROUTING_KEYS, handler=_handler)
 

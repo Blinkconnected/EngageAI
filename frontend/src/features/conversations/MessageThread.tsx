@@ -4,6 +4,7 @@ import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { formatRelativeTime } from '../../shared/utils/formatRelativeTime'
+import { useRealtime } from '../realtime/context'
 import { AttachmentList } from './AttachmentList'
 import { useMessagesQuery } from './api'
 import type { Message } from './types'
@@ -74,6 +75,8 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   const messagesQuery = useMessagesQuery(conversationId, { page: 1, page_size: visibleCount })
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastMessageId = messagesQuery.data?.items[0]?.id
+  const { isCustomerTyping } = useRealtime()
+  const customerTyping = isCustomerTyping(conversationId)
 
   useEffect(() => {
     // Newest message is index 0 in the API's DESC order — scroll to the
@@ -95,7 +98,12 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   const orderedMessages = [...messagesQuery.data.items].reverse()
 
   if (orderedMessages.length === 0) {
-    return <EmptyState title="No messages yet" description="This conversation has no messages." />
+    return (
+      <>
+        <EmptyState title="No messages yet" description="This conversation has no messages." />
+        {customerTyping && <TypingIndicator />}
+      </>
+    )
   }
 
   return (
@@ -112,7 +120,23 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
       {orderedMessages.map((message) => (
         <MessageBubble key={message.id} message={message} conversationId={conversationId} />
       ))}
+      {customerTyping && <TypingIndicator />}
       <div ref={bottomRef} />
     </Stack>
+  )
+}
+
+function TypingIndicator() {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontStyle: 'italic', px: 1.5 }}
+        role="status"
+      >
+        Customer is typing…
+      </Typography>
+    </Box>
   )
 }

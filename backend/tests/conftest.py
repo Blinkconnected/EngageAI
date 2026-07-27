@@ -131,6 +131,7 @@ def make_sla_monitor(
             departments=DepartmentRepository(session),
             queues=QueueRepository(session),
             agent_skills=AgentSkillRepository(session),
+            realtime=realtime,
         )
         notifications = NotificationService(
             notifications=NotificationRepository(session),

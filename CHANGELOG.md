@@ -49,6 +49,8 @@ for more detail on how this page is put together.
   Hours and a new Holidays list. A preview tool shows exactly when a
   policy's warnings and deadlines would land before you assign it to a
   real queue.
+- A live "Customer is typing…" indicator in the conversation view, for
+  channels that support it (Web Chat today).
 
 ### Changed
 
@@ -72,6 +74,10 @@ for more detail on how this page is put together.
 - The AI provider dropdown in Company Settings showed a blank box
   instead of "Platform default" when no company-specific provider was
   configured.
+- A customer's new message on a conversation an agent already had open
+  didn't appear until the page was refreshed or the agent sent their own
+  reply — it now appears instantly, matching what was already promised
+  for this release.
 
 ### Security
 

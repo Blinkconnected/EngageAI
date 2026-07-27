@@ -43,7 +43,7 @@ set arbitrary headers during a WebSocket handshake) — validated with the
 same `decode_token`/`TokenType.ACCESS` every HTTP request already uses,
 not a new auth mechanism.
 
-Three things happen over one connection:
+Four things happen over one connection:
 
 1. **Presence** — connecting flips `Agent.status` from `OFFLINE` to
    `ONLINE`, but never overrides an explicit `AWAY` (an agent's deliberate
@@ -56,7 +56,8 @@ Three things happen over one connection:
    the ephemeral-signal tier (`RealtimeSignalPublisher`, Redis pub/sub, no
    durability) — the durable in-app `Notification` row is the source of
    truth regardless of whether anyone's connected to see it live.
-3. **Typing** — the only inbound frame type
+3. **Live conversation updates** — see the dedicated section below.
+4. **Typing** — the only inbound frame type
    (`{"type": "typing", "conversation_id", "is_typing"}`), forwarded to
    `ConversationService.send_typing_indicator`.
 
@@ -65,6 +66,73 @@ coroutine directly with a hand-built fake WebSocket, not through a real
 ASGI WebSocket connection (Starlette's `TestClient.websocket_connect`
 runs in its own background-thread event-loop portal, which corrupts the
 shared in-memory-SQLite connection this suite's async fixtures use).
+
+## Live conversation updates (added 2026-07-27)
+
+**The bug this closes**: before this, a customer's new message on an
+already-open conversation never appeared until the agent refreshed the
+page or sent their own reply (which happened to trigger a cache
+invalidation as a side effect). `message.persisted` (the durable event)
+only ever reached `MessagePersistedRule` → a bell notification on the
+*assigned* agent's personal channel — nothing refreshed the conversation
+transcript itself, and nothing reached anyone without that one specific
+notification type enabled, or anyone who wasn't the assigned agent (a
+supervisor or teammate with the same conversation open).
+
+**The fix, deliberately not a per-conversation subscription protocol**:
+every agent's `/ws/agent` connection now *also* subscribes to a single
+company-wide channel — `realtime_channels.company_realtime_channel_name
+(company_id)` — alongside their existing personal one. A dynamic
+subscribe/unsubscribe-per-open-conversation protocol (the more
+"textbook" design) was considered and rejected: it would need the
+gateway to track a mutable set of subscribed channels per connection and
+the frontend to announce "I'm now viewing conversation X," for a benefit
+(narrower fan-out) that doesn't matter at this codebase's scale — a
+client simply filters incoming frames by their own `conversation_id`
+instead. Two publishers:
+
+- `conversation_ingest_consumer.handle_message_received` — publishes
+  `{"type": "message_received", "conversation_id", "message_id",
+  "direction": "inbound", "body"}` right after persisting an inbound
+  customer message (alongside the existing durable `message.persisted`
+  event — this is the ephemeral, no-durability-guarantee sibling, not a
+  replacement).
+- `ConversationService.send_reply` — publishes the same shape with
+  `"direction": "outbound"` after a successful send, so a second agent
+  (or a second tab) watching the same conversation sees an agent's own
+  reply live too, not just the sender's own optimistic UI update.
+
+**Frontend**: `RealtimeProvider.tsx` invalidates
+`['conversations', conversationId, 'messages']` and the Inbox's list
+query on a `message_received` frame whose `conversation_id` is present —
+no explicit "which conversations am I watching" bookkeeping needed,
+since an invalidated-but-unmounted query is simply a no-op. The existing
+15-second poll on the messages query and 10/30-second poll on the Inbox
+list remain as a fallback (same "poll is the durable floor, push is the
+convenience" relationship the notification bell already has with
+`GET /notifications`), not removed.
+
+**Customer typing (web_chat only)**: the widget's inbound frame
+(`WidgetMessageIn` — see `docs/architecture/web-chat.md`'s chat widget
+contract) gained a `type: "typing"` variant alongside the existing
+message-send. `webchat_gateway` resolves the frame to a conversation
+(via the same `channel_config_id`+`external_thread_id` lookup ingestion
+uses) and publishes `{"type": "customer_typing", "conversation_id",
+"is_typing"}` to the same company-wide channel — silently skipped if no
+conversation exists yet (a visitor typing before ever sending their
+first message has nothing to associate it with). `RealtimeProvider`
+exposes this as `isCustomerTyping(conversationId)`, consumed by
+`MessageThread` to render a live "Customer is typing…" line, with an
+8-second self-clearing safety net in case a "stopped typing" frame never
+arrives (a dropped connection, a closed tab). This mirrors the existing
+agent→customer typing feature's own scope exactly (only web_chat
+supports a live typing signal — see that feature's own doc section
+above for why the other five channels' provider APIs have no equivalent
+inbound event to receive), and, like that feature, ships as fully
+working, tested *infrastructure* with no bundled customer-facing widget
+UI — this codebase has never shipped one (the "chat widget contract" is
+a protocol spec any embeddable widget implements against, not a widget
+shipped here).
 
 ## The notification inbox
 
@@ -482,3 +550,26 @@ racing for the same lock at once) then re-verified deadlock-free, and
 the migration re-verified to converge correctly both from an empty
 database and from the exact partial-failure state the deadlock had left
 behind.
+
+**Live conversation updates + customer typing (2026-07-27)**: 9 new
+backend tests (2 in `test_agent_realtime_gateway.py` — an inbound
+customer message and an agent's own reply each forwarded live over the
+socket; 2 in `test_web_chat.py` — a typing frame broadcast for an
+existing conversation, silently skipped with none yet) — 837 backend
+tests total (was 828). 5 new frontend tests (3 in
+`RealtimeProvider.test.tsx`, 2 in the new `MessageThread.test.tsx`) —
+215 frontend tests total (was 210). `ruff`/`mypy`/`tsc`/`eslint` all
+clean; the production build succeeds. Live-verified against the real
+Docker stack (`backend`, `conversation-ingest-consumer`,
+`workflow-engine-consumer`, `celery-worker`, `celery-beat` all rebuilt
+and recreated) with two real raw WebSocket connections (Python's
+`websockets` library, not mocks) — one as the agent gateway, one as the
+web-chat widget — over the actual running RabbitMQ/Redis/Postgres:
+sent an inbound customer message and confirmed the agent socket received
+`message_received` with `direction: "inbound"`; sent a `typing` frame
+once the conversation existed and confirmed `customer_typing` arrived
+(and confirmed it does *not* arrive when sent before any conversation
+exists yet); posted an agent reply via the REST API and confirmed the
+same agent socket received a second `message_received` frame with
+`direction: "outbound"` — proving a second agent/tab watching the same
+conversation would see it live too.

@@ -2,9 +2,10 @@
 documented in ``docs/architecture/web-chat.md``.
 """
 
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class CreateChatSessionRequest(BaseModel):
@@ -17,10 +18,25 @@ class CreateChatSessionResponse(BaseModel):
 
 
 class WidgetMessageIn(BaseModel):
-    """One inbound WebSocket frame from the chat widget."""
+    """One inbound WebSocket frame from the chat widget — either a
+    message (``type="message"``, the default — a widget client that
+    predates this ``type`` field entirely, sending no ``type`` key at
+    all, is still valid) or a customer-is-typing signal (``type=
+    "typing"``, ``is_typing``). See ``docs/architecture/web-chat.md``'s
+    "chat widget contract" for the full protocol."""
 
-    body: str
+    type: Literal["message", "typing"] = "message"
+    body: str | None = None
     reply_to_external_message_id: str | None = None
+    is_typing: bool | None = None
+
+    @model_validator(mode="after")
+    def _check_message_has_body(self) -> "WidgetMessageIn":
+        if self.type == "message" and self.body is None:
+            raise ValueError("a 'message' frame requires a body")
+        if self.type == "typing" and self.is_typing is None:
+            raise ValueError("a 'typing' frame requires is_typing")
+        return self
 
 
 class WidgetMessageOut(BaseModel):

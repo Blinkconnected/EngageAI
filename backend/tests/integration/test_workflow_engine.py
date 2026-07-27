@@ -165,6 +165,7 @@ async def _run_engine(app: Any, event: dict) -> None:
             departments=DepartmentRepository(session),
             queues=QueueRepository(session),
             agent_skills=AgentSkillRepository(session),
+            realtime=RealtimePublisher(app.state.container.redis()),
         )
         context = WorkflowExecutionContext(
             session=session,

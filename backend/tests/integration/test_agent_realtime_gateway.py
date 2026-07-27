@@ -180,6 +180,7 @@ def _build_services(session, container):
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        realtime=realtime,
     )
     agent_service = AgentService(
         session=session,
@@ -420,3 +421,131 @@ async def test_notification_is_forwarded_over_the_socket(
         await session.commit()
 
     assert any(orjson.loads(frame)["type"] == "notification" for frame in ws.sent)
+
+
+async def test_new_customer_message_is_forwarded_over_the_agent_socket(
+    client: AsyncClient, owner_headers: dict, app
+) -> None:
+    """The bug this test guards against: before the company-wide realtime
+    channel existed, a customer's new message reached `message.persisted`
+    (the durable event) but never anything an already-connected agent's
+    socket would see live — see docs/architecture/notifications.md's
+    "Live conversation updates" section."""
+    agent_id, token = await _create_agent_with_token(client, owner_headers)
+    conversation_id, session_token = await _create_web_chat_conversation(client, owner_headers, app)
+    config_response = await client.get("/api/v1/channel-configs", headers=owner_headers)
+    config_id = config_response.json()["items"][0]["id"]
+    company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+        "id"
+    ]
+    conversation_response = await client.get(
+        f"/api/v1/conversations/{conversation_id}", headers=owner_headers
+    )
+    customer_id = conversation_response.json()["customer_id"]
+
+    container = app.state.container
+    session_factory = container.session_factory()
+    async with session_factory() as session:
+        settings, realtime, conversation_service, agent_service = _build_services(
+            session, container
+        )
+        ws = _FakeWebSocket(query_params={"token": token}, frames=[], disconnect_delay=0.3)
+
+        async def _ingest_after_delay() -> None:
+            await asyncio.sleep(0.05)
+            async with session_factory() as ingest_session:
+                await handle_message_received(
+                    {
+                        "event_type": "message.received",
+                        "company_id": company_id,
+                        "aggregate_type": "message",
+                        "aggregate_id": None,
+                        "actor_user_id": None,
+                        "payload": {
+                            "channel_config_id": config_id,
+                            "channel_type": "web_chat",
+                            "external_thread_id": session_token,
+                            "external_customer_id": customer_id,
+                            "external_message_id": "ext-2",
+                            "body": "Are you still there?",
+                        },
+                    },
+                    ingest_session,
+                    realtime=realtime,
+                )
+                await ingest_session.commit()
+
+        ingester = asyncio.create_task(_ingest_after_delay())
+        await agent_gateway(
+            ws,  # type: ignore[arg-type]
+            settings,
+            session,
+            realtime,
+            conversation_service,
+            agent_service,
+        )
+        await ingester
+        await session.commit()
+
+    frames = [orjson.loads(frame) for frame in ws.sent]
+    message_frames = [frame for frame in frames if frame.get("type") == "message_received"]
+    assert len(message_frames) == 1
+    assert message_frames[0]["conversation_id"] == conversation_id
+    assert message_frames[0]["direction"] == "inbound"
+    assert message_frames[0]["body"] == "Are you still there?"
+
+
+async def test_agent_sent_reply_is_forwarded_over_the_agent_socket(
+    client: AsyncClient, owner_headers: dict, app
+) -> None:
+    """Symmetric with the inbound case above — a second agent (or a
+    second tab) with the same conversation open must see an agent's own
+    sent reply live too, not just the sender's own optimistic UI update."""
+    agent_id, token = await _create_agent_with_token(client, owner_headers)
+    conversation_id, _session_token = await _create_web_chat_conversation(
+        client, owner_headers, app
+    )
+    company_id = UUID(
+        (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"]["id"]
+    )
+
+    container = app.state.container
+    session_factory = container.session_factory()
+    async with session_factory() as session:
+        settings, realtime, conversation_service, agent_service = _build_services(
+            session, container
+        )
+        ws = _FakeWebSocket(query_params={"token": token}, frames=[], disconnect_delay=0.3)
+
+        async def _reply_after_delay() -> None:
+            await asyncio.sleep(0.05)
+            async with session_factory() as reply_session:
+                _settings, reply_realtime, reply_conversation_service, _agent_service = (
+                    _build_services(reply_session, container)
+                )
+                await reply_conversation_service.send_reply(
+                    company_id=company_id,
+                    conversation_id=UUID(conversation_id),
+                    body="On it!",
+                    attachment_ids=[],
+                )
+                await reply_session.commit()
+
+        replier = asyncio.create_task(_reply_after_delay())
+        await agent_gateway(
+            ws,  # type: ignore[arg-type]
+            settings,
+            session,
+            realtime,
+            conversation_service,
+            agent_service,
+        )
+        await replier
+        await session.commit()
+
+    frames = [orjson.loads(frame) for frame in ws.sent]
+    message_frames = [frame for frame in frames if frame.get("type") == "message_received"]
+    assert len(message_frames) == 1
+    assert message_frames[0]["conversation_id"] == conversation_id
+    assert message_frames[0]["direction"] == "outbound"
+    assert message_frames[0]["body"] == "On it!"

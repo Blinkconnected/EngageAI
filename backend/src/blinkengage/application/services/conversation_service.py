@@ -18,9 +18,10 @@ from uuid import UUID, uuid4
 
 from blinkengage.application.services.assignment_engine import filter_by_required_skills
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.core.config import Settings
 from blinkengage.domain.channels import AttachmentRef, OutboundMessage
-from blinkengage.domain.events import DomainEvent, DomainEventPublisher
+from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.exceptions import (
     AgentMissingRequiredSkillError,
     AttachmentNotLinkableError,
@@ -109,6 +110,7 @@ class ConversationService:
         departments: DepartmentRepository,
         queues: QueueRepository,
         agent_skills: AgentSkillRepository,
+        realtime: RealtimeSignalPublisher,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -125,6 +127,7 @@ class ConversationService:
         self._departments = departments
         self._queues = queues
         self._agent_skills = agent_skills
+        self._realtime = realtime
 
     async def get(self, *, company_id: UUID, conversation_id: UUID) -> Conversation:
         conversation = await self._conversations.get_by_id(
@@ -786,6 +789,22 @@ class ConversationService:
                     "body": body,
                 },
             )
+        )
+        # Ephemeral, not the durable event above — lets a second agent (or
+        # a second tab) with this same conversation open see the reply
+        # appear live, the same way conversation_ingest_consumer.py
+        # broadcasts an inbound customer message. See
+        # docs/architecture/notifications.md's "Live conversation
+        # updates" section.
+        await self._realtime.publish(
+            company_realtime_channel_name(company_id),
+            {
+                "type": "message_received",
+                "conversation_id": str(conversation.id),
+                "message_id": str(message.id),
+                "direction": "outbound",
+                "body": body,
+            },
         )
         return message
 

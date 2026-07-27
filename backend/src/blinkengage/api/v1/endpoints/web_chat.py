@@ -27,6 +27,7 @@ from blinkengage.api.schemas.web_chat import (
 from blinkengage.application.services.inbound_message_events import (
     publish_inbound_message_events,
 )
+from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.core.rate_limit import rate_limit_dependency
 from blinkengage.domain.exceptions import DomainError
@@ -37,6 +38,9 @@ from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublis
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
+)
+from blinkengage.infrastructure.repositories.conversation_repository import (
+    ConversationRepository,
 )
 
 router = APIRouter(prefix="/web-chat", tags=["web-chat"])
@@ -101,7 +105,33 @@ async def webchat_gateway(
     try:
         while True:
             raw = await websocket.receive_text()
-            frame = WidgetMessageIn.model_validate_json(raw)
+            try:
+                frame = WidgetMessageIn.model_validate_json(raw)
+            except ValueError:
+                continue  # malformed/unrecognized frame — ignore, don't drop the connection
+
+            if frame.type == "typing":
+                # No durable event, no message row — this mirrors the
+                # agent-typing path's own ephemeral-only treatment (see
+                # ConversationService.send_typing_indicator). A
+                # conversation may not exist yet (a visitor typing before
+                # ever sending a first message) — nothing to broadcast
+                # against in that case, so it's silently skipped rather
+                # than inventing a conversation for it.
+                conversation = await ConversationRepository(session).get_by_thread(
+                    channel_config_id=channel_config_id, external_thread_id=token
+                )
+                if conversation is not None:
+                    await realtime.publish(
+                        company_realtime_channel_name(config.company_id),
+                        {
+                            "type": "customer_typing",
+                            "conversation_id": str(conversation.id),
+                            "is_typing": bool(frame.is_typing),
+                        },
+                    )
+                continue
+
             payload = orjson.dumps(
                 {
                     "session_token": token,

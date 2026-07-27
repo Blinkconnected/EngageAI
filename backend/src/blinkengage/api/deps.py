@@ -412,6 +412,7 @@ def get_conversation_service(
     attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store)],
     provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
 ) -> ConversationService:
     return ConversationService(
         conversations=ConversationRepository(session),
@@ -429,6 +430,7 @@ def get_conversation_service(
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        realtime=realtime,
     )
 
 
@@ -438,6 +440,7 @@ def get_conversation_service_ws(
     attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store_ws)],
     provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory_ws)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher_ws)],
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
 ) -> ConversationService:
     return ConversationService(
         conversations=ConversationRepository(session),
@@ -455,6 +458,7 @@ def get_conversation_service_ws(
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        realtime=realtime,
     )
 
 

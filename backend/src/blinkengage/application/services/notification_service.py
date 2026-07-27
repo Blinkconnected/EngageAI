@@ -22,6 +22,7 @@ immediately, not just on that tab's next 30s poll.
 
 from uuid import UUID
 
+from blinkengage.application.services.realtime_channels import notification_channel_name
 from blinkengage.domain.company_settings import is_notification_type_enabled
 from blinkengage.domain.events import RealtimeSignalPublisher
 from blinkengage.domain.exceptions import EntityNotFoundError
@@ -30,10 +31,6 @@ from blinkengage.infrastructure.repositories.company_repository import CompanyRe
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
-
-
-def notification_channel_name(user_id: UUID) -> str:
-    return f"user:{user_id}:notifications"
 
 
 class NotificationService:

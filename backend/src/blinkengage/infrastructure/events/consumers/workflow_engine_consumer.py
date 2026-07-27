@@ -136,6 +136,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        realtime=_get_realtime_publisher(settings),
     )
     notifications = NotificationService(
         notifications=NotificationRepository(session),

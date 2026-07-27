@@ -31,14 +31,20 @@ class RealtimePublisher:
         await self._redis.publish(channel, orjson.dumps(payload))
 
     @asynccontextmanager
-    async def subscribe(self, channel: str) -> AsyncIterator[PubSub]:
-        """Yields a subscribed ``PubSub`` handle; iterate it with
-        ``async for message in pubsub.listen()``. Always unsubscribes and
-        closes on exit, including on cancellation (a WebSocket disconnect)."""
+    async def subscribe(self, *channels: str) -> AsyncIterator[PubSub]:
+        """Yields a ``PubSub`` handle subscribed to every given channel;
+        iterate it with ``async for message in pubsub.listen()`` —
+        ``listen()`` fans in messages from all of them, with no way to
+        tell which channel a given message arrived on other than reading
+        the message's own payload (every publisher on a shared connection
+        already includes a ``type``/``channel_id`` discriminator in its
+        JSON payload for exactly this reason). Always unsubscribes and
+        closes on exit, including on cancellation (a WebSocket
+        disconnect)."""
         pubsub = self._redis.pubsub()
-        await pubsub.subscribe(channel)
+        await pubsub.subscribe(*channels)
         try:
             yield pubsub
         finally:
-            await pubsub.unsubscribe(channel)
+            await pubsub.unsubscribe(*channels)
             await pubsub.aclose()  # type: ignore[no-untyped-call]
