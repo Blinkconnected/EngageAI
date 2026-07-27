@@ -130,7 +130,7 @@ anchoring) also flip.
   /customers/:customerId            Customer profile — Timeline + ERPNext tabs — customers.read
   /erp-configs                      ERPNext connection setup — erp.manage
   /reports                          Reports hub (tabbed) — reports.read
-  /settings/company                 Company settings — company.manage (GET has no gate; PATCH does)
+  /settings/company                 Settings (renamed from "Company Settings") — company.manage (GET has no gate; PATCH does)
 *                                   404 (NotFoundPage)
 ```
 

@@ -6,11 +6,11 @@ import { LanguageSettingsPanel } from '../../company/panels/LanguageSettingsPane
 import { TimezoneSettingsPanel } from '../../company/panels/TimezoneSettingsPanel'
 import type { Company } from '../../company/types'
 
-/** Reuses the exact same panels Company Settings uses. Each one has its
+/** Reuses the exact same panels Settings uses. Each one has its
  * own "Save changes" button and persists independently of the others —
  * "Next" doesn't trigger or require a save itself, so any field left
  * un-saved here simply keeps its prior value (or schema default) and can
- * be finished later from Company Settings. See
+ * be finished later from Settings. See
  * docs/architecture/company-onboarding.md. */
 export function CompanyInfoStep({ company }: { company: Company }) {
   return (

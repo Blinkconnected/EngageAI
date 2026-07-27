@@ -90,7 +90,7 @@ export const NAV_ITEMS: NavItem[] = [
     requiresErpEnabled: true,
   },
   {
-    label: 'Company settings',
+    label: 'Settings',
     path: '/settings/company/general',
     icon: BusinessOutlinedIcon,
     permission: 'company.manage',

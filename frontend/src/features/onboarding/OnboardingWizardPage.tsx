@@ -46,7 +46,7 @@ function OnboardingWizard({ company }: { company: Company }) {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           A few quick steps to get your workspace ready. You can change any of this later in
-          Company Settings.
+          Settings.
         </Typography>
       </Stack>
 

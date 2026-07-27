@@ -125,7 +125,7 @@ Re-run `scripts/seed_demo_data.py` after a full reset to get it back.
    `GET /reports/live-dashboard` every 30 seconds.
 
 ### Company Management
-5. Sidebar → **Company settings** (`/settings/company`). Change the name,
+5. Sidebar → **Settings** (`/settings/company`). Change the name,
    save, watch it update in the top bar immediately.
 
 ### Customer Management
@@ -222,7 +222,7 @@ Re-run `scripts/seed_demo_data.py` after a full reset to get it back.
 ### A few things worth trying deliberately
 - **RBAC in action**: sign out, sign back in as the Agent
   (`agent@blinkdemo.io` / `AgentPass123!`), and try to open **Channels**,
-  **ERPNext**, or **Company settings** — the Agent role lacks those
+  **ERPNext**, or **Settings** — the Agent role lacks those
   permissions, so you'll land on a real 403 page, and those sidebar items
   won't even appear for that user.
 - **Dark mode / RTL**: top bar has a theme toggle (light/dark) and a
@@ -271,7 +271,7 @@ this session, not mocked):
 - Authentication — login, self-serve company registration, JWT refresh,
   logout
 - Dashboard (live data)
-- Company settings
+- Settings
 - Agents — full create/edit/delete
 - Channels — full create/edit/delete, guided connect wizards for
   WhatsApp/Web Chat/Telegram/Email (generic JSON credentials for the

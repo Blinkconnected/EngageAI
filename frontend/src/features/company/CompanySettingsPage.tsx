@@ -42,9 +42,9 @@ export function CompanySettingsPage() {
 
   return (
     <>
-      <PageHeader title="Company settings" description="Manage your company's profile." />
+      <PageHeader title="Settings" description="Manage your company's profile." />
 
-      {companyQuery.isPending && <LoadingState label="Loading company settings…" />}
+      {companyQuery.isPending && <LoadingState label="Loading settings…" />}
       {companyQuery.isError && (
         <ErrorState error={companyQuery.error} onRetry={() => companyQuery.refetch()} />
       )}

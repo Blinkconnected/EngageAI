@@ -118,7 +118,7 @@ function ConnectErpForm() {
 }
 
 /** The connect-form-or-connected-status body shared by the standalone
- * `/erp-configs` page and Company Settings' conditional ERP tab (only
+ * `/erp-configs` page and Settings' conditional ERP tab (only
  * shown once the company enables ERP — see
  * `docs/architecture/company-onboarding.md`). Extracted so neither one
  * duplicates the CRUD/test-connection logic. */
