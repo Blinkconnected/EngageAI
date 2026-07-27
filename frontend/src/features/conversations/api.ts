@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page, PageParams } from '../../shared/api/pagination'
 import type {
@@ -22,6 +22,15 @@ export const MESSAGES_KEY = (conversationId: string) => [
 ]
 const NOTES_KEY = (conversationId: string) => ['conversations', conversationId, 'notes']
 const TRANSFERS_KEY = (conversationId: string) => ['conversations', conversationId, 'transfers']
+
+// A short, stable prefix (not the full per-conversation mutationKey below)
+// so `queryClient.setMutationDefaults` — which matches by key *prefix* —
+// applies to every conversation. Registered once in AppProviders.tsx so a
+// reply queued while offline still has a real mutationFn to run once
+// restored from storage after a reload, when the ReplyBox instance (and
+// its closures) that originally called `.mutate()` no longer exists. See
+// docs/architecture/frontend.md's "Offline support" section.
+export const SEND_MESSAGE_MUTATION_KEY = ['conversations', 'send-message']
 
 export interface ConversationListParams {
   status_filter?: ConversationStatus
@@ -58,7 +67,16 @@ async function fetchMessages(conversationId: string, params: PageParams): Promis
   return data
 }
 
-async function sendMessage(conversationId: string, payload: SendMessageRequest): Promise<Message> {
+export interface SendMessageVariables {
+  conversationId: string
+  payload: SendMessageRequest
+}
+
+// Takes one combined, fully-serializable `variables` object rather than
+// `(conversationId, payload)` — a restored-from-storage mutation (see
+// registerOfflineMutationDefaults) has no closure to recover a
+// conversationId from, only whatever was persisted as its variables.
+async function sendMessage({ conversationId, payload }: SendMessageVariables): Promise<Message> {
   const { data } = await apiClient.post<Message>(
     `/conversations/${conversationId}/messages`,
     payload,
@@ -215,9 +233,29 @@ export function useMessagesQuery(conversationId: string | undefined, params: Pag
 export function useSendMessageMutation(conversationId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload: SendMessageRequest) => sendMessage(conversationId, payload),
+    // Suffixed with conversationId so React Query's own devtools/cache
+    // still distinguish mutations per conversation — setMutationDefaults
+    // below matches on this key's *prefix*, so it applies regardless.
+    mutationKey: [...SEND_MESSAGE_MUTATION_KEY, conversationId],
+    mutationFn: sendMessage,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY(conversationId) })
+      void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+    },
+  })
+}
+
+/** Called once at app startup (see AppProviders.tsx) — not something a
+ * component hook does on every render. Gives the mutation cache a real,
+ * non-closure `mutationFn` to fall back on for a message-send mutation
+ * restored from persisted storage after a reload (a live ReplyBox's own
+ * `mutationFn`/`onSuccess` above always take precedence for anything
+ * that happens in the same session — see useSendMessageMutation). */
+export function registerOfflineMutationDefaults(queryClient: QueryClient) {
+  queryClient.setMutationDefaults(SEND_MESSAGE_MUTATION_KEY, {
+    mutationFn: sendMessage,
+    onSuccess: (_message, variables) => {
+      void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY(variables.conversationId) })
       void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
     },
   })

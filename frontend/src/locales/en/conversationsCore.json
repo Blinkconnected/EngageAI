@@ -85,6 +85,7 @@
     "suggestReplyAriaLabel": "Suggest a reply with AI",
     "replyPlaceholder": "Write a reply…",
     "sendTooltip": "Send",
-    "sendAriaLabel": "Send reply"
+    "sendAriaLabel": "Send reply",
+    "messageQueuedOfflineLabel": "You're offline — this message is queued and will send automatically once you're back online."
   }
 }

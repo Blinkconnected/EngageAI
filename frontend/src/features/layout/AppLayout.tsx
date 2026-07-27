@@ -41,6 +41,7 @@ import { NotificationBell } from '../notifications/NotificationBell'
 import { NotificationToastProvider } from '../notifications/NotificationToastProvider'
 import { RealtimeProvider } from '../realtime/RealtimeProvider'
 import { Footer } from '../../shared/components/Footer'
+import { OfflineBanner } from '../../shared/components/OfflineBanner'
 import { SideNav } from './SideNav'
 
 const DRAWER_WIDTH = 260
@@ -112,6 +113,7 @@ export function AppLayout() {
           </Box>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+            <OfflineBanner />
             <AppBar
               position="static"
               color="default"

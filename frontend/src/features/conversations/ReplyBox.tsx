@@ -70,7 +70,10 @@ export function ReplyBox({
     if (!body.trim() && attachments.length === 0) return
     setSendFailure(null)
     sendMutation.mutate(
-      { body: body.trim() || null, attachment_ids: attachments.map((a) => a.id) },
+      {
+        conversationId,
+        payload: { body: body.trim() || null, attachment_ids: attachments.map((a) => a.id) },
+      },
       {
         onSuccess: (message) => {
           setBody('')
@@ -95,6 +98,11 @@ export function ReplyBox({
 
   return (
     <Box sx={{ borderTop: 1, borderColor: 'divider', p: 2 }}>
+      {sendMutation.isPaused && (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          {t('ReplyBox.messageQueuedOfflineLabel')}
+        </Alert>
+      )}
       {sendMutation.isError && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {extractErrorMessage(sendMutation.error)}

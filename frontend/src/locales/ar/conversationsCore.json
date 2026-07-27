@@ -85,6 +85,7 @@
     "suggestReplyAriaLabel": "اقتراح رد باستخدام الذكاء الاصطناعي",
     "replyPlaceholder": "اكتب ردًا…",
     "sendTooltip": "إرسال",
-    "sendAriaLabel": "إرسال الرد"
+    "sendAriaLabel": "إرسال الرد",
+    "messageQueuedOfflineLabel": "أنت غير متصل بالإنترنت — هذه الرسالة في قائمة الانتظار وسيتم إرسالها تلقائيًا بمجرد عودة الاتصال."
   }
 }

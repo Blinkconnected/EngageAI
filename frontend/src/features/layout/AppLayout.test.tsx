@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { onlineManager } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
@@ -42,11 +43,30 @@ describe('AppLayout', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
     queryClient.clear()
+    onlineManager.setOnline(true)
   })
 
   it('shows the company name in the header', async () => {
     renderLayout()
     expect(await screen.findByText('Acme Corp')).toBeInTheDocument()
+  })
+
+  it('shows an offline banner when connectivity is lost, then a brief reconnected message', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderLayout()
+    await screen.findByText('Acme Corp')
+    expect(screen.queryByText(/you're offline/i)).not.toBeInTheDocument()
+
+    onlineManager.setOnline(false)
+    expect(await screen.findByText(/you're offline/i)).toBeInTheDocument()
+
+    onlineManager.setOnline(true)
+    expect(await screen.findByText(/back online/i)).toBeInTheDocument()
+    expect(screen.queryByText(/you're offline/i)).not.toBeInTheDocument()
+
+    vi.advanceTimersByTime(5000)
+    await waitFor(() => expect(screen.queryByText(/back online/i)).not.toBeInTheDocument())
+    vi.useRealTimers()
   })
 
   it('shows no logo image by default', async () => {

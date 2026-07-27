@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
+import { onlineManager } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
@@ -40,6 +41,7 @@ describe('ConversationViewPage', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
     queryClient.clear()
+    onlineManager.setOnline(true)
   })
 
   it('shows the customer name and the seeded message', async () => {
@@ -64,6 +66,25 @@ describe('ConversationViewPage', () => {
     await user.click(screen.getByRole('button', { name: /send reply/i }))
 
     expect(await screen.findByText('Sure, happy to help!')).toBeInTheDocument()
+  })
+
+  it('queues a reply while offline and sends it once back online', async () => {
+    const user = userEvent.setup()
+    renderConversationView()
+    await screen.findByText('Hi, I need help with my order.')
+
+    onlineManager.setOnline(false)
+    await user.type(screen.getByPlaceholderText(/write a reply/i), 'Sent once reconnected')
+    await user.click(screen.getByRole('button', { name: /send reply/i }))
+
+    expect(await screen.findByText(/you're offline.*queued/i)).toBeInTheDocument()
+
+    onlineManager.setOnline(true)
+
+    await waitFor(() =>
+      expect(screen.queryByText(/you're offline.*queued/i)).not.toBeInTheDocument(),
+    )
+    expect(screen.getByPlaceholderText(/write a reply/i)).toHaveValue('')
   })
 
   it('surfaces a diagnosable error when the channel provider rejects a send', async () => {

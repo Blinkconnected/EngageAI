@@ -214,6 +214,68 @@ the only trigger for a refetch (matching the backend's own documented
 design in `docs/architecture/notifications.md`). `ReplyBox` sends a
 throttled (3s) typing frame on keystroke via the same hook.
 
+## Offline support
+
+Added later (Enterprise Readiness & UX milestone, Priority 2 item 13):
+"temporary offline operation with automatic synchronization when
+connectivity returns," scoped to what a support agent actually needs
+mid-conversation — sending a reply — rather than a full offline-first
+rewrite of every read/write path in the app.
+
+- **Detection**: `shared/hooks/useOnlineStatus.ts` reads
+  `@tanstack/react-query`'s own `onlineManager` (subscribed to the
+  browser's `online`/`offline` events by default) rather than a second,
+  independent `navigator.onLine` listener — the same signal that already
+  drives React Query's built-in pause/resume behavior, so the UI can
+  never show "online" while a paused mutation is still waiting, or vice
+  versa. `shared/components/OfflineBanner.tsx` (mounted once in
+  `AppLayout`, above the `AppBar`) shows a persistent bar while offline
+  and a brief 5s confirmation once back online.
+- **Queued sends, same-session**: React Query's *default* `networkMode:
+  'online'` for mutations already pauses `useMutation().mutate(...)`
+  calls made while offline and automatically retries them the moment
+  `onlineManager` reports online again — no custom retry/queue logic
+  needed for this part. The only real gap this milestone closes is
+  *visibility*: `ReplyBox.tsx` checks `sendMutation.isPaused` to show
+  "queued, will send once you're back online" instead of leaving the
+  agent guessing whether their message went through, is stuck, or was
+  lost.
+- **Queued sends, surviving a reload**: a paused mutation is only an
+  in-memory JS object — closing the tab or refreshing while offline
+  would otherwise lose it. `PersistQueryClientProvider` (wired in
+  `AppProviders.tsx`, backed by `app/persister.ts`'s `localStorage`
+  persister) persists **only paused mutations**, never query/read-cache
+  data (`dehydrateOptions.shouldDehydrateQuery: () => false` — cached
+  conversations/customers/messages are never written to `localStorage`,
+  both to avoid showing stale data on restore and because that data
+  doesn't belong sitting in browser storage). On restore,
+  `queryClient.resumePausedMutations()` is called once (`onSuccess` on
+  the provider) — restoring only rebuilds the paused mutation in the
+  cache, it doesn't retry it itself.
+- **The mutationFn problem**: a persisted mutation's *variables* survive
+  a reload (they're plain serializable data), but the JS *function* that
+  originally ran it doesn't — functions aren't serializable, and the
+  component/closure that called `.mutate()` is long gone after a reload.
+  `queryClient.setMutationDefaults(key, {mutationFn, onSuccess})`
+  registers a real, non-closure function the cache can fall back on when
+  no live call site provides one. This only matters for whichever
+  mutations are worth surviving a hard reload while queued — currently
+  just sending a message (`features/conversations/api.ts`'s
+  `SEND_MESSAGE_MUTATION_KEY` / `registerOfflineMutationDefaults`,
+  called once at startup in `AppProviders.tsx`). `sendMessage` itself
+  takes one combined `{conversationId, payload}` variables object rather
+  than two separate arguments specifically so the registered, closure-
+  free version has everything it needs from `variables` alone.
+- **Deliberately out of scope**: every other mutation (updating a
+  conversation's status, transferring it, editing a customer, etc.)
+  still gets the free same-session pause/auto-resume behavior above, but
+  does **not** survive a hard reload while paused — retrofitting every
+  mutation in the app with a `mutationKey` + registered defaults would be
+  disproportionate to what "temporary offline operation" actually needs;
+  sending a reply is the one action an agent is most likely to be
+  mid-way through when connectivity drops. Revisit if another specific
+  mutation turns out to need the same reload-survival guarantee.
+
 ## Reports
 
 `features/reports/ReportsPage.tsx` is a single tabbed hub (`/reports/:tab?`,

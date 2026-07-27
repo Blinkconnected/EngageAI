@@ -35,6 +35,11 @@ for more detail on how this page is put together.
   Permanent deletion requires two separate confirmation steps, including
   typing the agent's name, since it can't be undone the way a transfer
   can.
+- Basic offline support: if your connection drops, a banner lets you
+  know, and you can keep typing — a reply you send while offline is
+  queued and delivered automatically the moment you're back online (even
+  if you close and reopen the tab in the meantime), instead of failing
+  or getting lost.
 - Manual pickup and release for queued conversations, so agents can claim
   or hand back work directly from the Inbox, with a new "Busy" status
   agents can set for themselves.
