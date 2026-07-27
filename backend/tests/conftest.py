@@ -1,17 +1,50 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Any
 
 import pytest
 from dependency_injector import providers
 from fakeredis import FakeAsyncRedis
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import blinkengage.infrastructure.database.models  # noqa: F401 - populates Base.metadata
 from blinkengage.api.deps import get_attachment_store, get_attachment_store_ws
+from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.sla_monitor_service import SlaMonitorService
+from blinkengage.domain.events import DomainEventPublisher
+from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.database.base import Base
 from blinkengage.infrastructure.events.consumers.audit_log_consumer import handle_audit_event
+from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
+from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
+from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
+from blinkengage.infrastructure.repositories.channel_config_repository import (
+    ChannelConfigRepository,
+)
+from blinkengage.infrastructure.repositories.channel_connection_log_repository import (
+    ChannelConnectionLogRepository,
+)
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
+from blinkengage.infrastructure.repositories.conversation_repository import (
+    ConversationRepository,
+)
+from blinkengage.infrastructure.repositories.conversation_transfer_repository import (
+    ConversationTransferRepository,
+)
+from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
+from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
+from blinkengage.infrastructure.repositories.message_attachment_repository import (
+    MessageAttachmentRepository,
+)
+from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.notification_repository import (
+    NotificationRepository,
+)
+from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.main import create_app
 
 
@@ -64,6 +97,51 @@ async def client(app) -> AsyncGenerator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def make_sla_monitor(
+    app: Any, fake_redis: FakeAsyncRedis
+) -> Callable[[AsyncSession, DomainEventPublisher], SlaMonitorService]:
+    """Returns a factory building a fully-wired ``SlaMonitorService``
+    (real ``ConversationService``/``NotificationService``, so escalation
+    rules that reassign/notify actually work) against a given session and
+    events publisher — the same dependency shape
+    ``infrastructure/tasks/sla_sweep_task.py`` builds in production, using
+    this fixture's own ``fake_redis``/``FakeAttachmentStore`` in place of
+    real Redis/MinIO, same reasoning as the ``app`` fixture itself."""
+
+    def _make(session: AsyncSession, events: DomainEventPublisher) -> SlaMonitorService:
+        realtime = RealtimePublisher(fake_redis)
+        conversations = ConversationService(
+            conversations=ConversationRepository(session),
+            messages=MessageRepository(session),
+            attachments=MessageAttachmentRepository(session),
+            channel_configs=ChannelConfigRepository(session),
+            connection_logs=ChannelConnectionLogRepository(session),
+            customers=CustomerRepository(session),
+            attachment_store=FakeAttachmentStore(),
+            provider_factory=ChannelProviderFactory(
+                realtime=realtime, attachments=FakeAttachmentStore()
+            ),
+            events=events,
+            settings=app.state.container.settings(),
+            transfers=ConversationTransferRepository(session),
+            agents=AgentRepository(session),
+            departments=DepartmentRepository(session),
+            queues=QueueRepository(session),
+            agent_skills=AgentSkillRepository(session),
+        )
+        notifications = NotificationService(
+            notifications=NotificationRepository(session),
+            companies=CompanyRepository(session),
+            realtime=realtime,
+        )
+        return SlaMonitorService(
+            events=events, conversations=conversations, notifications=notifications
+        )
+
+    return _make
 
 
 @pytest.fixture

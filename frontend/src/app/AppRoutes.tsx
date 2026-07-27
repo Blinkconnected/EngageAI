@@ -11,6 +11,7 @@ import { DepartmentsPage } from '../features/departments/DepartmentsPage'
 import { ChannelsPage } from '../features/channels/ChannelsPage'
 import { QueuesPage } from '../features/queues/QueuesPage'
 import { RolesPage } from '../features/roles/RolesPage'
+import { SlaBuilderPage } from '../features/sla/SlaBuilderPage'
 import { InboxPage } from '../features/conversations/InboxPage'
 import { ConversationViewPage } from '../features/conversations/ConversationViewPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
@@ -129,6 +130,14 @@ export function AppRoutes() {
           element={
             <RequirePermission permission="roles.manage">
               <RolesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="sla"
+          element={
+            <RequirePermission permission="sla_policies.read">
+              <SlaBuilderPage />
             </RequirePermission>
           }
         />

@@ -3,6 +3,7 @@ import { MenuItem, TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useAllDepartmentsQuery } from '../departments/api'
+import { useSlaPoliciesQuery } from '../sla/api'
 import { useCreateQueueMutation } from './api'
 import { QUEUE_ASSIGNMENT_STRATEGIES, type QueueAssignmentStrategy } from './types'
 
@@ -22,8 +23,10 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
   const [assignmentStrategy, setAssignmentStrategy] = useState<QueueAssignmentStrategy>('manual')
   const [firstResponseTarget, setFirstResponseTarget] = useState('')
   const [resolutionTarget, setResolutionTarget] = useState('')
+  const [slaPolicyId, setSlaPolicyId] = useState('')
 
   const departmentsQuery = useAllDepartmentsQuery()
+  const slaPoliciesQuery = useSlaPoliciesQuery()
   const createMutation = useCreateQueueMutation()
 
   function reset() {
@@ -33,6 +36,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
     setAssignmentStrategy('manual')
     setFirstResponseTarget('')
     setResolutionTarget('')
+    setSlaPolicyId('')
     createMutation.reset()
   }
 
@@ -50,6 +54,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         assignment_strategy: assignmentStrategy,
         first_response_target_minutes: parseTargetMinutes(firstResponseTarget),
         resolution_target_minutes: parseTargetMinutes(resolutionTarget),
+        sla_policy_id: slaPolicyId || null,
       },
       { onSuccess: handleClose },
     )
@@ -115,12 +120,29 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         ))}
       </TextField>
       <TextField
+        select
+        label="SLA policy"
+        value={slaPolicyId}
+        disabled={slaPoliciesQuery.isPending}
+        onChange={(event) => setSlaPolicyId(event.target.value)}
+        fullWidth
+        slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+        helperText="Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See Roles & SLA → SLA Builder."
+      >
+        <MenuItem value="">None (use targets below)</MenuItem>
+        {slaPoliciesQuery.data?.map((policy) => (
+          <MenuItem key={policy.id} value={policy.id}>
+            {policy.name}
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField
         label="First response target (minutes)"
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no first-response SLA on this queue."
+        helperText="Leave blank for no first-response SLA on this queue. Ignored while an SLA policy above is set."
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
@@ -129,7 +151,7 @@ export function QueueCreateDialog({ open, onClose }: { open: boolean; onClose: (
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no resolution SLA on this queue."
+        helperText="Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set."
         slotProps={{ htmlInput: { min: 1 } }}
       />
     </FormDialog>

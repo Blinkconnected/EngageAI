@@ -9,6 +9,9 @@ export interface Queue {
   assignment_strategy: QueueAssignmentStrategy
   first_response_target_minutes: number | null
   resolution_target_minutes: number | null
+  // An assigned SlaPolicy (see features/sla/types.ts) takes precedence
+  // over the two flat target fields above when set.
+  sla_policy_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -21,6 +24,7 @@ export interface QueueCreateRequest {
   assignment_strategy?: QueueAssignmentStrategy
   first_response_target_minutes?: number | null
   resolution_target_minutes?: number | null
+  sla_policy_id?: string | null
 }
 
 export interface QueueUpdateRequest {
@@ -31,6 +35,7 @@ export interface QueueUpdateRequest {
   first_response_target_minutes?: number | null
   resolution_target_minutes?: number | null
   is_active?: boolean
+  sla_policy_id?: string | null
 }
 
 /** The only two condition keys `RoutingEngine` recognizes (see

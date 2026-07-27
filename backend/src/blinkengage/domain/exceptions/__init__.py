@@ -272,6 +272,24 @@ class CompanyOwnerRoleImmutableError(DomainError):
         super().__init__("The company owner's role cannot be changed away from Owner")
 
 
+class SlaPolicyHasAssignedQueuesError(DomainError):
+    """Raised when ``SlaPolicyService.delete()`` targets a policy still
+    assigned to one or more queues. ``Queue.sla_policy_id`` is
+    ``ondelete="SET NULL"``, so deleting an assigned policy wouldn't
+    break at the database level — but it would silently revert every one
+    of its queues back to their own legacy flat SLA fields (usually no
+    SLA at all) with no warning. Same reasoning as
+    ``RoleHasMembersError``."""
+
+    def __init__(self, policy_name: str, queue_count: int) -> None:
+        self.policy_name = policy_name
+        self.queue_count = queue_count
+        super().__init__(
+            f"SLA policy {policy_name!r} is still assigned to {queue_count} queue(s) "
+            "and cannot be deleted"
+        )
+
+
 class WeakPasswordError(DomainError):
     """Raised when a password satisfies the platform-wide floor
     (``validate_password_strength`` — at least 10 characters with a

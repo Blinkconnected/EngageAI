@@ -113,6 +113,16 @@ PERMISSIONS: tuple[Permission, ...] = (
     # conversations.*: no new access-control question behind viewing
     # data about a customer the agent can already see. ---
     Permission("erp.manage", "Configure the ERPNext connection and trigger manual sync/pull"),
+    # --- SLA Builder (see docs/architecture/sla.md) — a distinct
+    # permission from queues.manage even though a policy is assigned to
+    # queues, since SLA policies/holidays/escalation rules are a richer,
+    # separate entity a company may want a narrower set of people editing
+    # than day-to-day queue management. ---
+    Permission("sla_policies.read", "View SLA policies and holidays"),
+    Permission(
+        "sla_policies.manage",
+        "Create/edit/delete SLA policies, holidays, and their queue assignment",
+    ),
 )
 
 _PERMISSION_CODES: frozenset[str] = frozenset(p.code for p in PERMISSIONS)
@@ -151,6 +161,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "quick_replies.manage",
             "ai.use",
             "erp.manage",
+            "sla_policies.read",
+            "sla_policies.manage",
         }
     ),
     SystemRole.AGENT: frozenset(
@@ -170,6 +182,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "knowledge_base.read",
             "quick_replies.read",
             "ai.use",
+            "sla_policies.read",
         }
     ),
 }

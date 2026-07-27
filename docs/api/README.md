@@ -134,6 +134,7 @@ rationale:
 | `/conversations` | `conversations.read`/`.manage`/`.delete` | `docs/architecture/conversations.md` |
 | `/queues`, `/routing-rules` | `queues.read`/`.manage` | `docs/architecture/queues-routing.md` |
 | `/roles`, `/permissions` | `roles.manage` (covers both read and write) | `docs/architecture/auth-rbac.md` |
+| `/sla-policies`, `/holidays` | `sla_policies.read`/`.manage` | `docs/architecture/sla.md` |
 | `/workflows` | `workflows.read`/`.manage` | `docs/architecture/workflow-engine.md` |
 | `/knowledge`, `/quick-replies` | `knowledge_base.*`/`quick_replies.*` | `docs/architecture/knowledge-quick-replies-notes.md` |
 | `/notifications` | none — personal inbox, scoped by caller identity | `docs/architecture/notifications.md` |

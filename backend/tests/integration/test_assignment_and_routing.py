@@ -5,7 +5,6 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
-from blinkengage.application.services.sla_monitor_service import SlaMonitorService
 from blinkengage.domain.events import DomainEvent
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -471,7 +470,7 @@ async def test_no_eligible_agent_leaves_selection_none(
 
 
 async def test_sla_breach_is_published_exactly_once(
-    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app, make_sla_monitor
 ) -> None:
     company_id = UUID(registered_owner["user"]["company"]["id"])
     queue_response = await client.post(
@@ -504,7 +503,7 @@ async def test_sla_breach_is_published_exactly_once(
         await db_session.flush()
 
         publisher = _FakeEventPublisher()
-        monitor = SlaMonitorService(events=publisher)
+        monitor = make_sla_monitor(db_session, publisher)
         first_run = await monitor.check_breaches(db_session)
         second_run = await monitor.check_breaches(db_session)
         await db_session.commit()

@@ -48,6 +48,7 @@ async def create_queue(
         assignment_strategy=payload.assignment_strategy,
         first_response_target_minutes=payload.first_response_target_minutes,
         resolution_target_minutes=payload.resolution_target_minutes,
+        sla_policy_id=payload.sla_policy_id,
         actor_user_id=auth.user_id,
     )
     return QueueResponse.model_validate(queue)
@@ -80,6 +81,7 @@ async def update_queue(
         first_response_target_minutes=payload.first_response_target_minutes,
         resolution_target_minutes=payload.resolution_target_minutes,
         is_active=payload.is_active,
+        sla_policy_id=payload.sla_policy_id,
         actor_user_id=auth.user_id,
     )
     return QueueResponse.model_validate(queue)

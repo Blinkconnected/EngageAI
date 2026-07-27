@@ -10,6 +10,7 @@ import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
+import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
 
 export interface NavItem {
   label: string
@@ -61,6 +62,12 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/roles',
     icon: AdminPanelSettingsOutlinedIcon,
     permission: 'roles.manage',
+  },
+  {
+    label: 'SLA Builder',
+    path: '/sla',
+    icon: RuleOutlinedIcon,
+    permission: 'sla_policies.read',
   },
   {
     label: 'Reports',

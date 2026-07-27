@@ -3,6 +3,7 @@ import { FormControlLabel, MenuItem, Switch, TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useAllDepartmentsQuery } from '../departments/api'
+import { useSlaPoliciesQuery } from '../sla/api'
 import { useUpdateQueueMutation } from './api'
 import { QUEUE_ASSIGNMENT_STRATEGIES, type Queue, type QueueAssignmentStrategy } from './types'
 
@@ -40,8 +41,10 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
     queue.resolution_target_minutes?.toString() ?? '',
   )
   const [isActive, setIsActive] = useState(queue.is_active)
+  const [slaPolicyId, setSlaPolicyId] = useState(queue.sla_policy_id ?? '')
 
   const departmentsQuery = useAllDepartmentsQuery()
+  const slaPoliciesQuery = useSlaPoliciesQuery()
   const updateMutation = useUpdateQueueMutation()
 
   function handleSubmit() {
@@ -56,6 +59,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
           first_response_target_minutes: parseTargetMinutes(firstResponseTarget),
           resolution_target_minutes: parseTargetMinutes(resolutionTarget),
           is_active: isActive,
+          sla_policy_id: slaPolicyId || null,
         },
       },
       { onSuccess: onClose },
@@ -121,12 +125,29 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         ))}
       </TextField>
       <TextField
+        select
+        label="SLA policy"
+        value={slaPolicyId}
+        disabled={slaPoliciesQuery.isPending}
+        onChange={(event) => setSlaPolicyId(event.target.value)}
+        fullWidth
+        slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+        helperText="Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See SLA Builder."
+      >
+        <MenuItem value="">None (use targets below)</MenuItem>
+        {slaPoliciesQuery.data?.map((policy) => (
+          <MenuItem key={policy.id} value={policy.id}>
+            {policy.name}
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField
         label="First response target (minutes)"
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no first-response SLA on this queue."
+        helperText="Leave blank for no first-response SLA on this queue. Ignored while an SLA policy above is set."
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <TextField
@@ -135,7 +156,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
         fullWidth
-        helperText="Leave blank for no resolution SLA on this queue."
+        helperText="Leave blank for no resolution SLA on this queue. Ignored while an SLA policy above is set."
         slotProps={{ htmlInput: { min: 1 } }}
       />
       <FormControlLabel

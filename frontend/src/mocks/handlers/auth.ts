@@ -16,6 +16,8 @@ export const MOCK_USER: UserProfile = {
   permissions: [
     'company.manage',
     'roles.manage',
+    'sla_policies.read',
+    'sla_policies.manage',
     'agents.read',
     'agents.manage',
     'departments.read',

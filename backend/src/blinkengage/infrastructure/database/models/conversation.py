@@ -116,6 +116,18 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     sla_resolution_breached_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+    # SLA Builder (see docs/architecture/sla.md): set once a conversation
+    # crosses its policy's warning_threshold_percent, *before* it actually
+    # breaches — same idempotency-guard role as the *_breached_at columns
+    # above (SlaMonitorService checks these are still None before
+    # publishing conversation.sla_warning, so a warning is only ever
+    # published once per conversation per breach type, same as a breach).
+    sla_first_response_warned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    sla_resolution_warned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
 
     # --- Queue Operations: pickup/release/metrics (see queues-routing.md
     # decisions 6-10). queue_id itself is never cleared once set (a

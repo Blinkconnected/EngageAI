@@ -38,6 +38,21 @@ describe('QueuesPage', () => {
     expect(await screen.findByText('Billing')).toBeInTheDocument()
   })
 
+  it('assigns an SLA policy to a queue through the edit dialog', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<QueuesPage />)
+    const row = (await screen.findByText('VIP')).closest('[role="row"]')
+    expect(row).not.toBeNull()
+
+    await user.click(within(row as HTMLElement).getByLabelText('Edit'))
+    const policyField = await screen.findByLabelText(/^sla policy/i)
+    await user.click(policyField)
+    await user.click(await screen.findByRole('option', { name: 'Standard' }))
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(screen.queryByText(/edit vip/i)).not.toBeInTheDocument())
+  })
+
   it('edits a queue name and active status', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<QueuesPage />)

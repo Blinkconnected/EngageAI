@@ -42,12 +42,22 @@ for more detail on how this page is put together.
   Admin and Agent's own default permissions can now be customized too. A
   new "Change role" action on the Agents page reassigns any agent to any
   role.
+- A new SLA Builder: define reusable SLA policies (response/resolution
+  targets, a warning threshold before breach, and automatic escalation —
+  reassign or notify someone) and assign them to any queue. Policies can
+  be business-hours-aware, honoring your company's configured Business
+  Hours and a new Holidays list. A preview tool shows exactly when a
+  policy's warnings and deadlines would land before you assign it to a
+  real queue.
 
 ### Changed
 
 - The permission-sync mechanism that keeps every company's roles up to
   date with the platform's permission catalog no longer overwrites a
   role's permissions once an Owner has customized them by hand.
+- SLA breach detection now honors a queue's assigned SLA policy
+  (business hours, holidays, warning threshold) instead of always using
+  plain wall-clock time — queues with no policy assigned are unaffected.
 
 ### Fixed
 

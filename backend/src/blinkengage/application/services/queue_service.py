@@ -9,6 +9,7 @@ from blinkengage.domain.exceptions import EntityAlreadyExistsError, EntityNotFou
 from blinkengage.infrastructure.database.models.queue import Queue, QueueAssignmentStrategy
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
+from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
 
 
 class QueueService:
@@ -17,11 +18,20 @@ class QueueService:
         *,
         queues: QueueRepository,
         agent_skills: AgentSkillRepository,
+        sla_policies: SlaPolicyRepository,
         events: DomainEventPublisher,
     ) -> None:
         self._queues = queues
         self._agent_skills = agent_skills
+        self._sla_policies = sla_policies
         self._events = events
+
+    async def _validate_sla_policy(self, *, company_id: UUID, sla_policy_id: UUID) -> None:
+        policy = await self._sla_policies.get_by_id(
+            company_id=company_id, policy_id=sla_policy_id
+        )
+        if policy is None:
+            raise EntityNotFoundError("SlaPolicy", sla_policy_id)
 
     async def create(
         self,
@@ -33,10 +43,13 @@ class QueueService:
         assignment_strategy: QueueAssignmentStrategy,
         first_response_target_minutes: int | None,
         resolution_target_minutes: int | None,
+        sla_policy_id: UUID | None = None,
         actor_user_id: UUID | None = None,
     ) -> Queue:
         if await self._queues.get_by_name(company_id=company_id, name=name) is not None:
             raise EntityAlreadyExistsError("Queue", "name", name)
+        if sla_policy_id is not None:
+            await self._validate_sla_policy(company_id=company_id, sla_policy_id=sla_policy_id)
         queue = await self._queues.add(
             Queue(
                 company_id=company_id,
@@ -46,6 +59,7 @@ class QueueService:
                 assignment_strategy=assignment_strategy,
                 first_response_target_minutes=first_response_target_minutes,
                 resolution_target_minutes=resolution_target_minutes,
+                sla_policy_id=sla_policy_id,
             )
         )
         await self._events.publish(
@@ -85,6 +99,7 @@ class QueueService:
         first_response_target_minutes: int | None,
         resolution_target_minutes: int | None,
         is_active: bool | None,
+        sla_policy_id: UUID | None = None,
         actor_user_id: UUID | None = None,
     ) -> Queue:
         queue = await self.get(company_id=company_id, queue_id=queue_id)
@@ -104,6 +119,9 @@ class QueueService:
             queue.resolution_target_minutes = resolution_target_minutes
         if is_active is not None:
             queue.is_active = is_active
+        if sla_policy_id is not None:
+            await self._validate_sla_policy(company_id=company_id, sla_policy_id=sla_policy_id)
+            queue.sla_policy_id = sla_policy_id
 
         await self._events.publish(
             DomainEvent(

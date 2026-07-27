@@ -13,6 +13,11 @@ class QueueCreateRequest(BaseModel):
     assignment_strategy: QueueAssignmentStrategy = QueueAssignmentStrategy.MANUAL
     first_response_target_minutes: int | None = Field(default=None, gt=0)
     resolution_target_minutes: int | None = Field(default=None, gt=0)
+    # An assigned SlaPolicy (see api.schemas.sla) takes precedence over
+    # the two flat target fields above — see Queue.sla_policy_id's
+    # docstring. Both may still be set together; the flat fields simply
+    # go unused while a policy is assigned.
+    sla_policy_id: UUID | None = None
 
 
 class QueueUpdateRequest(BaseModel):
@@ -23,6 +28,11 @@ class QueueUpdateRequest(BaseModel):
     first_response_target_minutes: int | None = Field(default=None, gt=0)
     resolution_target_minutes: int | None = Field(default=None, gt=0)
     is_active: bool | None = None
+    # Like every other optional field on this request, `None` means
+    # "leave unchanged" — there is currently no way to *clear* an
+    # assigned policy back to unset via this endpoint, matching
+    # department_id's identical existing limitation.
+    sla_policy_id: UUID | None = None
 
 
 class QueueResponse(BaseModel):
@@ -33,6 +43,7 @@ class QueueResponse(BaseModel):
     assignment_strategy: QueueAssignmentStrategy
     first_response_target_minutes: int | None
     resolution_target_minutes: int | None
+    sla_policy_id: UUID | None
     is_active: bool
     created_at: datetime
     updated_at: datetime

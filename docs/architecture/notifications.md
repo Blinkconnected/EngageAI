@@ -138,14 +138,22 @@ the SLA rule; the Inbox's own filtering is how unassigned work is
 surfaced, not a notification), with the message body truncated to 120
 characters in the notification's `body` text.
 
-Two conversation-related event types are explicitly *not* wired up,
+One conversation-related event type is explicitly *not* wired up here,
 by design, not oversight: a `@mention` in an internal note/message (no
 mention-detection feature exists anywhere in this codebase to produce
-the triggering event), and an SLA *warning* before breach (only
-post-breach detection exists today, via `conversation.sla_breached`).
-Both are structurally one new `NotificationRule` + one new
-`domain.notification_types` catalog entry away whenever those features
-land.
+the triggering event) — structurally one new `NotificationRule` + one
+new `domain.notification_types` catalog entry away whenever that feature
+lands.
+
+~~An SLA *warning* before breach — only post-breach detection exists
+today.~~ **Added 2026-07-27 by the SLA Builder** — `conversation
+.sla_warning` now exists (see `docs/architecture/sla.md`), but it isn't
+wired into this generic `NotificationRule` catalog: it's consumed
+directly by an `SlaPolicy`'s own `escalation_rules` (an explicit list of
+user ids to notify per policy), not broadcast to every agent/supervisor
+generically the way `ConversationAssignmentChangedRule` etc. are. A
+generic "notify me on any SLA warning" preference is still one new
+`NotificationRule` away if ever wanted.
 
 ## Duplicate prevention under at-least-once delivery
 

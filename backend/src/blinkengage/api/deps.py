@@ -39,6 +39,7 @@ from blinkengage.application.services.quick_reply_service import QuickReplyServi
 from blinkengage.application.services.reporting_service import ReportingService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
+from blinkengage.application.services.sla_policy_service import SlaPolicyService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
@@ -88,6 +89,7 @@ from blinkengage.infrastructure.repositories.erp_synced_record_repository import
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
+from blinkengage.infrastructure.repositories.holiday_repository import HolidayRepository
 from blinkengage.infrastructure.repositories.internal_note_repository import (
     InternalNoteRepository,
 )
@@ -112,6 +114,7 @@ from blinkengage.infrastructure.repositories.role_repository import RoleReposito
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
 )
+from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
@@ -462,6 +465,7 @@ def get_queue_service(
     return QueueService(
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        sla_policies=SlaPolicyRepository(session),
         events=events,
     )
 
@@ -486,6 +490,18 @@ def get_role_service(
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> RoleService:
     return RoleService(roles=RoleRepository(session), events=events)
+
+
+def get_sla_policy_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> SlaPolicyService:
+    return SlaPolicyService(
+        policies=SlaPolicyRepository(session),
+        holidays=HolidayRepository(session),
+        companies=CompanyRepository(session),
+        events=events,
+    )
 
 
 def get_workflow_service(

@@ -74,6 +74,7 @@ from blinkengage.infrastructure.database.models.reporting import (
     CsatResponse,
     QueueDailyStats,
 )
+from blinkengage.infrastructure.database.models.sla import Holiday, SlaPolicy
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.database.models.workflow import (
@@ -109,6 +110,7 @@ __all__ = [
     "ErpCustomerLink",
     "ErpSyncedRecord",
     "EventOutbox",
+    "Holiday",
     "InternalNote",
     "KnowledgeArticle",
     "KnowledgeArticleTag",
@@ -130,6 +132,7 @@ __all__ = [
     "Role",
     "RolePermission",
     "RoutingRule",
+    "SlaPolicy",
     "Tag",
     "Team",
     "TeamMembership",

@@ -26,11 +26,17 @@ evaluated in priority order, first match wins, no nesting, no actions
 beyond "route to this queue." When M19 lands, it either subsumes this
 (routing becomes one more workflow trigger type) or the two coexist with
 routing staying first-touch-only — that decision belongs to M19, not
-this milestone. Likewise, SLA breach detection here only *publishes an
-event*; the actual escalation *action* (reassign, page a supervisor,
-notify) is Workflow Engine (M19) / Notifications (M21) territory —
-consuming `conversation.sla_breached` is exactly what those milestones
-are for, not something to fake here with a half-built notification path.
+this milestone.
+
+~~Likewise, SLA breach detection here only *publishes an event*; the
+actual escalation action is Workflow Engine (M19) / Notifications (M21)
+territory.~~ **Superseded 2026-07-27 by the SLA Builder** —
+`docs/architecture/sla.md` — which adds business-hours-aware deadlines,
+warning thresholds, and a policy-level escalation action (reassign/
+notify), executed directly rather than through the Workflow Engine (see
+that doc's "Escalation" section for why). The queue-level SLA fields
+documented below remain exactly as they were as the fallback for any
+queue with no `SlaPolicy` assigned.
 
 ## Data model
 
@@ -46,6 +52,9 @@ assignment_strategy         round_robin | least_load | manual
                              default: manual (see decision #6)
 first_response_target_minutes (nullable) — null = no SLA on this queue
 resolution_target_minutes (nullable)
+sla_policy_id (FK sla_policies, SET NULL, nullable) — see sla.md; when
+                                          set, takes over from the two
+                                          fields above entirely
 is_active
 soft-delete
 
@@ -349,7 +358,10 @@ gated on `queues.read`, mutating actions further gated on
   codebase already established for Departments (`DataTable` +
   `FormDialog` + `ConfirmDialog`), covering name, description,
   department (organizational label only, decision #2), assignment
-  strategy, both SLA targets, and the active flag.
+  strategy, both legacy SLA targets, an SLA policy picker (added by the
+  SLA Builder — `docs/architecture/sla.md` — the two flat fields' helper
+  text now notes they're ignored while a policy is assigned), and the
+  active flag.
 - **Routing Rules** — a plain, priority-sorted `Table` rather than a
   paginated `DataGrid`, deliberately: `GET /routing-rules` itself is
   unpaginated (decision: this is a short list meant to be seen as a

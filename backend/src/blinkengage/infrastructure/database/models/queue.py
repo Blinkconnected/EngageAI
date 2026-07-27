@@ -55,8 +55,17 @@ class Queue(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         nullable=False,
         default=QueueAssignmentStrategy.MANUAL,
     )
+    # Fallback/legacy SLA config, used only when sla_policy_id is unset:
+    # a flat pair of minute-targets with plain wall-clock math, no
+    # business-hours awareness, no warning threshold. Kept working
+    # unchanged for any queue that predates the SLA Builder (see
+    # docs/architecture/sla.md) rather than migrated/removed — a queue
+    # with an assigned SlaPolicy ignores these two fields entirely.
     first_response_target_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
     resolution_target_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
+    sla_policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("sla_policies.id", ondelete="SET NULL"), default=None
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 

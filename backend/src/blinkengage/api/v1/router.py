@@ -26,6 +26,7 @@ from blinkengage.api.v1.endpoints import (
     reports,
     roles,
     routing_rules,
+    sla,
     teams,
     version,
     web_chat,
@@ -49,6 +50,7 @@ api_router.include_router(conversations.router)
 api_router.include_router(queues.router)
 api_router.include_router(routing_rules.router)
 api_router.include_router(roles.router)
+api_router.include_router(sla.router)
 api_router.include_router(workflows.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(quick_replies.router)
