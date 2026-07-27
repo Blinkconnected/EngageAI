@@ -109,7 +109,7 @@ has its own documented trust model rather than being an oversight:
 | `POST /webhooks/{channel_config_id}` | Provider signature verification (`ChannelProvider.verify_signature`) |
 | `POST /webhooks/erpnext/{erp_config_id}/{doctype}` | Shared secret header (`X-Webhook-Secret`) |
 | `POST /web-chat/{channel_config_id}/sessions`, the web-chat WebSocket | Rate limited; a session token scopes what a caller can do |
-| `POST /csat/{conversation_id}/respond` | A signed, conversation-scoped token (`TokenType.CSAT`), not a session |
+| `GET /csat/{conversation_id}`, `POST /csat/{conversation_id}/contact-info`, `POST /csat/{conversation_id}/respond` | A signed, conversation-scoped token (`TokenType.CSAT`), not a session |
 
 See `docs/architecture/channels.md`, `docs/architecture/erp-integration.md`,
 `docs/architecture/web-chat.md`, `docs/architecture/reports-analytics.md`.

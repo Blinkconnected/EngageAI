@@ -12,17 +12,72 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 
 from blinkengage.api.deps import get_csat_service
-from blinkengage.api.schemas.csat import CsatSubmitRequest, CsatSubmitResponse
+from blinkengage.api.schemas.csat import (
+    CsatContactInfoRequest,
+    CsatContactInfoResponse,
+    CsatContextResponse,
+    CsatSubmitRequest,
+    CsatSubmitResponse,
+)
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.core.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/csat", tags=["csat"])
 
-# Public, unauthenticated endpoint — rate limited per client IP like every
+# Public, unauthenticated endpoints — rate limited per client IP like every
 # other pre-auth public endpoint (webchat session creation, login/register),
 # since a valid-looking request needs no credential beyond a guessable-in-
-# principle token.
+# principle token. Each route gets its own scope so a flood against one
+# doesn't eat into another's budget.
+_csat_context_rate_limit = rate_limit_dependency(scope="csat_context", limit=30, window_seconds=60)
+_csat_contact_info_rate_limit = rate_limit_dependency(
+    scope="csat_contact_info", limit=30, window_seconds=60
+)
 _csat_rate_limit = rate_limit_dependency(scope="csat_respond", limit=30, window_seconds=60)
+
+
+@router.get(
+    "/{conversation_id}",
+    response_model=CsatContextResponse,
+    dependencies=[Depends(_csat_context_rate_limit)],
+)
+async def get_csat_context(
+    conversation_id: UUID,
+    service: Annotated[CsatService, Depends(get_csat_service)],
+    token: Annotated[str, Query(...)],
+) -> CsatContextResponse:
+    """Tells the public feedback page (``/feedback/{conversation_id}``)
+    what to render: the rating form directly, a thank-you screen (already
+    answered), or a contact-info step first (customer has neither an
+    email nor a phone number on file)."""
+    context = await service.get_context(conversation_id=conversation_id, token=token)
+    return CsatContextResponse(
+        conversation_id=context.conversation_id,
+        already_responded=context.already_responded,
+        needs_contact_info=context.needs_contact_info,
+    )
+
+
+@router.post(
+    "/{conversation_id}/contact-info",
+    response_model=CsatContactInfoResponse,
+    dependencies=[Depends(_csat_contact_info_rate_limit)],
+)
+async def submit_csat_contact_info(
+    conversation_id: UUID,
+    payload: CsatContactInfoRequest,
+    service: Annotated[CsatService, Depends(get_csat_service)],
+    token: Annotated[str, Query(...)],
+) -> CsatContactInfoResponse:
+    customer = await service.submit_contact_info(
+        conversation_id=conversation_id,
+        token=token,
+        email=payload.email,
+        phone=payload.phone,
+    )
+    return CsatContactInfoResponse(
+        conversation_id=conversation_id, email=customer.email, phone=customer.phone
+    )
 
 
 @router.post(

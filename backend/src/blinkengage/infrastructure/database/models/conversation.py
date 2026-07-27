@@ -152,3 +152,14 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     first_picked_up_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+
+    # Post-resolution CSAT (see docs/architecture/reports-analytics.md's
+    # "Customer Satisfaction" section): set the first time
+    # csat_dispatch_consumer sends this conversation's survey link, so a
+    # later reopen/re-resolve cycle (RESOLVED -> OPEN -> RESOLVED again,
+    # allowed by _ALLOWED_TRANSITIONS) — or an at-least-once redelivery of
+    # the same conversation.resolved event — doesn't send a second survey
+    # for the same conversation.
+    csat_survey_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )

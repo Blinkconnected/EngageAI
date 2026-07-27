@@ -658,6 +658,7 @@ def get_csat_service(
     return CsatService(
         conversations=ConversationRepository(session),
         responses=CsatResponseRepository(session),
+        customers=CustomerRepository(session),
         events=events,
         settings=settings,
     )

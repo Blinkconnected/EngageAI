@@ -94,7 +94,7 @@ class TestSurveyLinkAndSubmission:
         )
         assert link_response.status_code == 200, link_response.text
         url = link_response.json()["url"]
-        assert f"/api/v1/csat/{conversation_id}/respond" in url
+        assert f"/feedback/{conversation_id}" in url
         token = _extract_token(url)
 
         submit_response = await client.post(
@@ -176,3 +176,173 @@ class TestSurveyLinkAndSubmission:
             json={"rating": 6},
         )
         assert response.status_code == 422
+
+
+class TestCsatContext:
+    async def test_needs_contact_info_when_customer_has_neither(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        response = await client.get(
+            f"/api/v1/csat/{conversation_id}", params={"token": token}
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["conversation_id"] == conversation_id
+        assert body["already_responded"] is False
+        assert body["needs_contact_info"] is True
+
+    async def test_does_not_need_contact_info_once_provided(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"email": "customer@example.com"},
+        )
+
+        response = await client.get(
+            f"/api/v1/csat/{conversation_id}", params={"token": token}
+        )
+        assert response.json()["needs_contact_info"] is False
+
+    async def test_already_responded_is_true_after_submitting(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        await client.post(
+            f"/api/v1/csat/{conversation_id}/respond",
+            params={"token": token},
+            json={"rating": 5},
+        )
+
+        response = await client.get(
+            f"/api/v1/csat/{conversation_id}", params={"token": token}
+        )
+        assert response.json()["already_responded"] is True
+
+    async def test_invalid_token_is_rejected(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        response = await client.get(
+            f"/api/v1/csat/{conversation_id}", params={"token": "not-a-real-token"}
+        )
+        assert response.status_code == 401
+
+
+class TestCsatContactInfo:
+    async def test_sets_email(self, client: AsyncClient, owner_headers: dict, app: Any) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"email": "customer@example.com"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["email"] == "customer@example.com"
+
+    async def test_sets_phone(self, client: AsyncClient, owner_headers: dict, app: Any) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"phone": "+15551234567"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["phone"] == "+15551234567"
+
+    async def test_rejects_neither_email_nor_phone(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={},
+        )
+        assert response.status_code == 422
+
+    async def test_rejects_email_already_used_by_another_customer_in_company(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        await client.post(
+            "/api/v1/customers",
+            json={"full_name": "Existing Customer", "email": "taken@example.com"},
+            headers=owner_headers,
+        )
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"email": "taken@example.com"},
+        )
+        assert response.status_code == 409
+
+    async def test_does_not_overwrite_an_already_set_email(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"email": "first@example.com"},
+        )
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"email": "second@example.com"},
+        )
+        assert response.json()["email"] == "first@example.com"
+
+    async def test_invalid_token_is_rejected(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": "not-a-real-token"},
+            json={"email": "customer@example.com"},
+        )
+        assert response.status_code == 401

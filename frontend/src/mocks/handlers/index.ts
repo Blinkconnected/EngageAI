@@ -10,6 +10,7 @@ import { customersHandlers } from './customers'
 import { queuesHandlers } from './queues'
 import { rolesHandlers } from './roles'
 import { slaHandlers } from './sla'
+import { csatHandlers } from './csat'
 import { conversationsHandlers } from './conversations'
 import { notificationsHandlers } from './notifications'
 import { erpHandlers } from './erp'
@@ -28,6 +29,7 @@ export const handlers = [
   ...queuesHandlers,
   ...rolesHandlers,
   ...slaHandlers,
+  ...csatHandlers,
   ...conversationsHandlers,
   ...notificationsHandlers,
   ...erpHandlers,

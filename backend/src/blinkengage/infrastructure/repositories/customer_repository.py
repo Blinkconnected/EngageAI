@@ -24,6 +24,18 @@ class CustomerRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_id_any_company(self, *, customer_id: UUID) -> Customer | None:
+        """Unscoped by ``company_id`` — same reasoning as
+        ``ConversationRepository.get_by_id_any_company``: the public CSAT
+        feedback flow (``docs/architecture/reports-analytics.md``) carries
+        no tenant context, only a signed, conversation-scoped token whose
+        holder has already been proven to belong to this exact
+        conversation (and therefore this exact customer)."""
+        result = await self._session.execute(
+            select(Customer).where(Customer.id == customer_id, Customer.deleted_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_email(self, *, company_id: UUID, email: str) -> Customer | None:
         result = await self._session.execute(
             select(Customer).where(

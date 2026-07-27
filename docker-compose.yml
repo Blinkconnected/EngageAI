@@ -297,6 +297,32 @@ services:
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
+  # Post-resolution CSAT (see docs/architecture/reports-analytics.md) —
+  # binds conversation.resolved only, sending the survey link as an
+  # outbound message on the conversation's own channel via
+  # ConversationService.send_reply. Needs Redis (realtime publisher, part
+  # of building a ConversationService) alongside Postgres/RabbitMQ.
+  csat-dispatch-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.csat_dispatch_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   # ERPNext Integration (M24, see docs/architecture/erp-integration.md) —
   # binds customer.created only, pushing a new customer to ERPNext for
   # any company with an active ErpConfig (a no-op for the rest). Inbound

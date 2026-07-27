@@ -51,6 +51,13 @@ for more detail on how this page is put together.
   real queue.
 - A live "Customer is typing…" indicator in the conversation view, for
   channels that support it (Web Chat today).
+- Customer satisfaction surveys are now sent automatically the moment a
+  conversation is resolved, right on the same channel the conversation
+  happened on (WhatsApp, Web Chat, email, and so on) — no more relying
+  on an agent to generate and share the link by hand. If a customer
+  doesn't have an email or phone number on file, the survey page
+  politely asks for one before showing the rating form, so support can
+  follow up with them later.
 
 ### Changed
 
@@ -60,6 +67,9 @@ for more detail on how this page is put together.
 - SLA breach detection now honors a queue's assigned SLA policy
   (business hours, holidays, warning threshold) instead of always using
   plain wall-clock time — queues with no policy assigned are unaffected.
+- A manually generated customer satisfaction survey link (Conversations
+  → generate CSAT link) now opens a proper feedback page in the app
+  instead of a raw API address.
 
 ### Fixed
 

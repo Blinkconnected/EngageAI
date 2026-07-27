@@ -98,6 +98,8 @@ path) looks a conversation up unscoped by `company_id` — legitimate here
 because the token's signature, not tenant isolation, is what proves the
 request is authorized, exactly the same reasoning `get_by_id_any_company`
 already established for inbound provider webhooks.
+`CustomerRepository.get_by_id_any_company` (new, same reasoning) does the
+same for the customer behind the conversation.
 
 Submitting a response publishes `csat.submitted`
 (`{conversation_id, agent_id, rating}`), consumed by the reporting
@@ -105,6 +107,63 @@ consumer into `csat_daily_stats`; `csat_responses` itself is queried
 directly for the CSAT report's per-agent breakdown (`GROUP BY agent_id`
 joined to `Agent`/`User` for a name) — low enough volume relative to
 `messages` that a per-row query is cheap without its own rollup.
+
+## Sending the survey automatically, on the same channel the conversation happened on
+
+Originally, the survey link only existed if an agent explicitly called
+`POST /conversations/{id}/csat-survey-link` — nothing ever sent it
+anywhere. `csat_dispatch_consumer.py` (new) closes that gap: it binds
+`conversation.resolved` (the dedicated per-terminal-status event
+`ConversationService.update()` already publishes — see
+`conversation_service.py`'s own comment naming "a CSAT survey trigger" as
+this event's intended consumer) and, on receipt, calls
+`ConversationService.send_reply()` to send the survey link as an
+ordinary outbound message on whatever channel the conversation already
+happened on (WhatsApp, web chat, email, SMS, ...) — reusing the exact
+same send path an agent's own reply goes through, rather than inventing
+a bespoke email/SMS sender for this one feature. Deliberately doesn't
+also bind `conversation.closed`: the survey asks "how did we do on this
+resolution," once, not again every time a conversation is later formally
+closed.
+
+`Conversation.csat_survey_sent_at` (new column) is set the first time
+this happens and checked before sending again — without it, a
+conversation cycling through RESOLVED → OPEN → RESOLVED (an allowed
+transition, e.g. the customer replies and it gets reopened, then
+resolved again) or an at-least-once redelivery of the same event would
+send the survey more than once for the same conversation.
+
+Whether the customer has a usable `Customer.email`/`phone` on file plays
+no part in this dispatch step — the channel the conversation already
+happened on is itself how the link gets there. It matters at the next
+step instead.
+
+## Asking for missing contact info before the rating form
+
+The frontend's public feedback page (`/feedback/{conversation_id}`, the
+link the customer actually receives) needs to know, before rendering
+anything, what to show: the rating form, a thank-you screen (already
+answered), or a short "how can we reach you" step first. `GET
+/csat/{conversation_id}` (public, token-gated, new) answers exactly
+that — `CsatService.get_context()` reuses the same token-verification
+logic `submit()` already had (now shared as `_verify_token()`) and
+reports `already_responded` (from the existing `csat_responses` unique
+constraint) and `needs_contact_info` (true when the conversation's
+customer has neither `email` nor `phone` set — common for a brand new
+Web Chat visitor, or any channel whose external id doesn't map onto
+either field).
+
+When `needs_contact_info` is true, the page collects an email or phone
+number and posts it to `POST /csat/{conversation_id}/contact-info`
+(public, token-gated, new) before showing the rating form.
+`CsatService.submit_contact_info()` only *backfills* — it never
+overwrites a value the customer or an agent already supplied — and
+pre-checks `CustomerRepository.get_by_email` for a same-company
+collision before assigning (`EntityAlreadyExistsError`, 409), the exact
+same pre-check-before-assign pattern `CustomerService.update()` already
+established for agent-driven customer edits. No new permission is
+needed — like `respond`, the token itself is what authorizes the write,
+not a role.
 
 ## No new RBAC permission
 
@@ -114,8 +173,8 @@ endpoint) — viewing reports and dashboards was already the exact access-
 control question that permission answers; minting a new one would be
 redundant. CSAT survey-link generation reuses `conversations.manage`
 (an agent action on a conversation they can already manage); CSAT
-response submission needs no permission at all, since it's the token,
-not a role, that authorizes it.
+context/contact-info/response submission need no permission at all,
+since it's the token, not a role, that authorizes them.
 
 ## PDF and Excel export
 
@@ -139,7 +198,9 @@ CSAT's daily trend, AI) export their rows directly.
 Six new tables (`conversation_daily_stats`, `agent_daily_stats`,
 `queue_daily_stats`, `ai_daily_stats`, `csat_daily_stats`,
 `csat_responses`) — no new permission migration needed (`reports.read`
-already existed). See `docs/database/schema.md`.
+already existed). `conversations.csat_survey_sent_at` (added later,
+alongside automatic dispatch — see above) is the one later addition. See
+`docs/database/schema.md`.
 
 ## Verification performed
 
@@ -180,3 +241,39 @@ latter also gained overrides for `workflow-engine-consumer`/
 `notification-consumer`, which were missing from the production runtime-
 image overlay since M19/M21 — a pre-existing deployability gap closed
 alongside this milestone's own new consumer).
+
+### Automatic CSAT dispatch + contact-info backfill (added 2026-07-27)
+
+14 new tests added, all green under `pytest -q`, `ruff check`/`ruff
+format --check`, and `mypy src`:
+
+- `tests/integration/test_csat_dispatch_consumer.py` (4 tests) —
+  resolving a conversation sends exactly one outbound message containing
+  the `/feedback/{id}?token=...` link; a second `conversation.resolved`
+  event for the same conversation (simulating a reopen/re-resolve cycle
+  or an at-least-once redelivery) sends nothing further; an event
+  missing its `conversation_id`, and one for an unknown conversation,
+  are both ignored without raising.
+- `tests/integration/test_csat_api.py` (+10 tests) — `GET
+  /csat/{id}` reports `needs_contact_info=true` for a fresh Web Chat
+  visitor (no email/phone), `false` once one is supplied, and
+  `already_responded=true` after a rating is submitted; `POST
+  /csat/{id}/contact-info` sets an email, sets a phone, rejects a body
+  with neither (422, schema-level), rejects an email already used by
+  another customer in the same company (409), never overwrites an
+  already-set email, and rejects an invalid/expired token (401) same as
+  every other CSAT route.
+
+`CsatService.build_survey_url()` now points at the frontend's public
+`/feedback/{conversation_id}` page instead of the raw API endpoint —
+`docker/nginx/*.conf` routes `/api/*` to the backend and everything else
+to the frontend SPA on the same origin (`settings.public_base_url`), so
+one setting still produces the right link for both. Verified live
+against the real running `docker compose` stack: resolved a real
+Web Chat conversation over `PATCH /conversations/{id}`, confirmed
+`csat-dispatch-consumer`'s logs showed the event bound and a `Message`
+row appeared in the conversation with the survey link, then opened that
+link's frontend route directly and completed both the contact-info step
+and the rating form against the real API. `csat-dispatch-consumer` was
+added to both `docker-compose.yml` and `docker-compose.prod.yml`,
+mirroring `reporting-consumer`'s shape.
