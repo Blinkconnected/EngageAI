@@ -7,6 +7,49 @@ tagging, knowledge search, FAQ search, grammar improvement, professional
 rewrite, next-best-action — built on one minimal provider contract shared
 by OpenAI, Claude, and Ollama.
 
+M22 itself shipped the API layer only, by design (see "API surface"
+below) — a Product & UX Review afterward flagged the resulting gap
+directly: ten fully-tested capabilities with no way for an agent to ever
+reach them. "Frontend surface" documents the first two capabilities
+wired into the actual agent workspace; the remaining eight follow the
+same pattern.
+
+## Frontend surface: Reply Suggestions and Conversation Summary
+
+The first two of the ten capabilities to get a UI, chosen because they're
+the highest-value, lowest-interaction-risk starting point (see the
+Product & UX Review's "AI Experience" section for why): a draft an agent
+edits before sending, and a read-only recap. Both live in
+`frontend/src/features/conversations/aiApi.ts` (`useSuggestReplyMutation`,
+`useSummarizeConversationMutation`), gated in the UI on the `ai.use`
+permission via `usePermissions()` — the same permission the backend
+already enforces, so the gate is a UX nicety (hide a control that would
+just 403) not a real second access-control layer.
+
+- **Reply Suggestions** (`ReplyBox.tsx`): an "AI" icon button next to the
+  attach-file control calls `POST /ai/conversations/{id}/reply-suggestion`
+  and sets the suggestion as the composer's draft text — never sent
+  automatically. This is the human-in-the-loop pattern the rest of the AI
+  Engine already committed to (see "Advisory-only Next Best Action"
+  above) applied to its most-requested capability: the agent reviews and
+  edits before hitting Send, same as if they'd typed it themselves.
+- **Conversation Summary** (`ConversationSidebar.tsx`): a "Generate
+  summary" button calls `POST /ai/conversations/{id}/summary` on demand
+  and renders the result inline. Not fetched automatically on mount —
+  every call is a real, metered LLM request, the same reasoning
+  `enforce_ai_rate_limit` already applies server-side.
+
+Both surfaces render the platform's existing 503 (`AiNotConfiguredError`,
+company AI disabled or no provider configured) as a plain inline `Alert`
+via the shared `extractErrorMessage` helper, not a raw error boundary or
+a silent failure — an agent at a company with AI turned off sees "AI
+features are not enabled for your company," not a broken button.
+
+Frontend tests (`ConversationViewPage.test.tsx`, "AI features" block):
+the suggestion populates the composer, a 503 renders the friendly error,
+both controls are absent without `ai.use`, and the summary panel renders
+its result with a passing accessibility check.
+
 ## One `complete()` method, not one method per feature
 
 `domain/ai_provider.py`'s `AiProvider` ABC has exactly two abstract

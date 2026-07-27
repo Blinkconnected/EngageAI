@@ -1,8 +1,20 @@
 import { useRef, useState } from 'react'
-import { Alert, Box, Chip, IconButton, Stack, TextField, Tooltip } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Chip,
+  CircularProgress,
+  IconButton,
+  Stack,
+  TextField,
+  Tooltip,
+} from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import { extractErrorMessage } from '../../shared/api/errors'
+import { usePermissions } from '../../shared/hooks/usePermissions'
+import { useSuggestReplyMutation } from './aiApi'
 import { useSendMessageMutation, useUploadAttachmentMutation } from './api'
 import type { Attachment } from './types'
 
@@ -20,9 +32,17 @@ export function ReplyBox({
   const [sendFailure, setSendFailure] = useState<string | null>(null)
   const lastTypingSentAt = useRef(0)
 
+  const { hasPermission } = usePermissions()
   const sendMutation = useSendMessageMutation(conversationId)
   const uploadMutation = useUploadAttachmentMutation(conversationId)
+  const suggestReplyMutation = useSuggestReplyMutation()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleSuggestReply() {
+    suggestReplyMutation.mutate(conversationId, {
+      onSuccess: (suggestion) => setBody(suggestion),
+    })
+  }
 
   function handleBodyChange(value: string) {
     setBody(value)
@@ -88,6 +108,11 @@ export function ReplyBox({
           {extractErrorMessage(uploadMutation.error, 'Attachment failed to upload.')}
         </Alert>
       )}
+      {suggestReplyMutation.isError && (
+        <Alert severity="error" sx={{ mb: 1 }} onClose={() => suggestReplyMutation.reset()}>
+          {extractErrorMessage(suggestReplyMutation.error, 'Could not suggest a reply.')}
+        </Alert>
+      )}
       {attachments.length > 0 && (
         <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap' }}>
           {attachments.map((attachment) => (
@@ -118,6 +143,23 @@ export function ReplyBox({
             <AttachFileIcon />
           </IconButton>
         </Tooltip>
+        {hasPermission('ai.use') && (
+          <Tooltip title="Suggest a reply with AI — replaces your draft, review before sending">
+            <span>
+              <IconButton
+                onClick={handleSuggestReply}
+                disabled={suggestReplyMutation.isPending}
+                aria-label="Suggest a reply with AI"
+              >
+                {suggestReplyMutation.isPending ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <AutoAwesomeOutlinedIcon />
+                )}
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
         <TextField
           multiline
           maxRows={4}

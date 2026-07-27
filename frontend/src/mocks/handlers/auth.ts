@@ -31,6 +31,7 @@ export const MOCK_USER: UserProfile = {
     'customers.manage',
     'erp.manage',
     'reports.read',
+    'ai.use',
   ],
 }
 

@@ -26,6 +26,9 @@ for more detail on how this page is put together.
   current year automatically.
 - A public Changelog page (linked from the sign-in page) showing what's
   new in each release — no sign-in required.
+- AI-assisted replies: agents can now ask AI to draft a reply based on the
+  conversation so far, reviewing and editing it before sending. Agents can
+  also generate a quick AI summary of a conversation from the sidebar.
 
 ### Fixed
 

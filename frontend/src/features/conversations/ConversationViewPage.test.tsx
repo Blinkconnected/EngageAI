@@ -13,6 +13,7 @@ import { server } from '../../mocks/server'
 import { API_BASE_URL } from '../../mocks/apiBaseUrl'
 import { MOCK_USER } from '../../mocks/handlers/auth'
 import { MOCK_CUSTOMER } from '../../mocks/handlers/customers'
+import { MOCK_CONVERSATION_SUMMARY, MOCK_REPLY_SUGGESTION } from '../../mocks/handlers/ai'
 import { CONVERSATION_KEY } from './api'
 import type { Conversation } from './types'
 import { ConversationViewPage } from './ConversationViewPage'
@@ -298,6 +299,75 @@ describe('ConversationViewPage', () => {
       await waitFor(() =>
         expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument(),
       )
+    })
+  })
+
+  describe('AI features', () => {
+    it('drafts a reply suggestion into the composer', async () => {
+      const user = userEvent.setup()
+      renderConversationView()
+      await waitForLoaded()
+
+      await user.click(await screen.findByRole('button', { name: /suggest a reply with ai/i }))
+
+      await waitFor(() =>
+        expect(screen.getByPlaceholderText(/write a reply/i)).toHaveValue(MOCK_REPLY_SUGGESTION),
+      )
+    })
+
+    it('surfaces an error if the reply suggestion request fails', async () => {
+      const user = userEvent.setup()
+      server.use(
+        http.post(`${API_BASE_URL}/ai/conversations/:conversationId/reply-suggestion`, () =>
+          HttpResponse.json({ detail: 'AI features are not enabled for your company.' }, { status: 503 }),
+        ),
+      )
+      renderConversationView()
+      await waitForLoaded()
+
+      await user.click(await screen.findByRole('button', { name: /suggest a reply with ai/i }))
+
+      expect(await screen.findByText(/ai features are not enabled/i)).toBeInTheDocument()
+    })
+
+    it('is hidden without the ai.use permission', async () => {
+      server.use(
+        http.get(`${API_BASE_URL}/auth/me`, () =>
+          HttpResponse.json({
+            ...MOCK_USER,
+            permissions: MOCK_USER.permissions.filter((code) => code !== 'ai.use'),
+          }),
+        ),
+      )
+      renderConversationView()
+      await waitForLoaded()
+
+      expect(
+        screen.queryByRole('button', { name: /suggest a reply with ai/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText('AI Summary')).not.toBeInTheDocument()
+    })
+
+    it('generates and displays a conversation summary on demand', async () => {
+      const user = userEvent.setup()
+      renderConversationView()
+      await waitForLoaded()
+
+      expect(screen.queryByText(MOCK_CONVERSATION_SUMMARY)).not.toBeInTheDocument()
+      await user.click(await screen.findByRole('button', { name: /generate summary/i }))
+
+      expect(await screen.findByText(MOCK_CONVERSATION_SUMMARY)).toBeInTheDocument()
+    })
+
+    it('has no detectable accessibility violations with a summary shown', async () => {
+      const user = userEvent.setup()
+      const { container } = renderConversationView()
+      await waitForLoaded()
+
+      await user.click(await screen.findByRole('button', { name: /generate summary/i }))
+      await screen.findByText(MOCK_CONVERSATION_SUMMARY)
+
+      expect(await axe(container)).toHaveNoViolations()
     })
   })
 })

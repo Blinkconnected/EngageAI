@@ -1,7 +1,16 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { Alert, Button, Divider, Link, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Divider,
+  Link,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { usePermissions } from '../../shared/hooks/usePermissions'
@@ -10,6 +19,7 @@ import { useAllChannelsQuery } from '../channels/api'
 import { useAllDepartmentsQuery } from '../departments/api'
 import { useAllQueuesQuery } from '../queues/api'
 import { useCurrentUserQuery } from '../session/api'
+import { useSummarizeConversationMutation } from './aiApi'
 import {
   CONVERSATION_KEY,
   CONVERSATIONS_LIST_KEY,
@@ -38,6 +48,7 @@ export function ConversationSidebar({
   const queuesQuery = useAllQueuesQuery()
   const updateMutation = useUpdateConversationMutation(conversation.id)
   const releaseMutation = useReleaseConversationMutation()
+  const summaryMutation = useSummarizeConversationMutation()
   const queryClient = useQueryClient()
 
   const myAgentId = agentsQuery.data?.find((agent) => agent.user_id === currentUser?.id)?.id
@@ -96,6 +107,33 @@ export function ConversationSidebar({
         </Typography>
         <Typography variant="body2">{channel?.display_name ?? '—'}</Typography>
       </div>
+
+      {hasPermission('ai.use') && (
+        <div>
+          <Typography variant="overline" color="text.secondary">
+            AI Summary
+          </Typography>
+          {summaryMutation.isError && (
+            <Alert severity="error" sx={{ mt: 0.5, mb: 0.5 }} onClose={() => summaryMutation.reset()}>
+              {extractErrorMessage(summaryMutation.error, 'Could not summarize this conversation.')}
+            </Alert>
+          )}
+          {summaryMutation.data ? (
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+              {summaryMutation.data}
+            </Typography>
+          ) : (
+            <Button
+              size="small"
+              onClick={() => summaryMutation.mutate(conversation.id)}
+              disabled={summaryMutation.isPending}
+              sx={{ px: 0 }}
+            >
+              {summaryMutation.isPending ? 'Summarizing…' : 'Generate summary'}
+            </Button>
+          )}
+        </div>
+      )}
 
       <Divider />
 
