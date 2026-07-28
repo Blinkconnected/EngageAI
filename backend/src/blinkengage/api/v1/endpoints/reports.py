@@ -187,6 +187,7 @@ async def live_dashboard(
             unassigned=dashboard.conversations.unassigned,
             total=dashboard.conversations.total,
             active=dashboard.conversations.active,
+            sla_breached=dashboard.conversations.sla_breached,
         ),
         agent_workload=[
             AgentWorkloadResponse(

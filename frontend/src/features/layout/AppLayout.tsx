@@ -357,9 +357,31 @@ export function AppLayout() {
                 over its own scrolling (e.g. the conversation workspace,
                 where only the message thread should scroll) a properly
                 height-bounded ancestor to size against. */}
-            <Box component="main" sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 3 }}>
+            <Box
+              component="main"
+              sx={{
+                flexGrow: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                p: 3,
+                // A flex column, not a block: a fill-the-viewport page
+                // (the conversation workspace) needs to occupy whatever
+                // height is left *after* the setup banner, which a
+                // `height: 100%` child cannot express — 100% resolves
+                // against main's full content box and silently ignores
+                // the banner above it, so the two together overflowed
+                // and made `main` itself scroll, dragging the whole
+                // conversation row instead of just the message thread.
+                // Such a page now says `flexGrow: 1` and gets exactly
+                // the remaining space. Ordinary block-flow pages are
+                // unaffected: their top-level elements simply become
+                // column flex items, which stack identically.
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
               {showSetupBanner && (
-                <Alert severity="info" sx={{ mb: 2 }}>
+                <Alert severity="info" sx={{ mb: 2, flexShrink: 0 }}>
                   {t('AppLayout.setupBannerMessage')}{' '}
                   <Link component={RouterLink} to="/onboarding">
                     {t('AppLayout.setupBannerLink')}

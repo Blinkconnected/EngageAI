@@ -118,6 +118,14 @@ class LiveConversationCounts:
     #: company-wide workload view needs alongside the per-agent
     #: breakdown (``AgentWorkload`` below).
     unassigned: int
+    #: Active (open/pending) conversations that have already missed an SLA
+    #: target — first response, resolution, or both. Company-wide and
+    #: *live*, unlike the retrospective, date-ranged breach counts in
+    #: ``GET /reports/sla`` (which count breach events over a period from
+    #: the daily rollup table). ``queue_metrics`` already exposes the same
+    #: figure per queue; this is the whole-company total, which also
+    #: counts conversations that never entered a queue at all.
+    sla_breached: int
 
     @property
     def total(self) -> int:
@@ -471,12 +479,28 @@ class ReportingRepository:
                 Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
             )
         )
+
+        # Same "currently in breach" predicate `queue_metrics` uses for its
+        # per-queue `sla_breached_count` — a breach timestamp is only ever
+        # set, never cleared (see sla_sweep_task), so the open/pending
+        # filter is what makes this "still breaching right now" rather
+        # than "ever breached".
+        sla_breached_result = await self._session.execute(
+            select(func.count(Conversation.id)).where(
+                Conversation.company_id == company_id,
+                Conversation.deleted_at.is_(None),
+                Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
+                Conversation.sla_first_response_breached_at.is_not(None)
+                | Conversation.sla_resolution_breached_at.is_not(None),
+            )
+        )
         return LiveConversationCounts(
             open=counts[ConversationStatus.OPEN],
             pending=counts[ConversationStatus.PENDING],
             resolved=counts[ConversationStatus.RESOLVED],
             closed=counts[ConversationStatus.CLOSED],
             unassigned=unassigned_result.scalar_one(),
+            sla_breached=sla_breached_result.scalar_one(),
         )
 
     async def agent_workload(self, *, company_id: UUID) -> list[AgentWorkload]:

@@ -9,6 +9,7 @@
     "totalConversationsLabel": "إجمالي المحادثات",
     "activeLabel": "نشطة (مفتوحة + قيد الانتظار)",
     "unassignedLabel": "غير مُسندة",
+    "slaBreachedLabel": "تجاوز اتفاقية مستوى الخدمة",
     "openStatLabel": "مفتوحة",
     "pendingStatLabel": "قيد الانتظار",
     "resolvedLabel": "تم الحل",

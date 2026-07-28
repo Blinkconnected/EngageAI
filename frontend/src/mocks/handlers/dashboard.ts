@@ -12,6 +12,7 @@ export const MOCK_LIVE_DASHBOARD: LiveDashboard = {
     unassigned: 3,
     total: 101,
     active: 16,
+    sla_breached: 2,
   },
   agent_workload: [
     { agent_id: 'a1', agent_name: 'Grace Blake', open_count: 5, pending_count: 1, total_count: 6 },

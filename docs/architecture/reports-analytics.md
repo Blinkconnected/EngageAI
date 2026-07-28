@@ -110,6 +110,38 @@ other agent's presence status and every queue's full depth on this same
 page) rather than introducing a new, narrower permission the roadmap
 never asked for.
 
+### A live company-wide SLA-breached count (added 2026-07-28)
+
+`LiveConversationCounts` gained `sla_breached`: active (open/pending)
+conversations that have already missed a first-response or resolution
+target. One extra `COUNT` in `live_conversation_counts()`, reusing
+`queue_metrics()`'s exact `sla_first_response_breached_at IS NOT NULL OR
+sla_resolution_breached_at IS NOT NULL` predicate.
+
+Two things make this genuinely different from the SLA figures that
+already existed, rather than a duplicate:
+
+- **It is live, not retrospective.** `GET /reports/sla`'s
+  `first_response_breached`/`resolution_breached` count breach *events*
+  over a date range from the `conversation_daily_stats` rollup — see
+  `sla.md`'s "purely retrospective reporting" note. This counts
+  conversations *still breaching right now*. The open/pending filter is
+  what makes that distinction real: `sla_sweep_task` only ever *sets* a
+  breach timestamp and never clears it, so a resolved conversation that
+  breached last week still carries the timestamp forever and must not
+  count toward "what needs attention now."
+- **It is company-wide, not per-queue.** `queue_metrics()` already
+  exposes the same predicate as `LiveQueueDepthResponse.sla_breached_count`,
+  but only per queue — summing those rows would silently exclude every
+  breaching conversation that never entered a queue at all, so this is a
+  direct count against `conversations`, not a sum over queue rows.
+
+Surfaced on `DashboardPage` as a stat card that renders in the error
+color only when the count is above zero (`StatCard`'s `alertWhenNonZero`
+prop) — the same "only deviations from the healthy default earn visual
+emphasis" rule the redesigned Inbox established (see
+`frontend.md`'s "Inbox as the design standard").
+
 ## Customer Satisfaction: a signed survey link, not a new auth flow
 
 CSAT needs a way for a *customer* (not a logged-in agent) to submit a

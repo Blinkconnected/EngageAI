@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -19,13 +20,17 @@ class UserRepository:
 
     async def get_by_id(self, user_id: UUID) -> User | None:
         result = await self._session.execute(
-            select(User).where(User.id == user_id).options(*_WITH_ROLES_AND_COMPANY)
+            select(User)
+            .where(User.id == user_id, User.deleted_at.is_(None))
+            .options(*_WITH_ROLES_AND_COMPANY)
         )
         return result.scalar_one_or_none()
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self._session.execute(
-            select(User).where(User.email == email).options(*_WITH_ROLES_AND_COMPANY)
+            select(User)
+            .where(User.email == email, User.deleted_at.is_(None))
+            .options(*_WITH_ROLES_AND_COMPANY)
         )
         return result.scalar_one_or_none()
 
@@ -33,3 +38,7 @@ class UserRepository:
         self._session.add(user)
         await self._session.flush()
         return user
+
+    async def soft_delete(self, user: User) -> None:
+        user.deleted_at = datetime.now(UTC)
+        await self._session.flush()

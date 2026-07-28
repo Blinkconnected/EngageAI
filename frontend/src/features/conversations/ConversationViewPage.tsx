@@ -58,7 +58,35 @@ export function ConversationViewPage() {
 
       <Stack
         direction={{ xs: 'column', md: 'row' }}
-        sx={{ flexGrow: 1, minHeight: 0, border: 1, borderColor: 'divider', borderRadius: 2 }}
+        sx={{
+          flexGrow: 1,
+          minHeight: 0,
+          mt: 2,
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 2,
+          // Clips both panes to the shared rounded corners — a
+          // descendant's own `overflowY: auto` (MessageThread, the
+          // sidebar wrapper below) still scrolls internally exactly as
+          // before; only the outer card's corners are affected. Without
+          // this, the sidebar's flat-cornered bgcolor squared off past
+          // this card's rounded top/bottom-right corners on desktop.
+          overflow: 'hidden',
+          // Both panes are rendered as siblings of one shared bordered
+          // card (the border/radius above), matching the same "one
+          // rounded container" convention ConversationWorkspacePage's
+          // list pane already establishes at the page level — the
+          // md-and-up divider between them is drawn here, once, instead
+          // of each pane separately deciding its own border, which
+          // previously left the sidebar visually bolted onto a
+          // differently-bordered sub-card rather than reading as this
+          // card's own second column.
+          '& > *:not(:first-of-type)': {
+            borderTop: { xs: 1, md: 0 },
+            borderLeft: { xs: 0, md: 1 },
+            borderColor: 'divider',
+          },
+        }}
       >
         {/* minHeight: 0 — same flexbox "automatic minimum size" fix as
             AppLayout.tsx's main region. On xs this Box is a column-flex
@@ -97,9 +125,18 @@ export function ConversationViewPage() {
 
         <Box
           sx={{
-            borderLeft: { md: 1 },
-            borderTop: { xs: 1, md: 0 },
-            borderColor: 'divider',
+            // Border is drawn by the parent Stack's
+            // '& > *:not(:first-of-type)' rule above, not here — kept in
+            // one place so the divider between the two panes is a single
+            // decision, not each pane separately guessing at the other's
+            // border. Width matches ConversationSidebar's own fixed
+            // 280px so this wrapper (its actual scroll-bounding parent —
+            // see the ConversationViewPage.test.tsx assertion this relies
+            // on) doesn't collapse to content width and pull the divider
+            // in from where the sidebar visually starts.
+            width: { xs: '100%', md: 280 },
+            flexShrink: 0,
+            bgcolor: 'action.hover',
             // The sidebar (Status/Transfer/Release/Queue, etc.) gets its
             // own bounded, independently scrolling box on BOTH mobile and
             // desktop — this used to be `overflowY: 'visible'` /

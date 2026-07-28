@@ -323,6 +323,55 @@ Now `overflowY: 'auto'` and `maxHeight: '100%'` on both breakpoints: the
 sidebar fills and scrolls within its own row on desktop, the same way
 `MessageThread`'s Stack already did.
 
+**`main` is a flex column, so a fill-height page can survive the setup
+banner (fixed 2026-07-28).** The height chain above still had one hole:
+`main` was a *block* container, and `ConversationWorkspacePage` sized
+itself with `height: 100%`. That percentage resolves against `main`'s
+whole content box and cannot know about a sibling — so whenever the
+"finish setting up your company" banner rendered above `<Outlet/>`
+(`showSetupBanner`: an owner/admin with incomplete onboarding, on every
+route), banner height + 100% exceeded the available space, `main`
+scrolled, and the entire conversation row moved instead of just the
+message thread. Reported as "scrolling still moves the row, not only the
+messages."
+
+`main` is now `display: flex; flexDirection: column`, the banner is
+`flexShrink: 0`, and the workspace asks for `flexGrow: 1` + `minHeight: 0`
+instead of `height: 100%` — it gets exactly what's left, banner or no
+banner, with no percentage arithmetic to get wrong. Ordinary pages are
+unaffected: their top-level elements simply become column flex items,
+which stack the same way block children did.
+
+**The composer's "always visible" contract, and one shared card for
+both panes (2026-07-28).** Two follow-ons the scroll work above did not
+cover — its scope was `MessageThread`'s scroll isolation, not the
+composer or the pane framing:
+
+- `ReplyBox` had **no `flexShrink: 0`**. It stayed at the bottom only
+  incidentally: it's the last child of a `minHeight: 0` flex column
+  whose only growing sibling (`MessageThread`) absorbs the slack. That
+  works right up until the composer itself grows — stacked send/upload
+  error `Alert`s, attachment chips, a multi-line draft — at which point
+  flexbox is free to shrink it, since nothing declared a floor.
+  `flexShrink: 0` (plus an explicit `bgcolor: 'background.paper'`) makes
+  "you never lose access to the composer while scrolling history" an
+  actual layout contract. Deliberately *not* `position: sticky/fixed`:
+  the column is already height-bounded, so the composer is on-screen by
+  construction — sticky would add z-index/backdrop concerns for no gain.
+  `ConversationViewPage.test.tsx` asserts the `flexShrink` directly.
+- The message column and the sidebar each drew **their own borders**
+  inside a separately-bordered rounded card, so the sidebar read as a
+  mismatched sub-panel bolted onto the conversation rather than the same
+  card's second column. The divider is now declared once on the shared
+  row (`& > *:not(:first-of-type)`), the row gets `overflow: hidden` so
+  both panes clip to its rounded corners (a descendant's own
+  `overflowY: auto` still scrolls normally — only corners are affected),
+  and the sidebar wrapper carries the fixed `280px` width and a
+  `bgcolor: 'action.hover'` so the two panes read as one deliberate
+  two-column card. The wrapper must remain `ConversationSidebar`'s
+  *immediate* DOM parent with `overflowY: 'auto'` — an existing test
+  pins that.
+
 **"Always jumps to the latest message" (fixed 2026-07-28).**
 `MessageThread`'s scroll-to-bottom effect fired unconditionally any
 time the newest message's id changed — a genuine new message (the

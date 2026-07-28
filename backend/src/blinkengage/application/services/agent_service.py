@@ -287,6 +287,16 @@ class AgentService:
     ) -> None:
         agent = await self.get(company_id=company_id, agent_id=agent_id)
         await self._agents.soft_delete(agent)
+        # The Agent profile and its backing login (User) are deleted
+        # together — leaving the User row live would permanently block
+        # that email from ever being reused (including re-adding a new
+        # agent with the same address, which is exactly the "already
+        # exists" bug this closes), and would also leave a deleted
+        # agent's session/refresh tokens still resolving to a real,
+        # fetchable user. `agent.user` is already loaded (see
+        # AgentRepository.get_by_id's selectinload), so no extra query.
+        await self._users.soft_delete(agent.user)
+        await self._refresh_tokens.revoke_all_for_user(user_id=agent.user_id)
         await self._events.publish(
             DomainEvent(
                 event_type="agent.deleted",

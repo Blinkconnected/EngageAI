@@ -34,12 +34,54 @@ description              role_id (FK, cascade)
 
 ## Key architectural decisions
 
-1. **Email is globally unique, not unique-per-company.** `POST /auth/login`
-   takes only email+password — no company selector. This keeps the login
-   UX simple at the cost of one person needing distinct email addresses to
-   belong to two companies. Documented as a v1 constraint, not an
-   oversight; multi-company membership per identity is a plausible future
-   feature if ever requested.
+1. **Email is globally unique among *non-deleted* users, not
+   unique-per-company.** `POST /auth/login` takes only email+password —
+   no company selector. This keeps the login UX simple at the cost of one
+   person needing distinct email addresses to belong to two companies.
+   Documented as a v1 constraint, not an oversight; multi-company
+   membership per identity is a plausible future feature if ever
+   requested.
+
+   The "non-deleted" qualifier is load-bearing (added 2026-07-28,
+   migration `040a7da326b5`): `ix_users_email` is a **partial** unique
+   index, `WHERE deleted_at IS NULL`, matching `agents.user_id`'s
+   long-standing `uq_agents_user_id` pattern. It was previously a plain
+   global unique index, which meant a soft-deleted user's email stayed
+   reserved forever. Combined with `AgentService.delete()` only
+   soft-deleting the `Agent` profile and never its backing `User`, that
+   made re-adding an agent with a previously-used email fail with
+   "already exists" permanently — the bug this fixed.
+
+   Correspondingly, `UserRepository.get_by_id`/`get_by_email` now filter
+   `deleted_at IS NULL` (matching `CustomerRepository.get_by_email`'s
+   existing convention, and previously the only repository in the
+   codebase whose lookups did *not*). Because those two methods back
+   `authenticate()`, `refresh()`, and `get_current_user()`, this also
+   closes a real gap: a deleted agent's still-valid access token,
+   refresh token, and password all previously kept working, since
+   `is_active` is a separate flag deletion never touched.
+   `AgentService.delete()` additionally revokes the user's refresh
+   tokens outright, so revocation does not wait on access-token expiry.
+
+   *Existing data needed a backfill, not just a code fix*: the service
+   change only governs *future* deletions, so every agent deleted before
+   this release had already left a live `User` row permanently holding
+   its email. Migration `6b6f167ff303` soft-deletes exactly those —
+   users with a soft-deleted agent profile, **no** active agent profile,
+   and `is_company_owner = false` — backdating `deleted_at` to the
+   agent's own deletion time so the audit trail reflects when the
+   account really stopped being usable. It is deliberately irreversible
+   (`downgrade()` is a documented no-op): the pre-migration state *is*
+   the bug, nothing records which rows were touched, and restoring them
+   would re-block the very addresses the upgrade freed.
+
+   *Deliberately soft, never hard, delete*: `agents.user_id` declares
+   `ondelete="CASCADE"`, and `audit_logs`/`internal_notes`/
+   `conversation_transfers`/`customers.rated_by_user_id` all reference
+   `users.id` with `SET NULL` specifically to preserve attribution
+   history. A hard `DELETE` would cascade away the agent row and blank
+   out that history; soft-delete keeps every record intact while freeing
+   the email.
 
 2. **Permissions are embedded in the access token at issuance**
    (`AuthService.issue_tokens`), not re-checked against the database on

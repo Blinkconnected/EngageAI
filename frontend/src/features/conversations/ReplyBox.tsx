@@ -97,7 +97,28 @@ export function ReplyBox({
   }
 
   return (
-    <Box sx={{ borderTop: 1, borderColor: 'divider', p: 2 }}>
+    <Box
+      sx={{
+        // flexShrink: 0 — this is the composer's actual "stay pinned at
+        // the bottom" contract: it's a static-flow sibling of
+        // MessageThread inside a `minHeight: 0` flex column
+        // (ConversationViewPage.tsx), and MessageThread is the only
+        // region with `flexGrow`/its own `overflowY: auto`. Without this,
+        // a tall composer (stacked error Alerts, attachment chips, a
+        // multi-line draft) has no declared floor and could get
+        // squeezed by the flexbox algorithm instead of always keeping
+        // its full natural height with MessageThread absorbing 100% of
+        // the remaining space — i.e. never losing access to it while
+        // scrolling long message history, without needing
+        // position: sticky/fixed (which would need its own z-index and
+        // background-color handling over scrolled content instead).
+        flexShrink: 0,
+        borderTop: 1,
+        borderColor: 'divider',
+        p: 2,
+        bgcolor: 'background.paper',
+      }}
+    >
       {sendMutation.isPaused && (
         <Alert severity="info" sx={{ mb: 1 }}>
           {t('ReplyBox.messageQueuedOfflineLabel')}

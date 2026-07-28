@@ -14,6 +14,42 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- The Dashboard now shows a live "SLA breached" count: how many
+  conversations are open or pending right now and have already missed a
+  service-level agreement target. It turns red the moment that number is
+  above zero, so supervisors can see at a glance whether anything needs
+  attention — separate from the SLA report, which looks back over a date
+  range rather than showing the current moment.
+
+### Fixed
+
+- Deleting an agent and then adding a new agent with the same email
+  address no longer fails with "already exists." Deleting an agent
+  previously removed their agent profile but left their sign-in account
+  in place forever, permanently reserving that email address. Deleting
+  an agent now also closes their sign-in account, which additionally
+  means a deleted agent is immediately signed out everywhere and can no
+  longer log back in — previously their existing session kept working.
+  Email addresses belonging to agents deleted *before* this fix are
+  released automatically on upgrade, so they can be re-used too.
+- The reply box in a conversation now always stays visible at the bottom
+  of the screen while you scroll back through the message history,
+  instead of being able to get squeezed out of view when it grows (for
+  example when it's showing attachments or an error message).
+- Scrolling a conversation no longer moves the whole page. When the
+  "finish setting up your company" banner was showing, the conversation
+  workspace was sized as if the banner weren't there, making the page
+  slightly too tall — so scrolling dragged the conversation list and the
+  customer panel along with the messages instead of scrolling only the
+  message history.
+- The customer information panel on the right of a conversation now
+  lines up properly with the rest of the page: it shares one rounded
+  border with the message area instead of sitting in its own
+  mismatched box, has a consistent width and background, and no longer
+  looks visually disconnected from the conversation beside it.
+
 ## [1.0.0-beta.4] - 2026-07-28
 
 ### Added

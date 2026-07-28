@@ -35,7 +35,21 @@ export function ConversationWorkspacePage() {
   const isDesktop = useMediaQuery(theme.breakpoints.up(THREE_PANE_MIN_WIDTH))
 
   return (
-    <Box sx={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        // flexGrow, not height: '100%' — `main` is a flex column (see
+        // AppLayout.tsx), so this takes exactly the height left over
+        // after the setup banner, if one is showing. `height: 100%`
+        // resolved against main's whole content box and ignored that
+        // banner, overflowing it and making `main` scroll — which moved
+        // the entire conversation row instead of only the message
+        // thread.
+        flexGrow: 1,
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
       {isDesktop && (
         <Box
           sx={{

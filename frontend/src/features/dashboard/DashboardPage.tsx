@@ -28,10 +28,24 @@ import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useLiveDashboardQuery } from './api'
 import type { AgentWorkload, LiveQueueDepth } from './types'
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({
+  label,
+  value,
+  alertWhenNonZero = false,
+}: {
+  label: string
+  value: number
+  /** Draws the card in the error color once `value` is above zero —
+   * for stats where any non-zero figure is itself the problem (SLA
+   * breaches), not just a number to read. Deliberately silent at zero,
+   * the same "only deviations earn emphasis" rule the redesigned Inbox
+   * follows (see docs/architecture/frontend.md). */
+  alertWhenNonZero?: boolean
+}) {
+  const alerting = alertWhenNonZero && value > 0
   return (
     <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-      <Card variant="outlined">
+      <Card variant="outlined" sx={alerting ? { borderColor: 'error.main' } : undefined}>
         <CardContent>
           <Typography color="text.secondary" gutterBottom>
             {label}
@@ -41,7 +55,12 @@ function StatCard({ label, value }: { label: string; value: number }) {
               variant would otherwise render as skips two levels, which is
               what an axe accessibility pass flags as a heading-order
               violation. */}
-          <Typography variant="h4" component="h2" aria-label={`${label}: ${value}`}>
+          <Typography
+            variant="h4"
+            component="h2"
+            color={alerting ? 'error.main' : undefined}
+            aria-label={`${label}: ${value}`}
+          >
             {value}
           </Typography>
         </CardContent>
@@ -324,6 +343,11 @@ export function DashboardPage() {
           <StatCard
             label={t('DashboardPage.unassignedLabel')}
             value={liveDashboardQuery.data.conversations.unassigned}
+          />
+          <StatCard
+            label={t('DashboardPage.slaBreachedLabel')}
+            value={liveDashboardQuery.data.conversations.sla_breached}
+            alertWhenNonZero
           />
 
           <StatCard

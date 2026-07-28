@@ -12,13 +12,23 @@ with only email+password — no company selector needed. A person who
 genuinely needs access to two companies needs two accounts (e.g. distinct
 email aliases) in this version; multi-company membership per identity is
 a possible future feature, not a v1 requirement.
+
+The uniqueness on ``email`` is enforced only among non-deleted rows (a
+partial index, ``WHERE deleted_at IS NULL`` — see the
+``ix_users_email``-replacing migration), matching ``Agent.user_id``'s
+existing partial-unique pattern. ``AgentService.delete()`` soft-deletes
+both the ``Agent`` profile and its backing ``User`` row together, so
+without this, a deleted agent's email would block that address from
+ever being reused — including for re-adding a new agent with the exact
+same email, which previously always failed with "already exists" no
+matter how long ago the original agent was deleted.
 """
 
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from blinkengage.infrastructure.database.base import (
@@ -36,13 +46,25 @@ if TYPE_CHECKING:
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index(
+            "ix_users_email",
+            "email",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
     )
     # Normalized to lowercase at the application layer before persistence —
     # see the note on Company.slug for why this isn't a DB-level citext type.
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    # Uniqueness is declared via the partial index above, not `unique=True`
+    # here — a plain column-level `unique=True` would create a second,
+    # global (non-partial) unique constraint alongside it.
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)

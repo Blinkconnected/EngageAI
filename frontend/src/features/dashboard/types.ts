@@ -16,6 +16,10 @@ export interface LiveConversationCounts {
   total: number
   /** Open + pending — conversations still being worked. */
   active: number
+  /** Active (open/pending) conversations already past an SLA target —
+   * first response, resolution, or both. Live "needs attention now",
+   * unlike the SLA report's retrospective, date-ranged breach counts. */
+  sla_breached: number
 }
 
 /** One agent's current, live workload — matches the backend's

@@ -227,6 +227,89 @@ async def test_delete_agent_is_soft_delete(client: AsyncClient, owner_headers: d
     assert get_response.status_code == 404
 
 
+async def test_readding_an_agent_with_the_same_email_after_delete_succeeds(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    # Regression test: deleting an agent used to leave the underlying
+    # User row (and its email) live forever, so re-adding the exact same
+    # email always 409'd with "already exists" no matter how long ago the
+    # original agent was deleted — see AgentService.delete()'s own
+    # comment and the users.email partial-unique-index migration.
+    create_response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+    assert create_response.status_code == 201
+    original_agent_id = create_response.json()["id"]
+
+    delete_response = await client.delete(
+        f"/api/v1/agents/{original_agent_id}", headers=owner_headers
+    )
+    assert delete_response.status_code == 204
+
+    recreate_response = await client.post(
+        "/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers
+    )
+    assert recreate_response.status_code == 201, recreate_response.text
+    new_agent = recreate_response.json()
+    assert new_agent["email"] == AGENT_PAYLOAD["email"]
+    assert new_agent["id"] != original_agent_id
+
+    # The new agent (not the deleted one) can log in with the same email.
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": AGENT_PAYLOAD["email"], "password": AGENT_PAYLOAD["password"]},
+    )
+    assert login_response.status_code == 200
+
+
+async def test_deleting_an_agent_revokes_their_session_and_login(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    create_response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+    assert create_response.status_code == 201
+    agent_id = create_response.json()["id"]
+
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": AGENT_PAYLOAD["email"], "password": AGENT_PAYLOAD["password"]},
+    )
+    assert login_response.status_code == 200
+    tokens = login_response.json()
+    agent_access_token = tokens["access_token"]
+
+    delete_response = await client.delete(f"/api/v1/agents/{agent_id}", headers=owner_headers)
+    assert delete_response.status_code == 204
+
+    # The deleted agent's still-live access token must no longer resolve
+    # to a usable account...
+    me_response = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {agent_access_token}"}
+    )
+    assert me_response.status_code == 401
+
+    # ...nor can their refresh token mint a new one...
+    refresh_response = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert refresh_response.status_code == 401
+
+    # ...nor can they simply log in again with the same credentials.
+    relogin_response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": AGENT_PAYLOAD["email"], "password": AGENT_PAYLOAD["password"]},
+    )
+    assert relogin_response.status_code == 401
+
+
+async def test_create_agent_still_conflicts_for_a_genuinely_active_duplicate_email(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    # Confirms the deleted_at-aware uniqueness change didn't accidentally
+    # weaken the legitimate duplicate-prevention check for a still-active
+    # agent — only a *deleted* agent's email should ever be reusable.
+    await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+    response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
+    assert response.status_code == 409
+
+
 async def test_owner_can_reset_agent_password(client: AsyncClient, owner_headers: dict) -> None:
     create_response = await client.post("/api/v1/agents", json=AGENT_PAYLOAD, headers=owner_headers)
     agent_id = create_response.json()["id"]

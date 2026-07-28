@@ -9,6 +9,7 @@
     "totalConversationsLabel": "Total conversations",
     "activeLabel": "Active (open + pending)",
     "unassignedLabel": "Unassigned",
+    "slaBreachedLabel": "SLA breached",
     "openStatLabel": "Open",
     "pendingStatLabel": "Pending",
     "resolvedLabel": "Resolved",

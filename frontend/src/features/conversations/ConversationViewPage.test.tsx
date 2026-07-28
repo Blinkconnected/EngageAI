@@ -156,6 +156,23 @@ describe('ConversationViewPage', () => {
     expect(wrapperBox).toHaveStyle({ overflowY: 'auto' })
   })
 
+  it('never lets the composer shrink, so it stays visible while the message thread scrolls', async () => {
+    // The composer (ReplyBox) is a static-flow sibling of MessageThread's
+    // own flexGrow/overflowY:auto scroll container inside one minHeight:0
+    // flex column — flexShrink: 0 is the actual "always stay pinned at
+    // the bottom" contract (see ReplyBox.tsx's own comment): without it,
+    // a tall composer (stacked error alerts, attachment chips) has no
+    // declared floor and could get squeezed instead of always keeping
+    // its full height with MessageThread absorbing the remaining space.
+    renderConversationView()
+    await waitForLoaded()
+    const composerRoot = screen.getByPlaceholderText(/write a reply/i).closest(
+      '.MuiBox-root',
+    ) as HTMLElement
+
+    expect(composerRoot).toHaveStyle({ flexShrink: '0' })
+  })
+
   // The seeded conversation (conv-1) starts unassigned — this is exactly
   // what an agent lands on after being paged by an SLA-breach or
   // autopilot-handoff notification, which deep-links straight here with

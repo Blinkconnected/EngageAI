@@ -53,6 +53,10 @@ class LiveConversationCountsResponse(BaseModel):
     unassigned: int
     total: int
     active: int
+    #: Active (open/pending) conversations currently past an SLA target —
+    #: a live "needs attention right now" figure, distinct from the
+    #: retrospective, date-ranged breach counts on `GET /reports/sla`.
+    sla_breached: int
 
 
 class LiveQueueDepthResponse(BaseModel):

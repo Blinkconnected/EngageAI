@@ -954,6 +954,63 @@ class TestLiveDashboard:
         assert conversations["total"] == 2
         assert conversations["active"] == 1
 
+    async def test_live_dashboard_sla_breached_counts_only_still_active_breaches(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A breach timestamp is set once and never cleared (see
+        sla_sweep_task), so a resolved/closed conversation that breached
+        earlier is history, not a live problem — only open/pending ones
+        count toward the Dashboard's "needs attention now" figure."""
+        company_id = UUID(await _company_id(client, owner_headers))
+        config_id, customer_id = await _create_web_chat_customer(client, owner_headers)
+        breached_at = datetime.now(UTC)
+
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            db_session.add_all(
+                [
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="open-first-response-breached",
+                        status=ConversationStatus.OPEN,
+                        sla_first_response_breached_at=breached_at,
+                    ),
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="pending-resolution-breached",
+                        status=ConversationStatus.PENDING,
+                        sla_resolution_breached_at=breached_at,
+                    ),
+                    # Breached, but already resolved — retrospective only.
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="resolved-but-was-breached",
+                        status=ConversationStatus.RESOLVED,
+                        sla_resolution_breached_at=breached_at,
+                    ),
+                    # Open and healthy — no breach timestamps at all.
+                    Conversation(
+                        company_id=company_id,
+                        customer_id=customer_id,
+                        channel_config_id=config_id,
+                        external_thread_id="open-on-track",
+                        status=ConversationStatus.OPEN,
+                    ),
+                ]
+            )
+            await db_session.commit()
+
+        response = await client.get("/api/v1/reports/live-dashboard", headers=owner_headers)
+
+        assert response.status_code == 200, response.text
+        assert response.json()["conversations"]["sla_breached"] == 2
+
     async def test_live_dashboard_agent_workload_reflects_assigned_conversations(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:

@@ -119,6 +119,51 @@ describe('DashboardPage', () => {
     expect(within(unassignedCard).getByText('3')).toBeInTheDocument()
   })
 
+  it('shows the live SLA-breached count, and only emphasizes it when non-zero', async () => {
+    // The fixture seeds sla_breached: 2 — a live "still open/pending and
+    // already past an SLA target" figure, distinct from the SLA report's
+    // retrospective date-ranged breach counts.
+    renderAuthenticated(<DashboardPage />)
+
+    // Selected by the stat's own aria-label, not its visible text — the
+    // queue depth table further down has an "SLA breached" column header
+    // with the same wording.
+    const breachedCard = (await screen.findByLabelText('SLA breached: 2')).closest(
+      '.MuiCard-root',
+    ) as HTMLElement
+    expect(breachedCard).toBeInTheDocument()
+
+    // Non-zero reads as an alert, unlike the neutral counts beside it.
+    const totalCard = screen.getByText('Total conversations').closest('.MuiCard-root') as HTMLElement
+    expect(breachedCard.className).not.toEqual(totalCard.className)
+  })
+
+  it('does not emphasize the SLA-breached card when nothing is breaching', async () => {
+    const { server } = await import('../../mocks/server')
+    const { http, HttpResponse } = await import('msw')
+    const { API_BASE_URL } = await import('../../mocks/apiBaseUrl')
+    const { MOCK_LIVE_DASHBOARD } = await import('../../mocks/handlers/dashboard')
+
+    server.use(
+      http.get(`${API_BASE_URL}/reports/live-dashboard`, () =>
+        HttpResponse.json({
+          ...MOCK_LIVE_DASHBOARD,
+          conversations: { ...MOCK_LIVE_DASHBOARD.conversations, sla_breached: 0 },
+        }),
+      ),
+    )
+    queryClient.clear()
+    renderAuthenticated(<DashboardPage />)
+
+    const breachedCard = (await screen.findByLabelText('SLA breached: 0')).closest(
+      '.MuiCard-root',
+    ) as HTMLElement
+    expect(breachedCard).toBeInTheDocument()
+
+    const totalCard = screen.getByText('Total conversations').closest('.MuiCard-root') as HTMLElement
+    expect(breachedCard.className).toEqual(totalCard.className)
+  })
+
   it("renders the team workload table with each agent's open/pending/total counts", async () => {
     renderAuthenticated(<DashboardPage />)
 
