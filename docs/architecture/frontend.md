@@ -323,6 +323,41 @@ Now `overflowY: 'auto'` and `maxHeight: '100%'` on both breakpoints: the
 sidebar fills and scrolls within its own row on desktop, the same way
 `MessageThread`'s Stack already did.
 
+**The five-column workspace (2026-07-28).** The conversation workspace is:
+
+```
+| Sidebar | Filters & Queues | Conversation List | Conversation | Customer Details |
+```
+
+The Sidebar is `AppLayout`'s nav; the rest live in
+`ConversationWorkspacePage` (the last two inside `ConversationViewPage`).
+**Filters are a dedicated column, not tabs above the list**: filters are
+navigation, not a property of the list, and stacking them on top costs
+the list the vertical space it needs for rows. Filter state lives in the
+URL (`?status=&queue=`) because this component fully unmounts when the
+agent navigates away and back, which would otherwise reset their choice
+every time.
+
+`FIVE_COLUMN_MIN_WIDTH` is 1480px — the sum of the four fixed columns
+(260 nav + 220 filters + 320 list + 280 details) plus the 400px the
+message column needs to stay usable. Below it, the filters and list
+columns drop out and only the conversation shows, the master-detail
+fallback a phone's Mail app uses.
+
+**The app shell is bounded to the viewport** (`height: 100dvh;
+overflow: hidden` on `AppLayout`'s root). This is load-bearing and was
+originally wrong: with only `minHeight: '100%'`, the shell had no
+definite height to distribute down the flex chain, `main` had nothing to
+size against, and its content grew the shell past the viewport so the
+*document* scrolled — measured in a real browser at 2980px of
+scrollHeight in a 900px viewport, with zero actual scroll containers.
+`100dvh` rather than `100vh` so a mobile browser's collapsing address bar
+doesn't leave an unreachable strip. Verified in Chromium at 1680/1500/
+1280/820px: the page never scrolls, every column reports its own scroll
+region, and the composer stays put while the thread scrolls. The harness
+lives in `frontend/.visual-check/` — CSS reasoning alone had previously
+declared this fixed twice when it was not.
+
 **Independent per-column scrolling is a product-wide requirement, not a
 conversation-page detail (2026-07-28).** Any page showing multiple
 panels side by side must behave like an enterprise workspace

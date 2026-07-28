@@ -142,6 +142,64 @@ prop) — the same "only deviations from the healthy default earn visual
 emphasis" rule the redesigned Inbox established (see
 `frontend.md`'s "Inbox as the design standard").
 
+### Per-agent AI usage, and the AI adoption report (added 2026-07-28)
+
+`ai_daily_stats` answers "how much AI did this company use", but not
+"which agents actually use it" — the question AI-adoption reporting is
+about. **`agent_ai_daily_stats`** (migration `34919b8bff0b`) is the same
+daily rollup with an `agent_id` dimension:
+
+| Column | Notes |
+|---|---|
+| `company_id`, `agent_id`, `stat_date`, `operation` | composite unique key `uq_agent_ai_daily_stats_key` |
+| `calls_count` | incremented, never overwritten |
+
+`agent_id` is **NOT NULL** deliberately. `DailyStatsRepository._upsert`
+conflicts on the full key, and Postgres treats NULLs as distinct in a
+unique constraint — a nullable column would insert a fresh row per event
+instead of incrementing. AI usage with nobody to attribute it to stays in
+the company-wide table only.
+
+**Attribution order** (`reporting_consumer._handle_ai_completed` /
+`_handle_autopilot_replied`): the event's `actor_user_id` resolved to an
+`Agent`, else — for an unattended Autopilot run — the conversation's
+`assigned_agent_id`, else company-wide only. `ai.completed` now carries
+`actor_user_id` because every `/api/v1/ai/` endpoint passes the calling
+agent through; it is legitimately absent for Autopilot's own runs.
+
+Autopilot replies are counted under synthetic `autopilot_<trigger>`
+operations (`autopilot_new_message`, `autopilot_sla`,
+`autopilot_agent_request`). The prefix and its derivation live in
+`domain/ai_operations.py` because the string is assembled in the
+reporting consumer and matched in the reporting repository — exactly the
+pair that silently drifts if duplicated.
+
+**`GET /reports/ai/usage`** (`reports.read`) returns
+`{by_operation, by_agent, trend, total_calls}`:
+
+- `by_agent` — `AiAgentUsageRow`: `total_calls` plus
+  `autopilot_agent_requests` and `autopilot_sla_triggers` split out, so
+  "AI the agent asked for" is separable from "AI that stepped in on its
+  own because a target was slipping". Only agents with recorded usage
+  appear (unlike `agent_workload`'s seed-every-agent shape) — an agent
+  who has never used AI has nothing to report, not a row of zeros.
+- `trend` — `AiUsageBucket{bucket_start, calls}` at `granularity=daily |
+  weekly | monthly`. **Bucketing is folded in the service layer**
+  (`_bucket_ai_trend`), not SQL: `date_trunc` is Postgres-only and these
+  repositories stay portable to the SQLite the test suite runs on. The
+  row count is bounded by the reported range (a year is 365 rows), so
+  folding in Python costs nothing measurable. Weeks start Monday, months
+  on the 1st; empty buckets are absent rather than zero-filled, matching
+  `csat_daily_trend`.
+
+Deliberately a **new endpoint** rather than extra fields on
+`GET /reports/ai`: that one's flat `[{operation, calls}]` array is what
+the existing panel *and* both export formats consume, and widening it
+into an object would break every current caller.
+
+Surfaced in `AiReportPanel` as a per-agent grid and a trend chart with a
+daily/weekly/monthly toggle, alongside the existing by-operation pie.
+
 ## Customer Satisfaction: a signed survey link, not a new auth flow
 
 CSAT needs a way for a *customer* (not a logged-in agent) to submit a

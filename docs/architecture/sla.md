@@ -252,3 +252,44 @@ end-to-end through the real UI.
   computed, but nothing renders them outside the SLA Builder's own
   preview tool and the existing retrospective SLA report.
 - Holidays have no edit, only create/delete (see "Frontend" above).
+
+
+## SLA events also drive AI Autopilot (added 2026-07-28)
+
+`conversation.sla_warning` and `conversation.sla_breached` gained a
+second consumer: **`autopilot_sla_consumer`**, AI Autopilot's "SLA"
+activation mode. When a company enables
+`settings.ai.autopilot.activate_on_sla`, a conversation crossing its
+warning threshold — or breaching — can be answered by AI rather than
+waiting longer for a human.
+
+This is a genuinely different trigger shape from Autopilot's original
+one, which is why it needs its own consumer. `ai_autopilot_consumer`
+binds `message.persisted` and answers *new customer messages*; an SLA
+event fires precisely **because nobody replied**, so no inbound message
+is coming and waiting for one would mean never replying at all. Both
+delegate the actual reply-or-hand-off decision to the shared
+`AutopilotService` — see `ai-engine.md`.
+
+Two consequences worth knowing when reasoning about SLA behavior:
+
+- **Autopilot replying satisfies the first-response SLA.** `send_reply`
+  sets `first_response_at`, and `_maybe_breach_first_response` skips any
+  conversation that already has it — so an Autopilot answer stops the
+  first-response clock exactly as a human answer does.
+- **A warning and its follow-up breach produce one reply, not two.**
+  `AutopilotService` only acts on the SLA trigger when the newest message
+  in the thread is *inbound*; once it (or a human) has answered, the
+  newest message is outbound and the second event is a no-op. Note this
+  is a direction check, not an id comparison — replying adds a message,
+  so after the first run the newest id is Autopilot's own reply.
+
+There is deliberately **no `Queue.autopilot_enabled` requirement** on
+this path: that flag governs which queues hand *brand-new* conversations
+to AI instead of to a human, a different decision from "nothing has
+happened for too long, let AI try". Enabling the SLA mode is a
+company-wide opt-in.
+
+The escalation rules on `SlaPolicy` are unaffected and still run — an
+SLA-triggered Autopilot reply and a `notify`/`reassign_queue` escalation
+are independent responses to the same event.
