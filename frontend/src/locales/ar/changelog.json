@@ -17,6 +17,16 @@
     "stableChannelLabel": "مستقر",
     "betaChannelLabel": "تجريبي",
     "releaseCandidateChannelLabel": "مرشح للإصدار",
-    "developmentChannelLabel": "قيد التطوير"
+    "developmentChannelLabel": "قيد التطوير",
+    "majorReleaseLabel": "إصدار رئيسي",
+    "minorReleaseLabel": "إصدار فرعي",
+    "patchReleaseLabel": "إصدار تصحيحي",
+    "newFeaturesCount": "{{count}} ميزة جديدة",
+    "improvementsCount": "{{count}} تحسين",
+    "bugFixesCount": "{{count}} إصلاح خلل",
+    "searchPlaceholder": "ابحث في ملاحظات الإصدار…",
+    "searchAriaLabel": "البحث في ملاحظات الإصدار",
+    "noSearchResultsTitle": "لا توجد إصدارات مطابقة",
+    "noSearchResultsDescription": "لا يوجد شيء في سجل الإصدارات يطابق \"{{searchTerm}}\"."
   }
 }

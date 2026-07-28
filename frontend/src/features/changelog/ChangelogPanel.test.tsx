@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { queryClient } from '../../app/queryClient'
 import { renderWithProviders } from '../../test/renderWithProviders'
@@ -41,13 +42,23 @@ describe('ChangelogPanel', () => {
     // "Security"/"Deprecated" are all empty for 1.0.0-beta.1) do not.
     expect(screen.queryByRole('heading', { name: 'Security', level: 4 })).not.toBeInTheDocument()
 
-    // The second fixture release ("1.0.0", still TBD) proves the
-    // null-release_date -> "Unreleased" fallback and that a release with
-    // every subsection empty renders no subsection headings at all.
+    // The second fixture release ("1.0.0", still TBD) is collapsed by
+    // default — only the newest release starts expanded — so its body is
+    // unmounted (see ReleaseAccordionItem's `unmountOnExit`) until opened.
     expect(screen.getByRole('heading', { name: '1.0.0', level: 3 })).toBeInTheDocument()
     expect(screen.getByText('Unreleased')).toBeInTheDocument()
     expect(
-      screen.getByText('The finished, stable release, planned once pilot testing wraps up.'),
+      screen.queryByText('The finished, stable release, planned once pilot testing wraps up.'),
+    ).not.toBeInTheDocument()
+
+    // Expanding it (proves the null-release_date -> "Unreleased" fallback
+    // and that a release with every subsection empty renders no
+    // subsection headings at all) reveals that body.
+    const user = userEvent.setup()
+    const secondReleaseHeading = screen.getByRole('heading', { name: '1.0.0', level: 3 })
+    await user.click(within(secondReleaseHeading.closest('button')!).getByText('1.0.0'))
+    expect(
+      await screen.findByText('The finished, stable release, planned once pilot testing wraps up.'),
     ).toBeInTheDocument()
   })
 
@@ -79,5 +90,63 @@ describe('ChangelogPanel', () => {
     await screen.findByText('Currently running')
     await screen.findByRole('heading', { name: '1.0.0', level: 3 })
     expect(await axe(container)).toHaveNoViolations()
+  })
+
+  it("labels the first tracked release 'Major' and shows its new-feature count in the collapsed header", async () => {
+    renderWithProviders(<ChangelogPanel />)
+    await screen.findByText('Currently running')
+
+    // mocks/handlers/changelog.ts's "1.0.0-beta.1" has 15 "added" bullets
+    // and no "improved"/"fixed" ones — it has nothing older with a
+    // different SemVer core to diff against, so it's the "first release"
+    // case (see releaseKind's doc comment), not a real major bump.
+    const betaHeading = screen.getByRole('heading', { name: '1.0.0-beta.1', level: 3 })
+    const betaSummary = betaHeading.closest('button')!
+    expect(within(betaSummary).getByText('Major')).toBeInTheDocument()
+    expect(within(betaSummary).getByText('15 new feature(s)')).toBeInTheDocument()
+    expect(within(betaSummary).queryByText(/improvement\(s\)/)).not.toBeInTheDocument()
+  })
+
+  it('search filters the release list to only releases matching the term, across summary and bullet text', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ChangelogPanel />)
+    await screen.findByText('Currently running')
+    expect(screen.getByRole('heading', { name: '1.0.0-beta.1', level: 3 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '1.0.0', level: 3 })).toBeInTheDocument()
+
+    // "wraps up" only appears in 1.0.0's summary — searching for it should
+    // drop 1.0.0-beta.1 out of the list entirely.
+    await user.type(screen.getByLabelText('Search release notes'), 'wraps up')
+    expect(await screen.findByRole('heading', { name: '1.0.0', level: 3 })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: '1.0.0-beta.1', level: 3 }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows a no-results state for a search term matching no release', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ChangelogPanel />)
+    await screen.findByText('Currently running')
+
+    await user.type(
+      screen.getByLabelText('Search release notes'),
+      'nonexistent-feature-xyz',
+    )
+    expect(await screen.findByText('No matching releases')).toBeInTheDocument()
+    expect(
+      screen.getByText('Nothing in the release history matches "nonexistent-feature-xyz".'),
+    ).toBeInTheDocument()
+  })
+
+  it('a #release-<version> URL hash expands and links directly to that release instead of the newest one', async () => {
+    window.location.hash = `#release-1.0.0`
+    renderWithProviders(<ChangelogPanel />)
+    await screen.findByText('Currently running')
+
+    // The linked release ("1.0.0"), not the newest one, starts expanded.
+    expect(
+      await screen.findByText('The finished, stable release, planned once pilot testing wraps up.'),
+    ).toBeInTheDocument()
+    window.location.hash = ''
   })
 })

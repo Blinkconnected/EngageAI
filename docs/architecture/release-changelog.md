@@ -143,6 +143,46 @@ a date entirely, and is parsed like any other release (so a malformed
   top-level heading ("What's new") instead, since `ChangelogPage` mounts
   it standalone, outside `AppLayout` entirely.
 
+### Accordion, search, and deep linking (Beta 4)
+
+Each release renders as an MUI `Accordion` instead of a flat `Card` —
+only the newest release starts expanded (older ones collapse by
+default), and a collapsed release's `AccordionDetails` is fully
+unmounted (`slotProps={{ transition: { unmountOnExit: true } }}`), not
+just visually hidden, so a changelog with real history (this repo's own
+already has 4+ entries) stays cheap regardless of how many releases
+accumulate.
+
+- **Header counts** ("N new features / N improvements / N bug fixes")
+  are `.length` on the `Release` model's existing `added`/`improved`/
+  `fixed` arrays — no backend change needed, since the parser already
+  returns these as structured lists.
+- **Release type** (Major/Minor/Patch) is derived client-side by diffing
+  a release's SemVer core against the nearest *older* release with a
+  genuinely different core (`releaseKind` in `ChangelogPanel.tsx`) —
+  several consecutive pre-releases commonly share one core (e.g.
+  `1.0.0-beta.1`/`-beta.2`/`-beta.3` all sharing core `1.0.0` ahead of
+  the eventual `1.0.0` GA), so comparing only against the immediately
+  preceding entry would misclassify every one of them as a "Patch" of
+  each other. This is orthogonal to `channel`, which instead reflects
+  the pre-release identifier (`beta`/`rc`/etc.).
+- **Search** filters the release list client-side against a flattened,
+  lowercased join of every release's version, summary, and every bullet
+  across every subsection — matching-only releases render; a "No
+  matching releases" empty state covers the zero-match case. Not a
+  backend search endpoint: the full release history is small and already
+  fetched in one unpaginated request (see decision above on
+  `GET /releases`), so filtering already-loaded data client-side avoids a
+  round trip for what is, in practice, a few hundred short strings at
+  most.
+- **Deep linking** uses a `#release-<version>` URL hash fragment (e.g.
+  `/changelog#release-1.0.0-beta.2`), not a route param — read directly
+  from `window.location.hash` on first load, expanding and scrolling to
+  that specific release instead of defaulting to "newest expanded." A
+  hash fragment (rather than adding a `/changelog/:version` route) works
+  from any link to this already-public page, including links shared
+  before a visitor has ever signed in, with no routing changes.
+
 ## Verification performed
 
 Backend: 42 tests — parser edge cases (malformed headings, out-of-order
@@ -163,3 +203,16 @@ remove-and-recreate that still served stale content. This is an
 environment quirk, not a defect in the compose file itself, which is
 correct for a normal deployment; a real container rebuild-and-redeploy
 picks up the current file.
+
+**Beta 4 verification**: 4 new frontend tests (release-type label +
+new-feature count rendering in a collapsed header, search filtering the
+visible list, the no-results empty state, and `#release-<version>` deep
+linking to a non-newest release) plus 2 existing tests updated for the
+"only the newest release starts expanded" behavior — full changelog
+suite 11 passing, full frontend suite 279 passing, `tsc`/`eslint` clean,
+production build succeeds. Live-verified against the running Docker
+stack: `GET /api/v1/releases` returns this repo's real (non-mock)
+release history — `1.0.0-beta.3`, `1.0.0-beta.2`, `1.0.0-beta.1` — at the
+time of this milestone, confirming the accordion/search/collapse
+behavior was built and tested against a realistic multi-release shape,
+not just the two-release test fixture.

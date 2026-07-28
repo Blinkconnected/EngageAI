@@ -509,6 +509,47 @@ loading/empty/error states:
   loading/empty/error trichotomy every React Query-backed view has to
   handle.
 
+## Inbox as the design standard (Beta 4)
+
+`InboxPage.tsx`/`ConversationCells.tsx` is the reference implementation
+for how a dense, triage-oriented list page should look and behave in
+this app — future list pages that need to convey priority/urgency at a
+glance should follow its patterns rather than inventing new ones:
+
+- **One glance, one column.** Identity and unread state share a single
+  cell (`CustomerIdentityCell`): an avatar with an anchored unread-count
+  badge, not a separate "unread" column — an agent's eye checks one
+  place, not several, to see "is there something new here."
+- **Silence is the default state.** `PriorityBadge` renders nothing for
+  `normal` priority (the common case) and `SlaIndicator` renders nothing
+  when a conversation is on-track — badges only appear for genuine
+  deviations (`high`/`urgent`, "approaching SLA," "breached"), so the
+  signal stands out instead of competing with a badge on every row. Don't
+  add a badge/chip for a row's default state "for consistency"; only
+  surface what needs attention.
+- **Recognizable-at-a-glance channel identity.** `ChannelIcon` maps each
+  channel type to a brand-colored icon in a tinted circular badge
+  (`CHANNEL_ICONS` in `ConversationCells.tsx`) rather than a text label —
+  faster to scan than reading "WhatsApp Business" in a column.
+- **Deterministic avatar color.** Customer avatars derive their
+  background color from a hash of the customer's name
+  (`avatarColorFor`), so the same customer always renders the same color
+  across pages/sessions without needing a dedicated backend field.
+  Reuse this helper rather than inventing a new avatar-coloring scheme
+  elsewhere.
+- **Every `DataTable` wires `error`/`onRetry`.** `InboxPage` previously
+  left the grid's `error`/`onRetry` props unset, so a failed fetch
+  silently rendered an empty grid instead of the shared `ErrorState` —
+  fixed in Beta 4. Every new `DataTable` usage should wire both from the
+  start; `ConversationListPanel.tsx` was already doing this correctly and
+  is the reference for the pattern.
+- **Keyboard efficiency is additive, never a reimplementation.** The
+  Inbox's `j`/`k` row navigation (Gmail-style, moves focus to the next/
+  previous row at the currently-focused column) is layered on top of
+  **MUI X Data Grid's own native ArrowUp/ArrowDown/Enter cell-focus
+  handling**, left completely alone — a page should never reimplement
+  arrow-key/Enter navigation the grid already provides correctly.
+
 ## API mocking for tests
 
 `@mswjs/msw` (Mock Service Worker) intercepts at the network layer, so

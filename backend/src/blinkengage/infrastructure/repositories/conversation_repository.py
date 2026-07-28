@@ -1,12 +1,30 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
+    ConversationPriority,
     ConversationStatus,
+)
+
+# ConversationPriority's stored strings ("LOW"/"NORMAL"/"HIGH"/"URGENT"
+# — Enum(native_enum=False) stores a StrEnum member's NAME, not its
+# lowercase .value; confirmed against conversations.status storing
+# "OPEN", not "open") don't sort correctly alphabetically ("HIGH" <
+# "LOW" < "NORMAL" < "URGENT") — this CASE expression gives the Inbox's
+# default sort a genuine urgency ranking to order by instead.
+_PRIORITY_RANK = case(
+    {
+        ConversationPriority.URGENT.name: 3,
+        ConversationPriority.HIGH.name: 2,
+        ConversationPriority.NORMAL.name: 1,
+        ConversationPriority.LOW.name: 0,
+    },
+    value=Conversation.priority,
+    else_=1,
 )
 
 
@@ -59,6 +77,7 @@ class ConversationRepository:
         customer_id: UUID | None = None,
         assigned_agent_id: UUID | None = None,
         queue_id: UUID | None = None,
+        priority: ConversationPriority | None = None,
         unassigned_only: bool = False,
     ) -> tuple[list[Conversation], int]:
         base = select(Conversation).where(
@@ -72,6 +91,8 @@ class ConversationRepository:
             base = base.where(Conversation.assigned_agent_id == assigned_agent_id)
         if queue_id is not None:
             base = base.where(Conversation.queue_id == queue_id)
+        if priority is not None:
+            base = base.where(Conversation.priority == priority)
         if unassigned_only:
             base = base.where(Conversation.assigned_agent_id.is_(None))
         total = (
@@ -81,6 +102,11 @@ class ConversationRepository:
         ).scalar_one()
         result = await self._session.execute(
             base.order_by(
+                # Urgent-first, then most-recently-active within a
+                # priority tier — every conversation defaults to NORMAL,
+                # so this is a strict no-op change in ordering until
+                # priorities actually diverge.
+                _PRIORITY_RANK.desc(),
                 Conversation.last_message_at.desc().nulls_last(),
                 Conversation.created_at.desc(),
             )

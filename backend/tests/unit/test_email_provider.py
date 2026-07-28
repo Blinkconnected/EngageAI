@@ -151,9 +151,7 @@ class TestSendMessage:
                 external_thread_id="thread-1",
                 body="See attached.",
                 attachments=[
-                    AttachmentRef(
-                        external_id=key, content_type="text/plain", filename="file.txt"
-                    )
+                    AttachmentRef(external_id=key, content_type="text/plain", filename="file.txt")
                 ],
                 metadata={"customer_email": "alice@customer.example"},
             )

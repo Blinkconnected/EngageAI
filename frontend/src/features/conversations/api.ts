@@ -4,6 +4,7 @@ import type { Page, PageParams } from '../../shared/api/pagination'
 import type {
   Attachment,
   Conversation,
+  ConversationPriority,
   ConversationStatus,
   ConversationTransfer,
   ConversationTransferRequest,
@@ -37,6 +38,7 @@ export interface ConversationListParams {
   customer_id?: string
   assigned_agent_id?: string
   queue_id?: string
+  priority?: ConversationPriority
   unassigned_only?: boolean
 }
 

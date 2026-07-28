@@ -14,6 +14,47 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] - 2026-07-28
+
+### Added
+
+- Conversations can now be given a priority — Low, Normal, High, or
+  Urgent — so agents and supervisors can flag what needs attention
+  first. Higher-priority conversations now sort to the top of the Inbox
+  automatically, ahead of how recently they were last active.
+- The Inbox now shows, at a glance, how many unread customer messages
+  are waiting in each conversation — the count disappears the instant an
+  agent opens the conversation and reads them.
+- The Inbox now shows a clear warning badge on any conversation that's
+  approaching its service-level agreement (SLA) target, and a distinct
+  "breached" badge once it's actually missed — separate from each
+  other, so agents can act before a deadline is missed, not just after.
+
+### Changed
+
+- The Inbox has been redesigned from the ground up for faster triage:
+  each row now shows a color-coded channel icon, a customer avatar with
+  an unread-message badge attached directly to it, a priority badge, and
+  an SLA warning/breach badge — all in one glance, without needing to
+  read column labels. Rows for on-track, normal-priority conversations
+  (the common case) stay visually quiet; badges only appear where
+  something genuinely needs attention. Conversations being handled by AI
+  Autopilot are now clearly marked in the Inbox itself, not only inside
+  the conversation.
+- The Inbox can now be navigated entirely from the keyboard: press `j`/
+  `k` to move between conversations without touching the mouse, in
+  addition to the existing arrow-key and Enter support.
+- If the Inbox fails to load conversations (e.g. a lost connection), it
+  now shows a clear error message with a "Retry" button instead of
+  silently displaying an empty list.
+- The Public Release Notes page has been redesigned as a searchable,
+  collapsible list: only the newest release is expanded by default,
+  each release's header now shows its type (Major/Minor/Patch), channel
+  (Beta/Release Candidate/Stable), and how many new features,
+  improvements, and bug fixes it contains, and a search box filters the
+  whole release history instantly. Every release can now be linked to
+  and shared directly.
+
 ## [1.0.0-beta.3] - 2026-07-28
 
 ### Added

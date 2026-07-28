@@ -219,9 +219,7 @@ async def test_send_reply_with_attachment_links_it_to_the_message(
         f"/api/v1/conversations/{conversation['id']}/messages", headers=owner_headers
     )
     assert list_response.status_code == 200
-    messages_with_attachments = [
-        m for m in list_response.json()["items"] if m["attachments"]
-    ]
+    messages_with_attachments = [m for m in list_response.json()["items"] if m["attachments"]]
     assert len(messages_with_attachments) == 1
     assert messages_with_attachments[0]["attachments"][0]["id"] == attachment_id
 

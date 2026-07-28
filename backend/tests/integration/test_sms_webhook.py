@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlencode
 
 from httpx import AsyncClient
 
+from blinkengage.core.config import get_settings
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
@@ -65,7 +66,11 @@ async def test_post_with_valid_signature_publishes_message_received(
             "NumMedia": "0",
         }
     ).encode()
-    url = f"http://localhost/api/v1/webhooks/{config['id']}"
+    # Must match settings.public_base_url, not a hardcoded assumption —
+    # this environment configures it to a real externally-reachable URL
+    # (see docs/architecture/sms.md), which is exactly what the
+    # production signature-verification code signs against.
+    url = f"{get_settings().public_base_url}/api/v1/webhooks/{config['id']}"
 
     response = await client.post(
         f"/api/v1/webhooks/{config['id']}",

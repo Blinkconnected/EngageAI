@@ -1,4 +1,9 @@
+from typing import Any
+
 from httpx import AsyncClient
+
+from blinkengage.api.deps import get_settings_dep
+from blinkengage.core.config import get_settings
 
 
 async def test_liveness_endpoint(client: AsyncClient) -> None:
@@ -7,19 +12,32 @@ async def test_liveness_endpoint(client: AsyncClient) -> None:
     assert response.json() == {"status": "ok", "service": "blinkengage-api"}
 
 
-async def test_readiness_endpoint_reports_database_and_redis_ok(client: AsyncClient) -> None:
-    # No real RabbitMQ broker runs in the test process (broker connectivity
-    # is always verified manually against the real docker-compose stack,
-    # same bar as every other "real infra" check in this suite) — so this
-    # also doubles as the "degraded" path test: database/redis are real
-    # (SQLite/fakeredis), rabbitmq is genuinely unreachable here.
-    response = await client.get("/api/v1/health/ready")
-    assert response.status_code == 503
-    body = response.json()
-    assert body["status"] == "degraded"
-    assert body["database"] == "ok"
-    assert body["redis"] == "ok"
-    assert body["rabbitmq"] == "unreachable"
+async def test_readiness_endpoint_reports_database_and_redis_ok(
+    client: AsyncClient, app: Any
+) -> None:
+    # RabbitMQ reachability must be forced deterministically rather than
+    # relied upon incidentally: database/redis are real-but-fake
+    # (SQLite/fakeredis), but a real RabbitMQ broker genuinely is
+    # reachable from this process whenever the test suite runs inside the
+    # docker-compose network (e.g. `docker compose exec backend pytest`)
+    # — only a bare host-level pytest run with no broker on the network
+    # ever saw the "unreachable" branch this test exercises. Overriding
+    # the URL to a closed local port makes the "degraded" path exercised
+    # regardless of how/where the suite runs.
+    unreachable_settings = get_settings().model_copy(
+        update={"rabbitmq_url": "amqp://guest:guest@127.0.0.1:1/"}
+    )
+    app.dependency_overrides[get_settings_dep] = lambda: unreachable_settings
+    try:
+        response = await client.get("/api/v1/health/ready")
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "degraded"
+        assert body["database"] == "ok"
+        assert body["redis"] == "ok"
+        assert body["rabbitmq"] == "unreachable"
+    finally:
+        del app.dependency_overrides[get_settings_dep]
 
 
 async def test_openapi_schema_is_served(client: AsyncClient) -> None:

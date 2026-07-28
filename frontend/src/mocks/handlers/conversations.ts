@@ -24,6 +24,7 @@ const SEED_CONVERSATION: Conversation = {
   channel_config_id: 'c1',
   external_thread_id: 'ext-thread-1',
   status: 'open',
+  priority: 'normal',
   queue_id: 'q1',
   assigned_agent_id: null,
   department_id: null,
@@ -31,12 +32,15 @@ const SEED_CONVERSATION: Conversation = {
   first_response_at: null,
   sla_first_response_breached_at: null,
   sla_resolution_breached_at: null,
+  sla_first_response_warned_at: null,
+  sla_resolution_warned_at: null,
   queue_entered_at: '2026-01-01T00:00:00Z',
   picked_up_at: null,
   closed_at: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
   autopilot_active: false,
+  unread_count: 0,
 }
 
 const SEED_MESSAGES: Message[] = [
@@ -89,6 +93,7 @@ export const conversationsHandlers = [
     const customerIdFilter = url.searchParams.get('customer_id')
     const assignedAgentIdFilter = url.searchParams.get('assigned_agent_id')
     const queueIdFilter = url.searchParams.get('queue_id')
+    const priorityFilter = url.searchParams.get('priority')
     const unassignedOnly = url.searchParams.get('unassigned_only') === 'true'
     let items = !statusFilter || statusFilter === conversation.status ? [conversation] : []
     if (customerIdFilter && conversation.customer_id !== customerIdFilter) items = []
@@ -96,6 +101,7 @@ export const conversationsHandlers = [
       items = []
     }
     if (queueIdFilter && conversation.queue_id !== queueIdFilter) items = []
+    if (priorityFilter && conversation.priority !== priorityFilter) items = []
     if (unassignedOnly && conversation.assigned_agent_id !== null) items = []
     return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 })
   }),
@@ -164,6 +170,17 @@ export const conversationsHandlers = [
 
   http.get(`${API_BASE_URL}/conversations/:conversationId/messages`, () => {
     const ordered = [...messages].reverse() // newest-first, matching the real API
+    // Mirrors the real backend: fetching messages IS viewing the
+    // conversation, so every unread inbound message is marked read —
+    // see ConversationService.list_messages. Keeps the mock's
+    // unread_count in sync the same way opening a conversation clears
+    // its Inbox badge for real.
+    messages = messages.map((message) =>
+      message.direction === 'inbound' && message.read_status === 'unread'
+        ? { ...message, read_status: 'read', read_at: '2026-01-02T00:00:00Z' }
+        : message,
+    )
+    conversation = { ...conversation, unread_count: 0 }
     return HttpResponse.json({
       items: ordered,
       total: ordered.length,

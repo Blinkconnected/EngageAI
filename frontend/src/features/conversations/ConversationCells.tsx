@@ -1,8 +1,223 @@
-import { Skeleton, Typography } from '@mui/material'
+import type { ReactNode } from 'react'
+import { Avatar, Badge, Box, Chip, Skeleton, Tooltip, Typography } from '@mui/material'
+import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import TelegramIcon from '@mui/icons-material/Telegram'
+import FacebookIcon from '@mui/icons-material/Facebook'
+import InstagramIcon from '@mui/icons-material/Instagram'
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
+import SmsOutlinedIcon from '@mui/icons-material/SmsOutlined'
+import ChatBubbleOutlinedIcon from '@mui/icons-material/ChatBubbleOutlined'
+import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined'
+import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined'
+import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
+import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
+import { useTranslation } from 'react-i18next'
 import { useCustomerQuery } from '../customers/api'
+import { channelTypeLabel } from '../channels/types'
+import type { Conversation, ConversationPriority } from './types'
 
-export function CustomerNameCell({ customerId }: { customerId: string }) {
-  const customerQuery = useCustomerQuery(customerId)
-  if (customerQuery.isPending) return <Skeleton width={120} />
-  return <Typography variant="body2">{customerQuery.data?.full_name ?? customerId}</Typography>
+/** One brand color + icon per registered channel type (see
+ * channels/types.ts's CHANNEL_TYPES) — lets an agent recognize the
+ * channel from shape/color alone, the way Freshdesk/Intercom do, without
+ * reading the label text. Falls back to a generic chat icon for
+ * plugin-defined channel types this map doesn't know about yet. */
+const CHANNEL_ICONS: Record<string, { icon: ReactNode; color: string }> = {
+  whatsapp: { icon: <WhatsAppIcon fontSize="small" />, color: '#25D366' },
+  telegram: { icon: <TelegramIcon fontSize="small" />, color: '#26A5E4' },
+  messenger: { icon: <FacebookIcon fontSize="small" />, color: '#0866FF' },
+  instagram: { icon: <InstagramIcon fontSize="small" />, color: '#E4405F' },
+  email: { icon: <EmailOutlinedIcon fontSize="small" />, color: '#6B7280' },
+  sms: { icon: <SmsOutlinedIcon fontSize="small" />, color: '#8B5CF6' },
+  web_chat: { icon: <ChatBubbleOutlinedIcon fontSize="small" />, color: '#F59E0B' },
+}
+
+export function ChannelIcon({ channelType }: { channelType: string }) {
+  const entry = CHANNEL_ICONS[channelType]
+  return (
+    <Tooltip title={channelTypeLabel(channelType)}>
+      <Box
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          bgcolor: entry ? `${entry.color}1f` : 'action.selected',
+          color: entry?.color ?? 'text.secondary',
+          flexShrink: 0,
+        }}
+        aria-label={channelTypeLabel(channelType)}
+      >
+        {entry?.icon ?? <ExtensionOutlinedIcon fontSize="small" />}
+      </Box>
+    </Tooltip>
+  )
+}
+
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase()
+}
+
+// A small fixed palette keyed by a hash of the name, so the same customer
+// always gets the same color across renders/pages without needing a
+// dedicated backend field for it.
+const AVATAR_PALETTE = ['#2563EB', '#7C3AED', '#DB2777', '#D97706', '#059669', '#0891B2', '#DC2626']
+
+function avatarColorFor(seed: string): string {
+  let hash = 0
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) | 0
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]!
+}
+
+/** Customer identity + unread badge combined into one glanceable cell —
+ * the unread dot is anchored to the avatar (not a separate column) so an
+ * agent's eye only has one place to check for "is there something new
+ * here." */
+export function CustomerIdentityCell({ conversation }: { conversation: Conversation }) {
+  const { t } = useTranslation('conversationsCore')
+  const customerQuery = useCustomerQuery(conversation.customer_id)
+
+  if (customerQuery.isPending) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+        <Skeleton variant="circular" width={32} height={32} />
+        <Skeleton width={120} />
+      </Box>
+    )
+  }
+
+  const name = customerQuery.data?.full_name ?? conversation.customer_id
+  const hasUnread = conversation.unread_count > 0
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+      <Badge
+        overlap="circular"
+        variant={hasUnread ? 'standard' : undefined}
+        badgeContent={hasUnread ? conversation.unread_count : undefined}
+        max={9}
+        color="primary"
+        aria-label={
+          hasUnread
+            ? t('InboxPage.unreadBadgeAriaLabel', { count: conversation.unread_count })
+            : undefined
+        }
+      >
+        <Avatar
+          sx={{
+            width: 32,
+            height: 32,
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            bgcolor: avatarColorFor(name),
+          }}
+        >
+          {initialsFromName(name)}
+        </Avatar>
+      </Badge>
+      <Typography
+        variant="body2"
+        noWrap
+        sx={{ fontWeight: hasUnread ? 700 : 400, minWidth: 0 }}
+        title={name}
+      >
+        {name}
+      </Typography>
+    </Box>
+  )
+}
+
+const PRIORITY_COLOR: Record<ConversationPriority, 'default' | 'info' | 'warning' | 'error'> = {
+  low: 'default',
+  normal: 'info',
+  high: 'warning',
+  urgent: 'error',
+}
+
+/** Deliberately non-interactive here (a Chip, not a Select) — priority is
+ * edited from the conversation detail sidebar, not inline from the row,
+ * matching how status/queue are already handled elsewhere in the Inbox. */
+export function PriorityBadge({ priority }: { priority: ConversationPriority }) {
+  const { t } = useTranslation('conversationsCore')
+  if (priority === 'normal') {
+    // Normal is the default state of every conversation — showing a chip
+    // for it on every single row would be pure visual noise for the
+    // common case. Only deviations from normal earn a badge.
+    return null
+  }
+  return (
+    <Chip
+      size="small"
+      label={t(`InboxPage.priority.${priority}`)}
+      color={PRIORITY_COLOR[priority]}
+      variant={priority === 'urgent' ? 'filled' : 'outlined'}
+    />
+  )
+}
+
+type SlaState = 'breached' | 'warned' | 'ok'
+
+function slaStateFor(conversation: Conversation): SlaState {
+  if (conversation.sla_first_response_breached_at || conversation.sla_resolution_breached_at) {
+    return 'breached'
+  }
+  if (conversation.sla_first_response_warned_at || conversation.sla_resolution_warned_at) {
+    return 'warned'
+  }
+  return 'ok'
+}
+
+/** Shows nothing for the common "on track" case — only surfaces once a
+ * conversation is approaching or has breached its SLA policy target, so
+ * the signal stands out instead of competing with a badge on every row. */
+export function SlaIndicator({ conversation }: { conversation: Conversation }) {
+  const { t } = useTranslation('conversationsCore')
+  const state = slaStateFor(conversation)
+  if (state === 'ok') return null
+
+  const label =
+    state === 'breached' ? t('InboxPage.slaBreachedLabel') : t('InboxPage.slaWarningLabel')
+
+  return (
+    <Tooltip title={label}>
+      <Chip
+        size="small"
+        icon={
+          state === 'breached' ? (
+            <ErrorOutlineOutlinedIcon fontSize="small" />
+          ) : (
+            <ScheduleOutlinedIcon fontSize="small" />
+          )
+        }
+        label={state === 'breached' ? t('InboxPage.slaBreachedShort') : t('InboxPage.slaWarningShort')}
+        color={state === 'breached' ? 'error' : 'warning'}
+        variant={state === 'breached' ? 'filled' : 'outlined'}
+      />
+    </Tooltip>
+  )
+}
+
+/** A compact "AI is handling this" signal — distinct from every other
+ * badge (rounded rectangle, not a pill chip) so it never gets confused
+ * with a human assignment at a glance. */
+export function AutopilotBadge() {
+  const { t } = useTranslation('conversationsCore')
+  return (
+    <Tooltip title={t('InboxPage.autopilotActiveTooltip')}>
+      <Chip
+        size="small"
+        icon={<SmartToyOutlinedIcon fontSize="small" />}
+        label={t('InboxPage.autopilotActiveShort')}
+        sx={{
+          bgcolor: 'secondary.main',
+          color: 'secondary.contrastText',
+          '& .MuiChip-icon': { color: 'inherit' },
+        }}
+      />
+    </Tooltip>
+  )
 }

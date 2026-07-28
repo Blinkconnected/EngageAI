@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { useTranslation } from 'react-i18next'
 import {
   Alert,
+  Box,
   Chip,
   FormControlLabel,
   MenuItem,
@@ -14,8 +15,11 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
+  Typography,
 } from '@mui/material'
 import AssignmentIndOutlinedIcon from '@mui/icons-material/AssignmentIndOutlined'
+import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { DataTable } from '../../shared/components/DataTable'
@@ -28,7 +32,13 @@ import { useAllAgentsQuery } from '../agents/api'
 import { useAllDepartmentsQuery } from '../departments/api'
 import { useAllQueuesQuery } from '../queues/api'
 import { useCurrentUserQuery } from '../session/api'
-import { CustomerNameCell } from './ConversationCells'
+import {
+  AutopilotBadge,
+  ChannelIcon,
+  CustomerIdentityCell,
+  PriorityBadge,
+  SlaIndicator,
+} from './ConversationCells'
 import { usePickConversationMutation, useConversationsQuery } from './api'
 import { CONVERSATION_STATUSES, type Conversation, type ConversationStatus } from './types'
 
@@ -133,8 +143,10 @@ export function InboxPage() {
   const pickMutation = usePickConversationMutation()
 
   const channelById = useMemo(() => {
-    const map = new Map<string, string>()
-    channelsQuery.data?.forEach((channel) => map.set(channel.id, channel.display_name))
+    const map = new Map<string, { displayName: string; channelType: string }>()
+    channelsQuery.data?.forEach((channel) =>
+      map.set(channel.id, { displayName: channel.display_name, channelType: channel.channel_type }),
+    )
     return map
   }, [channelsQuery.data])
 
@@ -169,38 +181,50 @@ export function InboxPage() {
   const columns: GridColDef<Conversation>[] = useMemo(
     () => [
       {
-        field: 'customer_id',
-        headerName: t('InboxPage.columnCustomer'),
-        flex: 1,
-        minWidth: 160,
-        renderCell: (params) => <CustomerNameCell customerId={params.row.customer_id} />,
-      },
-      {
         field: 'channel_config_id',
         headerName: t('InboxPage.columnChannel'),
-        flex: 1,
-        minWidth: 140,
-        valueGetter: (_value, row) => {
-          const name = channelById.get(row.channel_config_id)
-          return name ?? t('InboxPage.emptyValue')
-        },
+        width: 56,
+        sortable: false,
+        renderCell: (params) => (
+          <ChannelIcon channelType={channelById.get(params.row.channel_config_id)?.channelType ?? ''} />
+        ),
+      },
+      {
+        field: 'customer_id',
+        headerName: t('InboxPage.columnCustomer'),
+        flex: 1.4,
+        minWidth: 190,
+        renderCell: (params) => <CustomerIdentityCell conversation={params.row} />,
+      },
+      {
+        field: 'priority',
+        headerName: t('InboxPage.columnPriority'),
+        width: 200,
+        sortable: false,
+        renderCell: (params) => (
+          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', py: 0.5 }}>
+            <PriorityBadge priority={params.row.priority} />
+            <SlaIndicator conversation={params.row} />
+          </Stack>
+        ),
       },
       {
         field: 'status',
         headerName: t('InboxPage.columnStatus'),
-        width: 120,
+        width: 110,
         renderCell: (params) => (
           <Chip
             label={t(`InboxPage.${STATUS_TAB_KEY[params.value as ConversationStatus]}`)}
             size="small"
             color={STATUS_COLOR[params.value as ConversationStatus]}
+            variant="outlined"
           />
         ),
       },
       {
         field: 'last_message_at',
         headerName: t('InboxPage.columnLastMessage'),
-        width: 150,
+        width: 130,
         valueGetter: (_value, row) =>
           row.last_message_at ? formatRelativeTime(row.last_message_at) : t('InboxPage.emptyValue'),
       },
@@ -208,17 +232,27 @@ export function InboxPage() {
         field: 'assigned_agent_id',
         headerName: t('InboxPage.columnAssignedTo'),
         flex: 1,
-        minWidth: 150,
-        valueGetter: (_value, row) => {
+        minWidth: 170,
+        renderCell: (params) => {
+          const row = params.row
+          let label: string
           if (row.assigned_agent_id) {
-            return agentById.get(row.assigned_agent_id) ?? t('InboxPage.unassignedValue')
-          }
-          if (row.department_id) {
-            return t('InboxPage.departmentSuffixLabel', {
+            label = agentById.get(row.assigned_agent_id) ?? t('InboxPage.unassignedValue')
+          } else if (row.department_id) {
+            label = t('InboxPage.departmentSuffixLabel', {
               departmentName: departmentById.get(row.department_id) ?? t('InboxPage.unknownValue'),
             })
+          } else {
+            label = t('InboxPage.unassignedValue')
           }
-          return t('InboxPage.unassignedValue')
+          return (
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+              <Typography variant="body2" noWrap title={label}>
+                {label}
+              </Typography>
+              {row.autopilot_active && <AutopilotBadge />}
+            </Stack>
+          )
         },
       },
       ...(canPick
@@ -259,6 +293,45 @@ export function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [channelById, agentById, departmentById, canPick, t, i18n.language],
   )
+
+  // Gmail-style j/k row navigation, additive to the grid's own native
+  // ArrowUp/ArrowDown/Enter cell-focus handling (left alone rather than
+  // reimplemented, so it keeps working exactly as MUI X ships it). j/k
+  // move focus to the next/previous row at the currently-focused column
+  // (or the first column, the first time), so an agent triaging a queue
+  // can move down the list without reaching for the mouse. Ignored while
+  // focus is inside a text input (the queue <select>, the "mine"/
+  // "unassigned" switches) so typing is never hijacked.
+  const gridContainerRef = useRef<HTMLDivElement | null>(null)
+  const rows = conversationsQuery.data?.items ?? []
+
+  function handleGridKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'j' && event.key !== 'k') return
+    const target = event.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return
+    }
+
+    const focusedCell = document.activeElement?.closest<HTMLElement>('[role="gridcell"]')
+    const focusedRow = focusedCell?.closest<HTMLElement>('[data-id]')
+    const currentIndex = rows.findIndex((row) => row.id === focusedRow?.getAttribute('data-id'))
+    const columnIndex = focusedCell?.getAttribute('data-colindex') ?? '0'
+
+    event.preventDefault()
+    const nextIndex =
+      event.key === 'j'
+        ? Math.min(currentIndex === -1 ? 0 : currentIndex + 1, rows.length - 1)
+        : Math.max(currentIndex === -1 ? 0 : currentIndex - 1, 0)
+    const nextRow = rows[nextIndex]
+    if (!nextRow) return
+    const nextRowElement = gridContainerRef.current?.querySelector<HTMLElement>(
+      `[data-id="${nextRow.id}"]`,
+    )
+    const nextCell =
+      nextRowElement?.querySelector<HTMLElement>(`[data-colindex="${columnIndex}"]`) ??
+      nextRowElement?.querySelector<HTMLElement>('[role="gridcell"]')
+    nextCell?.focus()
+  }
 
   return (
     <>
@@ -370,27 +443,45 @@ export function InboxPage() {
           title={t('InboxPage.noAgentProfileTitle')}
           description={t('InboxPage.noAgentProfileDescription')}
         />
-      ) : conversationsQuery.data?.total === 0 ? (
+      ) : !conversationsQuery.isError && conversationsQuery.data?.total === 0 ? (
         <EmptyState
           title={t('InboxPage.noConversationsTitle')}
           description={t('InboxPage.noConversationsDescription')}
         />
       ) : (
-        <DataTable
-          ariaLabel={t('InboxPage.dataTableAriaLabel')}
-          rows={conversationsQuery.data?.items ?? []}
-          columns={columns}
-          getRowId={(row) => row.id}
-          rowCount={conversationsQuery.data?.total ?? 0}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={(newPage) => updateParams({ page: newPage === 0 ? null : String(newPage) })}
-          onPageSizeChange={(newPageSize) =>
-            updateParams({ pageSize: newPageSize === 20 ? null : String(newPageSize), page: null })
-          }
-          loading={conversationsQuery.isFetching}
-          onRowClick={(row) => navigate(`/conversations/${row.id}`)}
-        />
+        <Box
+          ref={gridContainerRef}
+          onKeyDown={handleGridKeyDown}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}
+        >
+          <Tooltip title={t('InboxPage.keyboardShortcutsTooltip')}>
+            <Stack
+              direction="row"
+              spacing={0.5}
+              sx={{ alignItems: 'center', alignSelf: 'flex-end', color: 'text.secondary' }}
+            >
+              <KeyboardOutlinedIcon fontSize="inherit" />
+              <Typography variant="caption">{t('InboxPage.keyboardShortcutsHint')}</Typography>
+            </Stack>
+          </Tooltip>
+          <DataTable
+            ariaLabel={t('InboxPage.dataTableAriaLabel')}
+            rows={rows}
+            columns={columns}
+            getRowId={(row) => row.id}
+            rowCount={conversationsQuery.data?.total ?? 0}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={(newPage) => updateParams({ page: newPage === 0 ? null : String(newPage) })}
+            onPageSizeChange={(newPageSize) =>
+              updateParams({ pageSize: newPageSize === 20 ? null : String(newPageSize), page: null })
+            }
+            loading={conversationsQuery.isFetching}
+            onRowClick={(row) => navigate(`/conversations/${row.id}`)}
+            error={conversationsQuery.isError ? conversationsQuery.error : undefined}
+            onRetry={() => void conversationsQuery.refetch()}
+          />
+        </Box>
       )}
     </>
   )

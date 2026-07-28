@@ -22,6 +22,7 @@ customer_id (FK -> customers)
 channel_config_id (FK -> channel_configs)
 external_thread_id (nullable, unique per channel_config_id among active rows)
 status            open | pending | resolved | closed
+priority          low | normal | high | urgent (default normal — Beta 4, see below)
 assigned_agent_id (FK -> agents, SET NULL, nullable)
 department_id (FK -> departments, SET NULL, nullable — Sprint 2 Item 4, see below)
 last_message_at (nullable)
@@ -216,6 +217,67 @@ Status transitions are validated (`open → pending → resolved → closed`,
 plus reopening a `resolved`/`closed` conversation back to `open`) —
 illegal transitions (e.g. `closed → pending` directly) raise a domain
 error mapped to 400, not silently accepted.
+
+## Priority, unread count, and SLA warning exposure (Beta 4)
+
+9. **`Conversation.priority` is a pure triage/UX signal, deliberately
+   decoupled from SLA policy.** `ConversationPriority` (`low` / `normal`
+   / `high` / `urgent`, ordered low-to-high) never changes an
+   `SlaPolicy`'s response/resolution targets — those stay entirely
+   queue-driven, as before. Priority only drives the Inbox's default sort
+   order (`_PRIORITY_RANK` in `ConversationRepository`, applied before the
+   existing `last_message_at desc, created_at desc` ordering) and the
+   redesigned Inbox's visual urgency badge. Settable via the existing
+   generic `PATCH /conversations/{id}` (`priority` field on
+   `ConversationUpdateRequest`) and filterable via `GET
+   /conversations?priority=`, both under the existing
+   `conversations.manage`/`conversations.read` permissions — no new
+   permission needed. Stored via `Enum(native_enum=False)`, which persists
+   a `StrEnum` member's uppercase **name** (`"NORMAL"`), not its lowercase
+   `.value` (`"normal"`) — the same convention `ConversationStatus`
+   already used; a hand-written SQL expression referencing the stored
+   value (e.g. the sort-order `CASE`) must key off `.name`, not `.value`.
+
+10. **`unread_count` is a computed, non-persisted aggregate, not an ORM
+    column.** `MessageRepository.unread_counts_for_conversations()` runs
+    one grouped query per page of conversations (never N+1), counting
+    `direction=inbound, read_status=unread` messages, matching the
+    existing `CustomerInternalRatingRepository.summary_for_customers()`
+    batch-aggregate pattern. `ConversationService.list_messages()` — the
+    sole consumer of `GET /conversations/{id}/messages` (only mounted by
+    `MessageThread.tsx` for a genuinely open conversation, confirmed by
+    grep) — marks every unread inbound message read as a side effect of
+    that fetch, since viewing a conversation's messages *is* reading them;
+    the repeated 15s poll this endpoint already receives is a cheap no-op
+    `UPDATE` once nothing is left unread. Every endpoint that returns a
+    `Conversation` (`list`, `get`, `update`, `pick`, `release`) threads
+    this aggregate through a `_to_conversation_response()` helper (the
+    same "aggregate value through a per-row helper" shape
+    `customers.py`'s `_to_response()` already established) — a bare
+    `ConversationResponse.model_validate(conversation)` would otherwise
+    silently default `unread_count` to `0` on every one of them.
+
+11. **SLA warning timestamps were already written, just never returned.**
+    `sla_first_response_warned_at`/`sla_resolution_warned_at` (see
+    `sla.md`) have existed on the `Conversation` model since the SLA
+    engine's own milestone — Beta 4 only adds them to
+    `ConversationResponse`, a schema-only change with no migration. They
+    let the Inbox distinguish "approaching SLA" (a warning fired, not yet
+    breached) from "breached" as two visually distinct states instead of
+    one flat "at risk" signal.
+
+**Beta 4 verification**: 8 new backend tests (priority defaults to
+`normal`, PATCH updates it, an unknown value 422s, list filtering and
+urgent-first ordering regardless of recency, unread count reflects
+inbound messages and clears on view, an agent's own outbound replies
+never count as unread, SLA warning fields are exposed and null before any
+warning fires) — 965 backend tests total, `mypy`/`ruff` clean. Migration
+applied and downgrade/upgrade-cycled twice against real Postgres;
+`information_schema.columns` confirmed the live default is
+`'NORMAL'::character varying`. `GET /api/v1/openapi.json` confirmed live
+against the running stack: `ConversationResponse` includes all four new
+fields, and `GET /conversations` accepts a real `priority` query
+parameter. Frontend: `tsc`/`eslint` clean, 279 frontend tests passing.
 
 ## Verification performed
 

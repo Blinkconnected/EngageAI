@@ -1,5 +1,10 @@
 export type ConversationStatus = 'open' | 'pending' | 'resolved' | 'closed'
 
+/** A triage signal, independent of SLA policy targets — drives the
+ * Inbox's default sort order and visual urgency only. Ordered low to
+ * high so `CONVERSATION_PRIORITIES.indexOf(p)` is a comparable rank. */
+export type ConversationPriority = 'low' | 'normal' | 'high' | 'urgent'
+
 /** Matches the backend's `ConversationResponse`. */
 export interface Conversation {
   id: string
@@ -7,6 +12,7 @@ export interface Conversation {
   channel_config_id: string
   external_thread_id: string | null
   status: ConversationStatus
+  priority: ConversationPriority
   queue_id: string | null
   assigned_agent_id: string | null
   department_id: string | null
@@ -14,6 +20,12 @@ export interface Conversation {
   first_response_at: string | null
   sla_first_response_breached_at: string | null
   sla_resolution_breached_at: string | null
+  /** Set once a conversation crosses its SLA policy's warning threshold
+   * (e.g. 80% of the target), *before* it actually breaches — lets the
+   * Inbox show "approaching SLA" as an earlier, distinct state from
+   * "breached." */
+  sla_first_response_warned_at: string | null
+  sla_resolution_warned_at: string | null
   queue_entered_at: string | null
   picked_up_at: string | null
   closed_at: string | null
@@ -22,12 +34,18 @@ export interface Conversation {
   /** AI Autopilot — true while the AI, not a human, is responsible for
    * replying to this conversation. */
   autopilot_active: boolean
+  /** Unread INBOUND message count — clears the instant an agent opens
+   * the conversation (GET .../messages marks them read server-side). */
+  unread_count: number
 }
 
 export interface ConversationUpdateRequest {
   status?: ConversationStatus
+  priority?: ConversationPriority
   queue_id?: string | null
 }
+
+export const CONVERSATION_PRIORITIES: ConversationPriority[] = ['low', 'normal', 'high', 'urgent']
 
 export type TransferTargetType = 'agent' | 'department' | 'queue'
 

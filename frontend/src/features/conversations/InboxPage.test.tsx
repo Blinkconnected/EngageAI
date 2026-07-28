@@ -21,7 +21,11 @@ describe('InboxPage', () => {
   it('lists conversations with resolved customer and channel names', async () => {
     renderAuthenticated(<InboxPage />)
     expect(await screen.findByText('Grace Blake')).toBeInTheDocument()
-    expect(screen.getByText('Support Telegram')).toBeInTheDocument()
+    // The channel column shows an icon, not the channel's display name —
+    // its accessible name is the channel *type* label (see
+    // ConversationCells.tsx's ChannelIcon), matching the seeded
+    // conversation's channel_config_id ("c1" -> channel_type "telegram").
+    expect(screen.getByLabelText('Telegram')).toBeInTheDocument()
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
   })
 

@@ -21,6 +21,7 @@
     "dataTableAriaLabel": "Inbox",
     "columnCustomer": "Customer",
     "columnChannel": "Channel",
+    "columnPriority": "Priority & SLA",
     "columnStatus": "Status",
     "columnLastMessage": "Last message",
     "columnAssignedTo": "Assigned to",
@@ -30,7 +31,22 @@
     "unknownValue": "Unknown",
     "departmentSuffixLabel": "{{departmentName}} (department)",
     "actionPick": "Pick",
-    "pickErrorFallback": "Could not pick up this conversation."
+    "pickErrorFallback": "Could not pick up this conversation.",
+    "priority": {
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "unreadBadgeAriaLabel": "{{count}} unread messages",
+    "slaBreachedLabel": "SLA breached",
+    "slaBreachedShort": "Breached",
+    "slaWarningLabel": "Approaching SLA target",
+    "slaWarningShort": "At risk",
+    "autopilotActiveTooltip": "AI Autopilot is currently replying to this conversation",
+    "autopilotActiveShort": "AI",
+    "keyboardShortcutsHint": "j/k to move, Enter to open",
+    "keyboardShortcutsTooltip": "Use j or k to move focus between conversations, and Enter to open the focused one."
   },
   "ConversationListPanel": {
     "ariaLabel": "Conversations",

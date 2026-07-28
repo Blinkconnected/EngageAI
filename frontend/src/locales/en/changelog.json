@@ -17,6 +17,16 @@
     "stableChannelLabel": "Stable",
     "betaChannelLabel": "Beta",
     "releaseCandidateChannelLabel": "Release candidate",
-    "developmentChannelLabel": "Development"
+    "developmentChannelLabel": "Development",
+    "majorReleaseLabel": "Major",
+    "minorReleaseLabel": "Minor",
+    "patchReleaseLabel": "Patch",
+    "newFeaturesCount": "{{count}} new feature(s)",
+    "improvementsCount": "{{count}} improvement(s)",
+    "bugFixesCount": "{{count}} bug fix(es)",
+    "searchPlaceholder": "Search release notes…",
+    "searchAriaLabel": "Search release notes",
+    "noSearchResultsTitle": "No matching releases",
+    "noSearchResultsDescription": "Nothing in the release history matches \"{{searchTerm}}\"."
   }
 }

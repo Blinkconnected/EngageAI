@@ -42,6 +42,7 @@ from blinkengage.infrastructure.database.models.channel_connection_log import (
 )
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
+    ConversationPriority,
     ConversationStatus,
 )
 from blinkengage.infrastructure.database.models.conversation_transfer import (
@@ -147,6 +148,7 @@ class ConversationService:
         customer_id: UUID | None = None,
         assigned_agent_id: UUID | None = None,
         queue_id: UUID | None = None,
+        priority: ConversationPriority | None = None,
         unassigned_only: bool = False,
     ) -> tuple[list[Conversation], int]:
         return await self._conversations.list_for_company(
@@ -157,7 +159,20 @@ class ConversationService:
             customer_id=customer_id,
             assigned_agent_id=assigned_agent_id,
             queue_id=queue_id,
+            priority=priority,
             unassigned_only=unassigned_only,
+        )
+
+    async def unread_counts(self, *, conversation_ids: list[UUID]) -> dict[UUID, int]:
+        """Batch unread-message count for a page of conversations — see
+        MessageRepository.unread_counts_for_conversations. Thin
+        passthrough kept on this service (rather than exposing
+        MessageRepository directly to the endpoint) for the same reason
+        list_attachments_for_messages already lives here: endpoints
+        depend on ConversationService alone for everything conversation-
+        list-shaped."""
+        return await self._messages.unread_counts_for_conversations(
+            conversation_ids=conversation_ids
         )
 
     async def list_all_for_agent(self, *, company_id: UUID, agent_id: UUID) -> list[Conversation]:
@@ -172,11 +187,14 @@ class ConversationService:
         conversation_id: UUID,
         status: ConversationStatus | None,
         assigned_agent_id: UUID | None,
+        priority: ConversationPriority | None = None,
         queue_id: UUID | None = None,
         actor_user_id: UUID | None = None,
     ) -> Conversation:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         previous_status = conversation.status
+        if priority is not None:
+            conversation.priority = priority
         status_transitioned = False
         if status is not None and status != conversation.status:
             allowed = _ALLOWED_TRANSITIONS.get(conversation.status, frozenset())
@@ -575,9 +593,22 @@ class ConversationService:
         self, *, company_id: UUID, conversation_id: UUID, offset: int, limit: int
     ) -> tuple[list[Message], int]:
         await self.get(company_id=company_id, conversation_id=conversation_id)
-        return await self._messages.list_for_conversation(
+        items, total = await self._messages.list_for_conversation(
             conversation_id=conversation_id, offset=offset, limit=limit
         )
+        # Fetching a conversation's messages IS viewing it — the one
+        # place in the product an agent actually reads a conversation's
+        # inbound messages (MessageThread.tsx mounts only when a
+        # conversation is genuinely open, never from a list/preview
+        # context — see docs/architecture/conversations.md). Marking
+        # read here, rather than a separate endpoint, means the Inbox's
+        # unread badge clears itself the instant an agent opens the
+        # conversation, with no extra round trip the frontend has to
+        # remember to make.
+        await self._messages.mark_conversation_read(
+            conversation_id=conversation_id, now=datetime.now(UTC)
+        )
+        return items, total
 
     async def list_attachments_for_messages(
         self, *, company_id: UUID, conversation_id: UUID, message_ids: list[UUID]

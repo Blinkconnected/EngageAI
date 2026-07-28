@@ -21,6 +21,7 @@
     "dataTableAriaLabel": "صندوق الوارد",
     "columnCustomer": "العميل",
     "columnChannel": "القناة",
+    "columnPriority": "الأولوية واتفاقية مستوى الخدمة",
     "columnStatus": "الحالة",
     "columnLastMessage": "آخر رسالة",
     "columnAssignedTo": "مُسندة إلى",
@@ -30,7 +31,22 @@
     "unknownValue": "غير معروف",
     "departmentSuffixLabel": "{{departmentName}} (قسم)",
     "actionPick": "استلام",
-    "pickErrorFallback": "تعذر استلام هذه المحادثة."
+    "pickErrorFallback": "تعذر استلام هذه المحادثة.",
+    "priority": {
+      "low": "منخفضة",
+      "normal": "عادية",
+      "high": "مرتفعة",
+      "urgent": "عاجلة"
+    },
+    "unreadBadgeAriaLabel": "{{count}} رسائل غير مقروءة",
+    "slaBreachedLabel": "تم تجاوز اتفاقية مستوى الخدمة",
+    "slaBreachedShort": "تم التجاوز",
+    "slaWarningLabel": "يقترب من هدف اتفاقية مستوى الخدمة",
+    "slaWarningShort": "في خطر",
+    "autopilotActiveTooltip": "الطيار الآلي للذكاء الاصطناعي يقوم حاليًا بالرد على هذه المحادثة",
+    "autopilotActiveShort": "ذكاء اصطناعي",
+    "keyboardShortcutsHint": "j/k للتنقل، Enter للفتح",
+    "keyboardShortcutsTooltip": "استخدم j أو k لتحريك التركيز بين المحادثات، وEnter لفتح المحادثة التي تم التركيز عليها."
   },
   "ConversationListPanel": {
     "ariaLabel": "المحادثات",

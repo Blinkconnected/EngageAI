@@ -29,7 +29,11 @@ from blinkengage.application.services.conversation_service import ConversationSe
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.core.auth_context import AuthContext
-from blinkengage.infrastructure.database.models.conversation import ConversationStatus
+from blinkengage.infrastructure.database.models.conversation import (
+    Conversation,
+    ConversationPriority,
+    ConversationStatus,
+)
 from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -42,6 +46,13 @@ def _to_message_response(message: Message, attachments: list[MessageAttachment])
     )
 
 
+def _to_conversation_response(
+    conversation: Conversation, unread_count: int = 0
+) -> ConversationResponse:
+    response = ConversationResponse.model_validate(conversation)
+    return response.model_copy(update={"unread_count": unread_count})
+
+
 @router.get("", response_model=Page[ConversationResponse])
 async def list_conversations(
     auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
@@ -51,6 +62,7 @@ async def list_conversations(
     customer_id: UUID | None = None,
     assigned_agent_id: UUID | None = None,
     queue_id: UUID | None = None,
+    priority: ConversationPriority | None = None,
     unassigned_only: bool = False,
 ) -> Page[ConversationResponse]:
     items, total = await service.list_conversations(
@@ -61,10 +73,14 @@ async def list_conversations(
         customer_id=customer_id,
         assigned_agent_id=assigned_agent_id,
         queue_id=queue_id,
+        priority=priority,
         unassigned_only=unassigned_only,
     )
+    unread_counts = await service.unread_counts(conversation_ids=[item.id for item in items])
     return Page(
-        items=[ConversationResponse.model_validate(item) for item in items],
+        items=[
+            _to_conversation_response(item, unread_counts.get(item.id, 0)) for item in items
+        ],
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
@@ -78,7 +94,8 @@ async def get_conversation(
     service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> ConversationResponse:
     conversation = await service.get(company_id=auth.company_id, conversation_id=conversation_id)
-    return ConversationResponse.model_validate(conversation)
+    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
+    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
 
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
@@ -93,10 +110,12 @@ async def update_conversation(
         conversation_id=conversation_id,
         status=payload.status,
         assigned_agent_id=None,
+        priority=payload.priority,
         queue_id=payload.queue_id,
         actor_user_id=auth.user_id,
     )
-    return ConversationResponse.model_validate(conversation)
+    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
+    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
 
 
 @router.post(
@@ -133,7 +152,8 @@ async def pick_conversation(
         conversation_id=conversation_id,
         actor_user_id=auth.user_id,
     )
-    return ConversationResponse.model_validate(conversation)
+    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
+    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
 
 
 @router.post("/{conversation_id}/release", response_model=ConversationResponse)
@@ -148,7 +168,8 @@ async def release_conversation(
         actor_user_id=auth.user_id,
         actor_has_transfer_permission=auth.has_permission("conversations.transfer"),
     )
-    return ConversationResponse.model_validate(conversation)
+    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
+    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
 
 
 @router.get("/{conversation_id}/transfers", response_model=Page[ConversationTransferResponse])

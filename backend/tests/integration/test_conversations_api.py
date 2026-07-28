@@ -86,6 +86,154 @@ async def test_list_and_get_conversation(
     assert get_response.json()["status"] == "open"
 
 
+async def test_new_conversation_defaults_to_normal_priority(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    assert conversation["priority"] == "normal"
+
+
+async def test_priority_can_be_updated_via_patch(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+
+    response = await client.patch(
+        f"/api/v1/conversations/{conversation['id']}",
+        json={"priority": "urgent"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["priority"] == "urgent"
+
+    get_response = await client.get(
+        f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
+    )
+    assert get_response.json()["priority"] == "urgent"
+
+
+async def test_patch_rejects_an_unknown_priority_value(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+
+    response = await client.patch(
+        f"/api/v1/conversations/{conversation['id']}",
+        json={"priority": "not-a-real-priority"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 422
+
+
+async def test_list_conversations_filters_by_priority(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    urgent = await _create_conversation(client, owner_headers, registered_owner, app)
+    await client.patch(
+        f"/api/v1/conversations/{urgent['id']}",
+        json={"priority": "urgent"},
+        headers=owner_headers,
+    )
+    second_session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+    await _ingest_inbound_message(
+        app,
+        company_id=company_id,
+        session=second_session,
+        body="A second, still-normal-priority conversation",
+        external_message_id="ext-normal-2",
+    )
+
+    urgent_response = await client.get(
+        "/api/v1/conversations", params={"priority": "urgent"}, headers=owner_headers
+    )
+    assert urgent_response.json()["total"] == 1
+    assert urgent_response.json()["items"][0]["id"] == urgent["id"]
+
+    normal_response = await client.get(
+        "/api/v1/conversations", params={"priority": "normal"}, headers=owner_headers
+    )
+    assert normal_response.json()["total"] == 1
+    assert normal_response.json()["items"][0]["id"] != urgent["id"]
+
+
+async def test_list_conversations_orders_urgent_priority_first_regardless_of_recency(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """The default sort ranks priority above last_message_at — an older,
+    urgent conversation must still surface above a more recently active
+    normal-priority one, exactly the "what needs attention first" signal
+    the Inbox redesign exists to make visible."""
+    older_urgent = await _create_conversation(client, owner_headers, registered_owner, app)
+    await client.patch(
+        f"/api/v1/conversations/{older_urgent['id']}",
+        json={"priority": "urgent"},
+        headers=owner_headers,
+    )
+
+    newer_session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+    await _ingest_inbound_message(
+        app,
+        company_id=company_id,
+        session=newer_session,
+        body="Arrived after the urgent one, but only normal priority",
+        external_message_id="ext-newer-normal",
+    )
+
+    response = await client.get("/api/v1/conversations", headers=owner_headers)
+    items = response.json()["items"]
+    assert len(items) == 2
+    assert items[0]["id"] == older_urgent["id"]
+    assert items[0]["priority"] == "urgent"
+
+
+async def test_unread_count_reflects_inbound_messages_and_clears_on_view(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    list_response = await client.get("/api/v1/conversations", headers=owner_headers)
+    # The one inbound message _create_conversation seeded is unread until
+    # someone actually views the conversation's messages.
+    assert list_response.json()["items"][0]["unread_count"] == 1
+
+    await client.get(
+        f"/api/v1/conversations/{conversation['id']}/messages", headers=owner_headers
+    )
+
+    cleared_response = await client.get(
+        f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
+    )
+    assert cleared_response.json()["unread_count"] == 0
+
+
+async def test_unread_count_does_not_count_the_agents_own_outbound_replies(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    await client.get(f"/api/v1/conversations/{conversation['id']}/messages", headers=owner_headers)
+
+    reply_response = await client.post(
+        f"/api/v1/conversations/{conversation['id']}/messages",
+        json={"body": "Here to help!"},
+        headers=owner_headers,
+    )
+    assert reply_response.status_code == 201, reply_response.text
+
+    get_response = await client.get(
+        f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
+    )
+    assert get_response.json()["unread_count"] == 0
+
+
+async def test_sla_warning_fields_are_exposed_and_null_before_any_warning(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    assert conversation["sla_first_response_warned_at"] is None
+    assert conversation["sla_resolution_warned_at"] is None
+
+
 async def test_list_conversations_filters_by_status(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:

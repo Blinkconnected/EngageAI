@@ -4,7 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from blinkengage.infrastructure.database.models.conversation import ConversationStatus
+from blinkengage.infrastructure.database.models.conversation import (
+    ConversationPriority,
+    ConversationStatus,
+)
 from blinkengage.infrastructure.database.models.conversation_transfer import TransferTargetType
 from blinkengage.infrastructure.database.models.message import (
     AttachmentValidationStatus,
@@ -22,6 +25,10 @@ class ConversationResponse(BaseModel):
     channel_config_id: UUID
     external_thread_id: str | None
     status: ConversationStatus
+    # Inbox triage signal (see docs/architecture/queues-routing.md) —
+    # independent of SLA policy targets, drives default Inbox sort order
+    # and visual urgency only.
+    priority: ConversationPriority
     queue_id: UUID | None
     assigned_agent_id: UUID | None
     department_id: UUID | None
@@ -29,6 +36,14 @@ class ConversationResponse(BaseModel):
     first_response_at: datetime | None
     sla_first_response_breached_at: datetime | None
     sla_resolution_breached_at: datetime | None
+    # SLA Builder's warning threshold (see sla.py's model docstring) —
+    # set once a conversation crosses e.g. 80% of its policy's target,
+    # *before* it actually breaches. Columns existed on the ORM model
+    # since the SLA Builder milestone but were never surfaced through
+    # this API — added so the Inbox can show "approaching SLA" as a
+    # distinct, earlier warning state rather than only "breached."
+    sla_first_response_warned_at: datetime | None
+    sla_resolution_warned_at: datetime | None
     queue_entered_at: datetime | None
     picked_up_at: datetime | None
     closed_at: datetime | None
@@ -37,6 +52,13 @@ class ConversationResponse(BaseModel):
     # AI Autopilot (see docs/architecture/ai-engine.md) — True while the
     # AI, not a human, is responsible for replying to this conversation.
     autopilot_active: bool
+    # Unread INBOUND message count — NOT an ORM column, computed via
+    # MessageRepository.unread_counts_for_conversations() and threaded in
+    # per-row by the endpoint (see customers.py's rating_summary for the
+    # identical pattern). Defaults to 0 so a caller that doesn't thread it
+    # in (there is no such caller today, but the field must still degrade
+    # safely) never reports a false-unread state.
+    unread_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -52,6 +74,7 @@ class ConversationUpdateRequest(BaseModel):
     ``conversations.manage`` principal bypass all of that."""
 
     status: ConversationStatus | None = None
+    priority: ConversationPriority | None = None
     queue_id: UUID | None = None
 
 

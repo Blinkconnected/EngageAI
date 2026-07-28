@@ -30,6 +30,20 @@ class ConversationStatus(StrEnum):
     CLOSED = "closed"
 
 
+class ConversationPriority(StrEnum):
+    """A manual/system-set triage signal, independent of SLA policy (SLA
+    targets stay purely queue-driven — see ``docs/architecture/sla.md``
+    — priority never changes a policy's response/resolution targets).
+    Ordered low-to-high so callers that need a comparable urgency (e.g.
+    Inbox default sort) can do ``list(ConversationPriority).index(p)``
+    rather than hand-rolling a second ranking table."""
+
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
 class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "conversations"
     __table_args__ = (
@@ -85,6 +99,22 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         Enum(ConversationStatus, native_enum=False, length=20),
         nullable=False,
         default=ConversationStatus.OPEN,
+    )
+    # Inbox triage signal (see docs/architecture/queues-routing.md) —
+    # deliberately independent of Queue/SlaPolicy: it never changes an
+    # SLA policy's response/resolution targets, it only drives default
+    # sort order and visual urgency in the Inbox. Defaults to NORMAL so
+    # every pre-existing and newly-ingested conversation has a
+    # meaningful value with no backfill migration needed.
+    priority: Mapped[ConversationPriority] = mapped_column(
+        Enum(ConversationPriority, native_enum=False, length=20),
+        nullable=False,
+        default=ConversationPriority.NORMAL,
+        # "NORMAL" (uppercase) — Enum(native_enum=False) stores a
+        # StrEnum member's NAME, not its lowercase .value (see the
+        # migration's own comment; confirmed against how
+        # conversations.status already stores "OPEN", not "open").
+        server_default=ConversationPriority.NORMAL.name,
     )
     assigned_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("agents.id", ondelete="SET NULL"), default=None, index=True
