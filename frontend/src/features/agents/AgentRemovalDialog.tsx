@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import { extractErrorMessage } from '../../shared/api/errors'
+import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useConversationsQuery } from '../conversations/api'
 import { useAllAgentsQuery, useRemoveAgentMutation } from './api'
 import type { Agent } from './types'
@@ -41,6 +42,12 @@ export function AgentRemovalDialog({
 
 function AgentRemovalDialogFields({ agent, onClose }: { agent: Agent; onClose: () => void }) {
   const { t } = useTranslation('agents')
+  const { hasPermission } = usePermissions()
+  // Permanently deleting an agent's conversations in bulk requires the
+  // same conversations.delete permission a single conversation's own
+  // delete route requires — offering the toggle to a caller who lacks
+  // it would just walk them into a 403 at the final confirm step.
+  const canPermanentlyDelete = hasPermission('conversations.delete')
   const [step, setStep] = useState<Step>('choose')
   const [mode, setMode] = useState<'transfer' | 'permanent'>('transfer')
   const [targetAgent, setTargetAgent] = useState<Agent | null>(null)
@@ -106,9 +113,11 @@ function AgentRemovalDialogFields({ agent, onClose }: { agent: Agent; onClose: (
                 <ToggleButton value="transfer">
                   {t('AgentRemovalDialog.transferToggle')}
                 </ToggleButton>
-                <ToggleButton value="permanent">
-                  {t('AgentRemovalDialog.permanentToggle')}
-                </ToggleButton>
+                {canPermanentlyDelete && (
+                  <ToggleButton value="permanent">
+                    {t('AgentRemovalDialog.permanentToggle')}
+                  </ToggleButton>
+                )}
               </ToggleButtonGroup>
 
               {mode === 'transfer' ? (

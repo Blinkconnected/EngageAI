@@ -1,6 +1,7 @@
 {
   "DepartmentAgentsDialog": {
     "title": "{{name}} — Agents",
+    "loading": "Loading agents…",
     "emptyTitle": "No agents assigned",
     "emptyDescription": "Assign agents to this department from the Agents page's Edit dialog.",
     "closeButton": "Close"

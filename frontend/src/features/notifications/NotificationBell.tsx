@@ -8,8 +8,9 @@ import {
   Divider,
   IconButton,
   ListItemText,
-  Menu,
   MenuItem,
+  MenuList,
+  Popover,
   Typography,
 } from '@mui/material'
 import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
@@ -53,9 +54,17 @@ export function NotificationBell() {
           <NotificationsOutlinedIcon />
         </Badge>
       </IconButton>
-      <Menu
-        anchorEl={anchorEl}
+      {/* Popover + MenuList, not a bare Menu: a Menu's role="menu" list
+          requires every direct child to be a menuitem, and the header
+          (title + "Mark all read") and footer ("View all") below are
+          neither — axe flags that as aria-required-children, and menu-
+          mode arrow-key navigation would skip both actions entirely.
+          Popover carries no such list role, so it can host them; MenuList
+          keeps the actual notification items' keyboard behavior
+          unchanged. */}
+      <Popover
         open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
@@ -87,31 +96,35 @@ export function NotificationBell() {
             <EmptyState title={t('NotificationBell.emptyStateTitle')} />
           </Box>
         )}
-        {notificationsQuery.data?.items.map((notification) => (
-          <MenuItem
-            key={notification.id}
-            onClick={() => handleItemClick(notification)}
-            sx={{
-              alignItems: 'flex-start',
-              whiteSpace: 'normal',
-              bgcolor: notification.is_read ? 'transparent' : 'action.hover',
-            }}
-          >
-            <ListItemText
-              primary={notification.title}
-              secondary={
-                <>
-                  <Typography variant="body2" component="span" sx={{ display: 'block' }}>
-                    {notification.body}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {formatRelativeTime(notification.created_at)}
-                  </Typography>
-                </>
-              }
-            />
-          </MenuItem>
-        ))}
+        {notificationsQuery.data && notificationsQuery.data.items.length > 0 && (
+          <MenuList>
+            {notificationsQuery.data.items.map((notification) => (
+              <MenuItem
+                key={notification.id}
+                onClick={() => handleItemClick(notification)}
+                sx={{
+                  alignItems: 'flex-start',
+                  whiteSpace: 'normal',
+                  bgcolor: notification.is_read ? 'transparent' : 'action.hover',
+                }}
+              >
+                <ListItemText
+                  primary={notification.title}
+                  secondary={
+                    <>
+                      <Typography variant="body2" component="span" sx={{ display: 'block' }}>
+                        {notification.body}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatRelativeTime(notification.created_at)}
+                      </Typography>
+                    </>
+                  }
+                />
+              </MenuItem>
+            ))}
+          </MenuList>
+        )}
         <Divider />
         <Box sx={{ p: 1, textAlign: 'center' }}>
           <Button
@@ -125,7 +138,7 @@ export function NotificationBell() {
             {t('NotificationBell.viewAllButton')}
           </Button>
         </Box>
-      </Menu>
+      </Popover>
     </>
   )
 }

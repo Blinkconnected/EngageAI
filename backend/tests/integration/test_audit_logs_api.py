@@ -4,6 +4,10 @@ from collections.abc import Awaitable, Callable
 from httpx import AsyncClient
 from PIL import Image as PILImage
 
+from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
+    handle_message_received,
+)
+
 
 def _fake_png_bytes() -> bytes:
     buffer = io.BytesIO()
@@ -183,6 +187,64 @@ async def test_audit_logs_are_paginated(
     assert len(body["items"]) == 2
     assert body["page"] == 1
     assert body["page_size"] == 2
+
+
+async def test_inbound_message_body_is_redacted_in_the_audit_log(
+    client: AsyncClient,
+    owner_headers: dict,
+    registered_owner: dict,
+    app,
+    drain_outbox: Callable[[], Awaitable[int]],
+) -> None:
+    """AuditLog has different retention semantics than Conversation — it
+    is never touched by conversation delete or agent removal, and is
+    reachable through audit_logs.read alone, bypassing conversations.read
+    entirely. A customer's raw message must never be duplicated into it
+    verbatim just because every event is audited unconditionally."""
+    company_id = registered_owner["user"]["company"]["id"]
+    config_response = await client.post(
+        "/api/v1/channel-configs",
+        json={"channel_type": "web_chat", "display_name": "Widget", "credentials": {}},
+        headers=owner_headers,
+    )
+    config_id = config_response.json()["id"]
+    session_response = await client.post(f"/api/v1/web-chat/{config_id}/sessions", json={})
+    session = session_response.json()
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": config_id,
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "My SSN is 123-45-6789, please help",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+    await drain_outbox()
+
+    response = await client.get(
+        "/api/v1/audit-logs",
+        params={"action": "message.persisted"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["total"] >= 1
+    for item in body["items"]:
+        assert "123-45-6789" not in str(item["details"])
+        assert item["details"]["body"] == "[redacted]"
 
 
 async def test_audit_logs_require_authentication(client: AsyncClient) -> None:

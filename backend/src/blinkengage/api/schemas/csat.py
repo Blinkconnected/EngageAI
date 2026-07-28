@@ -36,6 +36,13 @@ class CsatContactInfoRequest(BaseModel):
 
 
 class CsatContactInfoResponse(BaseModel):
+    """Deliberately does NOT echo the stored email/phone back — this
+    route needs only the survey token (see csat.py's module docstring on
+    the trust model shared with web_chat.py's public endpoints), so
+    returning the full Customer row would let anyone holding a forwarded
+    survey link (an email chain, a shared inbox, a mail-gateway log)
+    retrieve contact details the customer never entered in *this*
+    request. The frontend (FeedbackPage.tsx) only ever needs to know the
+    submission succeeded to advance to the next step."""
+
     conversation_id: UUID
-    email: str | None
-    phone: str | None

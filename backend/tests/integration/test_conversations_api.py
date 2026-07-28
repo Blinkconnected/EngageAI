@@ -583,7 +583,10 @@ async def test_transfer_is_audited(
     assert body["total"] == 1
     assert body["items"][0]["entity_id"] == conversation["id"]
     assert body["items"][0]["details"]["to_agent_id"] == agent["id"]
-    assert body["items"][0]["details"]["note"] == "For audit"
+    # The transfer note is free text, not structural metadata — redacted
+    # in the audit log the same way a message body is (see
+    # audit_log_consumer.py's _REDACTED_PAYLOAD_FIELDS).
+    assert body["items"][0]["details"]["note"] == "[redacted]"
 
 
 async def test_transfer_requires_a_target_matching_target_type(

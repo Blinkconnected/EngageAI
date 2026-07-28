@@ -69,15 +69,13 @@ async def submit_csat_contact_info(
     service: Annotated[CsatService, Depends(get_csat_service)],
     token: Annotated[str, Query(...)],
 ) -> CsatContactInfoResponse:
-    customer = await service.submit_contact_info(
+    await service.submit_contact_info(
         conversation_id=conversation_id,
         token=token,
         email=payload.email,
         phone=payload.phone,
     )
-    return CsatContactInfoResponse(
-        conversation_id=conversation_id, email=customer.email, phone=customer.phone
-    )
+    return CsatContactInfoResponse(conversation_id=conversation_id)
 
 
 @router.post(

@@ -23,7 +23,7 @@ from blinkengage.application.services.realtime_channels import company_realtime_
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.company_settings import is_autopilot_enabled
+from blinkengage.domain.company_settings import is_ai_enabled, is_autopilot_enabled
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
@@ -440,17 +440,24 @@ async def _route_and_assign(
         return
 
     if queue.autopilot_enabled:
-        # AI Autopilot (see docs/architecture/ai-engine.md): both the
-        # queue AND the company-wide kill-switch must opt in, and a real
-        # provider must actually be configured. Skips human
-        # auto-assignment entirely rather than assigning both an agent
-        # and AI — ai_autopilot_consumer.py (bound to message.persisted,
-        # which already fired for this same first message earlier in
-        # this same transaction) does the actual reply-or-handoff work,
-        # uniformly for the first message and every one after it.
+        # AI Autopilot (see docs/architecture/ai-engine.md): the queue's
+        # own opt-in, the Autopilot opt-in AND the company-wide "Enable
+        # AI Engine features" master switch must all be on, and a real
+        # provider must actually be configured. is_ai_enabled is the
+        # master switch a compliance officer reaches for to guarantee no
+        # AI-generated content reaches customers — it must gate this
+        # exactly like it gates the agent-facing AI endpoints, or turning
+        # it off would silently leave Autopilot auto-replying anyway.
+        # Skips human auto-assignment entirely rather than assigning both
+        # an agent and AI — ai_autopilot_consumer.py (bound to
+        # message.persisted, which already fired for this same first
+        # message earlier in this same transaction) does the actual
+        # reply-or-handoff work, uniformly for the first message and
+        # every one after it.
         company = await CompanyRepository(session).get_by_id(company_id)
         if (
             company is not None
+            and is_ai_enabled(company.settings)
             and is_autopilot_enabled(company.settings)
             and is_ai_available_for_company(settings, company.ai_config)
         ):

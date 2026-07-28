@@ -16,6 +16,18 @@ for more detail on how this page is put together.
 
 ### Added
 
+- A "Pick up" button now appears in the conversation sidebar whenever a
+  conversation is unassigned — an agent who arrives via a notification
+  (an AI Autopilot handoff, an SLA breach) can now claim it directly
+  instead of having to go back to the Inbox and hunt for the row.
+- Replies sent automatically by AI Autopilot are now labeled "AI" in the
+  conversation transcript, so agents, supervisors, and anyone reviewing
+  the conversation can always tell which messages had no human in the
+  loop.
+- Every message bubble in a conversation now shows who sent it ("You" or
+  "Customer") as visible text, not just its side of the thread and its
+  background color — clearer for everyone, and no longer relies on color
+  alone to convey who's speaking.
 - Global search: press Ctrl+K (or the search icon in the top bar) from
   anywhere to search conversations, customers, agents, knowledge base
   articles and categories, quick replies, teams, queues, and workflows
@@ -176,6 +188,31 @@ for more detail on how this page is put together.
 - A failed message's error reason is now always shown under the
   message, instead of only on hover — easier to see on phones and
   tablets.
+- The conversation workspace's 3-pane layout (conversation list, message
+  thread, customer panel) now only switches on once the window is
+  genuinely wide enough for all three to stay usable, instead of at a
+  fixed width that used to squeeze the message thread down to almost
+  nothing on mid-size laptop and tablet screens.
+- The Sign in and Create account cards no longer overflow the screen on
+  narrow phones.
+- The conversation page's tabs (Messages / Internal Notes / Transfer
+  History) and the Inbox's status tabs (All / Open / Pending / Resolved
+  / Closed) now scroll horizontally with arrow buttons on narrow
+  screens, instead of clipping off-screen with no way to reach them.
+- Pages load noticeably faster, especially the first time and right
+  after an update: each page (Inbox, Reports, Settings, etc.) now loads
+  its own code only when you actually visit it, instead of the whole
+  app downloading everything up front. This also means the Sign in page
+  and the customer-facing feedback survey page (the one linked from CSAT
+  emails) no longer download the entire internal agent console just to
+  show a small form.
+- The Dashboard — the page every signed-in user lands on — now shows a
+  simple "Go to Inbox" landing page instead of an error for any custom
+  role that doesn't include report-viewing permission, rather than
+  presenting a broken first screen.
+- A large number of smaller consistency and accessibility improvements
+  across nearly every page: clearer error messages and a retry option
+  on tables that fail to load, consistent "unsaved changes" behavior
 - A large number of smaller consistency and accessibility improvements
   across nearly every page: clearer error messages and a retry option
   on tables that fail to load, consistent "unsaved changes" behavior
@@ -225,11 +262,43 @@ for more detail on how this page is put together.
   screen instead of the "Page not found" screen.
 - The Agents page's action-column width didn't account for the "Change
   role" action, clipping it for some users.
+- The department agents dialog showed "No agents" while the agent list
+  was still loading, and permanently claimed a department had no agents
+  if the request failed, with no way to retry.
+- The account menu (top right) and the notifications menu could put
+  screen readers into a state where the availability picker,
+  "Mark all read", and "View all" were skipped entirely by keyboard/
+  screen-reader navigation.
+- A conversation's message thread on a phone could squeeze the sidebar
+  (Status, Transfer, Release, Queue) down until it was unreachable,
+  with no way to scroll to it.
+- Removing an agent and choosing to permanently delete their
+  conversations now requires the same permission deleting a single
+  conversation already requires, instead of being reachable through
+  agent-management permission alone.
 
 ### Security
 
 - A company's own AI provider API key is encrypted at rest and never
   sent back to the browser after saving — only whether one is set.
+- Turning off "Enable AI Engine features" (Settings → AI) now also stops
+  AI Autopilot from auto-replying to customers, matching what that
+  switch's own description already promised. Previously it only stopped
+  the agent-facing AI tools (Suggest reply, Summary); Autopilot kept
+  running on any queue that had it enabled.
+- Switching a company's AI provider (e.g. from OpenAI to Claude) without
+  entering a new API key no longer forwards the previous provider's key
+  to the new one. A key now only ever carries over when the provider is
+  unchanged.
+- Message bodies, transfer notes, and other free-text content are no
+  longer copied into the audit log verbatim — the audit log now records
+  that an event happened (who, when, what type) without duplicating the
+  actual conversation content into a second place with different
+  retention rules than the conversation itself.
+- The customer satisfaction survey's "add your contact info" step no
+  longer echoes the customer's stored email and phone number back in
+  its response — someone who obtains a forwarded survey link could
+  previously retrieve those details without ever having entered them.
 
 ## [1.0.0-beta.1] - 2026-07-26
 

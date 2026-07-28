@@ -39,6 +39,19 @@ describe('NotificationBell', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  it('has no detectable accessibility violations with the menu open', async () => {
+    // Popover (not Menu) is what makes this pass: the "Mark all read"
+    // header and "View all" footer are no longer direct children of a
+    // role="menu" list, which used to trip aria-required-children.
+    const user = userEvent.setup()
+    const { container } = renderAuthenticated(<NotificationBell />)
+
+    await user.click(await screen.findByLabelText(/notifications \(1 unread\)/i))
+    await screen.findByText('New conversation assigned')
+
+    expect(await axe(container)).toHaveNoViolations()
+  })
+
   it('opens the menu and marks all as read', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<NotificationBell />)

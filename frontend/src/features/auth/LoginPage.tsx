@@ -41,7 +41,12 @@ export function LoginPage() {
         p: 2,
       }}
     >
-      <Paper component="form" onSubmit={handleSubmit} elevation={2} sx={{ p: 4, width: 400 }}>
+      <Paper
+        component="form"
+        onSubmit={handleSubmit}
+        elevation={2}
+        sx={{ p: 4, width: 400, maxWidth: '100%' }}
+      >
         <Stack spacing={2}>
           <Box
             component="img"

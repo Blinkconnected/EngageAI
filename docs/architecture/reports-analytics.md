@@ -204,6 +204,17 @@ established for agent-driven customer edits. No new permission is
 needed — like `respond`, the token itself is what authorizes the write,
 not a role.
 
+`CsatContactInfoResponse` deliberately returns only `conversation_id` —
+not the customer's `email`/`phone` (P6.20's final review: it originally
+echoed both back unconditionally). This route needs only the survey
+token, and nothing downstream (`FeedbackPage.tsx`) ever reads those
+fields from the response — it just advances to the next step on
+success. Returning them meant anyone holding a forwarded survey link (an
+email chain, a shared inbox, a mail-gateway log) could retrieve the
+customer's real contact details by calling this endpoint, regardless of
+what they themselves submitted — a real PII disclosure for a Healthcare
+tenant, where those are HIPAA identifiers.
+
 ## No new RBAC permission
 
 Every `/reports/*` endpoint is gated by the existing `reports.read`

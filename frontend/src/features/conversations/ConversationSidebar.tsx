@@ -26,6 +26,7 @@ import { useSummarizeConversationMutation } from './aiApi'
 import {
   CONVERSATION_KEY,
   CONVERSATIONS_LIST_KEY,
+  usePickConversationMutation,
   useReleaseConversationMutation,
   useUpdateConversationMutation,
 } from './api'
@@ -56,8 +57,10 @@ export function ConversationSidebar({
   const { t } = useTranslation('conversationsCore')
   const { hasPermission } = usePermissions()
   const canTransfer = hasPermission('conversations.transfer')
+  const canPick = hasPermission('conversations.pick')
   const [transferOpen, setTransferOpen] = useState(false)
   const [releaseError, setReleaseError] = useState<string | null>(null)
+  const [pickError, setPickError] = useState<string | null>(null)
 
   const { data: currentUser } = useCurrentUserQuery()
   const channelsQuery = useAllChannelsQuery()
@@ -66,6 +69,7 @@ export function ConversationSidebar({
   const queuesQuery = useAllQueuesQuery()
   const updateMutation = useUpdateConversationMutation(conversation.id)
   const releaseMutation = useReleaseConversationMutation()
+  const pickMutation = usePickConversationMutation()
   const summaryMutation = useSummarizeConversationMutation()
   const queryClient = useQueryClient()
 
@@ -99,6 +103,25 @@ export function ConversationSidebar({
     })
   }
 
+  // The only ownership action reachable from this page before this fix
+  // was Transfer/Release, both of which require an existing assignment —
+  // an agent arriving here from an unassigned-conversation notification
+  // (SLA breach, autopilot handoff) had no way to actually claim it
+  // without going back to the Inbox and hunting the row. Mirrors
+  // InboxPage.tsx's own handlePick.
+  function handlePick() {
+    setPickError(null)
+    pickMutation.mutate(conversation.id, {
+      onError: (error) => {
+        setPickError(extractErrorMessage(error, t('ConversationSidebar.pickErrorFallback')))
+        if (isAxiosError(error) && error.response?.status === 409) {
+          void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversation.id) })
+          void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+        }
+      },
+    })
+  }
+
   const channel = channelsQuery.data?.find((c) => c.id === conversation.channel_config_id)
   const assignedAgent = agentsQuery.data?.find((a) => a.id === conversation.assigned_agent_id)
   const assignedDepartment = departmentsQuery.data?.find((d) => d.id === conversation.department_id)
@@ -106,6 +129,7 @@ export function ConversationSidebar({
   return (
     <Stack spacing={2} sx={{ p: 2, width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
       {releaseError && <Alert severity="error">{releaseError}</Alert>}
+      {pickError && <Alert severity="error">{pickError}</Alert>}
       {updateMutation.isError && (
         <Alert severity="error" onClose={() => updateMutation.reset()}>
           {extractErrorMessage(updateMutation.error, t('ConversationSidebar.updateErrorFallback'))}
@@ -224,6 +248,22 @@ export function ConversationSidebar({
             conversations.transfer, matching this feature's RBAC
             requirement rather than only cosmetically discouraging it. */}
         <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+          {/* Only offered when there is genuinely no one holding the
+              conversation yet (and it isn't Autopilot's) — once someone
+              does, claiming it is a reassignment and goes through
+              Transfer instead, not a second Pick. */}
+          {canPick && !conversation.assigned_agent_id && !conversation.autopilot_active && (
+            <Button
+              size="small"
+              variant="contained"
+              disabled={pickMutation.isPending}
+              onClick={handlePick}
+            >
+              {pickMutation.isPending
+                ? t('ConversationSidebar.pickingButton')
+                : t('ConversationSidebar.pickButton')}
+            </Button>
+          )}
           {canTransfer && (
             <Button size="small" onClick={() => setTransferOpen(true)}>
               {t('ConversationSidebar.transferButton')}

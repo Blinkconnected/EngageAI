@@ -647,6 +647,7 @@ class ConversationService:
         body: str | None,
         attachment_ids: list[UUID],
         actor_user_id: UUID | None = None,
+        is_ai_generated: bool = False,
     ) -> Message:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         config = await self._channel_configs.get_by_id(
@@ -777,6 +778,11 @@ class ConversationService:
                 status=MessageStatus.SENT,
                 body=body,
                 sent_at=datetime.now(UTC),
+                # So a compliance reviewer (or the transcript itself) can
+                # always tell which customer-facing replies had no human
+                # in the loop — see ai_autopilot_consumer.py, the only
+                # caller that passes is_ai_generated=True.
+                message_metadata={"is_ai_generated": True} if is_ai_generated else {},
             )
         )
         for attachment in linked_attachments:
@@ -799,6 +805,7 @@ class ConversationService:
                     "channel_type": config.channel_type,
                     "external_message_id": result.external_message_id,
                     "body": body,
+                    "is_ai_generated": is_ai_generated,
                 },
             )
         )

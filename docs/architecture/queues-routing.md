@@ -298,6 +298,17 @@ handled:
   `ConversationSidebar` gets a matching "Release" button, shown only when
   the viewer is the assignee or holds `conversations.transfer`, mirroring
   the backend rule exactly.
+- **`ConversationSidebar` also gets a "Pick up" button** (P6.20's final
+  review), shown whenever `conversation.assigned_agent_id` is null,
+  `autopilot_active` is false, and the caller holds `conversations.pick`
+  — reusing `usePickConversationMutation`, the same hook the Inbox's own
+  row action already calls. Before this, the Inbox was the *only* place
+  a conversation could be picked up; an agent who arrived at
+  `/conversations/:id` some other way (an SLA-breach or autopilot-handoff
+  notification, which both deep-link straight here) had no ownership
+  action at all on an unassigned conversation — Transfer and Release both
+  require an existing assignment — and had to navigate back to the Inbox
+  and hunt for the row to actually claim it.
 
 ## Live Dashboard metrics
 

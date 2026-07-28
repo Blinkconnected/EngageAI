@@ -649,6 +649,80 @@ async def test_autopilot_queue_without_a_configured_provider_falls_back_to_human
     assert str(conversation.assigned_agent_id) == agent_id
 
 
+async def test_autopilot_queue_falls_back_to_human_assignment_when_ai_master_switch_is_off(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """`settings.ai.enabled` is the company-wide "Enable AI Engine
+    features" switch a compliance officer reaches for to guarantee no
+    AI-generated content reaches customers (see AiSettingsPanel's help
+    text). It must gate Autopilot exactly like it gates the agent-facing
+    AI endpoints (`enforce_ai_rate_limit`) — turning it off must not
+    leave `settings.ai.autopilot.enabled` silently still routing
+    conversations to Autopilot."""
+    company_id = registered_owner["user"]["company"]["id"]
+    agent_id = await _create_online_agent(client, owner_headers, "agent1@acme.example")
+    await client.patch(
+        "/api/v1/company",
+        json={
+            "settings": {
+                "ai": {
+                    "enabled": False,
+                    "autopilot": {"enabled": True, "confidence_threshold": 0.7},
+                }
+            }
+        },
+        headers=owner_headers,
+    )
+    await client.put(
+        "/api/v1/company/ai-config",
+        json={"provider": "openai", "api_key": "sk-test"},
+        headers=owner_headers,
+    )
+
+    queue_response = await client.post(
+        "/api/v1/queues",
+        json={
+            "name": "Autopilot Queue",
+            "assignment_strategy": "round_robin",
+            "autopilot_enabled": True,
+        },
+        headers=owner_headers,
+    )
+    queue_id = queue_response.json()["id"]
+    await client.post(
+        "/api/v1/routing-rules",
+        json={"priority": 1, "conditions": {}, "target_queue_id": queue_id},
+        headers=owner_headers,
+    )
+    session = await _create_web_chat_session(client, owner_headers)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            {
+                "event_type": "message.received",
+                "company_id": company_id,
+                "aggregate_type": "message",
+                "aggregate_id": None,
+                "actor_user_id": None,
+                "payload": {
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "Hello",
+                },
+            },
+            db_session,
+        )
+        await db_session.commit()
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+
+    assert conversation.autopilot_active is False
+    assert str(conversation.assigned_agent_id) == agent_id
+
+
 async def test_sla_breach_is_published_exactly_once(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app, make_sla_monitor
 ) -> None:

@@ -38,6 +38,35 @@ logger = get_logger(__name__)
 QUEUE_NAME = "audit-log"
 ROUTING_KEYS = ["#"]
 
+# Fields that carry customer message content or other free-text PII,
+# keyed by the event_type that carries them. AuditLog has different
+# retention semantics than a Conversation: it is never soft-deleted by
+# conversation delete/agent removal and isn't reachable by
+# conversations.read's permission gate (only audit_logs.read), so a
+# customer's raw message body must never be duplicated into it just
+# because "everything published to the bus is audited" (see this
+# module's docstring) — that policy covers *that an event happened*,
+# not a verbatim copy of what a customer said. Redacted, not dropped:
+# the row (who/when/what-type) is still valuable audit trail.
+_REDACTED_PAYLOAD_FIELDS: dict[str, tuple[str, ...]] = {
+    "message.received": ("body", "external_customer_name"),
+    "message.persisted": ("body",),
+    "message.sent": ("body",),
+    "conversation.transferred": ("note",),
+}
+_REDACTED_PLACEHOLDER = "[redacted]"
+
+
+def _redact_payload(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    fields = _REDACTED_PAYLOAD_FIELDS.get(event_type)
+    if not fields:
+        return payload
+    redacted = dict(payload)
+    for field in fields:
+        if redacted.get(field) is not None:
+            redacted[field] = _REDACTED_PLACEHOLDER
+    return redacted
+
 
 async def handle_audit_event(payload: dict[str, Any], session: AsyncSession) -> None:
     company_id = payload.get("company_id")
@@ -59,7 +88,7 @@ async def handle_audit_event(payload: dict[str, Any], session: AsyncSession) -> 
                 action=payload["event_type"],
                 entity_type=payload["aggregate_type"],
                 entity_id=UUID(payload["aggregate_id"]) if payload.get("aggregate_id") else None,
-                details=payload.get("payload") or {},
+                details=_redact_payload(payload["event_type"], payload.get("payload") or {}),
             )
         )
     except IntegrityError:

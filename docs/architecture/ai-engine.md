@@ -152,11 +152,19 @@ provider," same as every other provider already uses it for.
   (`company.manage`) accepts an optional `api_key`; omitting it leaves
   whatever was previously saved untouched (`CompanyService
   .update_ai_config`), so changing just the model doesn't force
-  re-entering a key that hasn't changed. Setting `provider: null` clears
-  the override entirely — there's deliberately no way to clear *only*
-  the key while keeping a provider selected, since a
-  stored-but-unusable half-configured provider is a worse state than "no
-  override."
+  re-entering a key that hasn't changed — **but only when `provider` is
+  unchanged**. A key is scoped to the vendor it was saved under
+  (`existing.get("provider") == provider`); switching the dropdown to a
+  different provider without entering a new key clears `api_key_set`
+  back to `False` rather than silently forwarding the old vendor's live
+  secret into the new one's `Authorization` header (the frontend's own
+  "leave blank to keep it" helper text would otherwise invite exactly
+  that). `AiSettingsPanel.tsx`'s `savedApiKeySet` is scoped to the
+  currently-selected provider for the same reason, not just whatever was
+  loaded on mount. Setting `provider: null` clears the override
+  entirely — there's deliberately no way to clear *only* the key while
+  keeping a provider selected, since a stored-but-unusable
+  half-configured provider is a worse state than "no override."
 - **Audit-safe**: `company.ai_config_updated` (published on every
   `PUT /company/ai-config`) carries `{"provider": ..., "api_key_set":
   bool}` — never the raw key — since this codebase's audit-log consumer
@@ -234,17 +242,31 @@ the two sections above. Its whole design is therefore about being
 conservative by default and handing back to a human at the first sign of
 doubt.
 
-**Two independent opt-ins, both required.** A conversation only ever
-becomes AI-handled when *both* `Company.settings.ai.autopilot.enabled`
-(the company-wide master switch, default off — read via
-`domain/company_settings.py`'s `is_autopilot_enabled`) *and* the
-routed-to queue's own `Queue.autopilot_enabled` column (default false)
-are on, *and* a real provider is actually configured for that company
+**Three independent opt-ins, all required.** A conversation only ever
+becomes AI-handled when `Company.settings.ai.autopilot.enabled` (the
+Autopilot-specific switch, default off — read via
+`domain/company_settings.py`'s `is_autopilot_enabled`), the routed-to
+queue's own `Queue.autopilot_enabled` column (default false), **and**
+`Company.settings.ai.enabled` (the company-wide "Enable AI Engine
+features" master switch, default on — `is_ai_enabled`) are *all* on,
+*and* a real provider is actually configured for that company
 (`is_ai_available_for_company`). The per-queue half is a real FK-backed
 column rather than a queue-id list inside the settings JSON blob,
 consistent with every other queue-level behavior (`assignment_strategy`,
-`sla_policy_id`); the company-wide half exists so Autopilot can be
+`sla_policy_id`); the Autopilot-specific half exists so Autopilot can be
 paused everywhere instantly without touching every queue.
+
+`is_ai_enabled` is checked in *two* places, not one: `_route_and_assign`
+(so a conversation is never routed to Autopilot at all while the master
+switch is off) and `ai_autopilot_consumer.handle_event` (so a
+conversation already routed to Autopilot before the switch was flipped
+off hands off on its very next inbound message, instead of continuing
+to auto-reply). Before this, `is_ai_enabled` was enforced only at
+`enforce_ai_rate_limit` — the agent-facing `/ai/*` endpoints (Suggest
+reply, Summary) — so turning the master switch off silently left
+Autopilot running: exactly the kind of gap a Healthcare/Financial/
+Government compliance reviewer would treat as a false promise, since the
+switch's own help text says it stops *all* AI-generated content.
 
 **Where it plugs in.** `conversation_ingest_consumer.py`'s
 `_route_and_assign` (which only ever runs for a brand-new conversation)
@@ -293,7 +315,25 @@ click-to-navigate already wired.
 `assigned_agent_id` branch. There's deliberately no separate "take over
 from AI" endpoint — picking up the conversation *is* taking over, and a
 third assignment-mutation path would be a fourth place to keep this
-invariant in sync.
+invariant in sync. `ConversationSidebar.tsx` now renders a "Pick up"
+button (gated on `conversations.pick`) whenever `assigned_agent_id` is
+null and `autopilot_active` is false — the handoff notification
+deep-links straight to `/conversations/:id`, and before this button
+existed, an agent arriving that way had no ownership action on that
+page at all (Transfer requires an existing assignment; Release requires
+one too) and had to go back to the Inbox to find the row.
+
+**Distinguishing AI replies from human ones.** `send_reply` takes an
+`is_ai_generated: bool = False` parameter — the Autopilot consumer is
+the only caller that passes `True` — which stamps
+`Message.message_metadata = {"is_ai_generated": True}` on the persisted
+row and the same key onto the `message.sent` event payload.
+`MessageThread.tsx` renders a small "AI" chip next to any outbound
+message carrying that flag. Before this, an Autopilot-sent reply was a
+plain `OUTBOUND` message indistinguishable from a human agent's, in the
+transcript, the messages API, and the audit log alike — no compliance
+reviewer could answer "which replies to this customer were
+machine-generated with no human in the loop" from any of the three.
 
 **Idempotency.** `Conversation.autopilot_last_handled_message_id` records
 the last inbound message the consumer acted on, so an at-least-once

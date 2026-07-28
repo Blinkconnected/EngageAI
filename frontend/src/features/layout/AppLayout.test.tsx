@@ -3,6 +3,7 @@ import { onlineManager } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
+import { axe } from 'vitest-axe'
 import { store } from '../../app/store'
 import { queryClient } from '../../app/queryClient'
 import { loggedOut } from '../auth/authSlice'
@@ -156,15 +157,24 @@ describe('AppLayout', () => {
       )
     })
 
-    // No open-menu axe pass here (unlike InboxPage/ConversationSidebar's
-    // new controls, which do get one): this account Menu already renders
-    // non-`menuitem` content as direct children of its `role="menu"` list
-    // (the currentUser name/email/roles Box, present before this change) —
-    // opening it and running axe flags `aria-required-children` on that
-    // pre-existing structure, not on anything this milestone added.
-    // Restructuring the account menu's ARIA semantics to satisfy that rule
-    // is out of scope here. This matches this codebase's existing
-    // precedent of only axe-checking Menu-owning components in their
-    // closed state (see NotificationBell.test.tsx).
+    it('has no detectable accessibility violations with the menu open', async () => {
+      const user = userEvent.setup()
+      renderLayout()
+      await user.click(await screen.findByRole('button', { name: /account/i }))
+      await screen.findByRole('button', { name: 'Online' })
+
+      // Scoped to the popover's own root, not the whole document: this
+      // test's route content is a bare placeholder <div> with no landmark
+      // around it (a fixture artifact, not a real page), which axe's
+      // unrelated "region" rule would otherwise flag. Popover (not Menu)
+      // is what makes aria-required-children pass here: the availability
+      // ToggleButtonGroup and user-info block are no longer direct
+      // children of a role="menu" list.
+      const popover = screen
+        .getByRole('button', { name: 'Online' })
+        .closest('[role="presentation"]')
+      expect(popover).not.toBeNull()
+      expect(await axe(popover as HTMLElement)).toHaveNoViolations()
+    })
   })
 })

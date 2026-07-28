@@ -55,7 +55,9 @@ export const csatHandlers = [
     if (contexts[conversationId]) {
       contexts[conversationId] = { ...contexts[conversationId], needs_contact_info: false }
     }
-    const body: CsatContactInfoResponse = { conversation_id: conversationId, ...updated }
+    // Mirrors the real endpoint: never echoes the stored email/phone
+    // back, since this route needs only the survey token.
+    const body: CsatContactInfoResponse = { conversation_id: conversationId }
     return HttpResponse.json(body)
   }),
 

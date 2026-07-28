@@ -72,10 +72,16 @@
     "transferButton": "Transfer…",
     "releasingButton": "Releasing…",
     "releaseButton": "Release",
+    "pickingButton": "Picking up…",
+    "pickButton": "Pick up",
+    "pickErrorFallback": "Could not pick up this conversation.",
     "queueLabel": "Queue",
     "noQueueOption": "No queue"
   },
   "MessageThread": {
+    "senderAgent": "You",
+    "senderCustomer": "Customer",
+    "aiGeneratedLabel": "AI",
     "failedToSendLabel": "Failed to send",
     "deliveredLabel": "· Delivered",
     "genericErrorFallback": "The channel provider rejected this message — its credentials may need attention.",

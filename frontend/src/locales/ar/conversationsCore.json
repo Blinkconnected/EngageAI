@@ -72,10 +72,16 @@
     "transferButton": "تحويل…",
     "releasingButton": "جارٍ التحرير…",
     "releaseButton": "تحرير",
+    "pickingButton": "جارٍ الالتقاط…",
+    "pickButton": "التقاط",
+    "pickErrorFallback": "تعذّر التقاط هذه المحادثة.",
     "queueLabel": "قائمة الانتظار",
     "noQueueOption": "بدون قائمة انتظار"
   },
   "MessageThread": {
+    "senderAgent": "أنت",
+    "senderCustomer": "العميل",
+    "aiGeneratedLabel": "ذكاء اصطناعي",
     "failedToSendLabel": "فشل الإرسال",
     "deliveredLabel": "· تم التسليم",
     "genericErrorFallback": "رفض مزوّد القناة هذه الرسالة — قد تحتاج بيانات الاعتماد إلى المراجعة.",

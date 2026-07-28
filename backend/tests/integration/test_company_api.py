@@ -364,6 +364,34 @@ class TestAiConfig:
             "api_version": None,
         }
 
+    async def test_switching_provider_without_a_new_key_does_not_carry_the_old_secret_forward(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        """A saved key must only ever survive an update for the SAME
+        provider it was saved under. Moving the provider dropdown to a
+        different vendor and leaving the key field blank (as the UI's own
+        "leave blank to keep it" helper text would otherwise invite) must
+        not silently forward the previous vendor's live secret to the new
+        one — see docs/architecture/ai-engine.md."""
+        await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "openai", "api_key": "sk-openai-secret"},
+            headers=owner_headers,
+        )
+
+        response = await client.put(
+            "/api/v1/company/ai-config",
+            json={"provider": "claude"},
+            headers=owner_headers,
+        )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["provider"] == "claude"
+        # No key was ever supplied for claude — it must not be reported
+        # as set just because openai's key still sits in the row.
+        assert body["api_key_set"] is False
+
     async def test_ollama_provider_does_not_require_an_api_key(
         self, client: AsyncClient, owner_headers: dict
     ) -> None:

@@ -142,6 +142,25 @@ channels/conversations (M12+) start publishing `message.received`, those
 rows show up in `GET /audit-logs` with zero code changes to the audit
 module — exactly the decoupling this milestone exists to deliver.
 
+**Redacted, not verbatim, for a handful of fields (P6.20's final
+review).** "Everything is audited" was, until this fix, being read too
+literally: `message.received`/`message.persisted`/`message.sent`'s
+`body` and `conversation.transferred`'s `note` were copied into
+`AuditLog.details` character-for-character.
+`_REDACTED_PAYLOAD_FIELDS` in `audit_log_consumer.py` now replaces those
+specific free-text fields with the literal string `"[redacted]"` before
+the row is written — the row itself (who, when, what event type) is
+still recorded, just not a second verbatim copy of what a customer said.
+This matters because `AuditLog` has different retention semantics than
+`Conversation`: it's never touched by `Conversation.deleted_at` (soft
+delete) or the agent-removal flow above, and it's reachable through
+`audit_logs.read` alone — a permission entirely separate from
+`conversations.read` — so a customer's message content was effectively
+being duplicated into a second, longer-retained, differently-permissioned
+store. Structural fields (ids, `channel_type`, `to_agent_id`, etc.) are
+untouched; only the free-text ones are redacted, and only for the four
+event types listed in `_REDACTED_PAYLOAD_FIELDS`.
+
 ## Ephemeral signals: Redis pub/sub
 
 `infrastructure/events/realtime_publisher.py`: `RealtimePublisher.publish(

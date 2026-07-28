@@ -60,10 +60,21 @@ export function ConversationViewPage() {
         direction={{ xs: 'column', md: 'row' }}
         sx={{ flexGrow: 1, minHeight: 0, border: 1, borderColor: 'divider', borderRadius: 2 }}
       >
-        <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+        {/* minHeight: 0 — same flexbox "automatic minimum size" fix as
+            AppLayout.tsx's main region. On xs this Box is a column-flex
+            sibling of the sidebar below it (the outer Stack switches to
+            flexDirection: 'column'); without this it refuses to shrink
+            below its content's natural height (Tabs + MessageThread's own
+            minimum + ReplyBox), leaving the sidebar's fixed maxHeight:320
+            with no actual room inside the workspace's hard height cap. */}
+        <Box
+          sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0, minHeight: 0 }}
+        >
           <Tabs
             value={tab}
             onChange={(_event, value) => setTab(value)}
+            variant="scrollable"
+            scrollButtons="auto"
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
             <Tab label={t('ConversationViewPage.messagesTab')} value="messages" />

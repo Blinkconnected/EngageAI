@@ -37,7 +37,7 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.company_settings import autopilot_confidence_threshold
+from blinkengage.domain.company_settings import autopilot_confidence_threshold, is_ai_enabled
 from blinkengage.domain.events import DomainEvent
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
@@ -160,10 +160,14 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         return
 
     provider = build_ai_provider_for_company(settings, company.ai_config)
-    if provider is None:
+    if provider is None or not is_ai_enabled(company.settings):
         # AI became unavailable after this conversation was handed to
-        # Autopilot (disabled, misconfigured, key revoked) — hand off
-        # rather than leave the customer's message unanswered forever.
+        # Autopilot (disabled, misconfigured, key revoked) — or the
+        # company-wide "Enable AI Engine features" master switch was
+        # turned off mid-conversation, e.g. for compliance reasons. Hand
+        # off rather than either leaving the customer's message
+        # unanswered forever or auto-sending a reply the master switch
+        # was supposed to prevent.
         conversation.autopilot_active = False
         conversation.autopilot_last_handled_message_id = message_id
         await _publish_handoff_needed(
@@ -229,6 +233,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         conversation_id=conversation_id,
         body=result.reply,
         attachment_ids=[],
+        is_ai_generated=True,
     )
 
 

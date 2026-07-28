@@ -1,6 +1,7 @@
 {
   "DepartmentAgentsDialog": {
     "title": "{{name}} — الوكلاء",
+    "loading": "جارٍ تحميل الوكلاء…",
     "emptyTitle": "لا يوجد وكلاء مُسنَدون",
     "emptyDescription": "قم بإسناد الوكلاء إلى هذا القسم من مربع حوار التعديل في صفحة الوكلاء.",
     "closeButton": "إغلاق"

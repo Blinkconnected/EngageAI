@@ -38,6 +38,18 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
           </Typography>
         ) : (
           <>
+            {/* The only signal in the bubble itself of who sent it — the
+                rest (alignment, background colour) is decorative and
+                fails WCAG 1.4.1 (Use of Color) on its own: a screen
+                reader or a user who can't distinguish the two colours
+                would otherwise read an undifferentiated run of message
+                bodies with no way to tell customer from agent. */}
+            <Typography
+              variant="caption"
+              sx={{ display: 'block', fontWeight: 600, opacity: 0.8, mb: 0.25 }}
+            >
+              {isOutbound ? t('MessageThread.senderAgent') : t('MessageThread.senderCustomer')}
+            </Typography>
             {message.body && (
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                 {message.body}
@@ -50,6 +62,17 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
           <Typography variant="caption" sx={{ opacity: 0.8 }}>
             {formatRelativeTime(message.created_at)}
           </Typography>
+          {isOutbound && message.message_metadata.is_ai_generated === true && (
+            // The only signal anywhere (transcript, API, audit log) that
+            // this reply had no human in the loop — see
+            // ai_autopilot_consumer.py's send_reply(is_ai_generated=True).
+            <Chip
+              label={t('MessageThread.aiGeneratedLabel')}
+              size="small"
+              color="info"
+              variant="outlined"
+            />
+          )}
           {isOutbound && message.status === 'failed' && (
             <Chip label={t('MessageThread.failedToSendLabel')} size="small" color="error" />
           )}
@@ -117,7 +140,7 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <Stack spacing={1.5} sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }}>
+    <Stack spacing={1.5} sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 2 }}>
       {hasMore && (
         <Button
           size="small"

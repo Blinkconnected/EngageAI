@@ -200,6 +200,9 @@ async def test_high_confidence_reply_is_auto_sent(
     messages = await _outbound_messages(app, seed["conversation_id"])
     assert len(messages) == 1
     assert messages[0].body == "We're open 9-5 Monday to Friday."
+    # The only signal (transcript, API, audit log) that this reply had
+    # no human in the loop — see MessageThread.tsx's "AI" chip.
+    assert messages[0].message_metadata.get("is_ai_generated") is True
 
 
 async def test_low_confidence_hands_off_without_sending_a_reply(
@@ -363,6 +366,51 @@ async def test_conversation_not_autopilot_active_is_ignored(
         ),
     )
 
+    assert await _outbound_messages(app, seed["conversation_id"]) == []
+
+
+async def test_ai_master_switch_turned_off_mid_conversation_hands_off_instead_of_sending(
+    client: AsyncClient, owner_headers: dict, app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`settings.ai.enabled` is the company-wide "Enable AI Engine
+    features" switch (see AiSettingsPanel's help text: "Turn this off if
+    your organization needs to avoid AI-generated content"). A
+    conversation already routed to Autopilot before the switch was
+    turned off must hand off on its next inbound message, not keep
+    auto-sending — otherwise the switch would lie about what it does."""
+    seed = await _create_autopilot_conversation(client, owner_headers, app)
+    await client.patch(
+        "/api/v1/company",
+        json={"settings": {"ai": {"enabled": False}}},
+        headers=owner_headers,
+    )
+    fake_provider = FakeAiProvider(
+        reply="We're open 9-5 Monday to Friday.", confidence=90, handoff="NO"
+    )
+    monkeypatch.setattr(
+        ai_autopilot_consumer, "build_ai_provider_for_company", lambda settings, config: fake_provider
+    )
+
+    await _dispatch(
+        app,
+        _message_persisted_event(
+            company_id=seed["company_id"],
+            conversation_id=seed["conversation_id"],
+            message_id=seed["message_id"],
+        ),
+    )
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        conversation = await session.get(Conversation, UUID(seed["conversation_id"]))
+        assert conversation is not None
+        assert conversation.autopilot_active is False
+
+        batch = await EventOutboxRepository(session).claim_batch(limit=50, max_attempts=1_000_000)
+
+    handoff_events = [e for e in batch if e.event_type == "conversation.autopilot_handoff_needed"]
+    assert len(handoff_events) == 1
+    assert handoff_events[0].payload["reason"] == "ai_unavailable"
     assert await _outbound_messages(app, seed["conversation_id"]) == []
 
 

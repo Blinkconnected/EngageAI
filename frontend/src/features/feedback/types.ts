@@ -9,10 +9,10 @@ export interface CsatContactInfoRequest {
   phone?: string
 }
 
+// Deliberately does not echo the stored email/phone back — see the
+// backend schema's docstring (api/schemas/csat.py).
 export interface CsatContactInfoResponse {
   conversation_id: string
-  email: string | null
-  phone: string | null
 }
 
 export interface CsatSubmitRequest {

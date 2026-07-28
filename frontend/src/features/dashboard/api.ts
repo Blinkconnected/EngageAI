@@ -7,7 +7,7 @@ async function fetchLiveDashboard(): Promise<LiveDashboard> {
   return data
 }
 
-export function useLiveDashboardQuery() {
+export function useLiveDashboardQuery(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['reports', 'live-dashboard'],
     queryFn: fetchLiveDashboard,
@@ -15,5 +15,9 @@ export function useLiveDashboardQuery() {
     // enough that agents/supervisors watching this page see current state.
     refetchInterval: 30_000,
     staleTime: 15_000,
+    // DashboardPage passes enabled: false for a caller without
+    // reports.read — the endpoint 403s for them, and there's no reason
+    // to fire (and keep retrying) a request that can never succeed.
+    enabled: options?.enabled ?? true,
   })
 }

@@ -37,6 +37,28 @@ function stubDesktopViewport() {
   })) as unknown as typeof window.matchMedia
 }
 
+// A real matchMedia stub, evaluating the actual min-width the component
+// queries for — used to prove the 3-pane layout only turns on once
+// there's genuinely enough room (see ConversationWorkspacePage.tsx's
+// THREE_PANE_MIN_WIDTH), not at MUI's stock `md` (900px), which used to
+// leave the message thread only 40px wide.
+function stubViewportWidth(width: number) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => {
+    const match = /min-width:\s*([\d.]+)px/.exec(query)
+    const minWidth = match ? Number(match[1]) : Infinity
+    return {
+      matches: width >= minWidth,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }
+  }) as unknown as typeof window.matchMedia
+}
+
 describe('ConversationWorkspacePage', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
@@ -76,6 +98,22 @@ describe('ConversationWorkspacePage', () => {
     // right is unaffected, still showing the same open conversation).
     await user.click(screen.getByRole('tab', { name: /^pending$/i }))
     expect(await screen.findByText(/nothing here/i)).toBeInTheDocument()
+  })
+
+  it('stays single-pane at 1024px, where the old md (900px) breakpoint used to wrongly show both panes', async () => {
+    stubViewportWidth(1024)
+    renderWorkspace()
+
+    expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
+    expect(screen.queryByRole('tablist', { name: /conversations/i })).not.toBeInTheDocument()
+  })
+
+  it('shows both panes once the viewport is wide enough for the message thread to stay usable', async () => {
+    stubViewportWidth(1300)
+    renderWorkspace()
+
+    expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
+    expect(screen.getByRole('tablist', { name: /conversations/i })).toBeInTheDocument()
   })
 
   it('has no detectable accessibility violations on desktop', async () => {

@@ -11,6 +11,8 @@ import {
 } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { ErrorState } from '../../shared/components/ErrorState'
+import { LoadingState } from '../../shared/components/LoadingState'
 import { useAllAgentsQuery } from '../agents/api'
 import type { Department } from './types'
 
@@ -35,12 +37,17 @@ export function DepartmentAgentsDialog({
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{t('DepartmentAgentsDialog.title', { name: department.name })}</DialogTitle>
       <DialogContent>
-        {members.length === 0 ? (
+        {agentsQuery.isPending && <LoadingState label={t('DepartmentAgentsDialog.loading')} />}
+        {agentsQuery.isError && (
+          <ErrorState error={agentsQuery.error} onRetry={() => agentsQuery.refetch()} />
+        )}
+        {agentsQuery.data && members.length === 0 && (
           <EmptyState
             title={t('DepartmentAgentsDialog.emptyTitle')}
             description={t('DepartmentAgentsDialog.emptyDescription')}
           />
-        ) : (
+        )}
+        {agentsQuery.data && members.length > 0 && (
           <List dense>
             {members.map((agent) => (
               <ListItem key={agent.id} disableGutters>

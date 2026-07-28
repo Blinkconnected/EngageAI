@@ -13,6 +13,35 @@ describe('DashboardPage', () => {
     queryClient.clear()
   })
 
+  it('shows a working landing page instead of a broken error state for a role without reports.read', async () => {
+    // Dashboard is the one nav item shown to every authenticated user
+    // (the post-login destination), unlike every other item, which is
+    // hidden for a role lacking its permission — a custom role built in
+    // Roles & Permissions (chat-only, knowledge-only) can omit
+    // reports.read, and this page has to still work for them.
+    const { server } = await import('../../mocks/server')
+    const { http, HttpResponse } = await import('msw')
+    const { API_BASE_URL } = await import('../../mocks/apiBaseUrl')
+    const { MOCK_USER } = await import('../../mocks/handlers/auth')
+    server.use(
+      http.get(`${API_BASE_URL}/auth/me`, () =>
+        HttpResponse.json({
+          ...MOCK_USER,
+          permissions: MOCK_USER.permissions.filter((code) => code !== 'reports.read'),
+        }),
+      ),
+    )
+
+    renderAuthenticated(<DashboardPage />)
+
+    expect(await screen.findByText(/no reports access/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /go to inbox/i })).toHaveAttribute(
+      'href',
+      '/conversations',
+    )
+    expect(screen.queryByText(/total conversations/i)).not.toBeInTheDocument()
+  })
+
   it('renders the enriched queue-depth table with department, stage, wait-time and SLA-breach columns', async () => {
     renderAuthenticated(<DashboardPage />)
 

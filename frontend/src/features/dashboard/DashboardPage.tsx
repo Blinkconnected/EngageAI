@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import {
+  Button,
   Box,
   Card,
   CardContent,
@@ -22,6 +24,7 @@ import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useLiveDashboardQuery } from './api'
 import type { AgentWorkload, LiveQueueDepth } from './types'
 
@@ -273,15 +276,38 @@ function QueueDepthTable({ queues }: { queues: LiveQueueDepth[] }) {
 
 export function DashboardPage() {
   const { t } = useTranslation('dashboard')
-  const liveDashboardQuery = useLiveDashboardQuery()
+  const { hasPermission } = usePermissions()
+  const canViewReports = hasPermission('reports.read')
+  // Dashboard is the one nav item every authenticated user sees (it's
+  // the post-login landing page, see LoginPage.tsx) — unlike every other
+  // item, which is hidden entirely for a role that lacks its permission.
+  // A custom role built in Roles & Permissions (e.g. chat-only,
+  // knowledge-only) can omit reports.read, so this can't 403 the way the
+  // query itself would: it has to degrade to a working landing page
+  // instead, or that role would sign in to a broken first screen.
+  const liveDashboardQuery = useLiveDashboardQuery({ enabled: canViewReports })
 
   return (
     <>
       <PageHeader title={t('DashboardPage.title')} description={t('DashboardPage.description')} />
 
-      {liveDashboardQuery.isPending && <LoadingState label={t('DashboardPage.loadingLabel')} />}
+      {!canViewReports && (
+        <EmptyState
+          title={t('DashboardPage.noReportsAccessTitle')}
+          description={t('DashboardPage.noReportsAccessDescription')}
+          action={
+            <Button component={RouterLink} to="/conversations" variant="contained" size="small">
+              {t('DashboardPage.goToInboxButton')}
+            </Button>
+          }
+        />
+      )}
 
-      {liveDashboardQuery.isError && (
+      {canViewReports && liveDashboardQuery.isPending && (
+        <LoadingState label={t('DashboardPage.loadingLabel')} />
+      )}
+
+      {canViewReports && liveDashboardQuery.isError && (
         <ErrorState error={liveDashboardQuery.error} onRetry={() => liveDashboardQuery.refetch()} />
       )}
 

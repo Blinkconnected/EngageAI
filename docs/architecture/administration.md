@@ -64,8 +64,22 @@ The plain `DELETE /agents/{agent_id}` (unconditional soft-delete) is left
 completely unchanged for backward compatibility — it never touched the
 agent's assigned conversations before this milestone and still doesn't.
 The frontend now exclusively uses a new, richer endpoint instead: `POST
-/agents/{agent_id}/removal`, gated by the same `agents.manage`
-permission, taking `{mode: "transfer" | "permanent", transfer_to_agent_id?}`.
+/agents/{agent_id}/removal`, gated by `agents.manage`, taking
+`{mode: "transfer" | "permanent", transfer_to_agent_id?}`.
+
+`mode: "permanent"` additionally requires `conversations.delete` — the
+same narrower permission a single conversation's own `DELETE
+/conversations/{id}` route already requires — checked explicitly in the
+handler before the deletion loop runs (P6.20's final review: this was
+originally reachable through `agents.manage` alone, letting a default
+Admin, who is explicitly denied `conversations.delete`, destroy every
+conversation belonging to a removed agent in one call — an
+unenforceable "who may destroy records" boundary for a Financial/
+Healthcare separation-of-duties review). `mode: "transfer"` needs no
+extra permission — it doesn't destroy anything. `AgentRemovalDialog.tsx`
+mirrors this: the "Permanently delete" toggle option is hidden entirely
+(not just disabled) for a caller without `conversations.delete`, so
+they're never walked into a dead-end 403 at the final confirm step.
 
 Both modes fetch every conversation still assigned to the departing
 agent (`ConversationRepository.list_all_for_agent` — unpaginated, capped

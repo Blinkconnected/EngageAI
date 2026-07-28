@@ -307,6 +307,8 @@ export function InboxPage() {
               onChange={(_event, value) => {
                 updateParams({ status: value === 'open' ? null : value, page: null })
               }}
+              variant="scrollable"
+              scrollButtons="auto"
             >
               {tabs.map((tab) => (
                 <Tab key={tab.value} label={tab.label} value={tab.value} />

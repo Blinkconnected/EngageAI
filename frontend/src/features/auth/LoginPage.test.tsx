@@ -32,4 +32,12 @@ describe('LoginPage', () => {
     const { container } = renderWithProviders(<LoginPage />)
     expect(await axe(container)).toHaveNoViolations()
   })
+
+  it('caps the sign-in card at 100% width so it never overflows a narrow viewport', () => {
+    renderWithProviders(<LoginPage />)
+
+    const card = screen.getByRole('button', { name: 'Sign in' }).closest('form')
+    expect(card).not.toBeNull()
+    expect(card).toHaveStyle({ maxWidth: '100%' })
+  })
 })

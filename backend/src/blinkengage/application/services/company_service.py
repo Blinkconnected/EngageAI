@@ -144,9 +144,15 @@ class CompanyService:
             company.ai_config = None
         else:
             existing = company.ai_config or {}
+            # A saved key is only ever carried forward for the SAME
+            # provider it was saved under — switching vendors (e.g.
+            # openai -> claude) must never silently forward the old
+            # vendor's secret into the new one's Authorization header.
+            same_provider = existing.get("provider") == provider
+            preserved_key = existing.get("api_key") if same_provider else None
             company.ai_config = {
                 "provider": provider,
-                "api_key": api_key if api_key else existing.get("api_key"),
+                "api_key": api_key if api_key else preserved_key,
                 "model": model,
                 "base_url": base_url,
                 "deployment_name": deployment_name,

@@ -12,8 +12,9 @@ import {
   Link,
   ListItemIcon,
   ListItemText,
-  Menu,
   MenuItem,
+  MenuList,
+  Popover,
   Toolbar,
   ToggleButton,
   ToggleButtonGroup,
@@ -216,9 +217,19 @@ export function AppLayout() {
                     </Avatar>
                   </IconButton>
                 </Tooltip>
-                <Menu
-                  anchorEl={userMenuAnchor}
+                {/* Popover + MenuList, not a bare Menu: a MUI Menu renders
+                    `role="menu"` on its list, which requires every direct
+                    child to be a menuitem — the user-info block and the
+                    availability ToggleButtonGroup below are neither, and
+                    axe correctly flags that as aria-required-children.
+                    Popover carries no such list role, so it can host
+                    arbitrary content; MenuList (`autoFocusItem` moved
+                    here) keeps the actual actions' keyboard behavior
+                    (arrow-key navigation, Escape-to-close) identical to
+                    before. */}
+                <Popover
                   open={Boolean(userMenuAnchor)}
+                  anchorEl={userMenuAnchor}
                   onClose={() => setUserMenuAnchor(null)}
                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
                   transformOrigin={{ vertical: 'top', horizontal: 'right' }}
@@ -265,29 +276,31 @@ export function AppLayout() {
                     </Box>
                   )}
                   <Divider />
-                  <MenuItem
-                    onClick={() => {
-                      setUserMenuAnchor(null)
-                      navigate('/profile')
-                    }}
-                  >
-                    <ListItemIcon>
-                      <PersonOutlineIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText>{t('AppLayout.myProfile')}</ListItemText>
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setUserMenuAnchor(null)
-                      void logout()
-                    }}
-                  >
-                    <ListItemIcon>
-                      <LogoutIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText>{t('AppLayout.signOut')}</ListItemText>
-                  </MenuItem>
-                </Menu>
+                  <MenuList autoFocusItem={Boolean(userMenuAnchor)}>
+                    <MenuItem
+                      onClick={() => {
+                        setUserMenuAnchor(null)
+                        navigate('/profile')
+                      }}
+                    >
+                      <ListItemIcon>
+                        <PersonOutlineIcon fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText>{t('AppLayout.myProfile')}</ListItemText>
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        setUserMenuAnchor(null)
+                        void logout()
+                      }}
+                    >
+                      <ListItemIcon>
+                        <LogoutIcon fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText>{t('AppLayout.signOut')}</ListItemText>
+                    </MenuItem>
+                  </MenuList>
+                </Popover>
               </Toolbar>
             </AppBar>
             {/* `minHeight: 0` overrides flexbox's automatic minimum size (a

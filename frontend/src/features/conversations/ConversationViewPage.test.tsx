@@ -110,6 +110,23 @@ describe('ConversationViewPage', () => {
     await waitFor(() => expect(screen.getByLabelText(/^status/i)).toHaveTextContent('Resolved'))
   })
 
+  // The seeded conversation (conv-1) starts unassigned — this is exactly
+  // what an agent lands on after being paged by an SLA-breach or
+  // autopilot-handoff notification, which deep-links straight here with
+  // no way back to the Inbox's own Pick row action.
+  it('claims an unassigned conversation via the sidebar Pick button', async () => {
+    const user = userEvent.setup()
+    renderConversationView()
+    await waitForLoaded()
+
+    const pickButton = await screen.findByRole('button', { name: /pick up/i })
+    await user.click(pickButton)
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /pick up/i })).not.toBeInTheDocument(),
+    )
+  })
+
   // jsdom's FormData/File polyfill doesn't preserve File.name through a
   // real multipart round trip (verified independently: even a bare
   // `new Request(..., {body: formData}).formData()` loses it in this

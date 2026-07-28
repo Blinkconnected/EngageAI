@@ -172,7 +172,7 @@ Full interface translation, not just RTL layout mirroring:
 /register                          public — Create Company (POST /auth/register)
 /login                             public
 /                                   protected shell (AppLayout: sidebar + topbar)
-  index                             Dashboard (live + executive summary)
+  index                             Dashboard (live + executive summary) — the one item every signed-in user sees, unlike every route below it
   /agents                           Agents (Users) — requires agents.read
   /channels                         Channel configs (Connect WhatsApp, etc.) — channels.read
   /conversations                    Inbox — full filterable/sortable table — conversations.read
@@ -190,6 +190,37 @@ Every gated route wraps its element in `RequirePermission`; the sidebar
 independently hides nav entries the current user lacks permission for, so
 the two never disagree (both read the same `usePermissions` hook).
 
+Dashboard is the one deliberate exception: `navConfig.ts` declares no
+`permission` for it and the route has no `RequirePermission` wrapper,
+since it's the universal post-login landing page (`LoginPage.tsx`
+defaults `from` to `/`) — every authenticated user needs *some* working
+first screen, regardless of their role's permission set. But its only
+data source, `GET /reports/live-dashboard`, is gated on `reports.read`,
+which a custom role built in Roles & Permissions (chat-only,
+knowledge-only) can omit (P6.20's final review: this used to just show
+an inline `ErrorState`, a broken-looking first screen for that role).
+`DashboardPage.tsx` now checks `hasPermission('reports.read')` itself
+and renders a simple "Go to Inbox" landing page instead of firing the
+query at all when it's absent — an honest degrade rather than a fake
+error.
+
+**Every route is its own chunk (P6.20's final review).** `AppRoutes.tsx`
+used to statically `import` all ~20 page components — everything landed
+in one entry bundle: `@mui/x-data-grid`, `@mui/x-charts` (+ d3), both
+locale bundles, every settings/reports/onboarding screen, measured at
+1.9 MB (557 KB gzip). Critically this included the two routes outside
+`ProtectedRoute` — `/login` and `/feedback/:conversationId` (the CSAT
+survey link emailed straight to end customers) — so a customer tapping
+a survey link on their phone downloaded the entire internal agent
+console to render a 4.8 KB form. Every page is now `React.lazy(() =>
+import(...))`, wrapped in one `<Suspense fallback={<LoadingState />}>`
+around the whole `<Routes>` tree — Vite/Rolldown emits each page as its
+own chunk automatically; nothing about what's imported changed, only
+when. `DataGrid` (~395 KB) and `BarChart` (~267 KB) are now separate
+chunks loaded only by the routes that actually render a grid or a chart,
+and the main entry chunk dropped to ~345 KB (110 KB gzip) with `/login`
+and `/feedback` now each under 5 KB of their own code.
+
 ## Conversation workspace layout (only the message thread scrolls)
 
 `/conversations/:conversationId` renders `ConversationWorkspacePage.tsx`, a
@@ -205,13 +236,25 @@ workspace's own list is intentionally lighter (a single status
 quick-filter, no bulk actions), since its job is fast switching between
 conversations without losing the one you have open, not triage.
 
-Responsive: on mobile (`theme.breakpoints.down('md')`) there's no room
-for both the list and an open conversation, so only `ConversationViewPage`
-shows at this route — `ConversationSidebar`'s existing back button already
+Responsive: below `THREE_PANE_MIN_WIDTH` there's no room for both the
+list and an open conversation, so only `ConversationViewPage` shows at
+this route — `ConversationSidebar`'s existing back button already
 returns to `/conversations` (the Inbox, full-width), giving the same
 list → detail → back pattern a phone's Mail app uses. No routing change
 was needed for this: `ConversationWorkspacePage` simply doesn't render
-`ConversationListPanel` when `useMediaQuery` reports non-desktop.
+`ConversationListPanel` when `useMediaQuery` reports below that width.
+
+`THREE_PANE_MIN_WIDTH` is a computed custom breakpoint
+(`ConversationWorkspacePage.tsx`), not MUI's stock `md` (900px), which
+this used to switch on (P6.20's final review: it left only ~40px for the
+message column at exactly 900px). `AppLayout`'s nav (260px) + the list
+pane (320px) + `ConversationSidebar`'s fixed customer panel (280px) is
+860px of chrome that never shrinks; the message column needs a genuine
+400px to stay usable, so the 3-pane layout now only turns on at 1260px
+and above — below that, it's single-pane exactly like true mobile. The
+message column's wrapping `Box` also gained a matching `minWidth: 400`
+as defense-in-depth, so a future breakpoint miscalculation would
+overflow with horizontal scroll rather than silently collapsing to 0px.
 
 **Making "only the message thread scrolls" actually work required a
 one-time, global fix to `AppLayout.tsx`, not just local CSS on this one
@@ -223,11 +266,17 @@ flex item's automatic minimum size (CSS Flexbox's
 natural height unless overridden, so `main` — and everything above it —
 just grew to fit whatever a page rendered, and the browser scrolled the
 whole page instead of any one region. `MessageThread.tsx`'s own
-`overflowY: 'auto'` (and `ConversationViewPage.tsx`'s own
-`minHeight: 0` on its inner `Stack`) were already written assuming a
-properly height-bounded ancestor — they just never had one. Adding
-`minHeight: 0` to the content column and `minHeight: 0` +
-`overflowY: 'auto'` to `main` itself fixes this at the root: `main`
+`overflowY: 'auto'` Stack was already written assuming a properly
+height-bounded ancestor — it just never had one, and (P6.20's final
+review) was itself still missing `minHeight: 0`, the same gotcha one
+level up: on a phone, `ConversationViewPage.tsx`'s message column has no
+`minHeight: 0` either, so in the column-flex direction (mobile stacks
+the message column above the sidebar) it refused to shrink below its
+own content's natural minimum, starving the sidebar below it of the
+fixed `maxHeight: 320` it was supposed to get. Both now have
+`minHeight: 0`. Adding `minHeight: 0` to the content column and
+`minHeight: 0` + `overflowY: 'auto'` to `main` itself fixes this at the
+root: `main`
 becomes the one scroll container for ordinary pages (visually identical
 to before — nav/top bar simply stay pinned now instead of scrolling
 away, which is a strict improvement, not a regression), while the
@@ -428,6 +477,28 @@ construction (labeled form controls, roles on interactive elements,
 focus management in dialogs/menus); custom composites (the sidebar nav,
 `DataTable` actions, the conversation thread) are where an automated check
 earns its keep.
+
+**Popover, not Menu, for compound popup content (P6.20's final
+review).** MUI's `Menu` renders `role="menu"` on its list, which requires
+every direct child to be a `menuitem` — `AppLayout.tsx`'s account menu
+(user-info block + availability `ToggleButtonGroup`) and
+`NotificationBell.tsx`'s notification menu ("Mark all read" header,
+"View all" footer) both used to put non-`menuitem` content directly
+inside that list, which axe correctly flags as
+`aria-required-children` at critical impact, and which menu-mode
+arrow-key navigation silently skips over entirely (a screen-reader user
+opening the account menu would never reach the availability picker at
+all). Both now use `Popover` + `MenuList` instead: `Popover` carries no
+`role="menu"` list semantics, so it can host arbitrary content, while
+the actual actions still sit inside a `MenuList` for unchanged keyboard
+behavior. Neither component's tests previously opened the menu and ran
+axe on it (only the closed state) — both now do.
+
+Message bubbles (`MessageThread.tsx`) previously conveyed sender
+(customer vs. agent) only through side-of-thread alignment and
+background color — a WCAG 1.4.1 (Use of Color) failure axe can't catch,
+since the markup is technically valid. Each bubble now renders a small
+visible "You"/"Customer" caption above the body text.
 
 ## Testing & quality gates
 

@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from blinkengage.infrastructure.database.models.conversation import Conversation
+from blinkengage.infrastructure.database.models.customer import Customer
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
 )
@@ -64,6 +65,16 @@ async def _create_conversation(client: AsyncClient, owner_headers: dict, app: An
 def _extract_token(url: str) -> str:
     query = parse_qs(urlparse(url).query)
     return query["token"][0]
+
+
+async def _customer_for_conversation(app: Any, conversation_id: str) -> Customer:
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        conversation = await db_session.get(Conversation, conversation_id)
+        assert conversation is not None
+        customer = await db_session.get(Customer, conversation.customer_id)
+        assert customer is not None
+        return customer
 
 
 async def test_generate_survey_link_requires_authentication(client: AsyncClient) -> None:
@@ -261,7 +272,8 @@ class TestCsatContactInfo:
             json={"email": "customer@example.com"},
         )
         assert response.status_code == 200, response.text
-        assert response.json()["email"] == "customer@example.com"
+        customer = await _customer_for_conversation(app, conversation_id)
+        assert customer.email == "customer@example.com"
 
     async def test_sets_phone(self, client: AsyncClient, owner_headers: dict, app: Any) -> None:
         conversation_id = await _create_conversation(client, owner_headers, app)
@@ -276,7 +288,30 @@ class TestCsatContactInfo:
             json={"phone": "+15551234567"},
         )
         assert response.status_code == 200, response.text
-        assert response.json()["phone"] == "+15551234567"
+        customer = await _customer_for_conversation(app, conversation_id)
+        assert customer.phone == "+15551234567"
+
+    async def test_response_never_echoes_the_customers_stored_contact_details(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """This route needs only the survey token — no session of its
+        own — so it must never hand back the Customer's stored email or
+        phone: a forwarded survey link (email chain, shared inbox,
+        mail-gateway log) would otherwise let its holder retrieve PII the
+        customer never entered in this exact request."""
+        conversation_id = await _create_conversation(client, owner_headers, app)
+        link_response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/csat-survey-link", headers=owner_headers
+        )
+        token = _extract_token(link_response.json()["url"])
+
+        response = await client.post(
+            f"/api/v1/csat/{conversation_id}/contact-info",
+            params={"token": token},
+            json={"email": "customer@example.com", "phone": "+15551234567"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json() == {"conversation_id": conversation_id}
 
     async def test_rejects_neither_email_nor_phone(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -329,12 +364,13 @@ class TestCsatContactInfo:
             params={"token": token},
             json={"email": "first@example.com"},
         )
-        response = await client.post(
+        await client.post(
             f"/api/v1/csat/{conversation_id}/contact-info",
             params={"token": token},
             json={"email": "second@example.com"},
         )
-        assert response.json()["email"] == "first@example.com"
+        customer = await _customer_for_conversation(app, conversation_id)
+        assert customer.email == "first@example.com"
 
     async def test_invalid_token_is_rejected(
         self, client: AsyncClient, owner_headers: dict, app: Any

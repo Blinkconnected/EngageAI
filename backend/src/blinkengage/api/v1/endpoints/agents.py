@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from blinkengage.api.deps import (
     get_agent_service,
@@ -205,6 +205,16 @@ async def remove_agent(
                 actor_user_id=auth.user_id,
             )
     else:
+        # Permanently deleting a conversation through its own route
+        # requires the separate, narrower "conversations.delete"
+        # permission (see conversations.py) — a caller who can manage
+        # agents but was deliberately not granted that permission must
+        # not be able to reach the same destructive effect in bulk here.
+        if not auth.has_permission("conversations.delete"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Missing required permission: conversations.delete",
+            )
         for conversation in conversations:
             await conversation_service.delete(
                 company_id=auth.company_id,

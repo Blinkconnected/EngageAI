@@ -189,7 +189,13 @@ function AiProviderConfigForm({ aiConfig }: { aiConfig: AiConfig }) {
   const [deploymentName, setDeploymentName] = useState(aiConfig.deployment_name ?? '')
   const [apiVersion, setApiVersion] = useState(aiConfig.api_version ?? '')
 
-  const savedApiKeySet = aiConfig.api_key_set
+  // A saved key only ever carries forward for the SAME provider it was
+  // saved under (company_service.update_ai_config mirrors this) —
+  // switching the dropdown to a different vendor must require a fresh
+  // key rather than silently reuse (and forward) the old vendor's
+  // secret, so this is scoped to the currently-selected provider, not
+  // just whatever was loaded.
+  const savedApiKeySet = aiConfig.api_key_set && provider === (aiConfig.provider ?? '')
   const isAzure = provider === 'azure_openai'
   const needsApiKey = provider !== '' && !PROVIDERS_NEEDING_NO_KEY.includes(provider)
   const hasUsableKey = savedApiKeySet || apiKeyInput.trim().length > 0
