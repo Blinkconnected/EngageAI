@@ -14,6 +14,8 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+## [1.0.0-beta.5] - 2026-07-28
+
 ### Added
 
 - **AI Autopilot can now step in three different ways, and you choose
@@ -35,6 +37,10 @@ for more detail on how this page is put together.
 - Replies an agent wrote with AI's help are now recorded separately from
   both fully automatic AI replies and replies written entirely by hand,
   so reporting can tell the three apart.
+- The conversation workspace now has a dedicated **Filters & Queues**
+  column, so filtering by status or queue no longer sits stacked on top
+  of the conversation list. Your chosen filter is kept in the page
+  address, so it survives opening a conversation and coming back.
 - The Dashboard now shows a live "SLA breached" count: how many
   conversations are open or pending right now and have already missed a
   service-level agreement target. It turns red the moment that number is
