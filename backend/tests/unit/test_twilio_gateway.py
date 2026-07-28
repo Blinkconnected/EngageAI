@@ -155,7 +155,8 @@ class TestHealthCheck:
     ) -> None:
         _mock_client(monkeypatch, lambda request: httpx.Response(200, json={"sid": "AC123"}))
 
-        assert await gateway.health_check() is True
+        result = await gateway.health_check()
+        assert result.healthy is True
 
     async def test_unhealthy_on_error_response(
         self, gateway: TwilioGateway, monkeypatch: pytest.MonkeyPatch
@@ -164,4 +165,8 @@ class TestHealthCheck:
             monkeypatch, lambda request: httpx.Response(401, json={"message": "invalid auth"})
         )
 
-        assert await gateway.health_check() is False
+        result = await gateway.health_check()
+        assert result.healthy is False
+        # 401 means Twilio's own server rejected OUR credentials — ours
+        # to fix, not Twilio's infrastructure being down.
+        assert result.origin == "configuration"

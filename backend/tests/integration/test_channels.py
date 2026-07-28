@@ -471,7 +471,7 @@ async def test_test_connection_updates_saved_channel_health_status(
         f"/api/v1/channel-configs/{created['id']}/test-connection", headers=owner_headers
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"healthy": True, "detail": None}
+    assert response.json() == {"healthy": True, "detail": None, "origin": None}
 
     get_response = await client.get(
         f"/api/v1/channel-configs/{created['id']}", headers=owner_headers
@@ -491,7 +491,7 @@ async def test_test_connection_reports_and_persists_failure(
     response = await client.post(
         f"/api/v1/channel-configs/{created['id']}/test-connection", headers=owner_headers
     )
-    assert response.json() == {"healthy": False, "detail": "simulated failure"}
+    assert response.json() == {"healthy": False, "detail": "simulated failure", "origin": None}
 
     get_response = await client.get(
         f"/api/v1/channel-configs/{created['id']}", headers=owner_headers
@@ -544,9 +544,7 @@ async def test_create_registers_the_webhook_with_the_provider(
     created = await _create_channel_config(client, owner_headers)
 
     assert len(FakeChannelProvider.configure_webhook_calls) == 1
-    assert FakeChannelProvider.configure_webhook_calls[0].endswith(
-        f"/webhooks/{created['id']}"
-    )
+    assert FakeChannelProvider.configure_webhook_calls[0].endswith(f"/webhooks/{created['id']}")
 
 
 async def test_webhook_registration_failure_does_not_fail_channel_creation(

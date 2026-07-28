@@ -22,7 +22,18 @@ export function ChannelHealthBadge({ channel }: { channel: ChannelConfig }) {
   const healthyLabel = healthy
     ? t('ChannelHealthBadge.healthyLabel')
     : t('ChannelHealthBadge.unhealthyLabel')
+  // "provider"/"network" means the provider's own servers aren't
+  // responding (not us); "configuration" means our credentials/setup are
+  // wrong (ours to fix); "internal" (Web Chat only) means our own
+  // storage. Shown alongside the raw detail, not instead of it — the
+  // classification says *whose* problem it is, the detail says *what*
+  // happened.
+  const originLabel =
+    !healthy && channel.last_health_origin
+      ? t(`ChannelHealthBadge.origin.${channel.last_health_origin}`)
+      : null
   const tooltip = [
+    originLabel,
     channel.last_health_detail,
     checkedAt ? t('ChannelHealthBadge.checkedAtLabel', { checkedAt }) : null,
   ]

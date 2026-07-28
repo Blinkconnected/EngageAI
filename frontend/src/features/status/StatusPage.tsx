@@ -27,7 +27,12 @@ import { usePermissions } from '../../shared/hooks/usePermissions'
 import { ChannelHealthBadge } from '../channels/ChannelHealthBadge'
 import { TestConnectionButton } from '../channels/TestConnectionButton'
 import { useAllChannelsQuery, useTestConnectionMutation } from '../channels/api'
-import { CHANNEL_TYPES, channelTypeLabel, type ChannelConfig } from '../channels/types'
+import {
+  CHANNEL_TYPES,
+  channelTypeLabel,
+  type ChannelConfig,
+  type HealthCheckOrigin,
+} from '../channels/types'
 
 type IconType = ComponentType<{ fontSize?: 'small' | 'medium' | 'large' | 'inherit' }>
 
@@ -70,6 +75,20 @@ function aggregateStatus(configs: ChannelConfig[]): AggregateStatus {
   if (active.some((channel) => channel.last_health_status === 'unhealthy')) return 'degraded'
   if (active.some((channel) => channel.last_health_status === 'healthy')) return 'operational'
   return 'not_tested'
+}
+
+/** Whose fault a degraded channel type is, for the whole card — not just
+ * one config's tooltip. When active configs disagree (rare — usually one
+ * shared API key), "configuration" wins: it's the most actionable
+ * reading for an operator, mirroring EmailProvider's own SMTP-vs-IMAP
+ * tie-break. Returns null unless the type is actually degraded. */
+function dominantUnhealthyOrigin(configs: ChannelConfig[]): HealthCheckOrigin | null {
+  const origins = configs
+    .filter((channel) => channel.is_active && channel.last_health_status === 'unhealthy')
+    .map((channel) => channel.last_health_origin)
+    .filter((origin): origin is HealthCheckOrigin => origin != null)
+  if (origins.length === 0) return null
+  return origins.includes('configuration') ? 'configuration' : origins[0]
 }
 
 function groupByChannelType(channels: ChannelConfig[]): Map<string, ChannelConfig[]> {
@@ -173,6 +192,7 @@ export function StatusPage() {
             const meta = { label: STATUS_LABEL[status], color: STATUS_COLOR[status] }
             const lastChecked = mostRecentCheck(configs)
             const label = channelTypeLabel(channelType)
+            const origin = status === 'degraded' ? dominantUnhealthyOrigin(configs) : null
 
             return (
               <Grid key={channelType} size={{ xs: 12, md: 6 }}>
@@ -198,6 +218,23 @@ export function StatusPage() {
                         data-testid="channel-type-status"
                       />
                     </Stack>
+
+                    {origin && (
+                      // The one line that answers "is this our problem or
+                      // theirs?" — a provider/network origin means the
+                      // provider's own infrastructure is down, not
+                      // BlinkEngage; configuration/internal both mean
+                      // ours to fix.
+                      <Alert
+                        severity={
+                          origin === 'configuration' || origin === 'internal' ? 'warning' : 'error'
+                        }
+                        sx={{ mb: 1.5 }}
+                        data-testid="channel-type-origin"
+                      >
+                        {t(`StatusPage.origin.${origin}`, { label })}
+                      </Alert>
+                    )}
 
                     {configs.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">

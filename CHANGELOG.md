@@ -14,6 +14,33 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] - 2026-07-28
+
+### Added
+
+- The Provider & Service Status page now tells you whose problem a
+  degraded channel is: a clear message distinguishes "the provider's own
+  servers aren't responding" (not a BlinkEngage issue) from "your
+  credentials or setup need attention" (yours to fix), instead of a
+  single red "Unhealthy" chip that looked the same either way.
+- The language icon in the top bar now opens an actual language menu
+  (English / Arabic) — selecting one immediately switches every screen's
+  text and text direction for you, on this device, with no page reload
+  and no permission needed. Previously this icon only flipped left-to-
+  right vs. right-to-left layout and never changed the language at all.
+
+### Changed
+
+- In a conversation, only the message history scrolls now — the
+  customer info panel on the right used to be able to grow past the
+  screen and drag the conversation list and message thread into
+  scrolling along with it. It now scrolls independently, exactly like
+  the message thread already did.
+- The message thread no longer jumps you back to the newest message the
+  instant a new one arrives while you're scrolled up reading earlier
+  messages — it only jumps to the bottom automatically when you were
+  already there, the same way most chat apps behave.
+
 ## [1.0.0-beta.2] - 2026-07-28
 
 The Enterprise Readiness & UX milestone: SLA management, realtime

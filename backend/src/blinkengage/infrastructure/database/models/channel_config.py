@@ -51,3 +51,9 @@ class ChannelConfig(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         DateTime(timezone=True), default=None
     )
     last_health_detail: Mapped[str | None] = mapped_column(Text(), default=None)
+    #: Whose fault the last unhealthy check was ("provider"/"configuration"
+    #: /"network"/"internal" — see domain.channels.HealthCheckOrigin).
+    #: Null when healthy, or for a status recorded before this column
+    #: existed. Lets the Status page say more than a flat red chip — e.g.
+    #: "WhatsApp's servers aren't responding" vs. "check your credentials."
+    last_health_origin: Mapped[str | None] = mapped_column(String(20), default=None)

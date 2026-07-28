@@ -77,7 +77,9 @@ async def test_connection_ephemeral(
         webhook_secret=payload.webhook_secret,
         actor_user_id=auth.user_id,
     )
-    return TestConnectionResponse(healthy=status_result.healthy, detail=status_result.detail)
+    return TestConnectionResponse(
+        healthy=status_result.healthy, detail=status_result.detail, origin=status_result.origin
+    )
 
 
 @router.get("/{channel_config_id}", response_model=ChannelConfigResponse)
@@ -137,7 +139,9 @@ async def test_connection(
     status_result = await service.test_connection(
         company_id=auth.company_id, channel_config_id=channel_config_id
     )
-    return TestConnectionResponse(healthy=status_result.healthy, detail=status_result.detail)
+    return TestConnectionResponse(
+        healthy=status_result.healthy, detail=status_result.detail, origin=status_result.origin
+    )
 
 
 @router.get(

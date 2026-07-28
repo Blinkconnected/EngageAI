@@ -90,6 +90,7 @@ async def check_channel(
     config.last_health_status = new_status
     config.last_health_checked_at = datetime.now(UTC)
     config.last_health_detail = result.detail
+    config.last_health_origin = result.origin
 
     if first_check:
         event_type = "health_check_initial"

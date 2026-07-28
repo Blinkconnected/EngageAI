@@ -108,5 +108,4 @@ class SmsProvider(ChannelProvider):
         return self._gateway.verify_signature(request)
 
     async def health_check(self) -> HealthStatus:
-        healthy = await self._gateway.health_check()
-        return HealthStatus(healthy=healthy)
+        return await self._gateway.health_check()

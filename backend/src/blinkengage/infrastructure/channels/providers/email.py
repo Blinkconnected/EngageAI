@@ -18,6 +18,7 @@ from anyio import to_thread
 from blinkengage.domain.channel_provider import ChannelProvider
 from blinkengage.domain.channels import (
     AttachmentRef,
+    HealthCheckOrigin,
     HealthStatus,
     InboundMessage,
     OutboundAttachment,
@@ -27,6 +28,15 @@ from blinkengage.domain.channels import (
     WebhookRequest,
 )
 from blinkengage.infrastructure.channels.registry import ChannelRegistry
+
+#: aiosmtplib's own exception hierarchy already distinguishes "the server
+#: rejected our login" from "we couldn't even reach a server" far more
+#: precisely than sniffing an HTTP status code would — no need for
+#: classify_health_check_failure's httpx-specific inference here.
+_SMTP_CONFIGURATION_ERRORS = (
+    aiosmtplib.SMTPAuthenticationError,
+    aiosmtplib.SMTPHeloError,
+)
 
 
 @ChannelRegistry.register("email")
@@ -174,23 +184,32 @@ class EmailProvider(ChannelProvider):
         when ``imap_host`` is configured — the pre-Phase-1 version only
         checked SMTP, silently saying nothing about a broken IMAP
         mailbox even though ``email_imap_poll_task`` depends on it."""
-        smtp_ok, smtp_detail = await self._check_smtp()
+        smtp_ok, smtp_detail, smtp_origin = await self._check_smtp()
         imap_host = self._credentials.get("imap_host")
         if not imap_host:
             return HealthStatus(
                 healthy=smtp_ok,
                 detail=smtp_detail if not smtp_ok else "SMTP OK (IMAP not configured)",
+                origin=smtp_origin,
             )
 
-        imap_ok, imap_detail = await self._check_imap(str(imap_host))
+        imap_ok, imap_detail, imap_origin = await self._check_imap(str(imap_host))
         healthy = smtp_ok and imap_ok
         detail = (
             f"SMTP: {'OK' if smtp_ok else smtp_detail}; "
             f"IMAP: {'OK' if imap_ok else imap_detail}"
         )
-        return HealthStatus(healthy=healthy, detail=detail)
+        # "configuration" wins over "network"/"provider" when checks
+        # disagree — a fixable credential problem is more actionable
+        # information for the operator than "something's unreachable."
+        origin = None
+        if not healthy:
+            origin = "configuration" if "configuration" in (smtp_origin, imap_origin) else (
+                smtp_origin or imap_origin
+            )
+        return HealthStatus(healthy=healthy, detail=detail, origin=origin)
 
-    async def _check_smtp(self) -> tuple[bool, str | None]:
+    async def _check_smtp(self) -> tuple[bool, str | None, HealthCheckOrigin | None]:
         try:
             async with aiosmtplib.SMTP(
                 hostname=self._credentials.get("smtp_host", ""),
@@ -200,10 +219,13 @@ class EmailProvider(ChannelProvider):
             ) as client:
                 await client.noop()
         except Exception as exc:  # pragma: no cover - exercised manually against a real SMTP host
-            return False, str(exc)
-        return True, None
+            origin: HealthCheckOrigin = (
+                "configuration" if isinstance(exc, _SMTP_CONFIGURATION_ERRORS) else "network"
+            )
+            return False, str(exc), origin
+        return True, None, None
 
-    async def _check_imap(self, host: str) -> tuple[bool, str | None]:
+    async def _check_imap(self, host: str) -> tuple[bool, str | None, HealthCheckOrigin | None]:
         try:
             await to_thread.run_sync(
                 _check_imap_login_sync,
@@ -214,8 +236,15 @@ class EmailProvider(ChannelProvider):
                 bool(self._credentials.get("imap_use_ssl", True)),
             )
         except Exception as exc:  # pragma: no cover - exercised manually against a real IMAP host
-            return False, str(exc)
-        return True, None
+            # imaplib.IMAP4.error is raised for both a rejected login and
+            # other IMAP protocol errors — an auth rejection is by far
+            # the common case (a socket-level failure raises OSError
+            # instead, which this also classifies as "network").
+            origin: HealthCheckOrigin = (
+                "configuration" if isinstance(exc, imaplib.IMAP4.error) else "network"
+            )
+            return False, str(exc), origin
+        return True, None, None
 
 
 def _check_imap_login_sync(

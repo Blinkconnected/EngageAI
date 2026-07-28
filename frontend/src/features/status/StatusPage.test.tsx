@@ -26,6 +26,7 @@ function channel(
     last_health_status: null,
     last_health_checked_at: null,
     last_health_detail: null,
+    last_health_origin: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -105,6 +106,43 @@ describe('StatusPage', () => {
     expect(
       within(instagramCard).getByText('No Instagram channel connected yet.'),
     ).toBeInTheDocument()
+  })
+
+  it('tells the operator whose fault a degraded channel is — the provider vs. our own configuration', async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/channel-configs`, () =>
+        channelsPage([
+          channel({
+            id: 'wa1',
+            channel_type: 'whatsapp',
+            display_name: 'Main WhatsApp',
+            last_health_status: 'unhealthy',
+            last_health_detail: 'Service Unavailable',
+            last_health_origin: 'provider',
+          }),
+          channel({
+            id: 'em1',
+            channel_type: 'email',
+            display_name: 'Support Inbox',
+            last_health_status: 'unhealthy',
+            last_health_detail: 'SMTP authentication failed',
+            last_health_origin: 'configuration',
+          }),
+        ]),
+      ),
+    )
+    renderAuthenticated(<StatusPage />)
+    await screen.findByText('WhatsApp Business')
+
+    const whatsappCard = cardFor('WhatsApp Business')
+    expect(within(whatsappCard).getByTestId('channel-type-origin')).toHaveTextContent(
+      /not a blinkengage issue/i,
+    )
+
+    const emailCard = cardFor('Email')
+    expect(within(emailCard).getByTestId('channel-type-origin')).toHaveTextContent(
+      /credentials or setup problem on your side/i,
+    )
   })
 
   it('lets a channels.manage holder test an individual channel and check all at once', async () => {

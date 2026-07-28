@@ -15,7 +15,12 @@ whichever ``SmsGateway`` its config names — mirroring
 from abc import ABC, abstractmethod
 from typing import Any
 
-from blinkengage.domain.channels import AttachmentStorage, InboundMessage, WebhookRequest
+from blinkengage.domain.channels import (
+    AttachmentStorage,
+    HealthStatus,
+    InboundMessage,
+    WebhookRequest,
+)
 
 
 class SmsGateway(ABC):
@@ -41,4 +46,4 @@ class SmsGateway(ABC):
         this is exactly why ``WebhookRequest`` carries ``url``."""
 
     @abstractmethod
-    async def health_check(self) -> bool: ...
+    async def health_check(self) -> HealthStatus: ...

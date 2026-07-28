@@ -13,6 +13,7 @@ import pytest
 
 from blinkengage.domain.channels import (
     AttachmentRef,
+    HealthStatus,
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -46,8 +47,11 @@ class FakeSmsGateway(SmsGateway):
     def verify_signature(self, request: WebhookRequest) -> bool:
         return request.headers.get("x-fake-signature") == "valid"
 
-    async def health_check(self) -> bool:
-        return FakeSmsGateway.healthy
+    async def health_check(self) -> HealthStatus:
+        return HealthStatus(
+            healthy=FakeSmsGateway.healthy,
+            origin=None if FakeSmsGateway.healthy else "provider",
+        )
 
 
 class FakeRealtimePublisher:

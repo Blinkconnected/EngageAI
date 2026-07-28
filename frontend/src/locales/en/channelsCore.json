@@ -38,7 +38,13 @@
     "notTestedYetLabel": "Not tested yet",
     "checkedAtLabel": "Checked {{checkedAt}}",
     "healthyLabel": "Healthy",
-    "unhealthyLabel": "Unhealthy"
+    "unhealthyLabel": "Unhealthy",
+    "origin": {
+      "provider": "The provider's servers are not responding — not a BlinkEngage issue",
+      "network": "The provider's servers could not be reached — not a BlinkEngage issue",
+      "configuration": "Your credentials or setup need attention",
+      "internal": "BlinkEngage's own storage is unreachable"
+    }
   },
   "ChannelsPage": {
     "nameColumn": "Name",

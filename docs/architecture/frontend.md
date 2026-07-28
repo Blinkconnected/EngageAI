@@ -137,25 +137,47 @@ Full interface translation, not just RTL layout mirroring:
   `react-hooks/exhaustive-deps` can't see this dependency and flags it as
   "unnecessary" — suppressed per-line with an explanatory comment where
   this applies, rather than disabling the rule project-wide).
-- **Language source of truth**: `company.settings.language` (Settings →
-  Language), the same company-wide setting every other Settings tab
-  already uses (Branding, Timezone, Business Hours) — not a personal
-  per-browser preference. `useLanguageSync` (`src/i18n/useLanguageSync.ts`,
-  mounted once in `AppLayout`) calls `i18next.changeLanguage(...)`
-  whenever `company.settings.language` changes, and defaults direction
-  to match (`ar` → `rtl`, everything else → `ltr`). Only languages with a
-  real translation catalog are offered in the Settings dropdown
-  (`SUPPORTED_I18N_LANGUAGES` in `src/i18n/index.ts`, currently `en`/`ar`)
-  — `company/types.ts`'s `SUPPORTED_LANGUAGE` type still lists a couple
-  more (kept for backward compatibility with any already-stored value)
-  that aren't offered until they have their own catalog.
-- Direction (`ltr`/`rtl`) itself remains independent `ui` Redux state, as
-  before — the topbar's manual "Toggle language direction" button still
-  works as a same-session override after the language-driven default is
-  applied. Toggling it flips `document.documentElement[dir]`, swaps the
-  Emotion cache (so MUI's `sx`/`styled` output gets RTL-flipped via
-  `stylis-plugin-rtl`), and MUI's `theme.direction` is kept in sync so
-  component internals (e.g. drawer anchoring) also flip.
+- **Two ways to set the language, at two different scopes.**
+  `company.settings.language` (Settings → Language) is the company-wide
+  *default*, the same kind of setting every other Settings tab already
+  uses (Branding, Timezone, Business Hours) — it applies to everyone at
+  the company who hasn't chosen otherwise for themselves. The AppBar's
+  language menu (`AppLayout.tsx`, replacing what used to be a single
+  "Translate" icon that only flipped text direction and never actually
+  changed the language — a real, reported bug: clicking it showed no
+  language options at all, and never applied Arabic translations) is a
+  *personal, per-browser* override: any authenticated user, no
+  `company.manage` permission needed, since it's a display preference
+  for their own session, not a company setting. Selecting a language
+  there calls `i18next.changeLanguage(...)` directly and persists the
+  choice to `localStorage` (`LANGUAGE_STORAGE_KEY`, `src/i18n/index.ts`)
+  — read back as i18next's *initial* `lng` on the next load, the same
+  pattern `uiSlice.ts`'s `themeMode`/`direction` already use, so it
+  survives a reload without waiting on the company query.
+- `useLanguageSync` (`src/i18n/useLanguageSync.ts`, mounted once in
+  `AppLayout`) applies the company-wide default whenever
+  `company.settings.language` changes, and defaults direction to match
+  (`ar` → `rtl`, everything else → `ltr`) — but **only when this browser
+  hasn't made its own explicit choice** (`LANGUAGE_STORAGE_KEY` unset).
+  A personal AppBar choice always wins over the company default for as
+  long as it's set; saving a *new* company default from Settings →
+  Language clears the saving admin's own personal override at the same
+  time (`LanguageSettingsPanel.tsx`), so the person who just asserted
+  "this is our new default" sees their own save actually take effect
+  rather than silently continuing to see their old personal choice.
+  Only languages with a real translation catalog are offered in either
+  picker (`SUPPORTED_I18N_LANGUAGES` in `src/i18n/index.ts`, currently
+  `en`/`ar`) — `company/types.ts`'s `SUPPORTED_LANGUAGE` type still lists
+  a couple more (kept for backward compatibility with any already-stored
+  value) that aren't offered until they have their own catalog.
+- Direction (`ltr`/`rtl`) itself remains independent `ui` Redux state —
+  selecting a language in the AppBar menu sets both `i18next`'s language
+  and this direction default together, in one action, rather than as two
+  separate controls a user had to discover independently. Changing it
+  flips `document.documentElement[dir]`, swaps the Emotion cache (so
+  MUI's `sx`/`styled` output gets RTL-flipped via `stylis-plugin-rtl`),
+  and MUI's `theme.direction` is kept in sync so component internals
+  (e.g. drawer anchoring) also flip.
 - **Scope of this pass**: the full authenticated app shell and every
   feature page's UI chrome. Deliberately out of scope: the small set of
   public/pre-auth pages with no company context to source a language
@@ -285,6 +307,37 @@ available height with its own `overflow: hidden`, never needs `main`
 to grow at all — its list panel, `MessageThread`, and (should a future
 page need it) any other region can scroll independently within that
 fixed budget.
+
+**The customer sidebar's own scroll containment (fixed 2026-07-28).**
+`ConversationSidebar` had no scroll container of its own on desktop at
+all: its wrapping `Box` in `ConversationViewPage.tsx` was
+`overflowY: 'visible'` / `maxHeight: 'none'` there (only bounded on
+mobile, `xs`, at a fixed 320px). `overflow: visible` doesn't create a
+scrolling box — a sidebar tall enough to overflow the row (many
+ratings, a long transfer note) grew the whole row past its
+`minHeight: 0` bound instead, which grew `ConversationViewPage`'s own
+root past the viewport, which made `main` (the nearest actual
+scrolling ancestor) scroll to reveal it — dragging the message list and
+thread along with it. Reported as "scrolling moves the list panel too."
+Now `overflowY: 'auto'` and `maxHeight: '100%'` on both breakpoints: the
+sidebar fills and scrolls within its own row on desktop, the same way
+`MessageThread`'s Stack already did.
+
+**"Always jumps to the latest message" (fixed 2026-07-28).**
+`MessageThread`'s scroll-to-bottom effect fired unconditionally any
+time the newest message's id changed — a genuine new message (the
+customer's next one, an agent's own reply from another tab, an
+Autopilot auto-reply), not a background poll or "load older" — but with
+no check for whether the reader was already at the bottom first. An
+agent scrolled up mid-history got yanked back to the newest message the
+instant *any* new message arrived, with no way to keep reading. Fixed
+by tracking "was I within `STICK_TO_BOTTOM_THRESHOLD_PX` (48px) of the
+bottom" in a ref, updated on the scroll container's own `onScroll`
+(not React state, so reading it never itself triggers a render) — the
+auto-scroll effect now only fires when that ref says true at the moment
+a new message arrives. This is the same "stick to bottom" pattern every
+mainstream chat UI uses: autoscroll while caught up, stop the moment you
+scroll away to read something older.
 
 ## Realtime
 

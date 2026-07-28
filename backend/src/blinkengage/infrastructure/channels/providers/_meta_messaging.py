@@ -32,6 +32,7 @@ from blinkengage.domain.channels import (
     WebhookAck,
     WebhookRequest,
 )
+from blinkengage.infrastructure.channels.error_sanitizer import classify_health_check_failure
 from blinkengage.infrastructure.channels.providers._meta_webhook import (
     meta_hub_challenge_ack,
     verify_meta_signature,
@@ -267,5 +268,7 @@ class MetaMessagingProvider(ChannelProvider):
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
-            return HealthStatus(healthy=False, detail=str(exc))
+            return HealthStatus(
+                healthy=False, detail=str(exc), origin=classify_health_check_failure(exc)
+            )
         return HealthStatus(healthy=True)

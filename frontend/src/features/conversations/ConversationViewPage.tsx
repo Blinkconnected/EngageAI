@@ -100,13 +100,22 @@ export function ConversationViewPage() {
             borderLeft: { md: 1 },
             borderTop: { xs: 1, md: 0 },
             borderColor: 'divider',
-            // On mobile the sidebar (Status/Transfer/Release/Queue, etc.)
-            // renders below the already-scrolling message thread — bounded
-            // and independently scrollable here so those actions stay
-            // reachable without scrolling past the entire conversation
-            // history first.
-            overflowY: { xs: 'auto', md: 'visible' },
-            maxHeight: { xs: 320, md: 'none' },
+            // The sidebar (Status/Transfer/Release/Queue, etc.) gets its
+            // own bounded, independently scrolling box on BOTH mobile and
+            // desktop — this used to be `overflowY: 'visible'` /
+            // `maxHeight: 'none'` on desktop, which meant the sidebar had
+            // no scroll container of its own there at all: a tall
+            // sidebar (e.g. many ratings, a long note) would overflow the
+            // row's `minHeight: 0` bound and grow the whole page instead,
+            // dragging the message list/thread along with it on scroll —
+            // exactly the "everything scrolls together" bug this fixes.
+            // On mobile the cap is a fixed 320px (it's stacked below the
+            // already-scrolling message thread); on desktop it's a
+            // sibling in the same row, so it just needs to fill and
+            // scroll within that row's own height.
+            overflowY: 'auto',
+            maxHeight: { xs: 320, md: '100%' },
+            minHeight: 0,
           }}
         >
           <ConversationSidebar

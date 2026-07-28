@@ -105,6 +105,13 @@ class WebChatProvider(ChannelProvider):
         return True
 
     async def health_check(self) -> HealthStatus:
+        # Web Chat is the one channel type with no third-party upstream
+        # at all (docs/architecture/channel-integration-spec.md) — this
+        # checks OUR OWN MinIO attachment store, so a failure here is
+        # squarely our infrastructure, never "the provider" or "our
+        # credentials to a provider."
         if not await self._attachments.health_check():
-            return HealthStatus(healthy=False, detail="attachment store unreachable")
+            return HealthStatus(
+                healthy=False, detail="attachment store unreachable", origin="internal"
+            )
         return HealthStatus(healthy=True)

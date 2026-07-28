@@ -38,7 +38,13 @@
     "notTestedYetLabel": "لم يتم الاختبار بعد",
     "checkedAtLabel": "تم الفحص {{checkedAt}}",
     "healthyLabel": "سليم",
-    "unhealthyLabel": "غير سليم"
+    "unhealthyLabel": "غير سليم",
+    "origin": {
+      "provider": "خوادم مزوّد الخدمة لا تستجيب — ليست مشكلة في BlinkEngage",
+      "network": "تعذّر الوصول إلى خوادم مزوّد الخدمة — ليست مشكلة في BlinkEngage",
+      "configuration": "بيانات الاعتماد أو الإعدادات لديك بحاجة إلى مراجعة",
+      "internal": "تعذّر الوصول إلى وحدة التخزين الخاصة بـ BlinkEngage"
+    }
   },
   "ChannelsPage": {
     "nameColumn": "الاسم",

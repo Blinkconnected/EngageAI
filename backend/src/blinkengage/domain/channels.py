@@ -7,7 +7,25 @@ server. See ``docs/architecture/channels.md``.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+
+#: Whose fault an unhealthy check is, so the Status page can say more than
+#: a flat red chip:
+#: - "provider": the provider's own server responded, but with an error
+#:   that isn't about our credentials (5xx, or 2xx-but-semantically-failed
+#:   like Telegram's ``ok: false``) — their infrastructure, not ours.
+#: - "configuration": the provider's server responded with a rejection
+#:   that means OUR credentials/setup are wrong (401/403/404) — ours to fix.
+#: - "network": no response was ever received at all (DNS failure,
+#:   connection refused, timeout) — indistinguishable from "their servers
+#:   are unreachable," so treated the same as a provider-side outage.
+#: - "internal": Web Chat's health check has no third-party upstream at
+#:   all — it verifies BlinkEngage's OWN MinIO attachment store instead
+#:   (see ``providers/web_chat.py``), so a failure here is squarely our
+#:   infrastructure, not "the provider" or "our credentials to them."
+#: ``None`` for a healthy check, or when a provider hasn't been updated to
+#: classify yet (falls back to a generic "unhealthy" reading).
+HealthCheckOrigin = Literal["provider", "configuration", "network", "internal"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +96,13 @@ class SendResult:
 class HealthStatus:
     healthy: bool
     detail: str | None = None
+    #: Set by a provider that already distinguishes the failure kind
+    #: itself (e.g. Email's SMTP-auth-vs-connection-refused). Left unset
+    #: otherwise — ``safe_health_check`` (infrastructure.channels
+    #: .error_sanitizer) infers it from the caught exception when a
+    #: provider doesn't set it, so every current provider gets
+    #: classification for free without individually implementing it.
+    origin: HealthCheckOrigin | None = None
 
 
 @dataclass(frozen=True, slots=True)

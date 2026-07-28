@@ -13,8 +13,9 @@ from uuid import uuid4
 
 import httpx
 
-from blinkengage.domain.channels import AttachmentRef, InboundMessage, WebhookRequest
+from blinkengage.domain.channels import AttachmentRef, HealthStatus, InboundMessage, WebhookRequest
 from blinkengage.domain.sms_gateway import SmsGateway
+from blinkengage.infrastructure.channels.error_sanitizer import classify_health_check_failure
 from blinkengage.infrastructure.channels.sms_gateway_registry import SmsGatewayRegistry
 
 _API_BASE_URL = "https://api.twilio.com/2010-04-01"
@@ -91,7 +92,7 @@ class TwilioGateway(SmsGateway):
         provided = request.headers.get("x-twilio-signature", "")
         return hmac.compare_digest(computed, provided)
 
-    async def health_check(self) -> bool:
+    async def health_check(self) -> HealthStatus:
         account_sid, _ = self._auth
         try:
             async with httpx.AsyncClient() as client:
@@ -99,6 +100,8 @@ class TwilioGateway(SmsGateway):
                     f"{_API_BASE_URL}/Accounts/{account_sid}.json", auth=self._auth, timeout=5
                 )
                 response.raise_for_status()
-        except httpx.HTTPError:
-            return False
-        return True
+        except httpx.HTTPError as exc:
+            return HealthStatus(
+                healthy=False, detail=str(exc), origin=classify_health_check_failure(exc)
+            )
+        return HealthStatus(healthy=True)

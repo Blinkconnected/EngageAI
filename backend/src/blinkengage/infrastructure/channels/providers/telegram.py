@@ -30,6 +30,7 @@ from blinkengage.domain.channels import (
     WebhookAck,
     WebhookRequest,
 )
+from blinkengage.infrastructure.channels.error_sanitizer import classify_health_check_failure
 from blinkengage.infrastructure.channels.registry import ChannelRegistry
 
 _DEFAULT_API_BASE_URL = "https://api.telegram.org"
@@ -252,9 +253,18 @@ class TelegramProvider(ChannelProvider):
                 response = await client.get(f"{self._api_base}/getMe", timeout=5)
                 response.raise_for_status()
                 if not response.json().get("ok"):
-                    return HealthStatus(healthy=False, detail="getMe returned ok=false")
+                    # Telegram's way of rejecting an invalid bot token
+                    # without ever returning a 401 — a 200 with `ok:
+                    # false` is Telegram's own server saying "this
+                    # token is wrong," which is our credential problem,
+                    # not Telegram's infrastructure being down.
+                    return HealthStatus(
+                        healthy=False, detail="getMe returned ok=false", origin="configuration"
+                    )
         except httpx.HTTPError as exc:
-            return HealthStatus(healthy=False, detail=str(exc))
+            return HealthStatus(
+                healthy=False, detail=str(exc), origin=classify_health_check_failure(exc)
+            )
         return HealthStatus(healthy=True)
 
     async def configure_webhook(self, *, webhook_url: str) -> None:

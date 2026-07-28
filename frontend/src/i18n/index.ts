@@ -105,6 +105,22 @@ export type Namespace = (typeof NAMESPACES)[number]
 export const SUPPORTED_I18N_LANGUAGES = ['en', 'ar'] as const
 export type SupportedI18nLanguage = (typeof SUPPORTED_I18N_LANGUAGES)[number]
 
+// A manual, per-browser language choice from the AppBar's language menu
+// (see AppLayout.tsx) — read once here as the *initial* language so it
+// survives a page reload, the same way uiSlice.ts's themeMode/direction
+// already persist. Distinct from useLanguageSync's company-wide
+// `settings.language` default: this key existing means "this browser
+// explicitly chose a language," which useLanguageSync must not silently
+// overwrite back to the company default on every mount.
+export const LANGUAGE_STORAGE_KEY = 'blinkengage.language'
+
+function readStoredLanguage(): SupportedI18nLanguage | null {
+  const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+  return (SUPPORTED_I18N_LANGUAGES as readonly string[]).includes(stored ?? '')
+    ? (stored as SupportedI18nLanguage)
+    : null
+}
+
 void i18n.use(initReactI18next).init({
   resources: {
     en: {
@@ -167,7 +183,7 @@ void i18n.use(initReactI18next).init({
     },
   },
   ns: NAMESPACES,
-  lng: 'en',
+  lng: readStoredLanguage() ?? 'en',
   fallbackLng: 'en',
   // React already escapes interpolated values.
   interpolation: { escapeValue: false },

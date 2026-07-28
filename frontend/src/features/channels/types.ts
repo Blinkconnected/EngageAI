@@ -1,3 +1,12 @@
+/** Whose fault an unhealthy check is — matches the backend's
+ * `domain.channels.HealthCheckOrigin`. `null` when healthy or not yet
+ * checked. Lets the Status page say more than a flat red chip: a
+ * "provider"/"network" failure means the provider's own infrastructure
+ * is down (not us), "configuration" means our credentials/setup are
+ * wrong (ours to fix), and "internal" (Web Chat only, which has no
+ * third-party upstream) means our own MinIO attachment store. */
+export type HealthCheckOrigin = 'provider' | 'configuration' | 'network' | 'internal'
+
 /** Matches the backend's `ChannelConfigResponse` — credentials and
  * webhook_secret are deliberately never echoed back once stored. */
 export interface ChannelConfig {
@@ -8,6 +17,7 @@ export interface ChannelConfig {
   last_health_status: 'healthy' | 'unhealthy' | null
   last_health_checked_at: string | null
   last_health_detail: string | null
+  last_health_origin: HealthCheckOrigin | null
   created_at: string
   updated_at: string
 }
@@ -46,6 +56,7 @@ export interface TestConnectionRequest {
 export interface TestConnectionResult {
   healthy: boolean
   detail: string | null
+  origin: HealthCheckOrigin | null
 }
 
 /** Matches the backend's `ChannelConnectionLogResponse`. */

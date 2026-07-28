@@ -20,6 +20,7 @@ const SEED_CHANNELS: ChannelConfig[] = [
     last_health_status: 'healthy',
     last_health_checked_at: '2026-01-02T00:00:00Z',
     last_health_detail: null,
+    last_health_origin: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
@@ -71,9 +72,17 @@ function addLog(channelConfigId: string, entry: Omit<ChannelConnectionLog, 'id' 
 
 function testConnectionResult(credentials: Record<string, unknown>): TestConnectionResult {
   if (credentials.fail_health_check) {
-    return { healthy: false, detail: 'simulated failure' }
+    // Tests can pass a specific origin via fail_health_check (e.g.
+    // 'provider'/'configuration'/'network'/'internal'); a bare truthy
+    // value (e.g. `true`) falls back to 'provider', matching "the
+    // provider's servers rejected this," the most common simulated case.
+    const origin =
+      typeof credentials.fail_health_check === 'string'
+        ? (credentials.fail_health_check as TestConnectionResult['origin'])
+        : 'provider'
+    return { healthy: false, detail: 'simulated failure', origin }
   }
-  return { healthy: true, detail: null }
+  return { healthy: true, detail: null, origin: null }
 }
 
 export const channelsHandlers = [
@@ -106,6 +115,7 @@ export const channelsHandlers = [
       last_health_status: null,
       last_health_checked_at: null,
       last_health_detail: null,
+      last_health_origin: null,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
       webhook_secret: payload.webhook_secret || 'mock-generated-webhook-secret',
@@ -152,12 +162,13 @@ export const channelsHandlers = [
   http.post(`${API_BASE_URL}/channel-configs/:channelConfigId/test-connection`, ({ params }) => {
     const index = channels.findIndex((channel) => channel.id === params.channelConfigId)
     if (index === -1) return HttpResponse.json({ detail: 'Not found' }, { status: 404 })
-    const result = { healthy: true, detail: null }
+    const result: TestConnectionResult = { healthy: true, detail: null, origin: null }
     channels[index] = {
       ...channels[index],
       last_health_status: result.healthy ? 'healthy' : 'unhealthy',
       last_health_checked_at: '2026-01-02T00:00:00Z',
       last_health_detail: result.detail,
+      last_health_origin: result.origin,
     }
     addLog(channels[index].id, {
       event_type: 'test_connection_succeeded',

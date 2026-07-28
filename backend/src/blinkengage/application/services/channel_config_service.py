@@ -197,9 +197,7 @@ class ChannelConfigService:
             )
         )
 
-    async def test_connection(
-        self, *, company_id: UUID, channel_config_id: UUID
-    ) -> HealthStatus:
+    async def test_connection(self, *, company_id: UUID, channel_config_id: UUID) -> HealthStatus:
         """Manual "Test Connection" against an already-saved channel — the
         same check the health-monitoring sweep runs periodically, but
         triggered on demand and always logged (an explicit operator
@@ -255,7 +253,6 @@ class ChannelConfigService:
         )
         return status
 
-
     async def list_connection_logs(
         self, *, company_id: UUID, channel_config_id: UUID, offset: int, limit: int
     ) -> tuple[list[ChannelConnectionLog], int]:
@@ -281,9 +278,13 @@ class ChannelConfigService:
         (e.g. Telegram) must not fail the whole create/update — the
         channel is still saved, and the failure is visible in its
         connection logs (surfaced the same way a failed "Test Connection"
-        already is) rather than a raised 500."""
-        provider = self._provider_factory.build(channel_config)
+        already is) rather than a raised 500. ``build()`` itself must be
+        inside the same try/except: a channel type with no credential
+        schema registered yet (e.g. SMS's gateway name, only validated
+        when a provider is actually built) can fail here too, and must
+        degrade the same way as a failed ``configure_webhook()`` call."""
         try:
+            provider = self._provider_factory.build(channel_config)
             await provider.configure_webhook(webhook_url=self._webhook_url(channel_config))
         except Exception as exc:
             message = redact_credentials(str(exc), channel_config.credentials)
@@ -301,8 +302,8 @@ class ChannelConfigService:
             )
 
     async def _deregister_webhook(self, channel_config: ChannelConfig) -> None:
-        provider = self._provider_factory.build(channel_config)
         try:
+            provider = self._provider_factory.build(channel_config)
             await provider.deregister_webhook()
         except Exception:
             logger.warning(
@@ -316,6 +317,7 @@ class ChannelConfigService:
         channel_config.last_health_status = "healthy" if status.healthy else "unhealthy"
         channel_config.last_health_checked_at = datetime.now(UTC)
         channel_config.last_health_detail = status.detail
+        channel_config.last_health_origin = status.origin
 
     async def _log(
         self, channel_config: ChannelConfig, *, event_type: str, level: str, message: str

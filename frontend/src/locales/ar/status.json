@@ -12,6 +12,12 @@
     "inactiveStatus": "غير نشطة",
     "notConfiguredStatus": "غير مُهيأة",
     "noChannelConnectedMessage": "لا توجد قناة {{label}} متصلة بعد.",
-    "lastCheckedMessage": "آخر فحص {{date}}"
+    "lastCheckedMessage": "آخر فحص {{date}}",
+    "origin": {
+      "provider": "خوادم {{label}} لا تستجيب حاليًا — هذه ليست مشكلة في BlinkEngage.",
+      "network": "تعذّر الوصول إلى خوادم {{label}} — هذه ليست مشكلة في BlinkEngage.",
+      "configuration": "قناة {{label}} غير سليمة بسبب مشكلة في بيانات الاعتماد أو الإعدادات لديك — راجع الحقل أدناه.",
+      "internal": "قناة {{label}} غير سليمة لأن وحدة التخزين الخاصة بـ BlinkEngage غير متاحة."
+    }
   }
 }

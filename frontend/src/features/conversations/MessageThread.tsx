@@ -99,23 +99,47 @@ function MessageBubble({ message, conversationId }: { message: Message; conversa
   )
 }
 
+// Within this many pixels of the bottom still counts as "at the bottom"
+// for auto-scroll purposes — an exact `=== 0` check would stop
+// autoscrolling on the slightest sub-pixel rounding.
+const STICK_TO_BOTTOM_THRESHOLD_PX = 48
+
 export function MessageThread({ conversationId }: { conversationId: string }) {
   const { t } = useTranslation('conversationsCore')
   const [visibleCount, setVisibleCount] = useState(PAGE_STEP)
   const messagesQuery = useMessagesQuery(conversationId, { page: 1, page_size: visibleCount })
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // Read at the moment a new message arrives, before the DOM updates —
+  // not in state, since this must never itself trigger a re-render.
+  const wasNearBottomRef = useRef(true)
   const lastMessageId = messagesQuery.data?.items[0]?.id
   const { isCustomerTyping } = useRealtime()
   const customerTyping = isCustomerTyping(conversationId)
 
+  function handleScroll() {
+    const el = scrollContainerRef.current
+    if (!el) return
+    wasNearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_TO_BOTTOM_THRESHOLD_PX
+  }
+
   useEffect(() => {
     // Newest message is index 0 in the API's DESC order — scroll to the
     // (visually bottom) newest message on load and whenever a new one
-    // arrives, but not when "load older" only reveals history above it.
-    // Optional chaining on the call itself, not just the ref: jsdom (used
-    // in tests) doesn't implement scrollIntoView at all, unlike a real
-    // browser, so this would otherwise throw and crash the render tree.
-    if (lastMessageId) bottomRef.current?.scrollIntoView?.({ block: 'end' })
+    // arrives, but ONLY when the reader was already at/near the bottom
+    // before it arrived — an agent scrolled up reading history must not
+    // get yanked back down by a new message (their own reply sent from
+    // another tab, a background poll, the customer's next message)
+    // while they're in the middle of reading. Never fires for "load
+    // older" revealing history above (that doesn't change lastMessageId)
+    // or for a no-op background poll (same reasoning). Optional chaining
+    // on the call itself, not just the ref: jsdom (used in tests) doesn't
+    // implement scrollIntoView at all, unlike a real browser, so this
+    // would otherwise throw and crash the render tree.
+    if (lastMessageId && wasNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView?.({ block: 'end' })
+    }
   }, [lastMessageId])
 
   if (messagesQuery.isPending) return <LoadingState label={t('MessageThread.loadingLabel')} />
@@ -140,7 +164,12 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <Stack spacing={1.5} sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 2 }}>
+    <Stack
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
+      spacing={1.5}
+      sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 2 }}
+    >
       {hasMore && (
         <Button
           size="small"

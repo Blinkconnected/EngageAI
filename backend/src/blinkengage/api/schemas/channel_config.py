@@ -30,6 +30,11 @@ class ChannelConfigResponse(BaseModel):
     last_health_status: str | None
     last_health_checked_at: datetime | None
     last_health_detail: str | None
+    #: "provider"/"configuration"/"network"/"internal" — whose fault the
+    #: last unhealthy check was, so the Status page can say more than a
+    #: flat "unhealthy" (see domain.channels.HealthCheckOrigin). Null when
+    #: healthy or not yet checked.
+    last_health_origin: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +67,7 @@ class TestConnectionRequest(BaseModel):
 class TestConnectionResponse(BaseModel):
     healthy: bool
     detail: str | None
+    origin: str | None
 
 
 class ChannelConnectionLogResponse(BaseModel):

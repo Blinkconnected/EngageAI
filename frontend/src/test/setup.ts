@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import i18n from '../i18n'
+import i18n, { LANGUAGE_STORAGE_KEY } from '../i18n'
 import { configure } from '@testing-library/dom'
 import { afterAll, afterEach, beforeAll, expect } from 'vitest'
 import * as axeMatchers from 'vitest-axe/matchers'
@@ -57,5 +57,11 @@ afterEach(async () => {
   if (i18n.language !== 'en') {
     await i18n.changeLanguage('en')
   }
+  // AppLayout's language menu persists a manual per-browser choice here
+  // (see i18n/index.ts) — jsdom's localStorage is shared across every
+  // test in this run, so a test that opens the menu must not leak its
+  // choice into unrelated later tests (which would otherwise start
+  // seeing useLanguageSync's company-default sync silently suppressed).
+  localStorage.removeItem(LANGUAGE_STORAGE_KEY)
 })
 afterAll(() => server.close())

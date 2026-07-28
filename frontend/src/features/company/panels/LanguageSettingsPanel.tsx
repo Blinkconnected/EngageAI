@@ -11,7 +11,7 @@ import {
 } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../../shared/api/errors'
-import { SUPPORTED_I18N_LANGUAGES } from '../../../i18n'
+import { LANGUAGE_STORAGE_KEY, SUPPORTED_I18N_LANGUAGES } from '../../../i18n'
 import { useUpdateCompanyMutation } from '../api'
 import { LANGUAGE_LABELS, type Company, type SupportedLanguage } from '../types'
 
@@ -23,12 +23,18 @@ export function LanguageSettingsPanel({ company }: { company: Company }) {
   const isDirty = language !== savedLanguage
 
   function handleSave() {
-    // Applying the new language/direction is handled by `useLanguageSync`
-    // (mounted once in AppLayout), which reacts to `company.settings
-    // .language` changing in the query cache — not here — so the "Saved"
+    // Clears this browser's own personal language-menu override (see
+    // AppLayout.tsx's language menu / useLanguageSync's docstring) — the
+    // admin who just explicitly asserted "this is our new company
+    // default" would otherwise not see their own save take effect, if
+    // they'd previously picked a different language for themselves from
+    // the AppBar. Applying it is handled by `useLanguageSync` (mounted
+    // once in AppLayout), which reacts to `company.settings.language`
+    // changing in the query cache — not here — so the "Saved"
     // confirmation below still renders in the language you were just
     // using, and the app transitions right after, instead of racing this
     // save handler against this very alert's own re-render.
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY)
     updateMutation.mutate({ settings: { language } })
   }
 

@@ -32,7 +32,9 @@ import SearchIcon from '@mui/icons-material/Search'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
+import i18n, { LANGUAGE_STORAGE_KEY, SUPPORTED_I18N_LANGUAGES } from '../../i18n'
 import { useLanguageSync } from '../../i18n/useLanguageSync'
+import { LANGUAGE_LABELS } from '../company/types'
 import { setDirection, toggleThemeMode } from '../ui/uiSlice'
 import { useAllAgentsQuery, useUpdateOwnAvailabilityMutation } from '../agents/api'
 import type { SelfAvailabilityStatus } from '../agents/types'
@@ -55,6 +57,7 @@ export function AppLayout() {
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null)
+  const [languageMenuAnchor, setLanguageMenuAnchor] = useState<HTMLElement | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
 
   // Cmd/Ctrl-K opens global search from anywhere in the app — the
@@ -78,7 +81,6 @@ export function AppLayout() {
 
   const dispatch = useAppDispatch()
   const themeMode = useAppSelector((state) => state.ui.themeMode)
-  const direction = useAppSelector((state) => state.ui.direction)
   const { data: currentUser } = useCurrentUserQuery()
   const { data: company } = useCompanyQuery()
   useLanguageSync(company?.settings.language)
@@ -89,6 +91,19 @@ export function AppLayout() {
   const location = useLocation()
   const showSetupBanner =
     onboardingIncomplete && hasPermission('company.manage') && location.pathname !== '/onboarding'
+
+  // A personal, per-browser display preference — no permission needed
+  // (unlike Settings -> Language, which changes the company-wide
+  // default for everyone). Persisted so it survives a reload, and
+  // recorded in localStorage precisely so useLanguageSync knows this
+  // browser made an explicit choice and must stop re-applying the
+  // company default over it.
+  function handleSelectLanguage(nextLanguage: (typeof SUPPORTED_I18N_LANGUAGES)[number]) {
+    setLanguageMenuAnchor(null)
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage)
+    void i18n.changeLanguage(nextLanguage)
+    dispatch(setDirection(nextLanguage === 'ar' ? 'rtl' : 'ltr'))
+  }
 
   // Self-service availability (Online/Away/Busy) — deliberately not gated
   // by any permission (see useUpdateOwnAvailabilityMutation's docstring):
@@ -189,14 +204,42 @@ export function AppLayout() {
                   </IconButton>
                 </Tooltip>
                 <NotificationBell />
-                <Tooltip title={t('AppLayout.toggleLanguageDirectionTooltip')}>
+                <Tooltip title={t('AppLayout.languageMenuTooltip')}>
                   <IconButton
-                    onClick={() => dispatch(setDirection(direction === 'ltr' ? 'rtl' : 'ltr'))}
-                    aria-label={t('AppLayout.toggleDirectionAriaLabel')}
+                    onClick={(event) => setLanguageMenuAnchor(event.currentTarget)}
+                    aria-label={t('AppLayout.languageMenuAriaLabel')}
+                    aria-haspopup="true"
                   >
                     <TranslateIcon />
                   </IconButton>
                 </Tooltip>
+                {/* Popover + MenuList, not a bare Menu — same
+                    aria-required-children reasoning as the account and
+                    notification menus below: a role="menu" list only
+                    accepts MenuItem children, and a raw <Divider>/label
+                    row here isn't one. */}
+                <Popover
+                  open={Boolean(languageMenuAnchor)}
+                  anchorEl={languageMenuAnchor}
+                  onClose={() => setLanguageMenuAnchor(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                >
+                  <MenuList
+                    sx={{ minWidth: 180 }}
+                    aria-label={t('AppLayout.languageMenuAriaLabel')}
+                  >
+                    {SUPPORTED_I18N_LANGUAGES.map((code) => (
+                      <MenuItem
+                        key={code}
+                        selected={i18n.language === code}
+                        onClick={() => handleSelectLanguage(code)}
+                      >
+                        <ListItemText>{LANGUAGE_LABELS[code]}</ListItemText>
+                      </MenuItem>
+                    ))}
+                  </MenuList>
+                </Popover>
                 <Tooltip title={t('AppLayout.toggleDarkModeTooltip')}>
                   <IconButton
                     onClick={() => dispatch(toggleThemeMode())}

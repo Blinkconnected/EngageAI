@@ -15,10 +15,16 @@ provider, not just Telegram's specific URL-embedding pattern.
 
 from typing import Any
 
+import httpx
+
 from blinkengage.domain.channel_provider import ChannelProvider
-from blinkengage.domain.channels import HealthStatus
+from blinkengage.domain.channels import HealthCheckOrigin, HealthStatus
 
 _MIN_REDACTABLE_LENGTH = 6  # shorter values (ports, booleans-as-strings) aren't worth redacting
+
+#: A provider's own credentials/setup being wrong — ours to fix, never the
+#: provider's infrastructure being down.
+_CONFIGURATION_STATUS_CODES = frozenset({401, 403, 404})
 
 
 def redact_credentials(text: str, credentials: dict[str, Any]) -> str:
@@ -26,6 +32,32 @@ def redact_credentials(text: str, credentials: dict[str, Any]) -> str:
         if isinstance(value, str) and len(value) >= _MIN_REDACTABLE_LENGTH and value in text:
             text = text.replace(value, "[REDACTED]")
     return text
+
+
+def classify_health_check_failure(exc: Exception) -> HealthCheckOrigin:
+    """Infers whose fault an unhealthy check is from the exception a
+    provider's outbound HTTP call raised, so the Status page can say more
+    than a flat "unhealthy" — see ``domain.channels.HealthCheckOrigin``
+    for what each value means.
+
+    ``httpx.HTTPStatusError`` means the provider's own server actually
+    responded — with 401/403/404, that response is rejecting *our*
+    credentials/setup (``"configuration"``); any other status (5xx, or an
+    unexpected 4xx like 429) is the provider having its own problem
+    (``"provider"``). Any other ``httpx.RequestError`` (connect refused,
+    DNS failure, timeout) means no response was ever received at all —
+    indistinguishable from "their servers are unreachable," so treated
+    the same as a provider-side outage (``"network"``, which the Status
+    page still reads as "not us"). A provider whose own ``health_check``
+    doesn't route through ``httpx`` at all (Email's SMTP/IMAP checks)
+    classifies its own failures directly rather than going through this
+    function — see ``providers/email.py``.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code in _CONFIGURATION_STATUS_CODES:
+            return "configuration"
+        return "provider"
+    return "network"
 
 
 async def safe_health_check(provider: ChannelProvider, credentials: dict[str, Any]) -> HealthStatus:
@@ -56,9 +88,16 @@ async def safe_health_check(provider: ChannelProvider, credentials: dict[str, An
     try:
         status = await provider.health_check()
     except Exception as exc:  # noqa: BLE001 - see docstring
-        return HealthStatus(healthy=False, detail=redact_credentials(str(exc), credentials))
+        origin: HealthCheckOrigin = (
+            classify_health_check_failure(exc) if isinstance(exc, httpx.HTTPError) else "network"
+        )
+        return HealthStatus(
+            healthy=False, detail=redact_credentials(str(exc), credentials), origin=origin
+        )
     if status.detail:
         return HealthStatus(
-            healthy=status.healthy, detail=redact_credentials(status.detail, credentials)
+            healthy=status.healthy,
+            detail=redact_credentials(status.detail, credentials),
+            origin=status.origin,
         )
     return status

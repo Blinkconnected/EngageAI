@@ -9,6 +9,7 @@ import { queryClient } from '../../app/queryClient'
 import { loggedOut } from '../auth/authSlice'
 import { apiClient } from '../../shared/api/client'
 import { renderAuthenticated } from '../../test/renderAuthenticated'
+import i18n, { LANGUAGE_STORAGE_KEY } from '../../i18n'
 import { AppLayout } from './AppLayout'
 
 // `useCompanyLogoUrl` is stubbed (real exports kept via importOriginal) —
@@ -175,6 +176,88 @@ describe('AppLayout', () => {
         .closest('[role="presentation"]')
       expect(popover).not.toBeNull()
       expect(await axe(popover as HTMLElement)).toHaveNoViolations()
+    })
+  })
+
+  describe('language menu', () => {
+    it('opens to show both supported languages', async () => {
+      const user = userEvent.setup()
+      renderLayout()
+
+      await user.click(await screen.findByRole('button', { name: /language menu/i }))
+
+      expect(await screen.findByRole('menuitem', { name: 'English' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Arabic' })).toBeInTheDocument()
+    })
+
+    it('actually switches the rendered language when Arabic is selected, unlike the old direction-only toggle', async () => {
+      const user = userEvent.setup()
+      renderLayout()
+
+      await user.click(await screen.findByRole('button', { name: /language menu/i }))
+      await user.click(await screen.findByRole('menuitem', { name: 'Arabic' }))
+
+      await waitFor(() => expect(i18n.language).toBe('ar'))
+    })
+
+    it('switches direction to match the selected language', async () => {
+      const user = userEvent.setup()
+      renderLayout()
+
+      await user.click(await screen.findByRole('button', { name: /language menu/i }))
+      await user.click(await screen.findByRole('menuitem', { name: 'Arabic' }))
+
+      await waitFor(() => expect(document.dir).toBe('rtl'))
+    })
+
+    it('persists the choice so it survives a reload', async () => {
+      const user = userEvent.setup()
+      renderLayout()
+
+      await user.click(await screen.findByRole('button', { name: /language menu/i }))
+      await user.click(await screen.findByRole('menuitem', { name: 'Arabic' }))
+
+      await waitFor(() => expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('ar'))
+    })
+
+    it('has no detectable accessibility violations with the menu open', async () => {
+      const user = userEvent.setup()
+      renderLayout()
+      await user.click(await screen.findByRole('button', { name: /language menu/i }))
+      const englishOption = await screen.findByRole('menuitem', { name: 'English' })
+
+      const popover = englishOption.closest('[role="presentation"]')
+      expect(popover).not.toBeNull()
+      expect(await axe(popover as HTMLElement)).toHaveNoViolations()
+    })
+
+    it("applies the company's default language on load when this browser hasn't chosen one", async () => {
+      renderLayout()
+      await screen.findByText('Acme Corp')
+
+      await apiClient.patch('/company', { settings: { language: 'ar' } })
+      await queryClient.invalidateQueries({ queryKey: ['company'] })
+
+      await waitFor(() => expect(i18n.language).toBe('ar'))
+    })
+
+    it('does not let the company default override a manual choice already made in this browser', async () => {
+      // Simulates a returning user who picked Arabic last session (the
+      // localStorage key is already set before the company query ever
+      // resolves) — useLanguageSync must not silently switch them back
+      // to whatever the company's default happens to be.
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, 'ar')
+      await i18n.changeLanguage('ar')
+      renderLayout()
+      await screen.findByText('Acme Corp')
+
+      await apiClient.patch('/company', { settings: { language: 'en' } })
+      await queryClient.invalidateQueries({ queryKey: ['company'] })
+
+      // Give useLanguageSync's effect a chance to (wrongly) fire before
+      // asserting it didn't.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(i18n.language).toBe('ar')
     })
   })
 })

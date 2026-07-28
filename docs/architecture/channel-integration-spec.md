@@ -395,6 +395,67 @@ fields the page consumes, and confirmed `POST
 "Test now"/"Check all now" actions make) genuinely pings MinIO and
 updates `last_health_status`/`last_health_checked_at`.
 
+## "Whose fault is it?" fault classification (added 2026-07-28)
+
+Every provider's `health_check()` already made a genuine live outbound
+call to the actual upstream service (Meta's Graph API for
+WhatsApp/Messenger/Instagram, Telegram's Bot API, a real SMTP/IMAP
+connection for Email, Twilio's REST API for SMS — the one exception,
+Web Chat, has no third-party upstream at all and checks BlinkEngage's
+own MinIO instead). What the Status page couldn't say was *whose*
+problem an unhealthy result was: a flat red "Unhealthy" chip looks
+identical whether Meta's servers are down or an operator fat-fingered
+their access token.
+
+`domain.channels.HealthCheckOrigin` (`"provider"` | `"configuration"` |
+`"network"` | `"internal"`) is a new field on `HealthStatus`, set one of
+two ways:
+
+- **Classified centrally** — `infrastructure.channels.error_sanitizer
+  .classify_health_check_failure(exc)` reads an `httpx.HTTPStatusError`'s
+  actual status code: 401/403/404 means the provider's own server
+  responded and is rejecting *our* credentials (`"configuration"`);
+  any other status (5xx, an unexpected 429) means the provider's own
+  infrastructure is having a problem (`"provider"`). Any other
+  `httpx.RequestError` (connection refused, DNS failure, timeout) means
+  no response was ever received at all — indistinguishable from "their
+  servers are unreachable" (`"network"`). `safe_health_check` applies
+  this automatically to both the exception path and a provider's own
+  caught-and-returned `HealthStatus`, so every current
+  httpx-based provider (WhatsApp/Messenger/Instagram/Telegram/SMS)
+  gets classification without individually re-implementing it — see
+  each provider's `health_check()`, which calls
+  `classify_health_check_failure` explicitly on its own caught
+  exception, plus Telegram's `ok: false` special case (a 200 response
+  that's still an auth rejection, classified as `"configuration"`
+  directly).
+- **Classified by the provider itself** — `EmailProvider` doesn't route
+  through httpx at all: `aiosmtplib.SMTPAuthenticationError`/
+  `SMTPHeloError` and `imaplib.IMAP4.error` (an auth rejection) map to
+  `"configuration"`; any other exception (a real connection failure)
+  maps to `"network"`. `WebChatProvider` always reports `"internal"` on
+  failure, since its check is BlinkEngage's own MinIO, never a
+  third-party provider.
+
+Persisted as `ChannelConfig.last_health_origin` (migration
+`9c1d2e3f4a5b`, nullable — null for a healthy check or a status recorded
+before this column existed) alongside the existing
+`last_health_status`/`last_health_detail`, written by both `test_connection`
+(`ChannelConfigService`) and the periodic sweep
+(`channel_health_check_task.py`), and returned on `ChannelConfigResponse`
+and `TestConnectionResponse` alike.
+
+`StatusPage.tsx` now renders an `Alert` under a degraded channel type's
+header naming whose fault it is (`dominantUnhealthyOrigin` — when
+multiple active configs of one type disagree, e.g. two WhatsApp numbers
+sharing one revoked token, `"configuration"` wins as the most actionable
+reading, mirroring `EmailProvider`'s own SMTP-vs-IMAP tie-break). A
+`"provider"`/`"network"` origin reads as `severity="error"` ("not a
+BlinkEngage issue"); `"configuration"`/`"internal"` read as
+`severity="warning"` (ours to fix). `ChannelHealthBadge`'s tooltip gets
+the same origin line, ahead of the raw detail text — the classification
+says *whose* problem it is, the detail still says *what* happened.
+
 ## Approval gate
 
 Per instruction, no channel connection flow implementation or

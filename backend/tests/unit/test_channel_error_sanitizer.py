@@ -6,8 +6,11 @@ real incident (a Telegram bot token leaking into broadly-readable
 storage) this module exists to close.
 """
 
+import httpx
+
 from blinkengage.domain.channels import HealthStatus
 from blinkengage.infrastructure.channels.error_sanitizer import (
+    classify_health_check_failure,
     redact_credentials,
     safe_health_check,
 )
@@ -47,6 +50,22 @@ class _RaisesProvider:
 class _HealthyProvider:
     async def health_check(self) -> HealthStatus:
         return HealthStatus(healthy=True)
+
+
+class _RaisesHttpStatusErrorProvider:
+    """Doesn't catch its own httpx error at all — exercises
+    safe_health_check's backstop classifying a *real* httpx.HTTPStatusError
+    (as opposed to _RaisesProvider's ValueError, which isn't an httpx
+    error at all and must classify as "network")."""
+
+    def __init__(self, status_code: int) -> None:
+        self._status_code = status_code
+
+    async def health_check(self) -> HealthStatus:
+        request = httpx.Request("GET", "https://example.com")
+        response = httpx.Response(self._status_code, request=request)
+        response.raise_for_status()
+        return HealthStatus(healthy=True)  # pragma: no cover - unreachable
 
 
 def test_redact_credentials_replaces_every_known_secret_value() -> None:
@@ -95,3 +114,68 @@ async def test_safe_health_check_passes_through_a_healthy_result_unchanged() -> 
 async def test_safe_health_check_works_with_no_credentials() -> None:
     status = await safe_health_check(_HealthyProvider(), {})
     assert status.healthy is True
+
+
+def test_classify_status_401_403_404_as_configuration() -> None:
+    """A response that means OUR credentials/setup are wrong — the
+    provider's server is reachable and working, it's rejecting us
+    specifically."""
+    request = httpx.Request("GET", "https://example.com")
+    for status_code in (401, 403, 404):
+        response = httpx.Response(status_code, request=request)
+        exc = httpx.HTTPStatusError("rejected", request=request, response=response)
+        assert classify_health_check_failure(exc) == "configuration"
+
+
+def test_classify_status_5xx_as_provider() -> None:
+    """Any other status (5xx, or an unexpected 4xx like 429) means the
+    provider's own infrastructure is having a problem, not us."""
+    request = httpx.Request("GET", "https://example.com")
+    for status_code in (429, 500, 502, 503):
+        response = httpx.Response(status_code, request=request)
+        exc = httpx.HTTPStatusError("failed", request=request, response=response)
+        assert classify_health_check_failure(exc) == "provider"
+
+
+def test_classify_connection_level_error_as_network() -> None:
+    """No response was ever received at all — indistinguishable from
+    "their servers are unreachable," not a credentials problem."""
+    request = httpx.Request("GET", "https://example.com")
+    exc = httpx.ConnectError("connection refused", request=request)
+    assert classify_health_check_failure(exc) == "network"
+
+
+async def test_safe_health_check_classifies_a_provider_side_5xx() -> None:
+    status = await safe_health_check(_RaisesHttpStatusErrorProvider(503), {})
+    assert status.healthy is False
+    assert status.origin == "provider"
+
+
+async def test_safe_health_check_classifies_an_auth_rejection_as_configuration() -> None:
+    status = await safe_health_check(_RaisesHttpStatusErrorProvider(401), {})
+    assert status.healthy is False
+    assert status.origin == "configuration"
+
+
+async def test_safe_health_check_classifies_a_non_httpx_exception_as_network() -> None:
+    """_RaisesProvider raises a bare ValueError — not an httpx error at
+    all, so there's no status code to classify by; treated the same as
+    "couldn't reach the server."""
+    status = await safe_health_check(_RaisesProvider({"api_key": "sk-live-secret-abc123"}), {})
+    assert status.healthy is False
+    assert status.origin == "network"
+
+
+async def test_safe_health_check_preserves_origin_a_provider_already_set() -> None:
+    """A provider that classifies its own caught exception (every real
+    provider does) sets `origin` on its returned HealthStatus directly —
+    safe_health_check must pass that through, not override it."""
+
+    class _AlreadyClassifiedProvider:
+        async def health_check(self) -> HealthStatus:
+            return HealthStatus(
+                healthy=False, detail="getMe returned ok=false", origin="configuration"
+            )
+
+    status = await safe_health_check(_AlreadyClassifiedProvider(), {})
+    assert status.origin == "configuration"

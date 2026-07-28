@@ -12,6 +12,12 @@
     "inactiveStatus": "Inactive",
     "notConfiguredStatus": "Not configured",
     "noChannelConnectedMessage": "No {{label}} channel connected yet.",
-    "lastCheckedMessage": "Last checked {{date}}"
+    "lastCheckedMessage": "Last checked {{date}}",
+    "origin": {
+      "provider": "{{label}}'s servers are not responding right now — this is not a BlinkEngage issue.",
+      "network": "{{label}}'s servers could not be reached — this is not a BlinkEngage issue.",
+      "configuration": "{{label}} is unhealthy because of a credentials or setup problem on your side — check the field below.",
+      "internal": "{{label}} is unhealthy because BlinkEngage's own storage is unreachable."
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { onlineManager } from '@tanstack/react-query'
 import { screen, waitFor } from '@testing-library/react'
@@ -68,6 +68,37 @@ describe('ConversationViewPage', () => {
     expect(await screen.findByText('Sure, happy to help!')).toBeInTheDocument()
   })
 
+  it('does not yank a scrolled-up reader back to the bottom when a new message arrives', async () => {
+    // jsdom reports scrollHeight/clientHeight/scrollTop as 0 by default
+    // (no real layout), which MessageThread's own "am I near the bottom"
+    // check would read as "yes" — this simulates a reader who has
+    // genuinely scrolled up to read history by overriding those three
+    // properties before the new message arrives.
+    const user = userEvent.setup()
+    renderConversationView()
+    await screen.findByText('Hi, I need help with my order.')
+
+    const scrollContainer = screen
+      .getByText('Hi, I need help with my order.')
+      .closest('.MuiStack-root') as HTMLElement
+    Object.defineProperty(scrollContainer, 'scrollHeight', { value: 2000, configurable: true })
+    Object.defineProperty(scrollContainer, 'clientHeight', { value: 400, configurable: true })
+    Object.defineProperty(scrollContainer, 'scrollTop', { value: 0, configurable: true })
+    scrollContainer.dispatchEvent(new Event('scroll'))
+
+    const scrollIntoViewSpy = vi.fn()
+    // Every element in jsdom needs this stubbed — MessageThread's own
+    // effect optional-chains the call specifically because jsdom has no
+    // native implementation at all.
+    Element.prototype.scrollIntoView = scrollIntoViewSpy
+
+    await user.type(screen.getByPlaceholderText(/write a reply/i), 'New message while scrolled up')
+    await user.click(screen.getByRole('button', { name: /send reply/i }))
+    await screen.findByText('New message while scrolled up')
+
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled()
+  })
+
   it('queues a reply while offline and sends it once back online', async () => {
     const user = userEvent.setup()
     renderConversationView()
@@ -108,6 +139,21 @@ describe('ConversationViewPage', () => {
     await user.click(await screen.findByRole('option', { name: 'Resolved' }))
 
     await waitFor(() => expect(screen.getByLabelText(/^status/i)).toHaveTextContent('Resolved'))
+  })
+
+  it('gives the sidebar its own scroll container instead of overflowing into the page', async () => {
+    // Previously `overflowY: 'visible'` / `maxHeight: 'none'` on desktop
+    // — the sidebar had no scroll container of its own there at all, so
+    // a tall sidebar would overflow the row and drag the whole page
+    // (including the message list) into scrolling together. The wrapper
+    // Box (ConversationViewPage.tsx, one level above ConversationSidebar's
+    // own root Stack) is what carries the scroll containment.
+    renderConversationView()
+    const statusField = await waitForLoaded()
+    const sidebarRoot = statusField.closest('.MuiStack-root') as HTMLElement
+    const wrapperBox = sidebarRoot.parentElement as HTMLElement
+
+    expect(wrapperBox).toHaveStyle({ overflowY: 'auto' })
   })
 
   // The seeded conversation (conv-1) starts unassigned — this is exactly
