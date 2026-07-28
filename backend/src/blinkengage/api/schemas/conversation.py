@@ -151,3 +151,12 @@ class MessageResponse(BaseModel):
 class SendMessageRequest(BaseModel):
     body: str | None = Field(default=None, max_length=10_000)
     attachment_ids: list[UUID] = Field(default_factory=list)
+    #: The agent's draft came from an AI suggestion ("Suggest reply",
+    #: "Improve grammar", "Rewrite professionally"), whether or not they
+    #: then edited it. Set by the composer, which clears it as soon as
+    #: the draft is emptied — so it means "AI wrote the first version of
+    #: this", not "AI sent this". Distinct from `is_ai_generated`, which
+    #: only ever marks a reply Autopilot sent with no human involved.
+    #: Together they let reporting separate fully-automated replies,
+    #: AI-assisted human replies, and purely manual ones.
+    is_ai_assisted: bool = False

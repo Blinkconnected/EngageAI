@@ -18,9 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.application.services.ai_service import AiService
-from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
+from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService

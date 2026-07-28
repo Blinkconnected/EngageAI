@@ -146,3 +146,30 @@ class CsatReportResponse(BaseModel):
 class AiOperationRowResponse(BaseModel):
     operation: str
     calls: int
+
+
+class AiAgentUsageRowResponse(BaseModel):
+    agent_id: UUID
+    agent_name: str
+    total_calls: int
+    #: Autopilot replies this agent explicitly asked for.
+    autopilot_agent_requests: int
+    #: Autopilot replies that fired automatically on this agent's
+    #: conversations because an SLA target was slipping — nobody asked
+    #: for them, so they measure AI covering for the agent rather than
+    #: the agent choosing to use AI.
+    autopilot_sla_triggers: int
+
+
+class AiUsageBucketResponse(BaseModel):
+    #: First day of the bucket at whatever granularity was requested, so
+    #: one field labels the x-axis for daily, weekly and monthly alike.
+    bucket_start: date
+    calls: int
+
+
+class AiUsageReportResponse(BaseModel):
+    by_operation: list[AiOperationRowResponse]
+    by_agent: list[AiAgentUsageRowResponse]
+    trend: list[AiUsageBucketResponse]
+    total_calls: int

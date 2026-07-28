@@ -13,6 +13,10 @@ from uuid import UUID
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.domain.ai_operations import (
+    AUTOPILOT_AGENT_REQUEST_OPERATION,
+    AUTOPILOT_SLA_OPERATION,
+)
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -21,6 +25,7 @@ from blinkengage.infrastructure.database.models.conversation import (
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.database.models.queue import Queue
 from blinkengage.infrastructure.database.models.reporting import (
+    AgentAiDailyStats,
     AgentDailyStats,
     AiDailyStats,
     ConversationDailyStats,
@@ -71,6 +76,26 @@ class QueueStatsRow:
 @dataclass(frozen=True, slots=True)
 class AiOperationRow:
     operation: str
+    calls: int
+
+
+@dataclass(frozen=True, slots=True)
+class AiAgentUsageRow:
+    """One agent's AI usage over the reported range. The autopilot
+    counters come from the synthetic ``autopilot_<trigger>`` operations
+    the reporting consumer writes, so "AI the agent asked for" and "AI
+    that stepped in because an SLA was slipping" are separable."""
+
+    agent_id: UUID
+    agent_name: str
+    total_calls: int
+    autopilot_agent_requests: int
+    autopilot_sla_triggers: int
+
+
+@dataclass(frozen=True, slots=True)
+class AiDailyRow:
+    stat_date: date
     calls: int
 
 
@@ -377,6 +402,77 @@ class ReportingRepository:
             .order_by(func.sum(AiDailyStats.calls_count).desc())
         )
         return [AiOperationRow(operation=row[0], calls=row[1]) for row in result.all()]
+
+    async def ai_daily_trend(
+        self, *, company_id: UUID, date_from: date, date_to: date
+    ) -> list[AiDailyRow]:
+        """AI calls per day across every operation. Returned at daily
+        granularity even when the caller wants weeks or months: the
+        rollup stores a ``Date``, and ``date_trunc`` is Postgres-only
+        while this repository has to stay portable to the SQLite the test
+        suite runs on. Coarser buckets are folded in the service layer
+        from these rows."""
+        result = await self._session.execute(
+            select(AiDailyStats.stat_date, func.sum(AiDailyStats.calls_count))
+            .where(
+                AiDailyStats.company_id == company_id,
+                AiDailyStats.stat_date.between(date_from, date_to),
+            )
+            .group_by(AiDailyStats.stat_date)
+            .order_by(AiDailyStats.stat_date)
+        )
+        return [AiDailyRow(stat_date=row[0], calls=row[1]) for row in result.all()]
+
+    async def ai_usage_by_agent(
+        self, *, company_id: UUID, date_from: date, date_to: date
+    ) -> list[AiAgentUsageRow]:
+        """Per-agent AI adoption. Only agents with recorded usage appear
+        — unlike ``agent_workload``'s seed-every-agent shape, an agent
+        who has never used AI has nothing to report rather than a row of
+        zeros padding the table."""
+        result = await self._session.execute(
+            select(
+                AgentAiDailyStats.agent_id,
+                User.full_name,
+                func.sum(AgentAiDailyStats.calls_count),
+                func.sum(
+                    case(
+                        (
+                            AgentAiDailyStats.operation == AUTOPILOT_AGENT_REQUEST_OPERATION,
+                            AgentAiDailyStats.calls_count,
+                        ),
+                        else_=0,
+                    )
+                ),
+                func.sum(
+                    case(
+                        (
+                            AgentAiDailyStats.operation == AUTOPILOT_SLA_OPERATION,
+                            AgentAiDailyStats.calls_count,
+                        ),
+                        else_=0,
+                    )
+                ),
+            )
+            .join(Agent, Agent.id == AgentAiDailyStats.agent_id)
+            .join(User, User.id == Agent.user_id)
+            .where(
+                AgentAiDailyStats.company_id == company_id,
+                AgentAiDailyStats.stat_date.between(date_from, date_to),
+            )
+            .group_by(AgentAiDailyStats.agent_id, User.full_name)
+            .order_by(func.sum(AgentAiDailyStats.calls_count).desc())
+        )
+        return [
+            AiAgentUsageRow(
+                agent_id=row[0],
+                agent_name=row[1],
+                total_calls=row[2],
+                autopilot_agent_requests=row[3],
+                autopilot_sla_triggers=row[4],
+            )
+            for row in result.all()
+        ]
 
     async def csat_totals(self, *, company_id: UUID, date_from: date, date_to: date) -> CsatTotals:
         result = await self._session.execute(

@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.core.config import get_settings
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.ai_operations import autopilot_operation
 from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.session import (
@@ -271,7 +272,7 @@ async def _handle_autopilot_replied(
     trigger = payload.get("trigger")
     if not trigger:
         return
-    operation = f"autopilot_{trigger}"
+    operation = autopilot_operation(str(trigger))
     await stats.increment_ai_stats(
         company_id=company_id, stat_date=stat_date, operation=operation, calls=1
     )

@@ -17,7 +17,10 @@ from blinkengage.api.schemas.reports import (
     AgentDashboardResponse,
     AgentPerformanceRowResponse,
     AgentWorkloadResponse,
+    AiAgentUsageRowResponse,
     AiOperationRowResponse,
+    AiUsageBucketResponse,
+    AiUsageReportResponse,
     ConversationStatsRowResponse,
     CsatAgentRowResponse,
     CsatDailyRowResponse,
@@ -31,7 +34,10 @@ from blinkengage.api.schemas.reports import (
     SlaReportResponse,
 )
 from blinkengage.application.services.company_service import CompanyService
-from blinkengage.application.services.reporting_service import ReportingService
+from blinkengage.application.services.reporting_service import (
+    AiUsageGranularity,
+    ReportingService,
+)
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.logging import get_logger
 from blinkengage.infrastructure.reporting.export import (
@@ -477,3 +483,47 @@ async def ai_report(
             company_id=auth.company_id,
         )
     return [AiOperationRowResponse(operation=row.operation, calls=row.calls) for row in rows]
+
+
+@router.get("/ai/usage", response_model=AiUsageReportResponse)
+async def ai_usage_report(
+    auth: Annotated[AuthContext, Depends(require_permission("reports.read"))],
+    service: Annotated[ReportingService, Depends(get_reporting_service)],
+    date_from: date,
+    date_to: date,
+    granularity: AiUsageGranularity = "daily",
+) -> AiUsageReportResponse:
+    """AI adoption: usage by operation, by agent, and over time.
+
+    A separate endpoint from ``GET /reports/ai`` rather than extra fields
+    on it — that one's flat ``[{operation, calls}]`` array is what the
+    existing panel and both export formats consume, and widening it into
+    an object would break every current caller.
+    """
+    report = await service.ai_usage_report(
+        company_id=auth.company_id,
+        date_from=date_from,
+        date_to=date_to,
+        granularity=granularity,
+    )
+    return AiUsageReportResponse(
+        by_operation=[
+            AiOperationRowResponse(operation=row.operation, calls=row.calls)
+            for row in report.by_operation
+        ],
+        by_agent=[
+            AiAgentUsageRowResponse(
+                agent_id=row.agent_id,
+                agent_name=row.agent_name,
+                total_calls=row.total_calls,
+                autopilot_agent_requests=row.autopilot_agent_requests,
+                autopilot_sla_triggers=row.autopilot_sla_triggers,
+            )
+            for row in report.by_agent
+        ],
+        trend=[
+            AiUsageBucketResponse(bucket_start=bucket.bucket_start, calls=bucket.calls)
+            for bucket in report.trend
+        ],
+        total_calls=report.total_calls,
+    )

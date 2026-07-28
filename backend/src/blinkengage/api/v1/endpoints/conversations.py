@@ -312,6 +312,7 @@ async def send_message(
         body=payload.body,
         attachment_ids=payload.attachment_ids,
         actor_user_id=auth.user_id,
+        is_ai_assisted=payload.is_ai_assisted,
     )
     attachments_by_message = await service.list_attachments_for_messages(
         company_id=auth.company_id,

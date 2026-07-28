@@ -11,7 +11,8 @@ answers with no real cost.
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from typing import Literal
 from uuid import UUID
 
 from blinkengage.domain.exceptions import EntityNotFoundError
@@ -19,6 +20,8 @@ from blinkengage.infrastructure.repositories.agent_repository import AgentReposi
 from blinkengage.infrastructure.repositories.reporting_repository import (
     AgentPerformanceRow,
     AgentWorkload,
+    AiAgentUsageRow,
+    AiDailyRow,
     AiOperationRow,
     ConversationStatsRow,
     CsatAgentRow,
@@ -83,6 +86,59 @@ class CsatReport:
     average_rating: float | None
     daily_trend: list[CsatDailyRow]
     by_agent: list[CsatAgentRow]
+
+
+AiUsageGranularity = Literal["daily", "weekly", "monthly"]
+
+
+@dataclass(frozen=True, slots=True)
+class AiUsageBucket:
+    """One point on the AI usage trend. ``bucket_start`` is the first day
+    of the period, so the same field renders an x-axis label at every
+    granularity without the consumer needing to know which one it asked
+    for."""
+
+    bucket_start: date
+    calls: int
+
+
+@dataclass(frozen=True, slots=True)
+class AiUsageReport:
+    by_operation: list[AiOperationRow]
+    by_agent: list[AiAgentUsageRow]
+    trend: list[AiUsageBucket]
+    total_calls: int
+
+
+def _bucket_ai_trend(
+    daily: list[AiDailyRow], granularity: AiUsageGranularity
+) -> list[AiUsageBucket]:
+    """Folds daily rollup rows into weekly or monthly buckets in Python.
+
+    Deliberately not SQL: ``date_trunc`` is Postgres-only, and this
+    codebase's repositories stay portable to the SQLite the test suite
+    runs on (see ``DailyStatsRepository``'s dialect note). The row count
+    here is bounded by the reported date range — a year is 365 rows —
+    so folding in the service layer costs nothing measurable.
+
+    Weeks start Monday (``isocalendar``), months on the 1st. Buckets with
+    no AI calls at all are absent rather than zero-filled, matching how
+    ``csat_daily_trend`` already behaves.
+    """
+    if granularity == "daily":
+        return [AiUsageBucket(bucket_start=row.stat_date, calls=row.calls) for row in daily]
+
+    totals: dict[date, int] = {}
+    for row in daily:
+        if granularity == "weekly":
+            bucket_start = row.stat_date - timedelta(days=row.stat_date.weekday())
+        else:
+            bucket_start = row.stat_date.replace(day=1)
+        totals[bucket_start] = totals.get(bucket_start, 0) + row.calls
+    return [
+        AiUsageBucket(bucket_start=bucket_start, calls=calls)
+        for bucket_start, calls in sorted(totals.items())
+    ]
 
 
 class ReportingService:
@@ -209,4 +265,31 @@ class ReportingService:
     ) -> list[AiOperationRow]:
         return await self._reporting.ai_operations(
             company_id=company_id, date_from=date_from, date_to=date_to
+        )
+
+    async def ai_usage_report(
+        self,
+        *,
+        company_id: UUID,
+        date_from: date,
+        date_to: date,
+        granularity: AiUsageGranularity = "daily",
+    ) -> AiUsageReport:
+        """AI adoption: who is using AI, how much, and how the volume is
+        trending. Composed from three rollup reads rather than one, the
+        same shape ``csat_report`` already uses."""
+        by_operation = await self._reporting.ai_operations(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
+        by_agent = await self._reporting.ai_usage_by_agent(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
+        daily = await self._reporting.ai_daily_trend(
+            company_id=company_id, date_from=date_from, date_to=date_to
+        )
+        return AiUsageReport(
+            by_operation=by_operation,
+            by_agent=by_agent,
+            trend=_bucket_ai_trend(daily, granularity),
+            total_calls=sum(row.calls for row in by_operation),
         )

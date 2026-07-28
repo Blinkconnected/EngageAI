@@ -79,7 +79,10 @@ async def suggest_reply(
         conversation_service, company_id=auth.company_id, conversation_id=conversation_id
     )
     suggestion = await ai_service.suggest_reply(
-        company_id=auth.company_id, conversation_id=conversation_id, conversation_history=history
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        conversation_history=history,
+        actor_user_id=auth.user_id,
     )
     return ReplySuggestionResponse(suggestion=suggestion)
 
@@ -95,7 +98,10 @@ async def summarize_conversation(
         conversation_service, company_id=auth.company_id, conversation_id=conversation_id
     )
     summary = await ai_service.summarize_conversation(
-        company_id=auth.company_id, conversation_id=conversation_id, conversation_history=history
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        conversation_history=history,
+        actor_user_id=auth.user_id,
     )
     return ConversationSummaryResponse(summary=summary)
 
@@ -113,7 +119,10 @@ async def next_best_action(
         conversation_service, company_id=auth.company_id, conversation_id=conversation_id
     )
     result = await ai_service.suggest_next_best_action(
-        company_id=auth.company_id, conversation_id=conversation_id, conversation_history=history
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        conversation_history=history,
+        actor_user_id=auth.user_id,
     )
     return NextBestActionResponse(**result)
 
@@ -129,6 +138,7 @@ async def translate(
         conversation_id=None,
         text=payload.text,
         target_language=payload.target_language,
+        actor_user_id=auth.user_id,
     )
     return TranslateResponse(translation=translation)
 
@@ -140,7 +150,10 @@ async def detect_language(
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> LanguageResponse:
     language = await ai_service.detect_language(
-        company_id=auth.company_id, conversation_id=None, text=payload.text
+        company_id=auth.company_id,
+        conversation_id=None,
+        text=payload.text,
+        actor_user_id=auth.user_id,
     )
     return LanguageResponse(language=language)
 
@@ -152,7 +165,10 @@ async def analyze_sentiment(
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> SentimentResponse:
     sentiment = await ai_service.analyze_sentiment(
-        company_id=auth.company_id, conversation_id=None, text=payload.text
+        company_id=auth.company_id,
+        conversation_id=None,
+        text=payload.text,
+        actor_user_id=auth.user_id,
     )
     return SentimentResponse(sentiment=sentiment)
 
@@ -170,6 +186,7 @@ async def suggest_tags(
         conversation_id=None,
         text=payload.text,
         available_tags=available_tags,
+        actor_user_id=auth.user_id,
     )
     return SuggestTagsResponse(tags=suggested)
 
@@ -181,7 +198,10 @@ async def improve_grammar(
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> TextResponse:
     result = await ai_service.improve_grammar(
-        company_id=auth.company_id, conversation_id=None, text=payload.text
+        company_id=auth.company_id,
+        conversation_id=None,
+        text=payload.text,
+        actor_user_id=auth.user_id,
     )
     return TextResponse(text=result)
 
@@ -193,7 +213,10 @@ async def rewrite_professionally(
     ai_service: Annotated[AiService, Depends(get_ai_service)],
 ) -> TextResponse:
     result = await ai_service.rewrite_professionally(
-        company_id=auth.company_id, conversation_id=None, text=payload.text
+        company_id=auth.company_id,
+        conversation_id=None,
+        text=payload.text,
+        actor_user_id=auth.user_id,
     )
     return TextResponse(text=result)
 
@@ -218,5 +241,6 @@ async def knowledge_search(
         conversation_id=None,
         query=payload.query,
         candidate_articles=candidates,
+        actor_user_id=auth.user_id,
     )
     return KnowledgeSearchResponse(answer=answer)

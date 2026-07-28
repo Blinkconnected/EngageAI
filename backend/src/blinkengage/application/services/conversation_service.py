@@ -92,6 +92,28 @@ _ALLOWED_TRANSITIONS: dict[ConversationStatus, frozenset[ConversationStatus]] = 
 }
 
 
+def _reply_metadata(*, is_ai_generated: bool, is_ai_assisted: bool) -> dict[str, bool]:
+    """Two distinct, non-overlapping AI provenance flags on an outbound
+    message — an administrator has to be able to tell a fully automated
+    reply from one a human wrote with AI's help from one written by hand:
+
+    - ``is_ai_generated``: AI Autopilot composed and sent it with no
+      human in the loop (only ``AutopilotService`` sets this).
+    - ``is_ai_assisted``: an agent's own reply whose draft started as an
+      AI suggestion, edited or not.
+
+    A key is omitted entirely when false, so a purely manual reply keeps
+    its historical empty ``{}`` metadata rather than gaining noise, and
+    the frontend's existing strict ``=== true`` checks keep working.
+    """
+    metadata: dict[str, bool] = {}
+    if is_ai_generated:
+        metadata["is_ai_generated"] = True
+    if is_ai_assisted:
+        metadata["is_ai_assisted"] = True
+    return metadata
+
+
 class ConversationService:
     def __init__(
         self,
@@ -679,6 +701,7 @@ class ConversationService:
         attachment_ids: list[UUID],
         actor_user_id: UUID | None = None,
         is_ai_generated: bool = False,
+        is_ai_assisted: bool = False,
     ) -> Message:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         config = await self._channel_configs.get_by_id(
@@ -813,7 +836,9 @@ class ConversationService:
                 # always tell which customer-facing replies had no human
                 # in the loop — see ai_autopilot_consumer.py, the only
                 # caller that passes is_ai_generated=True.
-                message_metadata={"is_ai_generated": True} if is_ai_generated else {},
+                message_metadata=_reply_metadata(
+                    is_ai_generated=is_ai_generated, is_ai_assisted=is_ai_assisted
+                ),
             )
         )
         for attachment in linked_attachments:
@@ -837,6 +862,7 @@ class ConversationService:
                     "external_message_id": result.external_message_id,
                     "body": body,
                     "is_ai_generated": is_ai_generated,
+                    "is_ai_assisted": is_ai_assisted,
                 },
             )
         )
