@@ -14,6 +14,15 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+## [1.0.0-beta.2] - 2026-07-28
+
+The Enterprise Readiness & UX milestone: SLA management, realtime
+messaging fixes, an expanded AI Provider lineup with AI Autopilot, full
+Arabic localization, agent lifecycle management, global search, and a
+final cross-cutting product review that fixed every high-severity
+accessibility, responsiveness, and security/compliance finding it
+surfaced.
+
 ### Added
 
 - A "Pick up" button now appears in the conversation sidebar whenever a
