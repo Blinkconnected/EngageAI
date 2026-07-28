@@ -1,14 +1,13 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Avatar, Box, Chip, Stack, Tab, Tabs, Typography } from '@mui/material'
+import { Avatar, Box, Chip, Stack, Typography } from '@mui/material'
 import { LoadingState } from '../../shared/components/LoadingState'
 import { ErrorState } from '../../shared/components/ErrorState'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { formatRelativeTime } from '../../shared/utils/formatRelativeTime'
 import { useCustomerQuery } from '../customers/api'
 import { useConversationsQuery } from './api'
-import { CONVERSATION_STATUSES, type Conversation, type ConversationStatus } from './types'
+import type { Conversation, ConversationStatus } from './types'
 
 const STATUS_COLOR: Record<ConversationStatus, 'info' | 'warning' | 'success' | 'default'> = {
   open: 'info',
@@ -94,39 +93,24 @@ function ConversationRow({
  * this panel only needs a lightweight status quick-filter. */
 export function ConversationListPanel({
   selectedConversationId,
+  status,
+  queueId,
 }: {
   selectedConversationId: string | undefined
+  status: ConversationStatus
+  queueId: string | null
 }) {
   const { t } = useTranslation('conversationsCore')
   const navigate = useNavigate()
-  const [statusTab, setStatusTab] = useState<ConversationStatus>('open')
-
   const conversationsQuery = useConversationsQuery({
     page: 1,
     page_size: 50,
-    status_filter: statusTab,
+    status_filter: status,
+    queue_id: queueId ?? undefined,
   })
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <Tabs
-        value={statusTab}
-        onChange={(_event, value: ConversationStatus) => setStatusTab(value)}
-        variant="scrollable"
-        scrollButtons="auto"
-        sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, minHeight: 40 }}
-        aria-label={t('ConversationListPanel.ariaLabel')}
-      >
-        {CONVERSATION_STATUSES.map((status) => (
-          <Tab
-            key={status}
-            value={status}
-            label={t(`InboxPage.${STATUS_TAB_KEY[status]}`)}
-            sx={{ minHeight: 40, py: 1 }}
-          />
-        ))}
-      </Tabs>
-
       <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
         {conversationsQuery.isPending && (
           <LoadingState label={t('ConversationListPanel.loadingLabel')} />

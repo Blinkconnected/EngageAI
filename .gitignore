@@ -65,3 +65,6 @@ Thumbs.db
 *.log
 logs/
 monitoring/**/data/
+
+# Visual-verification harness output (screenshots are regenerated on demand)
+frontend/.visual-check/*.png

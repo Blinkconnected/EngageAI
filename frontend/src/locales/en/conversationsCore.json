@@ -122,5 +122,11 @@
     "sendTooltip": "Send",
     "sendAriaLabel": "Send reply",
     "messageQueuedOfflineLabel": "You're offline — this message is queued and will send automatically once you're back online."
+  },
+  "ConversationFiltersPanel": {
+    "ariaLabel": "Filters and queues",
+    "statusHeading": "Status",
+    "queuesHeading": "Queues",
+    "allQueuesOption": "All queues"
   }
 }

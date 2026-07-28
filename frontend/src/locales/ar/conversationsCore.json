@@ -122,5 +122,11 @@
     "sendTooltip": "إرسال",
     "sendAriaLabel": "إرسال الرد",
     "messageQueuedOfflineLabel": "أنت غير متصل بالإنترنت — هذه الرسالة في قائمة الانتظار وسيتم إرسالها تلقائيًا بمجرد عودة الاتصال."
+  },
+  "ConversationFiltersPanel": {
+    "ariaLabel": "عوامل التصفية وقوائم الانتظار",
+    "statusHeading": "الحالة",
+    "queuesHeading": "قوائم الانتظار",
+    "allQueuesOption": "جميع قوائم الانتظار"
   }
 }

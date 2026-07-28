@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { axe } from 'vitest-axe'
@@ -38,9 +38,9 @@ function stubDesktopViewport() {
 }
 
 // A real matchMedia stub, evaluating the actual min-width the component
-// queries for — used to prove the 3-pane layout only turns on once
+// queries for — used to prove the five-column layout only turns on once
 // there's genuinely enough room (see ConversationWorkspacePage.tsx's
-// THREE_PANE_MIN_WIDTH), not at MUI's stock `md` (900px), which used to
+// FIVE_COLUMN_MIN_WIDTH), not at MUI's stock `md` (900px), which used to
 // leave the message thread only 40px wide.
 function stubViewportWidth(width: number) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => {
@@ -68,52 +68,66 @@ describe('ConversationWorkspacePage', () => {
     delete window.matchMedia
   })
 
-  it('shows only the open conversation on mobile, without the list panel', async () => {
+  it('shows only the open conversation on mobile, without the filters or list columns', async () => {
     renderWorkspace()
     expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
-    expect(screen.queryByRole('tablist', { name: /conversations/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('navigation', { name: /filters and queues/i }),
+    ).not.toBeInTheDocument()
   })
 
-  it('shows the conversation list alongside the open conversation on desktop', async () => {
+  it('shows all five columns on desktop: filters, list, conversation and details', async () => {
     stubDesktopViewport()
     renderWorkspace()
 
-    expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
-    expect(screen.getByRole('tablist', { name: /conversations/i })).toBeInTheDocument()
+    // Filters & Queues is its own dedicated column, not tabs stacked
+    // above the list.
+    const filters = await screen.findByRole('navigation', { name: /filters and queues/i })
+    expect(within(filters).getByText('Status')).toBeInTheDocument()
+    expect(within(filters).getByText('Queues')).toBeInTheDocument()
 
+    // The conversation column and the customer details column.
+    expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
     // "Grace Blake" (the seeded conversation's customer) legitimately
-    // renders more than once once both panes are visible — once in the
-    // list row, again in the detail pane's own header/sidebar.
+    // renders more than once once every column is visible — once in the
+    // list row, again in the conversation header/details panel.
     expect(await screen.findAllByText('Grace Blake')).not.toHaveLength(0)
   })
 
-  it("the list panel's status quick-filter only shows conversations in that status", async () => {
+  it('the filters column filters the conversation list without touching the open conversation', async () => {
     const user = userEvent.setup()
     stubDesktopViewport()
     renderWorkspace()
-    await screen.findByLabelText(/^status/i)
+    const filters = await screen.findByRole('navigation', { name: /filters and queues/i })
+    await screen.findAllByText('Grace Blake')
 
-    // The seeded conversation is "open" — switching the list panel's own
-    // filter to "Pending" should hide it there (the detail pane on the
-    // right is unaffected, still showing the same open conversation).
-    await user.click(screen.getByRole('tab', { name: /^pending$/i }))
+    // The seeded conversation is "open" — selecting "Pending" in the
+    // filters column empties the list, while the conversation column on
+    // the right keeps showing the same open conversation.
+    await user.click(within(filters).getByRole('button', { name: /^pending$/i }))
+
     expect(await screen.findByText(/nothing here/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^status/i)).toBeInTheDocument()
   })
 
-  it('stays single-pane at 1024px, where the old md (900px) breakpoint used to wrongly show both panes', async () => {
+  it('stays single-column at 1024px, too narrow for five columns', async () => {
     stubViewportWidth(1024)
     renderWorkspace()
 
     expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
-    expect(screen.queryByRole('tablist', { name: /conversations/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('navigation', { name: /filters and queues/i }),
+    ).not.toBeInTheDocument()
   })
 
-  it('shows both panes once the viewport is wide enough for the message thread to stay usable', async () => {
-    stubViewportWidth(1300)
+  it('shows every column once the viewport is wide enough for the message thread to stay usable', async () => {
+    // FIVE_COLUMN_MIN_WIDTH is 1480 (260 nav + 220 filters + 320 list +
+    // 280 details + 400 message minimum).
+    stubViewportWidth(1500)
     renderWorkspace()
 
     expect(await screen.findByLabelText(/^status/i)).toBeInTheDocument()
-    expect(screen.getByRole('tablist', { name: /conversations/i })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: /filters and queues/i })).toBeInTheDocument()
   })
 
   it('has no detectable accessibility violations on desktop', async () => {

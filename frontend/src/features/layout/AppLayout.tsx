@@ -127,7 +127,16 @@ export function AppLayout() {
   return (
     <NotificationToastProvider>
       <RealtimeProvider>
-        <Box sx={{ display: 'flex', minHeight: '100%' }}>
+        {/* The app shell is bounded to the viewport, not merely at least
+            as tall as it (`minHeight: '100%'`, which is what this was).
+            A multi-pane workspace whose columns each scroll internally
+            needs a definite height to distribute down the flex chain —
+            with only a minimum, `main` had nothing to size against, so
+            its content grew the shell past the viewport and the whole
+            document scrolled instead. `100dvh` rather than `100vh` so a
+            mobile browser's collapsing address bar doesn't leave a
+            permanently unreachable strip at the bottom. */}
+        <Box sx={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
           <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
             {isDesktop ? (
               <Drawer
@@ -417,7 +426,10 @@ export function AppLayout() {
               )}
               <Outlet />
             </Box>
-            <Footer />
+            {/* A full-bleed multi-pane workspace owns the whole
+                viewport; a footer strip under it is dead space in what
+                should read as application chrome, not a document. */}
+            {!isFullBleedRoute && <Footer />}
           </Box>
         </Box>
         <GlobalSearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />

@@ -185,7 +185,7 @@ export function ConversationSidebar({
 
       {hasPermission('ai.use') && (
         <div>
-          <Typography variant="overline" color="text.secondary">
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block' }}>
             {t('ConversationSidebar.aiSummaryLabel')}
           </Typography>
           {summaryMutation.isError && (
@@ -264,7 +264,17 @@ export function ConversationSidebar({
             entirely (not just disabled) for anyone without
             conversations.transfer, matching this feature's RBAC
             requirement rather than only cosmetically discouraging it. */}
-        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+        {/* Wraps rather than forcing one row: this column is a fixed
+            280px, and three actions (Pick up / Ask AI / Transfer /
+            Release) overflowed it and overlapped. `alignItems: flex-start`
+            keeps wrapped buttons their natural height instead of
+            stretching them into different sizes per row. */}
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1, alignItems: 'flex-start' }}
+        >
           {/* Only offered when there is genuinely no one holding the
               conversation yet (and it isn't Autopilot's) — once someone
               does, claiming it is a reassignment and goes through
