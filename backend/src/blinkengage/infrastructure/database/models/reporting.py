@@ -110,6 +110,52 @@ class AiDailyStats(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     calls_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class AgentAiDailyStats(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Per-agent AI usage, the same daily rollup shape as
+    ``AiDailyStats`` with an ``agent_id`` dimension added — "who is
+    actually using AI, and how", which the company-wide table cannot
+    answer.
+
+    ``agent_id`` is deliberately NOT NULL. The upsert helper conflicts on
+    the full key, and Postgres treats NULLs as distinct in a unique
+    constraint, so a nullable agent column would insert a fresh row on
+    every event instead of incrementing. AI usage with no attributable
+    agent (Autopilot replying on an unassigned conversation) is therefore
+    counted only in the company-wide ``AiDailyStats``, never here — see
+    the reporting consumer, which attributes an Autopilot run to the
+    conversation's assigned agent when it has one and skips this table
+    when it doesn't.
+
+    ``operation`` carries the same values as ``AiDailyStats.operation``
+    (``suggest_reply``, ``summarize_conversation``, …) plus the synthetic
+    ``autopilot_<trigger>`` operations, so "AI replies this agent
+    requested" and "AI replies SLA triggered on their conversations" are
+    both answerable from one table.
+    """
+
+    __tablename__ = "agent_ai_daily_stats"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "agent_id",
+            "stat_date",
+            "operation",
+            name="uq_agent_ai_daily_stats_key",
+        ),
+        Index("ix_agent_ai_daily_stats_company_date", "company_id", "stat_date"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stat_date: Mapped[date] = mapped_column(Date, nullable=False)
+    operation: Mapped[str] = mapped_column(String(50), nullable=False)
+    calls_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class CsatDailyStats(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "csat_daily_stats"
     __table_args__ = (UniqueConstraint("company_id", "stat_date", name="uq_csat_daily_stats_key"),)

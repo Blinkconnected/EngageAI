@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.application.services.ai_service import AiService
+from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
@@ -590,6 +591,20 @@ def get_ai_service(
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> AiService:
     return AiService(provider=provider, events=events)
+
+
+def get_autopilot_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> AutopilotService:
+    return AutopilotService(
+        conversations=ConversationRepository(session),
+        messages=MessageRepository(session),
+        companies=CompanyRepository(session),
+        events=events,
+        conversation_service=conversation_service,
+    )
 
 
 def get_tag_repository(

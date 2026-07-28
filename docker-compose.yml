@@ -350,6 +350,31 @@ services:
       rabbitmq: { condition: service_healthy }
     networks: [blinkengage]
 
+  # AI Autopilot's SLA activation mode — a separate consumer from
+  # ai-autopilot-consumer because it binds different events: an SLA
+  # warning/breach fires precisely because nobody replied, so there is no
+  # inbound message for the message-driven consumer to react to.
+  autopilot-sla-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.autopilot_sla_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   # ERPNext Integration (M24, see docs/architecture/erp-integration.md) —
   # binds customer.created only, pushing a new customer to ERPNext for
   # any company with an active ErpConfig (a no-op for the rest). Inbound

@@ -1,9 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
 from blinkengage.api.deps import (
+    get_ai_service,
+    get_autopilot_service,
     get_conversation_service,
     get_csat_service,
     get_internal_note_service,
@@ -25,6 +27,8 @@ from blinkengage.api.schemas.internal_note import (
     InternalNoteUpdateRequest,
 )
 from blinkengage.api.schemas.pagination import Page, PageParams
+from blinkengage.application.services.ai_service import AiService
+from blinkengage.application.services.autopilot_service import AutopilotService, AutopilotTrigger
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.internal_note_service import InternalNoteService
@@ -152,6 +156,53 @@ async def pick_conversation(
         conversation_id=conversation_id,
         actor_user_id=auth.user_id,
     )
+    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
+    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+
+
+@router.post("/{conversation_id}/autopilot", response_model=ConversationResponse)
+async def request_autopilot(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    autopilot: Annotated[AutopilotService, Depends(get_autopilot_service)],
+    ai_service: Annotated[AiService, Depends(get_ai_service)],
+) -> ConversationResponse:
+    """Hand this conversation to AI Autopilot on the agent's explicit
+    request — the "On Agent Request" activation mode.
+
+    Rides ``conversations.manage`` rather than a new permission: an agent
+    who may reply to a conversation may also ask AI to reply on their
+    behalf, and a bespoke permission would be invisible on every existing
+    role until someone remembered to grant it.
+
+    Returns the conversation either way. Autopilot may decline (low
+    confidence, the model asking for a human, no configured provider), in
+    which case it hands straight back and ``autopilot_active`` is false
+    in the response — the caller can see that it didn't take over.
+    """
+    outcome = await autopilot.run(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        trigger=AutopilotTrigger.AGENT_REQUEST,
+        ai_service_factory=lambda: ai_service,
+        actor_user_id=auth.user_id,
+    )
+    if outcome.reason == "mode_disabled":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "AI Autopilot's 'on agent request' mode is turned off for this company. "
+                "An administrator can enable it in Settings → AI."
+            ),
+        )
+    if outcome.reason == "ai_unavailable":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI is not configured or is currently unavailable for this company.",
+        )
+
+    conversation = await service.get(company_id=auth.company_id, conversation_id=conversation_id)
     unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
     return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
 

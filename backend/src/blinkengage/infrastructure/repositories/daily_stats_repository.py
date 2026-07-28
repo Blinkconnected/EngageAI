@@ -24,6 +24,7 @@ from sqlalchemy.dialects.sqlite import Insert as SqliteInsert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.reporting import (
+    AgentAiDailyStats,
     AgentDailyStats,
     AiDailyStats,
     ConversationDailyStats,
@@ -117,6 +118,31 @@ class DailyStatsRepository:
         await self._upsert(
             cast(Table, AiDailyStats.__table__),
             key={"company_id": company_id, "stat_date": stat_date, "operation": operation},
+            increments={"calls_count": calls},
+        )
+
+    async def increment_agent_ai_stats(
+        self,
+        *,
+        company_id: UUID,
+        agent_id: UUID,
+        stat_date: date,
+        operation: str,
+        calls: int = 1,
+    ) -> None:
+        """Per-agent counterpart to ``increment_ai_stats``. Callers must
+        only reach here with a real ``agent_id`` — AI usage with nobody to
+        attribute it to belongs in the company-wide table alone (see
+        ``AgentAiDailyStats``'s docstring for why the column can't just be
+        nullable)."""
+        await self._upsert(
+            cast(Table, AgentAiDailyStats.__table__),
+            key={
+                "company_id": company_id,
+                "agent_id": agent_id,
+                "stat_date": stat_date,
+                "operation": operation,
+            },
             increments={"calls_count": calls},
         )
 

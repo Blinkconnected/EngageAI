@@ -35,6 +35,7 @@ from blinkengage.infrastructure.database.session import (
     session_scope,
 )
 from blinkengage.infrastructure.events.rabbitmq import run_consumer
+from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.daily_stats_repository import DailyStatsRepository
 
 logger = get_logger(__name__)
@@ -47,6 +48,7 @@ ROUTING_KEYS = [
     "conversation.sla_breached",
     "message.sent",
     "ai.completed",
+    "conversation.autopilot_replied",
     "csat.submitted",
 ]
 
@@ -79,7 +81,9 @@ async def handle_event(event: dict[str, Any], session: AsyncSession) -> None:
     elif event_type == "message.sent":
         await _handle_message_sent(session, stats, company_id, stat_date, payload)
     elif event_type == "ai.completed":
-        await _handle_ai_completed(stats, company_id, stat_date, payload)
+        await _handle_ai_completed(session, stats, company_id, stat_date, event, payload)
+    elif event_type == "conversation.autopilot_replied":
+        await _handle_autopilot_replied(session, stats, company_id, stat_date, event, payload)
     elif event_type == "csat.submitted":
         await _handle_csat_submitted(stats, company_id, stat_date, payload)
 
@@ -201,8 +205,26 @@ async def _handle_message_sent(
     )
 
 
+async def _resolve_agent_id(
+    session: AsyncSession, *, company_id: UUID, user_id: UUID | None
+) -> UUID | None:
+    """The event carries the acting *user*; per-agent stats are keyed by
+    ``Agent.id``. Returns None for a principal with no agent profile (an
+    Owner who never became an agent), whose usage is then only counted
+    company-wide."""
+    if user_id is None:
+        return None
+    agent = await AgentRepository(session).get_by_user_id(company_id=company_id, user_id=user_id)
+    return agent.id if agent is not None else None
+
+
 async def _handle_ai_completed(
-    stats: DailyStatsRepository, company_id: UUID, stat_date: date, payload: dict[str, Any]
+    session: AsyncSession,
+    stats: DailyStatsRepository,
+    company_id: UUID,
+    stat_date: date,
+    event: dict[str, Any],
+    payload: dict[str, Any],
 ) -> None:
     operation = payload.get("operation")
     if not operation:
@@ -210,6 +232,67 @@ async def _handle_ai_completed(
     await stats.increment_ai_stats(
         company_id=company_id, stat_date=stat_date, operation=operation, calls=1
     )
+
+    actor_user_id_raw = event.get("actor_user_id")
+    agent_id = await _resolve_agent_id(
+        session,
+        company_id=company_id,
+        user_id=UUID(actor_user_id_raw) if actor_user_id_raw else None,
+    )
+    if agent_id is not None:
+        await stats.increment_agent_ai_stats(
+            company_id=company_id,
+            agent_id=agent_id,
+            stat_date=stat_date,
+            operation=operation,
+            calls=1,
+        )
+
+
+async def _handle_autopilot_replied(
+    session: AsyncSession,
+    stats: DailyStatsRepository,
+    company_id: UUID,
+    stat_date: date,
+    event: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """Counts one Autopilot reply, tagged by what triggered it, so
+    reporting can separate "AI the agent asked for" from "AI that stepped
+    in on its own because an SLA was slipping".
+
+    Attribution: an agent-requested run is credited to the requesting
+    agent; a run with no human behind it (SLA, or a continuing
+    conversation) is credited to the conversation's assigned agent when
+    it has one. A conversation Autopilot owns outright often has no
+    assigned agent at all, in which case the reply is counted
+    company-wide only.
+    """
+    trigger = payload.get("trigger")
+    if not trigger:
+        return
+    operation = f"autopilot_{trigger}"
+    await stats.increment_ai_stats(
+        company_id=company_id, stat_date=stat_date, operation=operation, calls=1
+    )
+
+    actor_user_id_raw = event.get("actor_user_id")
+    agent_id = await _resolve_agent_id(
+        session,
+        company_id=company_id,
+        user_id=UUID(actor_user_id_raw) if actor_user_id_raw else None,
+    )
+    if agent_id is None:
+        assigned_agent_id_raw = payload.get("assigned_agent_id")
+        agent_id = UUID(assigned_agent_id_raw) if assigned_agent_id_raw else None
+    if agent_id is not None:
+        await stats.increment_agent_ai_stats(
+            company_id=company_id,
+            agent_id=agent_id,
+            stat_date=stat_date,
+            operation=operation,
+            calls=1,
+        )
 
 
 async def _handle_csat_submitted(

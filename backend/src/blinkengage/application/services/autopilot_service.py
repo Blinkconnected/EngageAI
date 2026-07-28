@@ -25,6 +25,7 @@ provider is configured", handled as a handoff rather than an error.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from blinkengage.application.services.ai_service import AiService
@@ -32,7 +33,9 @@ from blinkengage.application.services.conversation_service import ConversationSe
 from blinkengage.domain.company_settings import (
     autopilot_confidence_threshold,
     is_ai_enabled,
+    is_autopilot_agent_request_mode_enabled,
     is_autopilot_enabled,
+    is_autopilot_sla_mode_enabled,
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.infrastructure.database.models.conversation import Conversation
@@ -144,10 +147,19 @@ class AutopilotService:
         if company is None:
             return AutopilotOutcome(replied=False, reason="conversation_not_found")
 
+        # Per-mode gating lives here, not in each caller, so the three
+        # triggers can't drift apart on what "enabled" means. NEW_MESSAGE
+        # is deliberately exempt: its mode flag governs *activation* on a
+        # brand-new conversation (enforced at routing time by
+        # conversation_ingest_consumer), and a conversation Autopilot
+        # already owns must keep being answered even if an admin later
+        # turns that activation mode off — the alternative is a
+        # conversation silently stranded mid-thread with nobody assigned.
+        if not self._is_mode_enabled(trigger, company.settings):
+            return AutopilotOutcome(replied=False, reason="mode_disabled")
+
         # The master switch and the company-wide Autopilot switch gate
         # every trigger, always — including an explicit agent request.
-        # Per-mode gating is the caller's job (each trigger has its own
-        # mode flag); this is the floor beneath all of them.
         if not is_ai_enabled(company.settings) or not is_autopilot_enabled(company.settings):
             if trigger is AutopilotTrigger.NEW_MESSAGE:
                 await self._hand_off(
@@ -258,6 +270,14 @@ class AutopilotService:
             )
         )
         return AutopilotOutcome(replied=True, confidence=result.confidence)
+
+    @staticmethod
+    def _is_mode_enabled(trigger: AutopilotTrigger, settings: dict[str, Any]) -> bool:
+        if trigger is AutopilotTrigger.SLA:
+            return is_autopilot_sla_mode_enabled(settings)
+        if trigger is AutopilotTrigger.AGENT_REQUEST:
+            return is_autopilot_agent_request_mode_enabled(settings)
+        return True
 
     async def _hand_off(
         self,
