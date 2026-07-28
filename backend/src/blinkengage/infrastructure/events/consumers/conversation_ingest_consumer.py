@@ -23,7 +23,11 @@ from blinkengage.application.services.realtime_channels import company_realtime_
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.company_settings import is_ai_enabled, is_autopilot_enabled
+from blinkengage.domain.company_settings import (
+    is_ai_enabled,
+    is_autopilot_enabled,
+    is_autopilot_new_conversation_mode_enabled,
+)
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
@@ -459,6 +463,12 @@ async def _route_and_assign(
             company is not None
             and is_ai_enabled(company.settings)
             and is_autopilot_enabled(company.settings)
+            # The "new conversation" activation mode specifically — a
+            # company can now run Autopilot in SLA-trigger and/or
+            # agent-request mode *only*, leaving brand-new conversations
+            # to be assigned to a human as normal. Defaults on, so a
+            # company whose settings predate modes is unaffected.
+            and is_autopilot_new_conversation_mode_enabled(company.settings)
             and is_ai_available_for_company(settings, company.ai_config)
         ):
             conversation.autopilot_active = True

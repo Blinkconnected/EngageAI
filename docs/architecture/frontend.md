@@ -323,6 +323,39 @@ Now `overflowY: 'auto'` and `maxHeight: '100%'` on both breakpoints: the
 sidebar fills and scrolls within its own row on desktop, the same way
 `MessageThread`'s Stack already did.
 
+**Independent per-column scrolling is a product-wide requirement, not a
+conversation-page detail (2026-07-28).** Any page showing multiple
+panels side by side must behave like an enterprise workspace
+(Intercom/Zendesk), never like a long document:
+
+- **The page itself must not scroll vertically.** Each column owns its
+  own scroll region; there is no outer scrollbar that can move the whole
+  layout. Concretely: the route is rendered full-bleed (`AppLayout`'s
+  `main` drops its `p: 3` gutter *and* switches `overflowY` to `hidden`
+  for such routes — see `isFullBleedRoute`), and the page fills the
+  remaining height with `flexGrow: 1` + `minHeight: 0`.
+- **Every column is `flexGrow: 1; minHeight: 0; overflowY: auto` inside a
+  height-bounded parent.** `minHeight: 0` is the non-obvious half: a flex
+  item's automatic minimum size otherwise refuses to shrink below its
+  content, so the column grows the page instead of scrolling itself.
+- **Fixed chrome is `flexShrink: 0`** — filter tabs, the workspace header
+  bar, the composer. Without a declared floor, flexbox is free to squeeze
+  them when a sibling grows.
+- **Scrolling one column must never move another.** This falls out of the
+  two rules above: no shared scroll ancestor exists to propagate.
+
+The conversation workspace is the reference implementation:
+`ConversationWorkspacePage` (list pane | conversation), and inside it
+`ConversationViewPage` (fixed header bar, then the chat column and the
+customer-details column). The list panel's status tabs are fixed while
+its rows scroll; the chat column's `MessageThread` scrolls while
+`ReplyBox` stays put; the details panel scrolls independently at a fixed
+280px. Opening a conversation always lands on the newest message —
+`MessageThread` re-arms its stick-to-bottom ref on every
+`conversationId` change, because that ref intentionally survives
+re-renders and the component's prop changes rather than it remounting
+when the agent switches conversations.
+
 **`main` is a flex column, so a fill-height page can survive the setup
 banner (fixed 2026-07-28).** The height chain above still had one hole:
 `main` was a *block* container, and `ConversationWorkspacePage` sized

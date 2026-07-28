@@ -81,10 +81,26 @@ class AutopilotSettingsUpdate(BaseModel):
     actually become AI-handled (see ``Queue.autopilot_enabled``'s
     docstring); this is the other half of that gate, and the one place
     to instantly pause Autopilot everywhere without touching every
-    queue."""
+    queue.
+
+    ``enabled`` stays the single master switch. Under it, the three
+    ``activate_on_*`` flags are independent *activation modes* — any
+    combination may be on, and all three off means Autopilot is
+    effectively idle even while ``enabled`` is true. Defaults preserve
+    the behavior that shipped before modes existed: activation on a
+    brand-new conversation only.
+    """
 
     enabled: bool = False
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    #: Engage on a brand-new conversation routed to an Autopilot-enabled
+    #: queue. Defaults true — this is the only mode that existed before.
+    activate_on_new_conversation: bool = True
+    #: Engage when a conversation crosses its SLA warning threshold or
+    #: breaches, so an unanswered conversation still gets a reply.
+    activate_on_sla: bool = False
+    #: Engage only when an agent explicitly asks Autopilot to take over.
+    activate_on_agent_request: bool = False
 
 
 class AiSettingsUpdate(BaseModel):

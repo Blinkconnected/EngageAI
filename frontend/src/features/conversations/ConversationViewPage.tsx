@@ -37,8 +37,24 @@ export function ConversationViewPage() {
   const conversation = conversationQuery.data
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {/* A fixed workspace header bar, not page content: it supplies its
+          own gutter (the workspace runs edge to edge — see AppLayout's
+          full-bleed `main`) and never scrolls, so the chat and details
+          columns below own the entire remaining height between them. */}
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: 'flex-start',
+          flexShrink: 0,
+          px: 2,
+          pt: 2,
+          pb: 1,
+          borderBottom: 1,
+          borderColor: 'divider',
+        }}
+      >
         <IconButton
           onClick={() => navigate('/conversations')}
           aria-label={t('ConversationViewPage.backButtonAriaLabel')}
@@ -61,26 +77,16 @@ export function ConversationViewPage() {
         sx={{
           flexGrow: 1,
           minHeight: 0,
-          mt: 2,
-          border: 1,
-          borderColor: 'divider',
-          borderRadius: 2,
-          // Clips both panes to the shared rounded corners — a
-          // descendant's own `overflowY: auto` (MessageThread, the
-          // sidebar wrapper below) still scrolls internally exactly as
-          // before; only the outer card's corners are affected. Without
-          // this, the sidebar's flat-cornered bgcolor squared off past
-          // this card's rounded top/bottom-right corners on desktop.
+          // No card border/radius/margin: this row runs edge to edge as
+          // application chrome. Each column is delimited by the divider
+          // rule below, the way Intercom/Zendesk-style multi-pane
+          // workspaces are — a floating rounded card would read as page
+          // content sitting *inside* a scrolling document, which is
+          // exactly the impression this layout must not give.
           overflow: 'hidden',
-          // Both panes are rendered as siblings of one shared bordered
-          // card (the border/radius above), matching the same "one
-          // rounded container" convention ConversationWorkspacePage's
-          // list pane already establishes at the page level — the
-          // md-and-up divider between them is drawn here, once, instead
-          // of each pane separately deciding its own border, which
-          // previously left the sidebar visually bolted onto a
-          // differently-bordered sub-card rather than reading as this
-          // card's own second column.
+          // The divider between columns is declared once, here, rather
+          // than each column separately deciding its own border and
+          // leaving the details panel looking bolted on.
           '& > *:not(:first-of-type)': {
             borderTop: { xs: 1, md: 0 },
             borderLeft: { xs: 0, md: 1 },

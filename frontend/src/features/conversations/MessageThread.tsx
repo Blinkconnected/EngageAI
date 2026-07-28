@@ -125,6 +125,18 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   }
 
   useEffect(() => {
+    // Opening a conversation must always land on its newest message.
+    // `wasNearBottomRef` is deliberately a ref that survives re-renders,
+    // which means it also survives switching conversations in the
+    // three-pane workspace (this component doesn't remount, only its
+    // prop changes) — so an agent who had scrolled up reading history in
+    // the previous conversation would otherwise open the next one
+    // stranded mid-thread. Reset per conversation, before the
+    // scroll-to-newest effect below reads it.
+    wasNearBottomRef.current = true
+  }, [conversationId])
+
+  useEffect(() => {
     // Newest message is index 0 in the API's DESC order — scroll to the
     // (visually bottom) newest message on load and whenever a new one
     // arrives, but ONLY when the reader was already at/near the bottom

@@ -92,6 +92,13 @@ export function AppLayout() {
   const showSetupBanner =
     onboardingIncomplete && hasPermission('company.manage') && location.pathname !== '/onboarding'
 
+  // Multi-pane workspaces (currently the conversation workspace) render
+  // edge to edge and take over vertical scrolling entirely: every column
+  // inside them scrolls on its own, and the page as a whole must not.
+  // Matches `/conversations/<id>` but never the `/conversations` Inbox
+  // list, which is an ordinary padded, document-flow page.
+  const isFullBleedRoute = /^\/conversations\/[^/]+$/.test(location.pathname)
+
   // A personal, per-browser display preference — no permission needed
   // (unlike Settings -> Language, which changes the company-wide
   // default for everyone). Persisted so it survives a reload, and
@@ -362,8 +369,19 @@ export function AppLayout() {
               sx={{
                 flexGrow: 1,
                 minHeight: 0,
-                overflowY: 'auto',
-                p: 3,
+                // A full-bleed page owns its own scrolling completely
+                // (each of its columns scrolls independently), so `main`
+                // must not offer a second, outer scrollbar that could
+                // move the whole layout — the "page itself never scrolls"
+                // half of the multi-pane workspace requirement. Ordinary
+                // document-flow pages still scroll here as before.
+                overflowY: isFullBleedRoute ? 'hidden' : 'auto',
+                // Full-bleed pages run edge to edge: an enterprise
+                // multi-pane workspace's own column dividers are the
+                // structure, and an outer gutter around them just makes
+                // the panes read as a floating card instead of the
+                // application chrome they are.
+                p: isFullBleedRoute ? 0 : 3,
                 // A flex column, not a block: a fill-the-viewport page
                 // (the conversation workspace) needs to occupy whatever
                 // height is left *after* the setup banner, which a
@@ -381,7 +399,16 @@ export function AppLayout() {
               }}
             >
               {showSetupBanner && (
-                <Alert severity="info" sx={{ mb: 2, flexShrink: 0 }}>
+                <Alert
+                  severity="info"
+                  sx={{
+                    flexShrink: 0,
+                    // On a full-bleed page the banner supplies its own
+                    // gutter, since `main` no longer has one.
+                    mb: isFullBleedRoute ? 0 : 2,
+                    borderRadius: isFullBleedRoute ? 0 : undefined,
+                  }}
+                >
                   {t('AppLayout.setupBannerMessage')}{' '}
                   <Link component={RouterLink} to="/onboarding">
                     {t('AppLayout.setupBannerLink')}

@@ -38,6 +38,14 @@ for more detail on how this page is put together.
   of the screen while you scroll back through the message history,
   instead of being able to get squeezed out of view when it grows (for
   example when it's showing attachments or an error message).
+- The conversation workspace now behaves like an enterprise application
+  rather than a long web page: it fills the screen edge to edge, and the
+  conversation list, the message history and the customer details panel
+  each scroll on their own. Scrolling one no longer moves the others,
+  and the page as a whole no longer scrolls at all.
+- Opening a conversation now always jumps to its newest message. If you
+  had scrolled up to read history in a previous conversation, the next
+  one you opened could previously open stranded part-way up the thread.
 - Scrolling a conversation no longer moves the whole page. When the
   "finish setting up your company" banner was showing, the conversation
   workspace was sized as if the banner weren't there, making the page

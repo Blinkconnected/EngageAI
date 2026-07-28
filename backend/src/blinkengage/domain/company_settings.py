@@ -62,6 +62,28 @@ def autopilot_confidence_threshold(settings: dict[str, Any]) -> float:
     return DEFAULT_AUTOPILOT_CONFIDENCE_THRESHOLD
 
 
+def is_autopilot_new_conversation_mode_enabled(settings: dict[str, Any]) -> bool:
+    """Engage Autopilot on a brand-new conversation routed to an
+    Autopilot-enabled queue. Defaults **True**: this is the only
+    activation mode that existed before modes were introduced, so a
+    company whose stored settings predate them keeps behaving exactly as
+    it did (the other two modes default False — opt-in)."""
+    return bool(_autopilot_section(settings).get("activate_on_new_conversation", True))
+
+
+def is_autopilot_sla_mode_enabled(settings: dict[str, Any]) -> bool:
+    """Engage Autopilot when a conversation crosses its SLA warning
+    threshold or breaches — the "nobody answered in time, let the AI
+    step in" mode."""
+    return bool(_autopilot_section(settings).get("activate_on_sla", False))
+
+
+def is_autopilot_agent_request_mode_enabled(settings: dict[str, Any]) -> bool:
+    """Engage Autopilot only when an agent explicitly hands a
+    conversation to it."""
+    return bool(_autopilot_section(settings).get("activate_on_agent_request", False))
+
+
 def is_notification_type_enabled(settings: dict[str, Any], notification_type: str) -> bool:
     return bool(_section(settings, "notifications").get(notification_type, True))
 

@@ -46,20 +46,37 @@ class AiService:
         return self._provider
 
     async def _publish_completed(
-        self, *, operation: str, company_id: UUID, conversation_id: UUID | None
+        self,
+        *,
+        operation: str,
+        company_id: UUID,
+        conversation_id: UUID | None,
+        actor_user_id: UUID | None = None,
     ) -> None:
+        # actor_user_id is what makes per-agent AI usage reporting
+        # possible: the reporting consumer resolves it to an Agent and
+        # counts the call against them. It is legitimately None for AI
+        # Autopilot's own SLA-triggered runs, which no human initiated —
+        # those are attributed to the conversation's assigned agent, if
+        # any, by the consumer instead.
         await self._events.publish(
             DomainEvent(
                 event_type="ai.completed",
                 company_id=company_id,
                 aggregate_type="conversation" if conversation_id else "ai_operation",
                 aggregate_id=conversation_id,
+                actor_user_id=actor_user_id,
                 payload={"operation": operation},
             )
         )
 
     async def suggest_reply(
-        self, *, company_id: UUID, conversation_id: UUID, conversation_history: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        conversation_history: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -73,12 +90,20 @@ class AiService:
             temperature=0.4,
         )
         await self._publish_completed(
-            operation="suggest_reply", company_id=company_id, conversation_id=conversation_id
+            operation="suggest_reply",
+            company_id=company_id,
+            conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result
 
     async def suggest_autopilot_reply(
-        self, *, company_id: UUID, conversation_id: UUID, conversation_history: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        conversation_history: str,
+        actor_user_id: UUID | None = None,
     ) -> AutopilotReply:
         """Like ``suggest_reply``, but for AI Autopilot (see
         docs/architecture/ai-engine.md): asks the model to also
@@ -111,11 +136,17 @@ class AiService:
             operation="suggest_autopilot_reply",
             company_id=company_id,
             conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return _parse_autopilot_reply(result)
 
     async def summarize_conversation(
-        self, *, company_id: UUID, conversation_id: UUID, conversation_history: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        conversation_history: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -131,6 +162,7 @@ class AiService:
             operation="summarize_conversation",
             company_id=company_id,
             conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result
 
@@ -141,6 +173,7 @@ class AiService:
         conversation_id: UUID | None,
         text: str,
         target_language: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -153,12 +186,20 @@ class AiService:
             temperature=0.2,
         )
         await self._publish_completed(
-            operation="translate", company_id=company_id, conversation_id=conversation_id
+            operation="translate",
+            company_id=company_id,
+            conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result
 
     async def detect_language(
-        self, *, company_id: UUID, conversation_id: UUID | None, text: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID | None,
+        text: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -171,12 +212,20 @@ class AiService:
             temperature=0.0,
         )
         await self._publish_completed(
-            operation="detect_language", company_id=company_id, conversation_id=conversation_id
+            operation="detect_language",
+            company_id=company_id,
+            conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result.strip().rstrip(".")
 
     async def analyze_sentiment(
-        self, *, company_id: UUID, conversation_id: UUID | None, text: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID | None,
+        text: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -189,7 +238,10 @@ class AiService:
             temperature=0.0,
         )
         await self._publish_completed(
-            operation="analyze_sentiment", company_id=company_id, conversation_id=conversation_id
+            operation="analyze_sentiment",
+            company_id=company_id,
+            conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         normalized = result.strip().lower().rstrip(".")
         return normalized if normalized in _SENTIMENTS else "neutral"
@@ -201,6 +253,7 @@ class AiService:
         conversation_id: UUID | None,
         text: str,
         available_tags: list[str],
+        actor_user_id: UUID | None = None,
     ) -> list[str]:
         """Only ever picks from ``available_tags`` (the company's real Tag
         catalog, M8) — never invents a new tag name, avoiding a hallucinated
@@ -221,7 +274,10 @@ class AiService:
             temperature=0.0,
         )
         await self._publish_completed(
-            operation="suggest_tags", company_id=company_id, conversation_id=conversation_id
+            operation="suggest_tags",
+            company_id=company_id,
+            conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         if result.strip().lower() == "none":
             return []
@@ -236,6 +292,7 @@ class AiService:
         conversation_id: UUID | None,
         query: str,
         candidate_articles: list[tuple[str, str]],
+        actor_user_id: UUID | None = None,
     ) -> str:
         """Covers both "Knowledge Search" and "FAQ Search" — the same
         capability (answer a question by grounding in a set of help-
@@ -262,11 +319,17 @@ class AiService:
             operation="answer_from_knowledge_base",
             company_id=company_id,
             conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result
 
     async def improve_grammar(
-        self, *, company_id: UUID, conversation_id: UUID | None, text: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID | None,
+        text: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -279,12 +342,20 @@ class AiService:
             temperature=0.2,
         )
         await self._publish_completed(
-            operation="improve_grammar", company_id=company_id, conversation_id=conversation_id
+            operation="improve_grammar",
+            company_id=company_id,
+            conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result
 
     async def rewrite_professionally(
-        self, *, company_id: UUID, conversation_id: UUID | None, text: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID | None,
+        text: str,
+        actor_user_id: UUID | None = None,
     ) -> str:
         provider = self._require_provider()
         result = await provider.complete(
@@ -301,11 +372,17 @@ class AiService:
             operation="rewrite_professionally",
             company_id=company_id,
             conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return result
 
     async def suggest_next_best_action(
-        self, *, company_id: UUID, conversation_id: UUID, conversation_history: str
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        conversation_history: str,
+        actor_user_id: UUID | None = None,
     ) -> dict[str, str]:
         """Advisory only — surfaced to the agent to review, never
         auto-executed. Auto-executing an AI-suggested action (e.g.
@@ -332,6 +409,7 @@ class AiService:
             operation="suggest_next_best_action",
             company_id=company_id,
             conversation_id=conversation_id,
+            actor_user_id=actor_user_id,
         )
         return _parse_next_best_action(result)
 
