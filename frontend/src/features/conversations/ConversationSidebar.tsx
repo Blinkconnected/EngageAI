@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
+import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
 import { useTranslation } from 'react-i18next'
 import {
   Alert,
@@ -27,6 +28,7 @@ import {
   CONVERSATION_KEY,
   CONVERSATIONS_LIST_KEY,
   usePickConversationMutation,
+  useRequestAutopilotMutation,
   useReleaseConversationMutation,
   useUpdateConversationMutation,
 } from './api'
@@ -58,6 +60,9 @@ export function ConversationSidebar({
   const { hasPermission } = usePermissions()
   const canTransfer = hasPermission('conversations.transfer')
   const canPick = hasPermission('conversations.pick')
+  // The Autopilot request endpoint rides conversations.manage — an
+  // agent who may reply may also ask AI to reply for them.
+  const canManage = hasPermission('conversations.manage')
   const [transferOpen, setTransferOpen] = useState(false)
   const [releaseError, setReleaseError] = useState<string | null>(null)
   const [pickError, setPickError] = useState<string | null>(null)
@@ -70,6 +75,7 @@ export function ConversationSidebar({
   const updateMutation = useUpdateConversationMutation(conversation.id)
   const releaseMutation = useReleaseConversationMutation()
   const pickMutation = usePickConversationMutation()
+  const autopilotMutation = useRequestAutopilotMutation()
   const summaryMutation = useSummarizeConversationMutation()
   const queryClient = useQueryClient()
 
@@ -118,6 +124,17 @@ export function ConversationSidebar({
           void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversation.id) })
           void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
         }
+      },
+    })
+  }
+
+  function handleRequestAutopilot() {
+    setPickError(null)
+    autopilotMutation.mutate(conversation.id, {
+      onError: (error) => {
+        setPickError(
+          extractErrorMessage(error, t('ConversationSidebar.autopilotRequestErrorFallback')),
+        )
       },
     })
   }
@@ -262,6 +279,24 @@ export function ConversationSidebar({
               {pickMutation.isPending
                 ? t('ConversationSidebar.pickingButton')
                 : t('ConversationSidebar.pickButton')}
+            </Button>
+          )}
+          {/* "Ask AI to reply" — the On Agent Request activation mode.
+              Offered only while a human still holds the conversation:
+              once Autopilot has it, it keeps answering on its own and the
+              relevant action becomes picking it back up. A 409 (the mode
+              is off company-wide) surfaces through the same error banner
+              as every other action here. */}
+          {canManage && !conversation.autopilot_active && (
+            <Button
+              size="small"
+              startIcon={<SmartToyOutlinedIcon />}
+              disabled={autopilotMutation.isPending}
+              onClick={handleRequestAutopilot}
+            >
+              {autopilotMutation.isPending
+                ? t('ConversationSidebar.autopilotRequestingButton')
+                : t('ConversationSidebar.autopilotRequestButton')}
             </Button>
           )}
           {canTransfer && (

@@ -7,8 +7,22 @@
     "gridAriaLabel": "تقرير استخدام الذكاء الاصطناعي",
     "columns": {
       "operation": "العملية",
-      "calls": "الاستدعاءات"
-    }
+      "calls": "الاستدعاءات",
+      "agent": "الموظف",
+      "totalCalls": "إجمالي استدعاءات الذكاء الاصطناعي",
+      "autopilotRequested": "بطلب من الموظف",
+      "autopilotSla": "تلقائيًا (مستوى الخدمة)"
+    },
+    "trendTitle": "استخدام الذكاء الاصطناعي عبر الزمن",
+    "granularityAriaLabel": "دقة العرض الزمني",
+    "granularityDaily": "يومي",
+    "granularityWeekly": "أسبوعي",
+    "granularityMonthly": "شهري",
+    "noTrendData": "لا يوجد استخدام للذكاء الاصطناعي في هذه الفترة.",
+    "byAgentTitle": "استخدام الذكاء الاصطناعي حسب الموظف",
+    "byAgentDescription": "مقدار استخدام كل موظف للذكاء الاصطناعي، وعدد المرات التي تدخّل فيها تلقائيًا في محادثاته بسبب اقتراب تجاوز مدة الاستجابة.",
+    "byAgentGridAriaLabel": "استخدام الذكاء الاصطناعي حسب الموظف",
+    "noAgentUsage": "لم يستخدم أي موظف الذكاء الاصطناعي في هذه الفترة."
   },
   "ConversationsReportPanel": {
     "loadingLabel": "جارٍ تحميل تقرير المحادثات…",

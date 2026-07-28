@@ -95,6 +95,36 @@ export interface CsatReport {
 }
 
 /** Matches the backend's `AiOperationRowResponse` (`GET /reports/ai`). */
+export type AiUsageGranularity = 'daily' | 'weekly' | 'monthly'
+
+/** One agent's AI usage over the reported range — matches the backend's
+ * `AiAgentUsageRowResponse`. */
+export interface AiAgentUsageRow {
+  agent_id: string
+  agent_name: string
+  total_calls: number
+  /** Autopilot replies this agent explicitly asked for. */
+  autopilot_agent_requests: number
+  /** Autopilot replies that fired automatically on this agent's
+   * conversations because an SLA target was slipping — AI covering for
+   * the agent rather than the agent choosing to use AI. */
+  autopilot_sla_triggers: number
+}
+
+export interface AiUsageBucket {
+  /** First day of the bucket at whatever granularity was requested. */
+  bucket_start: string
+  calls: number
+}
+
+/** Matches the backend's `AiUsageReportResponse` (`GET /reports/ai/usage`). */
+export interface AiUsageReport {
+  by_operation: AiOperationRow[]
+  by_agent: AiAgentUsageRow[]
+  trend: AiUsageBucket[]
+  total_calls: number
+}
+
 export interface AiOperationRow {
   operation: string
   calls: number

@@ -32,6 +32,12 @@ export function ReplyBox({
   const [body, setBody] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [sendFailure, setSendFailure] = useState<string | null>(null)
+  // Whether the current draft started life as an AI suggestion. Reported
+  // to the backend on send as `is_ai_assisted`, which is what lets
+  // reporting separate AI-assisted human replies from purely manual
+  // ones. A ref, not state: it must never trigger a re-render, and it is
+  // read only at send time.
+  const draftCameFromAi = useRef(false)
   const lastTypingSentAt = useRef(0)
 
   const { hasPermission } = usePermissions()
@@ -42,11 +48,19 @@ export function ReplyBox({
 
   function handleSuggestReply() {
     suggestReplyMutation.mutate(conversationId, {
-      onSuccess: (suggestion) => setBody(suggestion),
+      onSuccess: (suggestion) => {
+        setBody(suggestion)
+        draftCameFromAi.current = true
+      },
     })
   }
 
   function handleBodyChange(value: string) {
+    // Editing an AI draft keeps it AI-assisted (that's the point — it
+    // measures AI's contribution, not verbatim sending). Clearing the
+    // box entirely is the one thing that resets it: whatever is typed
+    // next is genuinely the agent's own.
+    if (value.trim() === '') draftCameFromAi.current = false
     setBody(value)
     setSendFailure(null)
     if (!onTyping) return
@@ -72,11 +86,16 @@ export function ReplyBox({
     sendMutation.mutate(
       {
         conversationId,
-        payload: { body: body.trim() || null, attachment_ids: attachments.map((a) => a.id) },
+        payload: {
+          body: body.trim() || null,
+          attachment_ids: attachments.map((a) => a.id),
+          is_ai_assisted: draftCameFromAi.current,
+        },
       },
       {
         onSuccess: (message) => {
           setBody('')
+          draftCameFromAi.current = false
           setAttachments([])
           onTyping?.(false)
           // A failed send is still a 201 (the attempt was persisted so

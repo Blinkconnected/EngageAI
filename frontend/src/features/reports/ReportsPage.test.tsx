@@ -48,6 +48,22 @@ describe('ReportsPage', () => {
     expect(within(table).getByText('Web Chat')).toBeInTheDocument()
   })
 
+  it('the AI tab breaks usage down by agent, separating requested from SLA-triggered', async () => {
+    const user = userEvent.setup()
+    renderReports()
+    await screen.findByText('42')
+
+    await user.click(screen.getByRole('tab', { name: 'AI Usage' }))
+
+    // See mocks/handlers/reports.ts: Grace Blake has 9 total AI calls, of
+    // which 3 she asked Autopilot for and 1 fired on her conversations
+    // automatically because an SLA target was slipping.
+    const byAgent = await screen.findByRole('region', { name: 'AI usage by agent' })
+    expect(within(byAgent).getByText('Grace Blake')).toBeInTheDocument()
+    expect(within(byAgent).getByText('9')).toBeInTheDocument()
+    expect(within(byAgent).getByText('3')).toBeInTheDocument()
+  })
+
   it('switching to the CSAT tab shows the average rating', async () => {
     const user = userEvent.setup()
     renderReports()

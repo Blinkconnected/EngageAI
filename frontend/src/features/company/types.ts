@@ -53,8 +53,19 @@ export interface SecuritySettings {
 }
 
 export interface AutopilotSettings {
+  /** Master switch. With this off, no activation mode does anything. */
   enabled: boolean
   confidence_threshold: number
+  /** Engage on a brand-new conversation routed to an Autopilot-enabled
+   * queue. Defaults true server-side — the only mode that existed before
+   * modes did, so a company that never touched these keeps behaving
+   * exactly as before. */
+  activate_on_new_conversation?: boolean
+  /** Engage when a conversation crosses its SLA warning threshold or
+   * breaches, so an unanswered customer still gets a reply. */
+  activate_on_sla?: boolean
+  /** Engage only when an agent explicitly hands the conversation over. */
+  activate_on_agent_request?: boolean
 }
 
 export interface AiSettings {

@@ -100,6 +100,11 @@ export interface Message {
 export interface SendMessageRequest {
   body?: string | null
   attachment_ids?: string[]
+  /** The draft started as an AI suggestion (edited or not). Distinct
+   * from a message's `is_ai_generated` metadata, which marks a reply AI
+   * Autopilot sent unattended — this one is a human's own reply that AI
+   * helped write, which reporting counts separately. */
+  is_ai_assisted?: boolean
 }
 
 export type AttachmentValidationStatus = 'pending' | 'approved' | 'rejected'

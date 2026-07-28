@@ -7,8 +7,22 @@
     "gridAriaLabel": "AI usage report",
     "columns": {
       "operation": "Operation",
-      "calls": "Calls"
-    }
+      "calls": "Calls",
+      "agent": "Agent",
+      "totalCalls": "Total AI calls",
+      "autopilotRequested": "Autopilot requested",
+      "autopilotSla": "Autopilot (SLA)"
+    },
+    "trendTitle": "AI usage over time",
+    "granularityAriaLabel": "Trend granularity",
+    "granularityDaily": "Daily",
+    "granularityWeekly": "Weekly",
+    "granularityMonthly": "Monthly",
+    "noTrendData": "No AI usage recorded in this period.",
+    "byAgentTitle": "AI usage by agent",
+    "byAgentDescription": "How much each agent uses AI, and how often AI stepped in on their conversations on its own because a response target was slipping.",
+    "byAgentGridAriaLabel": "AI usage by agent",
+    "noAgentUsage": "No agent has used AI in this period."
   },
   "ConversationsReportPanel": {
     "loadingLabel": "Loading conversations report…",

@@ -385,6 +385,108 @@ already flowing to every other consumer; a future Reports & Analytics
 tables were added by this milestone's migration — it's permission-seed
 only.
 
+## Activation modes, and one decision shared by three triggers (2026-07-28)
+
+Autopilot originally had exactly one way to engage: a brand-new
+conversation routed into a queue with `autopilot_enabled`. The decision
+logic lived inside `ai_autopilot_consumer`, which binds
+`message.persisted` — so the only thing that could ever make Autopilot
+act was a *new inbound customer message*.
+
+That shape does not fit either mode added here:
+
+- **SLA** fires precisely *because* nobody replied. There is no inbound
+  message coming; waiting for one would mean never replying at all.
+- **Agent request** is a human clicking a button, not a message arriving.
+
+So the reply-or-hand-off decision moved to
+`application/services/autopilot_service.py`, parameterized by
+`AutopilotTrigger`, and the original consumer became one of three
+callers:
+
+| Trigger | Caller | Bound to |
+|---|---|---|
+| `new_message` | `ai_autopilot_consumer` | `message.persisted` |
+| `sla` | `autopilot_sla_consumer` | `conversation.sla_warning`, `conversation.sla_breached` |
+| `agent_request` | `POST /conversations/{id}/autopilot` | — (`conversations.manage`) |
+
+**Three independent modes under one master switch.**
+`settings.ai.autopilot` gains `activate_on_new_conversation` (defaults
+**true** — the behavior that predates modes, so existing companies are
+unaffected), `activate_on_sla` and `activate_on_agent_request` (both
+default false). Any combination may be on; all three off means Autopilot
+is idle even while `enabled` is true, which the settings UI warns about.
+
+**Per-mode gating lives in `AutopilotService`, not in each caller** — one
+source of truth, so the three triggers cannot drift on what "enabled"
+means. `new_message` is deliberately exempt from its own mode check: that
+flag governs *activation* on a new conversation (enforced at routing time
+in `conversation_ingest_consumer`), and a conversation Autopilot already
+owns must keep being answered even if an admin later turns that mode off
+— the alternative strands it mid-thread with nobody assigned.
+
+**Idempotency differs per trigger.** `new_message` dedupes on
+`autopilot_last_handled_message_id` vs. the inbound message being
+answered. The SLA trigger has no message of its own, and comparing ids
+would not work either — replying *adds* a message, so after the first run
+the newest id is Autopilot's own reply. Instead it checks **direction**:
+it only acts when the newest message in the thread is inbound, i.e. the
+customer is the one waiting. That is what makes a warning and its
+follow-up breach produce one reply rather than two. An agent request is
+an explicit human action and is never deduped.
+
+**Activation happens only on success.** The SLA and agent-request
+triggers set `autopilot_active` after a usable reply exists, not before —
+a run that hands straight back must not strip a conversation from its
+agent for nothing.
+
+Note there is deliberately no `Queue.autopilot_enabled` requirement on
+the SLA or agent-request paths: that flag governs which queues hand
+*brand-new* conversations to AI instead of to a human, a different
+decision from "nothing has happened for too long" or "this agent asked".
+
+## Per-agent usage tracking and AI provenance (2026-07-28)
+
+The `ai.completed` event now carries `actor_user_id` (every
+`/api/v1/ai/` endpoint passes the calling agent through), and a
+successful Autopilot run publishes a new
+`conversation.autopilot_replied` carrying `trigger`, `confidence`,
+`message_id` and the conversation's `assigned_agent_id`. The audit-log
+consumer binds `#`, so both are audited with no new audit machinery.
+
+`agent_ai_daily_stats` mirrors `ai_daily_stats` with an `agent_id`
+dimension, keyed `(company_id, agent_id, stat_date, operation)` so the
+existing atomic `INSERT … ON CONFLICT DO UPDATE` increment has a
+constraint to conflict on. `agent_id` is **NOT NULL**: Postgres treats
+NULLs as distinct in a unique constraint, so a nullable column would
+insert a new row per event instead of incrementing. Usage with nobody to
+attribute it to therefore stays in the company-wide table only.
+Attribution order is: the acting user's agent profile, else — for an
+unattended Autopilot run — the conversation's assigned agent, else
+company-wide only.
+
+Autopilot runs are counted under synthetic `autopilot_<trigger>`
+operations. The prefix and derivation live in `domain/ai_operations.py`
+because the string is assembled in the reporting consumer and matched in
+the reporting repository — exactly the pair that silently drifts.
+
+**Two distinct provenance flags on an outbound message**, so an
+administrator can tell three cases apart:
+`message_metadata.is_ai_generated` (Autopilot composed and sent it, no
+human involved) and `is_ai_assisted` (an agent's own reply whose draft
+came from an AI suggestion, edited or not — the composer sets it and
+clears it when the draft is emptied). Each key is omitted when false, so
+a purely manual reply keeps its historical empty `{}` metadata and the
+frontend's strict `=== true` checks keep working.
+
+`GET /reports/ai/usage` returns usage by operation, by agent, and as a
+trend bucketed daily/weekly/monthly. Bucketing is folded in the service
+layer, not SQL: `date_trunc` is Postgres-only and the repositories stay
+portable to the SQLite the test suite runs on. It is a *new* endpoint
+rather than a widening of `GET /reports/ai`, whose flat
+`[{operation, calls}]` array both the existing panel and both export
+formats consume.
+
 ## API surface
 
 Ten endpoints under `/api/v1/ai/`, all gated by

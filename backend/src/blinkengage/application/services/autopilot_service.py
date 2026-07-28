@@ -175,15 +175,21 @@ class AutopilotService:
         recent_messages, _ = await self._messages.list_for_conversation(
             conversation_id=conversation_id, offset=0, limit=_HISTORY_MESSAGE_LIMIT
         )
-        newest_message_id = recent_messages[0].id if recent_messages else None
+        newest_message = recent_messages[0] if recent_messages else None
+        newest_message_id = newest_message.id if newest_message is not None else None
 
-        # Already replied since the last message — an SLA warning and its
-        # follow-up breach both firing must not produce two replies to
-        # the same customer message.
-        if (
-            trigger is AutopilotTrigger.SLA
-            and newest_message_id is not None
-            and conversation.autopilot_last_handled_message_id == newest_message_id
+        # The SLA trigger only ever steps in when the customer is the one
+        # waiting — i.e. the newest message is inbound. This is what makes
+        # a warning and its follow-up breach produce one reply rather than
+        # two: once Autopilot (or a human) has answered, the newest
+        # message is outbound and the second event is a no-op.
+        #
+        # Deliberately a direction check rather than comparing against
+        # `autopilot_last_handled_message_id`: replying *adds* a message,
+        # so after the first run the newest id is Autopilot's own reply
+        # and an id comparison would never match again.
+        if trigger is AutopilotTrigger.SLA and (
+            newest_message is None or newest_message.direction is not MessageDirection.INBOUND
         ):
             return AutopilotOutcome(replied=False, reason="skipped_already_handled")
 

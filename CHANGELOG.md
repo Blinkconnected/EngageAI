@@ -16,6 +16,25 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **AI Autopilot can now step in three different ways, and you choose
+  which.** Alongside the existing behaviour (AI handles a brand-new
+  conversation in an AI-enabled queue, still on by default), you can now
+  also let AI step in automatically when a conversation is close to
+  missing — or has already missed — its response target, and/or let
+  agents hand a conversation to AI themselves with a new "Ask AI to
+  reply" button. Turn on any combination in Settings → AI; AI still
+  always hands back to a person whenever it isn't confident enough.
+- **AI usage is now tracked per agent.** A new "AI usage by agent"
+  breakdown in Reports shows how much each agent uses AI, how many times
+  they asked AI to take over a conversation, and how often AI stepped in
+  on their conversations on its own because a response target was
+  slipping. Usage over time can be viewed daily, weekly or monthly.
+- **Every AI Autopilot reply is recorded in the activity log**, including
+  what triggered it (an agent's request or an automatic response-target
+  trigger), who asked for it, when, and which conversation it belongs to.
+- Replies an agent wrote with AI's help are now recorded separately from
+  both fully automatic AI replies and replies written entirely by hand,
+  so reporting can tell the three apart.
 - The Dashboard now shows a live "SLA breached" count: how many
   conversations are open or pending right now and have already missed a
   service-level agreement target. It turns red the moment that number is

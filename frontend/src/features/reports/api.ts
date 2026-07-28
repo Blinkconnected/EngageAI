@@ -5,6 +5,8 @@ import type {
   AgentDashboard,
   AgentPerformanceRow,
   AiOperationRow,
+  AiUsageGranularity,
+  AiUsageReport,
   ConversationStatsRow,
   CsatReport,
   DateRange,
@@ -113,6 +115,23 @@ export function useCsatReportQuery(range: DateRange) {
 async function fetchAiReport(range: DateRange): Promise<AiOperationRow[]> {
   const { data } = await apiClient.get<AiOperationRow[]>('/reports/ai', { params: range })
   return data
+}
+
+async function fetchAiUsageReport(
+  range: DateRange,
+  granularity: AiUsageGranularity,
+): Promise<AiUsageReport> {
+  const { data } = await apiClient.get<AiUsageReport>('/reports/ai/usage', {
+    params: { ...range, granularity },
+  })
+  return data
+}
+
+export function useAiUsageReportQuery(range: DateRange, granularity: AiUsageGranularity) {
+  return useQuery({
+    queryKey: ['reports', 'ai-usage', range, granularity],
+    queryFn: () => fetchAiUsageReport(range, granularity),
+  })
 }
 
 export function useAiReportQuery(range: DateRange) {

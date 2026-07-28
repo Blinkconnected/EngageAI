@@ -73,7 +73,17 @@ function AutopilotSettingsCard({ company }: { company: Company }) {
   const updateMutation = useUpdateCompanyMutation()
 
   const savedAutopilot = company.settings.ai?.autopilot
+  // Defaults mirror the backend's own readers exactly (see
+  // domain/company_settings.py): the new-conversation mode defaults ON
+  // because it is the behavior that predates modes, the other two OFF.
+  const savedOnNewConversation = savedAutopilot?.activate_on_new_conversation ?? true
+  const savedOnSla = savedAutopilot?.activate_on_sla ?? false
+  const savedOnAgentRequest = savedAutopilot?.activate_on_agent_request ?? false
+
   const [enabled, setEnabled] = useState(savedAutopilot?.enabled ?? false)
+  const [onNewConversation, setOnNewConversation] = useState(savedOnNewConversation)
+  const [onSla, setOnSla] = useState(savedOnSla)
+  const [onAgentRequest, setOnAgentRequest] = useState(savedOnAgentRequest)
   const [thresholdPercent, setThresholdPercent] = useState(
     Math.round((savedAutopilot?.confidence_threshold ?? 0.7) * 100).toString(),
   )
@@ -82,13 +92,27 @@ function AutopilotSettingsCard({ company }: { company: Company }) {
   const isValid = Number.isFinite(parsedThreshold) && parsedThreshold >= 0 && parsedThreshold <= 100
   const isDirty =
     enabled !== (savedAutopilot?.enabled ?? false) ||
+    onNewConversation !== savedOnNewConversation ||
+    onSla !== savedOnSla ||
+    onAgentRequest !== savedOnAgentRequest ||
     parsedThreshold !== Math.round((savedAutopilot?.confidence_threshold ?? 0.7) * 100)
 
   function handleSave() {
     if (!isValid) return
+    // The whole autopilot object is sent every time: the backend merges
+    // settings only one level deep, so a partial autopilot payload
+    // replaces the sub-object and would silently drop the modes.
     updateMutation.mutate({
       settings: {
-        ai: { autopilot: { enabled, confidence_threshold: parsedThreshold / 100 } },
+        ai: {
+          autopilot: {
+            enabled,
+            confidence_threshold: parsedThreshold / 100,
+            activate_on_new_conversation: onNewConversation,
+            activate_on_sla: onSla,
+            activate_on_agent_request: onAgentRequest,
+          },
+        },
       },
     })
   }
@@ -119,6 +143,46 @@ function AutopilotSettingsCard({ company }: { company: Company }) {
             }
             label={t('AiSettingsPanel.autopilotEnableLabel')}
           />
+
+          {enabled && (
+            <Stack spacing={0.5} sx={{ pl: 1.5, borderLeft: 2, borderColor: 'divider' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {t('AiSettingsPanel.activationModesLabel')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                {t('AiSettingsPanel.activationModesDescription')}
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={onNewConversation}
+                    onChange={(event) => setOnNewConversation(event.target.checked)}
+                  />
+                }
+                label={t('AiSettingsPanel.activateOnNewConversationLabel')}
+              />
+              <FormControlLabel
+                control={
+                  <Switch checked={onSla} onChange={(event) => setOnSla(event.target.checked)} />
+                }
+                label={t('AiSettingsPanel.activateOnSlaLabel')}
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={onAgentRequest}
+                    onChange={(event) => setOnAgentRequest(event.target.checked)}
+                  />
+                }
+                label={t('AiSettingsPanel.activateOnAgentRequestLabel')}
+              />
+              {!onNewConversation && !onSla && !onAgentRequest && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  {t('AiSettingsPanel.noActivationModeWarning')}
+                </Alert>
+              )}
+            </Stack>
+          )}
 
           {enabled && (
             <TextField

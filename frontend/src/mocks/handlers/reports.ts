@@ -4,6 +4,7 @@ import type {
   AgentDashboard,
   AgentPerformanceRow,
   AiOperationRow,
+  AiUsageReport,
   ConversationStatsRow,
   CsatReport,
   ExecutiveDashboard,
@@ -121,6 +122,24 @@ function exportResponse() {
   })
 }
 
+export const MOCK_AI_USAGE_REPORT: AiUsageReport = {
+  by_operation: MOCK_AI_ROWS,
+  by_agent: [
+    {
+      agent_id: 'a1',
+      agent_name: 'Grace Blake',
+      total_calls: 9,
+      autopilot_agent_requests: 3,
+      autopilot_sla_triggers: 1,
+    },
+  ],
+  trend: [
+    { bucket_start: '2026-01-01', calls: 4 },
+    { bucket_start: '2026-01-02', calls: 5 },
+  ],
+  total_calls: 9,
+}
+
 export const reportsHandlers = [
   http.get(`${API_BASE_URL}/reports/executive-dashboard`, ({ request }) =>
     isExportRequest(request) ? exportResponse() : HttpResponse.json(MOCK_EXECUTIVE_DASHBOARD),
@@ -143,6 +162,7 @@ export const reportsHandlers = [
   http.get(`${API_BASE_URL}/reports/csat`, ({ request }) =>
     isExportRequest(request) ? exportResponse() : HttpResponse.json(MOCK_CSAT_REPORT),
   ),
+  http.get(`${API_BASE_URL}/reports/ai/usage`, () => HttpResponse.json(MOCK_AI_USAGE_REPORT)),
   http.get(`${API_BASE_URL}/reports/ai`, ({ request }) =>
     isExportRequest(request) ? exportResponse() : HttpResponse.json(MOCK_AI_ROWS),
   ),

@@ -158,6 +158,11 @@ async function pickConversation(conversationId: string): Promise<Conversation> {
   return data
 }
 
+async function requestAutopilot(conversationId: string): Promise<Conversation> {
+  const { data } = await apiClient.post<Conversation>(`/conversations/${conversationId}/autopilot`)
+  return data
+}
+
 async function releaseConversation(conversationId: string): Promise<Conversation> {
   const { data } = await apiClient.post<Conversation>(`/conversations/${conversationId}/release`)
   return data
@@ -301,6 +306,24 @@ export function usePickConversationMutation() {
     onSuccess: (data, conversationId) => {
       queryClient.setQueryData(CONVERSATION_KEY(conversationId), data)
       void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+    },
+  })
+}
+
+/** Hands a conversation to AI Autopilot at the agent's explicit request
+ * — the "On Agent Request" activation mode, which an administrator must
+ * have enabled (the API 409s otherwise). Autopilot may still decline and
+ * hand straight back if it isn't confident enough, in which case the
+ * returned conversation simply has `autopilot_active: false`. */
+export function useRequestAutopilotMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => requestAutopilot(conversationId),
+    onSuccess: (data, conversationId) => {
+      queryClient.setQueryData(CONVERSATION_KEY(conversationId), data)
+      void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
+      // Autopilot's reply is a new message on the thread.
+      void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY(conversationId) })
     },
   })
 }

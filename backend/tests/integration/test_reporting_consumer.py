@@ -3,6 +3,7 @@ upserts the right ``*_daily_stats`` row(s). See
 ``docs/architecture/reports-analytics.md``.
 """
 
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -10,8 +11,10 @@ from uuid import uuid4
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from blinkengage.infrastructure.database.models.agent import Agent
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.reporting import (
+    AgentAiDailyStats,
     AgentDailyStats,
     AiDailyStats,
     ConversationDailyStats,
@@ -328,6 +331,92 @@ class TestAiCompleted:
             stats = (await db_session.execute(select(AiDailyStats))).scalar_one()
             assert stats.operation == "suggest_reply"
             assert stats.calls_count == 2
+
+
+class TestPerAgentAiUsage:
+    async def test_ai_completed_with_an_actor_also_counts_against_that_agent(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        company_id = await _company_id(client, owner_headers)
+        agent_id = await _create_agent(client, owner_headers, "ai.user@acme.example")
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            agent = await db_session.get(Agent, uuid.UUID(agent_id))
+            assert agent is not None
+            actor_user_id = str(agent.user_id)
+
+        event = _event(
+            event_type="ai.completed",
+            company_id=company_id,
+            payload={"operation": "suggest_reply"},
+        )
+        event["actor_user_id"] = actor_user_id
+        async with session_factory() as db_session:
+            await handle_event(event, db_session)
+            await db_session.commit()
+
+        async with session_factory() as db_session:
+            # Company-wide count is unchanged in shape...
+            company_stats = (await db_session.execute(select(AiDailyStats))).scalar_one()
+            assert company_stats.calls_count == 1
+            # ...and the same call is now attributable to the agent.
+            agent_stats = (await db_session.execute(select(AgentAiDailyStats))).scalar_one()
+            assert str(agent_stats.agent_id) == agent_id
+            assert agent_stats.operation == "suggest_reply"
+            assert agent_stats.calls_count == 1
+
+    async def test_ai_completed_without_an_actor_stays_company_wide_only(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """AI Autopilot's own unattended calls have no human behind them —
+        those must not invent an agent to attribute usage to."""
+        company_id = await _company_id(client, owner_headers)
+        event = _event(
+            event_type="ai.completed",
+            company_id=company_id,
+            payload={"operation": "suggest_autopilot_reply"},
+        )
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            await handle_event(event, db_session)
+            await db_session.commit()
+
+        async with session_factory() as db_session:
+            assert (await db_session.execute(select(AiDailyStats))).scalar_one().calls_count == 1
+            assert (await db_session.execute(select(AgentAiDailyStats))).scalars().all() == []
+
+    async def test_autopilot_replied_records_the_trigger_as_its_own_operation(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """Separating "AI the agent asked for" from "AI that stepped in on
+        its own" is the whole point of the trigger dimension."""
+        company_id = await _company_id(client, owner_headers)
+        agent_id = await _create_agent(client, owner_headers, "requester@acme.example")
+
+        event = _event(
+            event_type="conversation.autopilot_replied",
+            company_id=company_id,
+            payload={
+                "conversation_id": str(uuid4()),
+                "message_id": str(uuid4()),
+                "trigger": "sla",
+                "confidence": 0.9,
+                "assigned_agent_id": agent_id,
+            },
+        )
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as db_session:
+            await handle_event(event, db_session)
+            await db_session.commit()
+
+        async with session_factory() as db_session:
+            company_stats = (await db_session.execute(select(AiDailyStats))).scalar_one()
+            assert company_stats.operation == "autopilot_sla"
+            # No human asked for it, so it's credited to the conversation's
+            # assigned agent rather than to nobody.
+            agent_stats = (await db_session.execute(select(AgentAiDailyStats))).scalar_one()
+            assert str(agent_stats.agent_id) == agent_id
+            assert agent_stats.operation == "autopilot_sla"
 
 
 class TestCsatSubmitted:
