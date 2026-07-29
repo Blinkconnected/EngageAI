@@ -11,6 +11,7 @@ from blinkengage.infrastructure.database.models.channel_config import ChannelCon
 from blinkengage.infrastructure.database.models.channel_connection_log import (
     ChannelConnectionLog,
 )
+from blinkengage.infrastructure.database.models.collections import DunningNotice
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -60,6 +61,10 @@ from blinkengage.infrastructure.database.models.message import (
 from blinkengage.infrastructure.database.models.notification import Notification
 from blinkengage.infrastructure.database.models.notification_preference import (
     NotificationPreference,
+)
+from blinkengage.infrastructure.database.models.payments import (
+    PaymentIntent,
+    PaymentRefund,
 )
 from blinkengage.infrastructure.database.models.pricing import (
     CompanyPricingProfileAssignment,
@@ -120,7 +125,10 @@ __all__ = [
     "DocumentNumberSequence",
     "Invoice",
     "InvoiceLine",
+    "DunningNotice",
     "Payment",
+    "PaymentIntent",
+    "PaymentRefund",
     "PaymentAllocation",
     "UsagePeriodLine",
     "UsageRecord",

@@ -22,10 +22,12 @@ from blinkengage.domain.exceptions import (
     InvoiceNotPayableError,
     InvoiceStateError,
     MetricNotPriceableError,
+    PaymentProcessingError,
     PricingConcurrentEditError,
     PricingNotConfiguredError,
     PricingRangeOverlapError,
     RateAlreadyEffectiveError,
+    RefundNotPermittedError,
     SystemProfileNotPriceableError,
 )
 from blinkengage.domain.invoicing import InvalidInvoiceTransitionError
@@ -43,6 +45,8 @@ _STATUS_MAP: dict[type[Exception], int] = {
     InvoiceStateError: status.HTTP_409_CONFLICT,
     InvalidInvoiceTransitionError: status.HTTP_409_CONFLICT,
     InvoiceNotPayableError: status.HTTP_409_CONFLICT,
+    PaymentProcessingError: status.HTTP_409_CONFLICT,
+    RefundNotPermittedError: status.HTTP_409_CONFLICT,
     PricingRangeOverlapError: status.HTTP_409_CONFLICT,
     PricingConcurrentEditError: status.HTTP_409_CONFLICT,
     RateAlreadyEffectiveError: status.HTTP_409_CONFLICT,

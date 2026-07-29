@@ -156,6 +156,23 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
+    # --- Payments (see docs/architecture/billing.md) ---
+    # Unset by default: a deployment without PayPal credentials simply
+    # has no PayPal provider registered, rather than one that fails at
+    # the first charge. Manual (bank transfer) is always available.
+    paypal_client_id: str | None = None
+    paypal_client_secret: str | None = None
+    # PayPal's own id for the webhook subscription. Without it inbound
+    # webhooks cannot be verified and are refused — deliberately, since
+    # an unverified webhook can mark an invoice paid.
+    paypal_webhook_id: str | None = None
+    paypal_sandbox: bool = True
+    paypal_brand_name: str = "Blink Engage"
+    # Where PayPal sends the customer back after approving or abandoning
+    # a payment. The invoice id is appended as a query parameter.
+    payment_return_url: str = "http://localhost:5173/billing/payment/complete"
+    payment_cancel_url: str = "http://localhost:5173/billing/payment/cancelled"
+
     # --- Rate limiting ---
     rate_limit_per_minute: int = 60
     # Tighter than the generic limit above, and per-*user* rather than

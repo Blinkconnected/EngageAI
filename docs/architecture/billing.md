@@ -740,17 +740,205 @@ Pricing keeps its own dedicated trail (`pricing_audit_log`) — pricing is
 configuration rather than a financial document, and the two are read by
 different people asking different questions.
 
+## The payment engine
+
+Phase 4. Where the previous phases decided *what* a customer owes, this
+one moves the money — and then chases it when it does not arrive.
+
+### Providers
+
+Four operations, expressed in provider-neutral terms
+(`infrastructure/payments/base.py`): start a payment, read its state,
+refund it, verify a webhook. Nothing in the contract knows about
+invoices; a provider moves money, and deciding which invoice that money
+settles stays the invoice engine's job. That seam is why a second
+gateway is an adapter rather than a migration.
+
+Two implementations ship:
+
+- **PayPal**, on the **Orders v2** API. Deliberately not Subscriptions:
+  this product bills in arrears from measured usage, so the amount is
+  not known until the period closes and there is nothing for a
+  fixed-price recurring plan to charge. An order is created for an
+  invoice that already exists, for an amount already calculated.
+- **Manual** — bank transfers, cheques, cash. A first-class provider,
+  not a null object: enterprise and government customers pay by wire,
+  and that payment deserves the same ledger row, allocation and audit
+  trail as a card. One payment path instead of a gateway path plus an
+  "and also, manually" path, because the second one is always the one
+  that ends up under-tested.
+
+`PaymentProviderRegistry` is built from settings, so a deployment
+without PayPal credentials simply has no PayPal provider rather than one
+that fails at the first charge. `GET /platform/payments/providers`
+reports what is actually available, so a console never offers a button
+that cannot work.
+
+### Intents versus payments
+
+A **payment intent** is money *requested*. A **payment** is money that
+*arrived*. They are separate tables on purpose: a customer who opens a
+checkout page and closes it must leave nothing in the ledger.
+
+Capture is idempotent at three independent levels, because gateway
+webhooks are delivered at least once and charging twice is the one
+failure a payments integration cannot undo by itself:
+
+1. the intent's guarded `UPDATE ... WHERE status = 'PENDING'`,
+2. the payment's `(provider, provider_reference)` unique constraint,
+3. PayPal's own `PayPal-Request-Id` idempotency header.
+
+The reference stored on a payment is the **capture** id, not the
+order id — a refund is issued against the capture, and storing the order
+id would leave the refund path unable to find it. (The retired
+subscription integration made exactly the mirror-image mistake, reading
+a capture id as a subscription id and dropping every payment as
+unknown.)
+
+**A declined payment is not an error.** `capture()` records the failure
+and returns `None` rather than raising. Raising would roll the request
+back and take the recorded reason with it, leaving the intent stuck at
+`PENDING` for ever and discarding the one thing the customer needs to
+know — that their card was declined. The same reasoning applies to a
+refund the provider refuses: the `payment_refunds` row *is* the record
+of the attempt, so nothing raises once it exists. The exception is
+`RefundNotPermittedError`, which is raised before the provider is
+contacted, when there is nothing recorded to lose.
+
+### Reconciliation
+
+A webhook that is never delivered leaves a customer who has paid looking
+unpaid — which ends in a suspension, and is the most damaging billing
+failure there is. `reconcile_pending()` asks the provider directly about
+intents that have sat pending for 20 minutes, and it runs **before** the
+dunning pass in the hourly sweep so a delivery failure can never cause a
+notice, let alone a suspension.
+
+### Reversal
+
+An allocation is never deleted; it is marked `reversed`, with the reason
+and the timestamp. Needed when a payment was matched to the wrong
+document, when a transfer bounces, or on a chargeback.
+
+This is why `InvoiceStatus.PAID` is **no longer terminal**. An invoice
+can stop being paid without being wrong, and an invoice frozen at `PAID`
+would be a system insisting it has been paid when it has not. `PAID`
+reopens to `ISSUED` — or to `OVERDUE` when the due date has already
+passed, because a reversal does not make a late invoice punctual. It
+never reopens to `DRAFT`, and the only caller is
+`PaymentService.reverse_allocation`, which writes an audit event
+carrying the reason.
+
+The `(payment_id, invoice_id)` uniqueness is **partial**, covering live
+allocations only. A total constraint made the commonest reason to
+reverse — the amount was wrong — impossible to correct, because the
+replacement allocation collided with the reversal it replaced.
+
+### Refunds
+
+A refund refuses to return money still allocated to an invoice. The
+obstacle is the point: reverse the allocation first, stating why, and
+the invoice correctly reopens as unpaid. The alternative is a refund
+that silently leaves an invoice marked paid with no money behind it, and
+nobody discovers that until a reconciliation months later.
+
+Refunds are their own table rather than negative payments, because a
+negative row breaks every sum written before refunds existed — and the
+sums that break silently are the dangerous ones. Pending refunds count
+against the refundable balance: a refund in flight will land, and
+double-refunding is unrecoverable.
+
+## Collections
+
+### Billing status is not company status
+
+`companies.billing_status` is a **separate column** from
+`companies.status`, not another member of that enum. Non-payment and a
+compliance breach are different facts with different remedies — the
+first is lifted by paying, the second only by an operator — and a
+company can be in both at once. Merging them would let the collections
+sweep silently lift a compliance suspension the moment an invoice was
+paid, and would make the commonest support question ("why can we not log
+in?") unanswerable.
+
+| Billing status | Meaning |
+| --- | --- |
+| `active` | Nothing outstanding, or nothing yet due |
+| `payment_due` | An invoice is issued, not yet past its due date |
+| `payment_overdue` | An invoice is past its due date |
+| `payment_suspended` | The dunning sequence ran out |
+
+The status is **computed from open invoices**, never set by hand — a
+status somebody can type in is one that drifts from the ledger.
+
+### The dunning sequence
+
+A pure function of dates (`domain/collections.py`), so "the customer
+says they got two final notices" is a unit test rather than an
+investigation.
+
+| Stage | Offset from due date |
+| --- | --- |
+| `upcoming` | −3 days |
+| `due_today` | 0 |
+| `first_notice` | +3 |
+| `second_notice` | +7 |
+| `final_notice` | +14 |
+| `suspended` | +21 |
+
+It ends 21 days past the due date, matching the Net 21 terms invoices
+are issued on: a customer is never suspended before they have had the
+full payment window *plus* the whole sequence of warnings.
+
+Two properties worth stating:
+
+- **Notices catch up rather than skip.** If the sweep is down for a
+  week, the notices it missed still go out, in order. Skipping them
+  would land the suspension with no warnings behind it — precisely the
+  thing a customer would dispute, and would be right to.
+- **A notice is sent once.** `(invoice_id, stage)` is unique, so a sweep
+  that runs twice, or a worker that dies mid-pass, cannot send a second
+  final notice. The constraint does the work, not a flag somebody has to
+  remember to check.
+
+### Suspension and access
+
+Suspension is automatic at the end of the sequence, with two escapes.
+
+**Billing administrators keep access.** Anyone holding `billing.read`
+can still sign in to a workspace suspended for non-payment. Locking out
+everybody who can pay leaves nobody able to pay, which turns a late
+invoice into a permanently lost customer. The refusal message says so —
+"contact your administrator" is useless advice to the administrator, who
+is the person reading it.
+
+**Companies can be exempted.** `billing_never_auto_suspend` covers
+enterprise and government accounts on payment cycles longer than any
+sane dunning sequence. Notices still go out and invoices still show as
+overdue; only enforcement is withheld, and *that it was withheld* is
+itself audited on every sweep — a silently skipped account is
+indistinguishable from one the sweep failed to reach.
+
+Reinstatement runs in the same pass as suspension, and recomputes the
+resulting status rather than assuming `active`: a company with a second
+unpaid invoice comes back as overdue, not as though nothing were owed.
+
+### The sweep
+
+`blinkengage.billing.collections_sweep`, hourly. Reconcile first, dun
+second, for the reason given above. Every step is idempotent, so the
+notices a customer receives depend on the dates, not on how often the
+task runs.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:
 
-- **Billing states** — Active / Payment Due / Payment Overdue / Payment
-  Suspended, as an axis separate from compliance suspension.
-- **Payment gateway** — deliberately out of scope until the phases above
-  land.
+- **Email and WhatsApp dunning delivery** — notices are in-app today.
+  The notification type (`billing.dunning`) and the recipient set are in
+  place; only the additional transports are missing.
+- **A customer-facing payment page** — checkout is started through the
+  platform API, so today an operator sends the approval link. The intent
+  and return/cancel URLs are already modelled for a self-service page.
 - **Contracts, taxes, discounts, tiered pricing** — later phases.
-
-Company suspension today is the single compliance-style suspension
-described in [`platform-admin.md`](platform-admin.md). Splitting it into
-a billing axis and a compliance axis belongs to the billing-states phase
-above and has not been done.
+- **Partial-payment plans and write-offs.**

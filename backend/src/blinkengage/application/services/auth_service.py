@@ -24,6 +24,7 @@ from blinkengage.core.security import (
     hash_password,
     verify_password,
 )
+from blinkengage.domain.collections import PRODUCT_BLOCKING_STATUSES
 from blinkengage.domain.company_settings import min_password_length
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
@@ -188,6 +189,20 @@ class AuthService:
             raise CompanyNotActiveError("closed")
         if company.status is CompanyStatus.SUSPENDED:
             raise CompanyNotActiveError("suspended")
+        # Billing suspension is checked *after* compliance suspension and
+        # never instead of it: a company can be in both, and the
+        # compliance one is not lifted by paying.
+        #
+        # Unlike compliance suspension this one has an exemption —
+        # anyone who can see the bill can still sign in. Locking the
+        # billing administrator out of a workspace suspended for
+        # non-payment leaves nobody able to pay, which turns a late
+        # invoice into a permanently lost customer.
+        if (
+            company.billing_status in PRODUCT_BLOCKING_STATUSES
+            and "billing.read" not in effective_permissions(user)
+        ):
+            raise CompanyNotActiveError("payment_suspended")
 
     async def issue_tokens(self, user: User) -> IssuedTokens:
         permissions = sorted(effective_permissions(user))

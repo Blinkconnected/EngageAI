@@ -37,7 +37,10 @@ class FinancialEntityType(StrEnum):
     CREDIT_NOTE = "credit_note"
     PAYMENT = "payment"
     PAYMENT_ALLOCATION = "payment_allocation"
+    PAYMENT_INTENT = "payment_intent"
+    PAYMENT_REFUND = "payment_refund"
     BILLING_PERIOD = "billing_period"
+    COMPANY_BILLING = "company_billing"
 
 
 class FinancialEventType(StrEnum):
@@ -59,11 +62,31 @@ class FinancialEventType(StrEnum):
     INVOICE_PAID = "invoice.paid"
     INVOICE_OVERDUE = "invoice.overdue"
     INVOICE_CANCELLED = "invoice.cancelled"
+    # Only reachable through an allocation reversal — a chargeback,
+    # a bounced transfer, or money applied to the wrong document.
+    INVOICE_REOPENED = "invoice.reopened"
 
     # --- Money movement ---
     PAYMENT_ALLOCATED = "payment.allocated"
     PAYMENT_ALLOCATION_REVERSED = "payment.allocation_reversed"
     PAYMENT_REFUNDED = "payment.refunded"
+    PAYMENT_REFUND_FAILED = "payment.refund_failed"
+
+    # --- Gateway attempts ---
+    # An intent is a request for money, not money. These are
+    # deliberately not in MONEY_MOVING_EVENTS: an investigation into
+    # a balance wants the capture, not the three abandoned checkout
+    # attempts that preceded it. They are still recorded, because
+    # "the customer tried to pay four times and it kept failing" is
+    # exactly what a support case needs.
+    PAYMENT_INTENT_CREATED = "payment_intent.created"
+    PAYMENT_INTENT_COMPLETED = "payment_intent.completed"
+    PAYMENT_INTENT_FAILED = "payment_intent.failed"
+
+    # --- Collections ---
+    DUNNING_NOTICE_SENT = "collections.notice_sent"
+    BILLING_SUSPENDED = "collections.suspended"
+    BILLING_REINSTATED = "collections.reinstated"
 
 
 #: Events that change what a customer owes or has paid. Separated from
@@ -77,6 +100,10 @@ MONEY_MOVING_EVENTS: frozenset[FinancialEventType] = frozenset(
         FinancialEventType.PAYMENT_ALLOCATION_REVERSED,
         FinancialEventType.PAYMENT_REFUNDED,
         FinancialEventType.CREDIT_NOTE_ISSUED,
+        # Reopening restores a balance the customer owes, which is a
+        # change to what they owe even though no money moved in that
+        # instant.
+        FinancialEventType.INVOICE_REOPENED,
     }
 )
 

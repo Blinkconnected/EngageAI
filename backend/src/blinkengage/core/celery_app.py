@@ -23,6 +23,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.events.relay",
         "blinkengage.infrastructure.tasks.sla_sweep_task",
         "blinkengage.infrastructure.tasks.billing_period_close_task",
+        "blinkengage.infrastructure.tasks.collections_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
         "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
         "blinkengage.infrastructure.tasks.channel_health_check_task",
@@ -68,6 +69,18 @@ celery_app.conf.update(
         # close is idempotent, so running it often is free.
         "close-due-billing-periods": {
             "task": "blinkengage.billing.close_due_periods",
+            "schedule": 3600.0,
+        },
+        # Reconciles pending gateway payments, then runs the dunning
+        # sequence — see docs/architecture/billing.md. Hourly, for the
+        # same reason as the period close: a daily job that misses its
+        # window delays every notice by a day, and a delayed final
+        # notice means somebody is suspended with less warning than the
+        # policy promises. Every step is idempotent, so the notices a
+        # customer receives depend on the dates, not on how often this
+        # runs.
+        "collections-sweep": {
+            "task": "blinkengage.billing.collections_sweep",
             "schedule": 3600.0,
         },
         # See docs/architecture/email-channel.md — polls every active

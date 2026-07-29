@@ -4,16 +4,19 @@ Every other domain entity in the platform is scoped to a company via a
 ``company_id`` foreign key — this is the multi-tenancy boundary.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Enum, String
+from sqlalchemy import JSON, Boolean, Enum, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from blinkengage.domain.collections import BillingStatus
 from blinkengage.infrastructure.database.base import (
     Base,
     SoftDeleteMixin,
     TimestampMixin,
+    UtcDateTime,
     UUIDPrimaryKeyMixin,
 )
 from blinkengage.infrastructure.database.encrypted_json import EncryptedJSON
@@ -42,6 +45,29 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         Enum(CompanyStatus, native_enum=False, length=20),
         nullable=False,
         default=CompanyStatus.TRIAL,
+    )
+    # Deliberately a *separate* column from `status` above, not another
+    # member of CompanyStatus. A company suspended for non-payment and
+    # one suspended for a compliance breach are different facts with
+    # different remedies: the first is lifted by paying, the second only
+    # by an operator, and a company can be in both at once. Collapsing
+    # them would make "why can we not log in?" unanswerable — and would
+    # let the collections sweep silently un-suspend a compliance
+    # suspension the moment an invoice was paid.
+    # See domain/collections.py and docs/architecture/billing.md.
+    billing_status: Mapped[BillingStatus] = mapped_column(
+        Enum(BillingStatus, native_enum=False, length=20),
+        nullable=False,
+        default=BillingStatus.ACTIVE,
+        server_default=BillingStatus.ACTIVE.name,
+    )
+    billing_suspended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
+    # Enterprise and government customers routinely pay on cycles longer
+    # than any sane dunning sequence. Flagging one exempts it from
+    # automatic suspension only — the notices still go out, and the
+    # invoice still shows as overdue, so nothing is hidden.
+    billing_never_auto_suspend: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
     # Admin-configurable preferences (timezone, business hours, branding,
     # ...) — a portable JSON blob like ``Customer.custom_fields`` rather

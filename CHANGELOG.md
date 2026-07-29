@@ -16,6 +16,56 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Customers can now pay their invoices, and unpaid invoices are chased
+  automatically.** Invoices can be paid by **PayPal** or recorded as
+  **bank transfers**, and the two are treated identically everywhere
+  afterwards — an enterprise customer paying by wire gets the same
+  receipt, the same allocation and the same audit trail as one paying by
+  card. Paying twice is impossible: if PayPal delivers the same
+  notification more than once, or a customer double-clicks "Pay", the
+  money is taken exactly once. If a notification from PayPal goes
+  missing entirely, the system asks PayPal directly within twenty
+  minutes rather than waiting to be told — a customer who has paid never
+  drifts towards a suspension because a message was dropped in transit.
+  If a card is declined, the customer is told what PayPal said
+  ("instrument declined") rather than a bare "payment failed".
+
+- **Overdue invoices now follow a published reminder sequence.** A
+  courtesy note three days before the due date, one on the day, then
+  reminders at three, seven and fourteen days late, and suspension at
+  twenty-one — which is the full Net 21 payment window *plus* the entire
+  sequence of warnings before anything is cut off. Each reminder is sent
+  **once**, no matter how often the system checks; and if the system is
+  down for a week, the reminders it missed still go out in order rather
+  than being skipped, so a suspension is never the first thing a
+  customer hears about.
+
+- **Billing suspension is now separate from compliance suspension.** A
+  company behind on payment and a company suspended by an operator are
+  different situations with different remedies, and they are now tracked
+  separately: paying an invoice can no longer quietly lift a suspension
+  an operator imposed for another reason. Anyone who can see the bill
+  keeps access to a workspace suspended for non-payment — locking out
+  the people who can pay leaves nobody able to pay — and the message
+  they see says exactly that, rather than sending them to their
+  administrator, who is usually the person reading it. Enterprise and
+  government accounts on long payment cycles can be **exempted from
+  automatic suspension**; they still receive every reminder, and each
+  time enforcement is withheld it is recorded.
+
+- **Payments can be reversed and refunded.** A payment matched to the
+  wrong invoice, a bounced transfer or a chargeback can be reversed with
+  a stated reason — the record is kept, never deleted, and the invoice
+  correctly goes back to being unpaid (still marked overdue if it
+  already was; a reversal doesn't make a late invoice punctual).
+  Refunding money that is still settling an invoice is refused outright,
+  so an invoice can never be left marked "paid" with no money behind it.
+  Every reversal, refund and failed refund attempt is recorded.
+
+- **Billing standing at a glance** for the platform operator: which
+  companies are behind, how much is outstanding, and the date the next
+  reminder — or the suspension — is due.
+
 - **The installation now runs under a real domain name with a trusted
   HTTPS certificate** (`engage.blinkconnected.com`), replacing the
   self-signed certificate tied to the server's bare IP address. This is

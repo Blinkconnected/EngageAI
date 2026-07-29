@@ -63,9 +63,20 @@ _ALLOWED: Final[dict[InvoiceStatus, frozenset[InvoiceStatus]]] = {
     # not pass back through ISSUED, because "was late, then paid" is the
     # true history and rewriting it to look punctual would be a lie.
     InvoiceStatus.OVERDUE: frozenset({InvoiceStatus.PAID, InvoiceStatus.CANCELLED}),
-    # Terminal. A paid invoice that needs correcting gets a credit note;
-    # a cancelled one stays cancelled and its number stays consumed.
-    InvoiceStatus.PAID: frozenset(),
+    # A paid invoice that needs *correcting* gets a credit note. But an
+    # invoice can stop being paid without being wrong: a chargeback, a
+    # bounced transfer, or an allocation reversed because the money was
+    # applied to the wrong document. In each case the money genuinely is
+    # no longer there, and an invoice frozen at PAID would be a system
+    # insisting it has been paid when it has not.
+    #
+    # So PAID reopens — but only back to a state that still owes money,
+    # never to DRAFT, and only through
+    # ``PaymentService.reverse_allocation``. Nothing else calls it, and
+    # every reversal writes an audit event carrying the reason.
+    InvoiceStatus.PAID: frozenset({InvoiceStatus.ISSUED, InvoiceStatus.OVERDUE}),
+    # Genuinely terminal. A cancelled invoice stays cancelled and its
+    # number stays consumed.
     InvoiceStatus.CANCELLED: frozenset(),
 }
 

@@ -38,6 +38,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -323,7 +324,19 @@ class PaymentAllocation(UUIDPrimaryKeyMixin, Base):
 
     __tablename__ = "payment_allocations"
     __table_args__ = (
-        UniqueConstraint("payment_id", "invoice_id", name="uq_payment_allocations_pair"),
+        # Partial, not a plain unique constraint: one *live* allocation
+        # per payment/invoice pair, but any number of reversed ones. A
+        # total constraint would make the commonest reason to reverse —
+        # the amount was wrong — impossible to correct, because the
+        # replacement allocation collides with the reversal it replaces.
+        Index(
+            "uq_payment_allocations_live_pair",
+            "payment_id",
+            "invoice_id",
+            unique=True,
+            postgresql_where=text("NOT reversed"),
+            sqlite_where=text("NOT reversed"),
+        ),
         CheckConstraint("amount > 0", name="ck_payment_allocations_amount_positive"),
         Index("ix_payment_allocations_invoice", "invoice_id"),
     )
@@ -338,6 +351,11 @@ class PaymentAllocation(UUIDPrimaryKeyMixin, Base):
     #: Set when an allocation is reversed rather than deleted — money
     #: movement is never erased, only superseded.
     reversed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reversed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
+    #: Mandatory in practice, though nullable in the column: a reversal
+    #: with no stated reason is the hardest entry in a ledger to explain
+    #: later. The service refuses to reverse without one.
+    reversal_reason: Mapped[str | None] = mapped_column(Text, default=None)
 
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=func.now(), nullable=False

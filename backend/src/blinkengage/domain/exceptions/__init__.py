@@ -42,12 +42,21 @@ class CompanyNotActiveError(AuthenticationError):
 
     def __init__(self, reason: str) -> None:
         self.reason = reason
-        message = (
-            "This workspace has been suspended. Please contact your administrator."
-            if reason == "suspended"
-            else "This workspace is no longer active."
-        )
-        super().__init__(message)
+        # A billing suspension gets its own wording, and deliberately
+        # says what to do about it. "Contact your administrator" is
+        # useless advice to the administrator, who is the person seeing
+        # it — and the fix here is not an administrator's decision but
+        # an unpaid invoice, which anyone with billing access can act on.
+        messages = {
+            "suspended": (
+                "This workspace has been suspended. Please contact your administrator."
+            ),
+            "payment_suspended": (
+                "Access is suspended because of an unpaid invoice. A billing "
+                "administrator can restore it by settling the account."
+            ),
+        }
+        super().__init__(messages.get(reason, "This workspace is no longer active."))
 
 
 class AuthorizationError(DomainError):
@@ -256,6 +265,29 @@ class InvoiceNotPayableError(DomainError):
     """A payment cannot be applied as asked — the invoice is settled or
     cancelled, the amounts do not fit, or the payment belongs to another
     company. 409, for the same reason as ``InvoiceStateError``."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class PaymentProcessingError(DomainError):
+    """A gateway operation could not be carried out — the provider
+    refused it, the intent is no longer pending, or the amounts do not
+    permit it. 409, like the other billing precondition failures: the
+    request was understood and is not allowed in the current state."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class RefundNotPermittedError(DomainError):
+    """A refund was asked for that would return money the system does
+    not hold as unallocated — the payment is already spoken for by an
+    invoice, or has been refunded before. 409.
+
+    Deliberately distinct from ``PaymentProcessingError``: this one is
+    refused *before* the provider is contacted, and the difference
+    matters when reading a log to work out whether money moved."""
 
     def __init__(self, detail: str) -> None:
         super().__init__(detail)

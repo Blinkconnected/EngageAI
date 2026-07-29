@@ -22,6 +22,7 @@ from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
+from blinkengage.application.services.collections_service import CollectionsService
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
@@ -41,6 +42,7 @@ from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
 )
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.payment_service import PaymentService
 from blinkengage.application.services.platform_service import PlatformService
 from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.application.services.queue_service import QueueService
@@ -73,6 +75,7 @@ from blinkengage.infrastructure.database.models.company import CompanyStatus
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
+from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
@@ -133,6 +136,11 @@ from blinkengage.infrastructure.repositories.notification_preference_repository 
 )
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
+)
+from blinkengage.infrastructure.repositories.payments_repository import (
+    AllocationReversalRepository,
+    PaymentIntentRepository,
+    PaymentRefundRepository,
 )
 from blinkengage.infrastructure.repositories.platform_repository import PlatformRepository
 from blinkengage.infrastructure.repositories.pricing_repository import (
@@ -853,6 +861,50 @@ def get_invoice_service(
         period_lines=UsagePeriodLineRepository(session),
         companies=InvoiceCompanyLookup(session),
         events=events,
+        audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
+    )
+
+
+def get_payment_providers(
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> PaymentProviderRegistry:
+    """Built per request from settings rather than cached at import.
+
+    The adapters are cheap (an httpx client per call, an in-memory
+    token) and building them here means a credential change takes effect
+    on redeploy without a stale registry surviving in module state.
+    """
+    return PaymentProviderRegistry.from_settings(settings)
+
+
+def get_payment_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    invoice_service: Annotated[InvoiceService, Depends(get_invoice_service)],
+    providers: Annotated[PaymentProviderRegistry, Depends(get_payment_providers)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> PaymentService:
+    return PaymentService(
+        intents=PaymentIntentRepository(session),
+        refunds=PaymentRefundRepository(session),
+        reversals=AllocationReversalRepository(session),
+        payments=PaymentRepository(session),
+        invoices=InvoiceRepository(session),
+        invoice_service=invoice_service,
+        providers=providers,
+        audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
+        settings=settings,
+    )
+
+
+def get_collections_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    invoice_service: Annotated[InvoiceService, Depends(get_invoice_service)],
+    notifications: Annotated[NotificationService, Depends(get_notification_service)],
+) -> CollectionsService:
+    return CollectionsService(
+        session=session,
+        invoice_service=invoice_service,
+        notifications=notifications,
         audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
     )
 
