@@ -30,6 +30,11 @@ class InvoiceLineResponse(BaseModel):
     description: str
     unit: str
     quantity: Money
+    #: What the free monthly allowance covered, and what remained. Both
+    #: on the line so a customer who had 150 conversations is not told
+    #: they had 50.
+    included_quantity: Money
+    billable_quantity: Money
     unit_amount: Money
     currency: str
     subtotal: Money

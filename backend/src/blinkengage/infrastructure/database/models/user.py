@@ -36,6 +36,7 @@ from blinkengage.infrastructure.database.base import (
     Base,
     SoftDeleteMixin,
     TimestampMixin,
+    UtcDateTime,
     UUIDPrimaryKeyMixin,
 )
 
@@ -84,6 +85,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     company: Mapped["Company | None"] = relationship(back_populates="users")
+    #: When this address was proved to belong to whoever holds it.
+    #: NULL means unverified — see domain/verification.py.
+    email_verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
+
     user_roles: Mapped[list["UserRole"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

@@ -67,6 +67,10 @@ class SnapshotLineResponse(BaseModel):
     metric_display_name: str
     unit: str
     quantity: Quantity
+    #: What the free monthly allowance covered, and what remained.
+    #: ``subtotal`` is computed from the billable part.
+    included_quantity: Quantity
+    billable_quantity: Quantity
     unit_amount: Quantity
     currency: str
     subtotal: Quantity

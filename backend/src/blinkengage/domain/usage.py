@@ -30,6 +30,7 @@ from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
+from blinkengage.domain.allowances import split_quantity
 from blinkengage.domain.money import multiply, to_storage
 
 
@@ -130,7 +131,18 @@ class SnapshotLine:
 
     metric_code: str
     metric_version: int
+    #: Everything that happened, before any allowance. An invoice that
+    #: showed only the billable part would tell a customer who had 150
+    #: conversations that they had 50, which is a document that invites
+    #: a support ticket.
     quantity: Decimal
+    #: How much of ``quantity`` the free monthly allowance covered.
+    included_quantity: Decimal
+    #: ``quantity - included_quantity`` — what ``subtotal`` is computed
+    #: from. Stored rather than derived for the same reason as
+    #: ``subtotal``: a change to how the allowance is applied must never
+    #: alter a historical document.
+    billable_quantity: Decimal
     unit_amount: Decimal
     currency: str
     subtotal: Decimal
@@ -148,20 +160,29 @@ def build_snapshot_line(
     currency: str,
     rate_id: UUID | None,
 ) -> SnapshotLine:
-    """Freezes one line.
+    """Freezes one line, applying the free monthly allowance.
+
+    The allowance is applied **here**, at close time, rather than at
+    invoice generation. The snapshot is the immutable record of what the
+    period cost, and an allowance applied later would mean the same
+    closed period produced different invoices depending on when it was
+    billed.
 
     The subtotal is computed **unrounded** (``money.multiply``) and
     stored at full storage precision. Rounding to the currency happens
     once, later, on the invoice total — rounding each line first and
     summing is how a bill stops matching its own lines.
     """
+    included, billable = split_quantity(metric_code, quantity)
     return SnapshotLine(
         metric_code=metric_code,
         metric_version=metric_version,
         quantity=to_storage(quantity),
+        included_quantity=to_storage(included),
+        billable_quantity=to_storage(billable),
         unit_amount=to_storage(unit_amount),
         currency=currency,
-        subtotal=to_storage(multiply(quantity, unit_amount)),
+        subtotal=to_storage(multiply(billable, unit_amount)),
         rate_id=rate_id,
     )
 

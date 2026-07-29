@@ -293,6 +293,22 @@ class RefundNotPermittedError(DomainError):
         super().__init__(detail)
 
 
+class EmailNotVerifiedError(DomainError):
+    """An unverified company tried to do something rather than just look.
+
+    403, and deliberately distinct from a missing permission: the person
+    *has* the permission, and telling them they lack it would send them
+    to an administrator who cannot help. The fix is a link in their
+    inbox, and the message says so."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Confirm your email address to finish setting up this workspace. "
+            "We sent a link when you signed up — you can request another from "
+            "the banner at the top of the page."
+        )
+
+
 class ConversationNotInQueueError(DomainError):
     """Raised when ``ConversationService.pick()`` is called on a
     conversation with no ``queue_id`` — picking only makes sense for a

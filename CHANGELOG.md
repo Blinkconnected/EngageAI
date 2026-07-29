@@ -14,7 +14,28 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Changed
+
+- **The navigation sidebar now sizes itself to its labels** instead of a
+  fixed width, so nothing is clipped and no space is wasted. This matters
+  most in Arabic, where the same menu needs a different amount of room —
+  "أداة اتفاقيات مستوى الخدمة" no longer runs out of space where the
+  English "SLA Builder" left the column half empty. The dividing line
+  runs the full height of the page in both languages and both themes.
+
 ### Added
+
+- **New workspaces now confirm their email address**, and get **100
+  free conversations every month**. After signing up you can sign in and
+  look around straight away, but sending messages, connecting channels
+  and inviting people wait until you follow the link we email you — with
+  a banner across the top that resends it if it never arrived. Clicking
+  the link twice is fine; it says so rather than claiming the link is
+  broken. Every company then gets its first 100 conversations each month
+  at no charge, and pays its normal rate beyond that. Invoices show all
+  three numbers — what you used, what was included, and what was
+  actually billed — so a bill for 50 conversations out of 150 explains
+  itself. Existing companies and existing invoices are untouched.
 
 - **The email server is now configurable from the platform console**,
   under a new **Email** tab. Previously the mail server could only be

@@ -17,7 +17,7 @@ Each test pins a rule the code has to enforce rather than merely intend:
 """
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -28,7 +28,6 @@ from sqlalchemy import select, update
 from blinkengage.api.deps import get_payment_providers
 from blinkengage.domain.collections import BillingStatus, DunningStage
 from blinkengage.domain.payments import PaymentIntentStatus
-from blinkengage.infrastructure.database.models.collections import DunningNotice
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
 from blinkengage.infrastructure.database.models.invoicing import Invoice
 from blinkengage.infrastructure.payments.base import (
@@ -749,7 +748,6 @@ class TestCollections:
         company_id = await company_id_of(client, owner_headers)
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice = (await issued_invoice(client, headers, period_id))["invoice"]
-        due = date.fromisoformat(invoice["due_date"])
         async with app.state.container.session_factory()() as session:
             await session.execute(
                 update(Invoice)
@@ -773,7 +771,6 @@ class TestSuspensionAccess:
     ) -> None:
         """Locking out everyone who can pay turns a late invoice into a
         permanently lost customer."""
-        headers = await platform_headers(client, app)
         company_id = await company_id_of(client, owner_headers)
         async with app.state.container.session_factory()() as session:
             await session.execute(

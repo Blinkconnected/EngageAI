@@ -11,6 +11,7 @@ export const MOCK_USER: UserProfile = {
     id: '22222222-2222-2222-2222-222222222222',
     name: 'Acme Corp',
     slug: 'acme-corp',
+    verified: true,
   },
   // Every feature, which is what a company with no plan and no
   // overrides actually resolves to — the default the backend guarantees.

@@ -16,6 +16,7 @@ from blinkengage.domain.exceptions import (
     AuthorizationError,
     ConversationAlreadyClaimedError,
     DomainError,
+    EmailNotVerifiedError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     ErpNotConfiguredError,
@@ -33,6 +34,7 @@ from blinkengage.domain.exceptions import (
 from blinkengage.domain.invoicing import InvalidInvoiceTransitionError
 
 _STATUS_MAP: dict[type[Exception], int] = {
+    EmailNotVerifiedError: status.HTTP_403_FORBIDDEN,
     EntityNotFoundError: status.HTTP_404_NOT_FOUND,
     EntityAlreadyExistsError: status.HTTP_409_CONFLICT,
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,

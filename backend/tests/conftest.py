@@ -1,5 +1,7 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 import pytest
 from dependency_injector import providers
@@ -145,8 +147,30 @@ def make_sla_monitor(
     return _make
 
 
+@pytest.fixture(autouse=True)
+def relax_verification_gate(request, monkeypatch) -> None:
+    """Lets the suite act as a company that has confirmed its email.
+
+    Almost every test in this suite is about something else entirely,
+    and each one creates its own company — so without this, every write
+    in the suite would fail on the verification gate and say nothing
+    about the feature under test.
+
+    The gate itself is exercised for real by anything marked
+    ``@pytest.mark.enforce_verification``, which is how
+    ``test_email_verification.py`` opts back in. Clearing the domain set
+    rather than stubbing the dependency keeps the production code path
+    identical — the same lookup runs, it simply finds nothing.
+    """
+    if request.node.get_closest_marker("enforce_verification"):
+        return
+    monkeypatch.setattr(
+        "blinkengage.domain.verification.UNVERIFIED_BLOCKED_ACTIONS", frozenset()
+    )
+
+
 @pytest.fixture
-async def registered_owner(client: AsyncClient) -> dict:
+async def registered_owner(client: AsyncClient, app) -> dict:
     payload = {
         "company_name": "Acme Corp",
         "owner_full_name": "Ada Owner",
@@ -155,7 +179,35 @@ async def registered_owner(client: AsyncClient) -> dict:
     }
     response = await client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 201, response.text
-    return response.json()
+
+    # Marked verified, because that is the state almost every test is
+    # actually about: a working customer who has followed the link.
+    # Leaving it unverified would make every write in the suite fail on
+    # the verification gate and say nothing about the feature under
+    # test. The gate itself is covered directly in
+    # tests/integration/test_email_verification.py, which uses its own
+    # unverified registrations.
+    from sqlalchemy import update
+
+    from blinkengage.infrastructure.database.models.company import Company
+    from blinkengage.infrastructure.database.models.user import User
+
+    company_id = response.json()["user"]["company"]["id"]
+    async with app.state.container.session_factory()() as session:
+        moment = datetime.now(UTC)
+        await session.execute(
+            update(Company).where(Company.id == UUID(company_id)).values(verified_at=moment)
+        )
+        await session.execute(
+            update(User)
+            .where(User.company_id == UUID(company_id))
+            .values(email_verified_at=moment)
+        )
+        await session.commit()
+
+    body = response.json()
+    body["user"]["company"]["verified"] = True
+    return body
 
 
 @pytest.fixture

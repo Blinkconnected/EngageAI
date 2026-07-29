@@ -4,7 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from blinkengage.api.deps import get_auth_service, get_current_user, get_feature_service
+from blinkengage.api.deps import (
+    get_auth_service,
+    get_current_user,
+    get_feature_service,
+    get_verification_service,
+)
 from blinkengage.api.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -12,11 +17,14 @@ from blinkengage.api.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     RegisterResponse,
+    ResendVerificationResponse,
     TokenResponse,
     UserProfileResponse,
+    VerifyEmailResponse,
 )
 from blinkengage.application.services.auth_service import AuthService, effective_permissions
 from blinkengage.application.services.feature_service import FeatureService
+from blinkengage.application.services.verification_service import VerificationService
 from blinkengage.core.config import get_settings
 from blinkengage.core.rate_limit import rate_limit_dependency
 from blinkengage.domain.features import enabled_feature_keys
@@ -39,7 +47,12 @@ def _company_ref(user: User) -> dict[str, object]:
                 "Use the platform endpoints under /platform."
             ),
         )
-    return {"id": user.company.id, "name": user.company.name, "slug": user.company.slug}
+    return {
+        "id": user.company.id,
+        "name": user.company.name,
+        "slug": user.company.slug,
+        "verified": user.company.verified_at is not None,
+    }
 
 
 def _user_to_profile(user: User, features: list[str]) -> UserProfileResponse:
@@ -71,6 +84,7 @@ def _user_to_profile(user: User, features: list[str]) -> UserProfileResponse:
 async def register(
     payload: RegisterRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    verification: Annotated[VerificationService, Depends(get_verification_service)],
 ) -> RegisterResponse:
     """Sign up: creates a new company, its Owner user, and the default
     Owner/Admin/Agent roles, then logs the new Owner in immediately."""
@@ -80,6 +94,13 @@ async def register(
         owner_password=payload.owner_password,
         owner_full_name=payload.owner_full_name,
     )
+    # Sent here rather than inside `register_company` so a mail failure
+    # cannot roll the registration back: a customer whose account was
+    # created but whose email bounced can resend, whereas a rolled-back
+    # signup leaves them with nothing and an address that now looks
+    # taken.
+    await verification.send_verification(account.user, company=account.company)
+
     tokens = await auth_service.issue_tokens(account.user)
     return RegisterResponse(
         # A company that was created a moment ago has no subscription and
@@ -165,3 +186,47 @@ async def change_my_password(
         current_password=payload.current_password,
         new_password=payload.new_password,
     )
+
+
+@router.get("/verify-email", response_model=VerifyEmailResponse)
+async def verify_email(
+    token: str,
+    verification: Annotated[VerificationService, Depends(get_verification_service)],
+) -> VerifyEmailResponse:
+    """Consumes a verification link.
+
+    Unauthenticated: the link arrives in an inbox, and requiring a
+    signed-in session to use it would break the common case of opening
+    it on a phone.
+
+    Answers 200 for every outcome, including an unknown token. The
+    result says what happened, and a 404 here would let anybody probe
+    which tokens exist.
+    """
+    result = await verification.verify(token)
+    if result.already_verified:
+        return VerifyEmailResponse(status="already_verified")
+    if result.expired:
+        return VerifyEmailResponse(status="expired")
+    if result.unknown:
+        return VerifyEmailResponse(status="invalid")
+    return VerifyEmailResponse(status="verified")
+
+
+@router.post(
+    "/resend-verification",
+    response_model=ResendVerificationResponse,
+    dependencies=[Depends(_auth_rate_limit)],
+)
+async def resend_verification(
+    user: Annotated[User, Depends(get_current_user)],
+    verification: Annotated[VerificationService, Depends(get_verification_service)],
+) -> ResendVerificationResponse:
+    """Sends another verification link to the signed-in user.
+
+    Requires a session — an unauthenticated resend endpoint taking an
+    email address is a way to mail anybody. Unverified users can still
+    sign in, so this is always reachable by the person who needs it.
+    """
+    sent = await verification.resend(user)
+    return ResendVerificationResponse(sent=sent)

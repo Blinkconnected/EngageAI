@@ -1,5 +1,6 @@
 """Pydantic request/response schemas for the auth API."""
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -52,6 +53,12 @@ class CompanySummary(BaseModel):
     id: UUID
     name: str
     slug: str
+    #: Whether the signup owner has confirmed their email address. The
+    #: frontend shows a banner while this is false and hides the
+    #: controls that would 403 — nobody should be offered a button that
+    #: cannot work. Carried here because it is already fetched on every
+    #: app load.
+    verified: bool = True
 
 
 class UserProfileResponse(BaseModel):
@@ -74,3 +81,21 @@ class UserProfileResponse(BaseModel):
 class RegisterResponse(BaseModel):
     user: UserProfileResponse
     tokens: TokenResponse
+
+
+class VerifyEmailResponse(BaseModel):
+    """The outcome of following a verification link.
+
+    A status string rather than a bare boolean: "already verified",
+    "expired" and "invalid" each need a different sentence on screen,
+    and collapsing them to `false` makes a customer who did nothing
+    wrong think they did.
+    """
+
+    status: Literal["verified", "already_verified", "expired", "invalid"]
+
+
+class ResendVerificationResponse(BaseModel):
+    #: False when the address is already verified, or when another link
+    #: was sent moments ago. Not an error either way.
+    sent: bool

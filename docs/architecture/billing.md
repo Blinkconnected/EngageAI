@@ -740,6 +740,50 @@ Pricing keeps its own dedicated trail (`pricing_audit_log`) — pricing is
 configuration rather than a financial document, and the two are read by
 different people asking different questions.
 
+## The free monthly allowance
+
+Every company gets the first **100 conversations each calendar month**
+free, and pays its own rate for everything beyond. Unused allowance does
+not carry over: an allowance that accumulates is a liability that grows
+silently, and a customer who has not used the product for six months has
+not earned six months of free usage.
+
+### Where it is applied
+
+At **close time**, in `build_snapshot_line`, not at invoice generation.
+The snapshot is the immutable record of what a period cost, so applying
+the allowance later would mean the same closed period produced different
+invoices depending on when it was billed.
+
+Every line — snapshot and invoice alike — carries three quantities:
+
+| Column | Meaning |
+| --- | --- |
+| `quantity` | Everything that happened |
+| `included_quantity` | What the allowance covered |
+| `billable_quantity` | The remainder, which `subtotal` is computed from |
+
+All three are **stored, not derived**. A line reading "50 conversations"
+for a customer who had 150 is a document that invites a support ticket;
+"150 conversations, 100 included, 50 billable" answers the question
+before it is asked. And recomputing the split on read would let a change
+to the allowance silently alter a historical invoice — the same reason
+`subtotal` has always been stored.
+
+### Why it is code, not data
+
+Metrics are code and pricing is data; that split is settled. An
+allowance sits between them, and it is code *today* because the product
+decision is that it is the same for everyone — one number, no
+per-company variation. Making it per-company is a data change and a
+migration, and the shape is deliberately ready for it: because every
+applied allowance is written onto the snapshot, the day it varies by
+company, history still explains itself.
+
+A metric absent from `FREE_MONTHLY_ALLOWANCE` has no allowance. That is
+the correct default — granting one by accident is a revenue leak nobody
+notices.
+
 ## The payment engine
 
 Phase 4. Where the previous phases decided *what* a customer owes, this

@@ -2,6 +2,11 @@ export interface CompanySummary {
   id: string
   name: string
   slug: string
+  /** Whether the signup owner has confirmed their email address. While
+   * false the workspace can be read but not changed, so the UI shows a
+   * banner and hides controls that would be refused — nobody should be
+   * offered a button that cannot work. */
+  verified: boolean
 }
 
 /** Matches the backend's `UserProfileResponse` (`GET /auth/me`, `POST /auth/register`). */

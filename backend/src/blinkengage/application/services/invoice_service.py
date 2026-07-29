@@ -185,6 +185,8 @@ class InvoiceService:
                     description=line.metric_display_name,
                     unit=line.unit,
                     quantity=line.quantity,
+                    included_quantity=line.included_quantity,
+                    billable_quantity=line.billable_quantity,
                     unit_amount=line.unit_amount,
                     currency=line.currency,
                     subtotal=line.subtotal,

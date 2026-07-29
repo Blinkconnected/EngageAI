@@ -19,6 +19,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from blinkengage.domain.allowances import FREE_MONTHLY_ALLOWANCE
 from blinkengage.infrastructure.database.models.usage import (
     BillingPeriod,
     UsagePeriodLine,
@@ -200,6 +201,27 @@ class TestMetricVersioning:
         assert versions == {1: "1.000000", 2: "5.000000"}
 
 
+async def _consume_allowance(client: AsyncClient, headers: dict, company_id: str) -> None:
+    """Uses up the company's free monthly conversations in one entry.
+
+    A quantity, not a hundred metered events: the allowance is measured
+    in units, so one record exercises the same path far faster.
+    """
+    response = await client.post(
+        "/api/v1/platform/usage/records",
+        headers=headers,
+        json={
+            "company_id": company_id,
+            "metric_code": "CONVERSATION",
+            "quantity": str(FREE_MONTHLY_ALLOWANCE["CONVERSATION"]),
+            "occurred_at": iso(datetime.now(UTC)),
+            "idempotency_key": f"allowance-{company_id}",
+            "note": "Test fixture: consumes the free monthly allowance.",
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+
+
 class TestImmutableSnapshot:
     async def test_closing_freezes_price_quantity_subtotal_and_rate(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -209,13 +231,19 @@ class TestImmutableSnapshot:
         headers = await platform_headers(client, app)
         await seed_global(client, headers, amount="0.050000")
         company_id = await company_id_of(client, owner_headers)
+        # Past the free monthly allowance, so the frozen subtotal is a
+        # real charge rather than zero — this test is about freezing,
+        # and a subtotal of zero would pass even if nothing were frozen.
+        await _consume_allowance(client, headers, company_id)
         for _ in range(4):
             await meter(app, conversation_created(company_id, str(uuid4()), datetime.now(UTC)))
 
         period_id = await _close_current(client, headers, company_id)
         line = (await _snapshot(client, headers, period_id))["lines"][0]
 
-        assert Decimal(line["quantity"]) == Decimal("4")
+        assert Decimal(line["quantity"]) == Decimal("104")
+        assert Decimal(line["included_quantity"]) == Decimal("100")
+        assert Decimal(line["billable_quantity"]) == Decimal("4")
         assert Decimal(line["unit_amount"]) == Decimal("0.05")
         assert Decimal(line["subtotal"]) == Decimal("0.20")
         assert line["rate_id"] is not None
@@ -271,6 +299,7 @@ class TestImmutableSnapshot:
         headers = await platform_headers(client, app)
         await seed_global(client, headers, amount="0.050000")
         company_id = await company_id_of(client, owner_headers)
+        await _consume_allowance(client, headers, company_id)
         for _ in range(10):
             await meter(app, conversation_created(company_id, str(uuid4()), datetime.now(UTC)))
 

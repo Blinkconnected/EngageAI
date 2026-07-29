@@ -106,6 +106,9 @@ from blinkengage.infrastructure.database.models.usage import (
     UsageRecord,
 )
 from blinkengage.infrastructure.database.models.user import User
+from blinkengage.infrastructure.database.models.verification import (
+    EmailVerificationToken,
+)
 from blinkengage.infrastructure.database.models.workflow import (
     WorkflowDefinition,
     WorkflowRun,
@@ -129,6 +132,7 @@ __all__ = [
     "Invoice",
     "InvoiceLine",
     "DunningNotice",
+    "EmailVerificationToken",
     "Payment",
     "PlatformSetting",
     "PaymentIntent",

@@ -57,6 +57,7 @@ from blinkengage.application.services.search_service import SearchService
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.usage_service import UsageService
+from blinkengage.application.services.verification_service import VerificationService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
 from blinkengage.application.services.workflow_service import WorkflowService
@@ -67,14 +68,15 @@ from blinkengage.core.rate_limit import FixedWindowRateLimiter, enforce_rate_lim
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.ai_provider import AiProvider
 from blinkengage.domain.company_settings import is_ai_enabled
-from blinkengage.domain.exceptions import AiNotConfiguredError
+from blinkengage.domain.exceptions import AiNotConfiguredError, EmailNotVerifiedError
 from blinkengage.domain.features import FEATURES, is_known_feature
 from blinkengage.domain.rbac import is_known_permission
+from blinkengage.domain.verification import is_blocked_before_verification
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
-from blinkengage.infrastructure.database.models.company import CompanyStatus
+from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
@@ -1029,7 +1031,7 @@ def get_csat_service(
 
 def require_permission(
     code: str,
-) -> Callable[[AuthContext], Coroutine[Any, Any, AuthContext]]:
+) -> Callable[..., Coroutine[Any, Any, AuthContext]]:
     """Dependency factory: ``Depends(require_permission("customers.manage"))``.
 
     Fails fast at import time (not per-request) if ``code`` isn't a known
@@ -1038,12 +1040,28 @@ def require_permission(
     if not is_known_permission(code):
         raise ValueError(f"Unknown permission code: {code!r}")
 
-    async def _check(auth: Annotated[AuthContext, Depends(get_active_auth)]) -> AuthContext:
+    async def _check(
+        auth: Annotated[AuthContext, Depends(get_active_auth)],
+        session: Annotated[AsyncSession, Depends(get_db_session)],
+    ) -> AuthContext:
         if not auth.has_permission(code):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {code}",
             )
+        # The verification gate lives here rather than on each endpoint:
+        # a list of routes to protect is a list somebody forgets to add
+        # to, and the failure mode is a feature that silently works
+        # before the customer has proved they own the address.
+        #
+        # Read per request rather than carried in the token. A claim
+        # would mean a customer who has just verified still cannot act
+        # until they sign out and back in, which is exactly the moment
+        # they are least willing to.
+        if auth.company_id is not None and is_blocked_before_verification(code):
+            company = await session.get(Company, auth.company_id)
+            if company is not None and company.verified_at is None:
+                raise EmailNotVerifiedError
         return auth
 
     return _check
@@ -1169,6 +1187,19 @@ async def enforce_platform_test_connection_rate_limit(
     )
     await enforce_rate_limit(limiter, str(platform.user_id))
     return platform
+
+
+def get_verification_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> VerificationService:
+    return VerificationService(
+        session=session,
+        settings=settings,
+        platform_settings=PlatformSettingsService(
+            repository=PlatformSettingsRepository(session), settings=settings
+        ),
+    )
 
 
 def get_platform_settings_service(

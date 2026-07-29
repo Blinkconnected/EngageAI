@@ -209,6 +209,16 @@ class UsagePeriodLine(UUIDPrimaryKeyMixin, Base):
     unit: Mapped[str] = mapped_column(String(30), nullable=False)
 
     quantity: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)
+    #: How much of ``quantity`` the free monthly allowance covered, and
+    #: what remained. Both stored, not derived: the allowance is applied
+    #: once at close time, and recomputing it on read would let a change
+    #: to the allowance silently alter a historical document.
+    included_quantity: Mapped[Decimal] = mapped_column(
+        _AMOUNT, nullable=False, default=0, server_default="0"
+    )
+    billable_quantity: Mapped[Decimal] = mapped_column(
+        _AMOUNT, nullable=False, default=0, server_default="0"
+    )
     unit_amount: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)

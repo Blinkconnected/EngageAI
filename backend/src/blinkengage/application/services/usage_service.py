@@ -314,6 +314,8 @@ class UsageService:
                     metric_display_name=display_name,
                     unit=unit,
                     quantity=snapshot.quantity,
+                    included_quantity=snapshot.included_quantity,
+                    billable_quantity=snapshot.billable_quantity,
                     unit_amount=snapshot.unit_amount,
                     currency=snapshot.currency,
                     subtotal=snapshot.subtotal,

@@ -1,0 +1,9 @@
+{
+  "VerifyEmailBanner": {
+    "message": "Confirm your email address to finish setting up this workspace. We sent a link to {{email}}.",
+    "resend": "Resend link",
+    "sent": "Sent. Check your inbox — and your spam folder.",
+    "throttled": "A link was sent moments ago. Give it a minute before trying again.",
+    "failed": "Could not send the link. Try again shortly."
+  }
+}

@@ -183,6 +183,15 @@ class InvoiceLine(UUIDPrimaryKeyMixin, Base):
     unit: Mapped[str] = mapped_column(String(30), nullable=False)
 
     quantity: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)
+    #: Copied from the snapshot, like everything else on this line. An
+    #: invoice showing only the billable part would tell a customer who
+    #: had 150 conversations that they had 50.
+    included_quantity: Mapped[Decimal] = mapped_column(
+        _AMOUNT, nullable=False, default=0, server_default="0"
+    )
+    billable_quantity: Mapped[Decimal] = mapped_column(
+        _AMOUNT, nullable=False, default=0, server_default="0"
+    )
     unit_amount: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)

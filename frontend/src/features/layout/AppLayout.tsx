@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link as RouterLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+
+import { VerifyEmailBanner } from '../session/VerifyEmailBanner'
 import {
   Alert,
   AppBar,
@@ -140,16 +142,46 @@ export function AppLayout() {
             mobile browser's collapsing address bar doesn't leave a
             permanently unreachable strip at the bottom. */}
         <Box sx={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
-          <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
+          {/* No reserved width on desktop: the docked drawer below is
+              laid out in this flex row rather than fixed-positioned, so
+              the column and the paper are the same box and cannot
+              disagree about how wide the sidebar is. The temporary
+              (mobile) drawer is still an overlay and still needs a
+              width of its own. */}
+          <Box component="nav" sx={{ flexShrink: { md: 0 } }}>
             {isDesktop ? (
               <Drawer
                 variant="permanent"
                 open
                 sx={{
+                  // The drawer root is the flex item now that the paper
+                  // is in flow, so it is what has to fill the shell's
+                  // height. Without this the paper sizes to its
+                  // navigation list and the sidebar — and its right
+                  // border — stop partway down the page.
+                  height: '100%',
                   '& .MuiDrawer-paper': {
-                    width: DRAWER_WIDTH,
+                    // Sized by its content. The navigation labels are
+                    // translated, and Arabic and English do not need the
+                    // same room — a fixed width either clips the longer
+                    // one or leaves the shorter one padded with empty
+                    // space.
+                    width: 'auto',
                     boxSizing: 'border-box',
+                    // `relative` rather than MUI's default `fixed`: a
+                    // fixed paper is out of flow, so an auto width would
+                    // collapse to its content while the layout still
+                    // reserved a different amount, and the main pane
+                    // would either overlap the sidebar or float away
+                    // from it.
+                    position: 'relative',
+                    height: '100%',
                     borderRight: 1,
+                    // Resolves to #E4E3E1 in light mode — the same
+                    // hairline as the rest of the chrome — and to a
+                    // low-opacity variant in dark mode. A literal hex
+                    // here would put a near-white line on a dark
+                    // surface.
                     borderColor: 'divider',
                   },
                 }}
@@ -410,6 +442,11 @@ export function AppLayout() {
                 flexDirection: 'column',
               }}
             >
+              {/* Before the setup banner: an unverified workspace can
+                  be read but not changed, so "confirm your email" has
+                  to come before "finish setting up your channels" —
+                  the second is not actionable until the first is done. */}
+              <VerifyEmailBanner />
               {showSetupBanner && (
                 <Alert
                   severity="info"

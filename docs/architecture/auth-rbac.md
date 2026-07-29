@@ -397,6 +397,75 @@ page's table and permission-checklist edit dialog, and the Agents page's
 role.
 
 
+## Email verification
+
+A newly registered company starts **unverified**. Its people can sign in
+and read; they cannot act.
+
+That middle position is deliberate. Refusing sign-in outright locks a
+customer out with nothing on screen to act on when the email is delayed
+or bounces, and the only thing verification actually needs to prevent is
+an unverified account *doing* something — sending messages, connecting
+channels, inviting people. Somebody who has just signed up should be
+able to look around.
+
+### Where the gate lives
+
+Inside `require_permission`, not on individual endpoints. A list of
+routes to protect is a list somebody forgets to add to, and the failure
+mode is a feature that silently works before the customer has proved
+they own the address. `UNVERIFIED_BLOCKED_ACTIONS` in
+`domain/verification.py` names the permissions refused — all of them
+`.manage`-class actions, plus `ai.use`, which has a real external cost.
+
+The check reads the company per request rather than trusting a token
+claim. A claim would mean somebody who has just verified still cannot
+act until they sign out and back in, which is exactly the moment they
+are least willing to.
+
+It raises `EmailNotVerifiedError` → **403**, deliberately distinct from
+a missing permission: the person *has* the permission, and telling them
+otherwise sends them to an administrator who cannot help — they usually
+*are* the administrator. The message names the actual fix.
+
+### Tokens
+
+Stored as a **SHA-256 hash**, never raw. A verification link is a bearer
+credential, so a database backup or a support screenshot containing raw
+tokens would be a way to verify somebody else's account; the raw value
+exists only in the email that was sent. Not a password hash and
+deliberately not bcrypt — this is a high-entropy random value, so there
+is nothing for a slow hash to defend against, and a slow hash on the
+lookup path would mean scanning every row.
+
+Links last 48 hours. Consuming one is a guarded UPDATE, so two clicks
+arriving together cannot both consume it, and the row is kept rather
+than deleted — a customer clicking twice is told **"already verified"**,
+not "invalid link", which reads as though something went wrong.
+
+Resending is throttled to once every two minutes. It is a legitimate,
+common action — the first email lands in spam — but unthrottled it is a
+way to use this installation to mail an address somebody else owns. It
+requires a session for the same reason: an unauthenticated resend taking
+an email address will mail anybody.
+
+### Failure of the email does not fail the signup
+
+The verification email is sent from the endpoint, *after* the account is
+created, and a delivery failure is logged rather than raised. A
+rolled-back registration would leave the customer with nothing and an
+email address that now appears taken.
+
+### In the test suite
+
+`conftest.py` clears `UNVERIFIED_BLOCKED_ACTIONS` for every test except
+those marked `@pytest.mark.enforce_verification`. Almost every test
+creates its own company and is about something else entirely; without
+this, every write in the suite would fail on the gate and say nothing
+about the feature under test. Clearing the domain set rather than
+stubbing the dependency keeps the production path identical — the same
+lookup runs, it simply finds nothing.
+
 ## Features are not permissions
 
 A permission asks "may this **user** do it?"; a feature entitlement asks

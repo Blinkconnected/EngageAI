@@ -55,6 +55,11 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     # let the collections sweep silently un-suspend a compliance
     # suspension the moment an invoice was paid.
     # See domain/collections.py and docs/architecture/billing.md.
+    #: When the signup owner proved they control the address they
+    #: registered with. NULL means the company has not verified and its
+    #: people can sign in but cannot act — see domain/verification.py.
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
+
     billing_status: Mapped[BillingStatus] = mapped_column(
         Enum(BillingStatus, native_enum=False, length=20),
         nullable=False,

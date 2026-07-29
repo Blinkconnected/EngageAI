@@ -24,6 +24,9 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })),
 )
+const VerifyEmailPage = lazy(() =>
+  import('../features/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })),
+)
 const RegisterPage = lazy(() =>
   import('../features/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })),
 )
@@ -110,6 +113,9 @@ export function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        {/* Unauthenticated: the link arrives in an inbox and is often
+            opened on a different device from the one that signed up. */}
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/changelog" element={<ChangelogPage />} />
 
         {/* The platform console. Outside ProtectedRoute/AppLayout on

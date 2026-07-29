@@ -20,6 +20,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from blinkengage.domain.allowances import FREE_MONTHLY_ALLOWANCE
 from blinkengage.infrastructure.database.models.invoicing import Invoice, InvoiceLine
 from tests.integration.test_pricing_engine import (
     CONVERSATION,
@@ -34,7 +35,17 @@ from tests.integration.test_usage_engine import conversation_created, meter
 async def closed_period_with_usage(
     client: AsyncClient, headers: dict, app: Any, company_id: str, *, conversations: int = 4
 ) -> str:
-    """A closed billing period with real metered usage behind it."""
+    """A closed billing period with real metered usage behind it.
+
+    The free monthly allowance (see ``domain/allowances.py``) would make
+    a handful of conversations cost nothing, so these tests — which are
+    about the *invoice* engine, not the allowance — first record a
+    manual entry that consumes the whole allowance. Everything metered
+    afterwards is billable, which is what the assertions below are
+    about. The allowance itself is covered in
+    ``tests/unit/test_free_allowance.py`` and end-to-end below.
+    """
+    await consume_allowance(client, headers, company_id)
     for _ in range(conversations):
         await meter(app, conversation_created(company_id, str(uuid4()), datetime.now(UTC)))
     current = await client.get(
@@ -46,6 +57,28 @@ async def closed_period_with_usage(
     )
     assert closed.status_code == 200, closed.text
     return str(period_id)
+
+
+async def consume_allowance(client: AsyncClient, headers: dict, company_id: str) -> None:
+    """Uses up the company's free conversations in one manual entry.
+
+    One record carrying the whole quantity rather than a hundred metered
+    events: the allowance is a quantity, not a count of records, so this
+    exercises the same code path in a fraction of the time.
+    """
+    response = await client.post(
+        "/api/v1/platform/usage/records",
+        headers=headers,
+        json={
+            "company_id": company_id,
+            "metric_code": CONVERSATION,
+            "quantity": str(FREE_MONTHLY_ALLOWANCE[CONVERSATION]),
+            "occurred_at": iso(datetime.now(UTC)),
+            "idempotency_key": f"allowance-{company_id}",
+            "note": "Test fixture: consumes the free monthly allowance.",
+        },
+    )
+    assert response.status_code in (200, 201), response.text
 
 
 async def draft_invoice(client: AsyncClient, headers: dict, period_id: str) -> dict:
@@ -82,7 +115,12 @@ class TestGeneration:
         line = next(
             line for line in detail["lines"] if line["metric_code"] == CONVERSATION
         )
-        assert Decimal(line["quantity"]) == Decimal("4")
+        # 100 consumed by the fixture's allowance entry, 4 metered on
+        # top. The line shows all three numbers, and the charge is on
+        # the billable part alone.
+        assert Decimal(line["quantity"]) == Decimal("104")
+        assert Decimal(line["included_quantity"]) == Decimal("100")
+        assert Decimal(line["billable_quantity"]) == Decimal("4")
         assert Decimal(line["unit_amount"]) == Decimal("0.05")
         assert Decimal(line["subtotal"]) == Decimal("0.20")
         assert Decimal(detail["invoice"]["total_amount"]) == Decimal("0.20")
