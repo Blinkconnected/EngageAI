@@ -61,6 +61,18 @@ for more detail on how this page is put together.
   administrator showed a blank page, because the app had no screen for
   someone who belongs to no company.
 
+### Changed
+
+- **The conversation workspace now gives the chat the whole width.**
+  Customer details used to sit in a permanent panel on the right, taking
+  up space at all times for information agents only need occasionally.
+  They now open on demand from the **⋮** menu in the conversation header
+  ("Conversation details") and slide in over the conversation, so
+  opening or closing them never resizes or re-wraps the messages. On a
+  1440px screen the message thread goes from 420px to 700px wide.
+- The main navigation sidebar is now narrower (200px), leaving more room
+  for the page beside it.
+
 ### Fixed
 
 - Closing a company now actually blocks its people from signing in.

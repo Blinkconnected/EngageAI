@@ -750,3 +750,36 @@ for this) proxies them correctly with no special-casing. An earlier
 `/ws/` location pointed at a path (`/ws/agent`) that was never actually
 registered on the backend and was silently unreachable through nginx the
 entire time — see `docs/architecture/event-bus.md`'s incident note.
+
+
+## Conversation details are on demand, not a column
+
+The customer/conversation details panel was originally a permanent fifth
+column in the conversation workspace. It is now an overlay opened from
+the conversation header's ⋮ menu ("Conversation details").
+
+The reason is the width budget. At 1440px the workspace spends 200px on
+the app nav, 220px on filters and 320px on the conversation list before
+the chat gets anything; a permanent 280px details column left the
+message thread 420px — narrower than the list beside it — for
+information an agent consults occasionally rather than continuously.
+Removing it gives the thread the full 700px.
+
+It is a **temporary right-anchored `Drawer`**, not a collapsible column,
+and that distinction is the requirement: an overlay does not reflow the
+chat, so opening and closing details never resizes or re-wraps the
+message thread. Verified in a real browser — the chat column measures
+700px with the panel closed, open, and closed again.
+
+`keepMounted` is set so the panel's queries aren't re-issued on every
+open, and the panel scrolls inside its own bounded region like every
+other column here (see "Independent per-column scrolling").
+
+The workspace's minimum-width threshold no longer counts the details
+panel, so the filters and list panes survive at widths that previously
+dropped them.
+
+Tests that assert on details-panel controls must open it first, which is
+what `openDetails()` in `ConversationViewPage.test.tsx` does — tests
+about the composer deliberately do **not**, since the composer sits
+behind the overlay and cannot be typed into while it is open.

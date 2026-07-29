@@ -62,7 +62,10 @@
     "messagesTab": "الرسائل",
     "internalNotesTab": "الملاحظات الداخلية",
     "transferHistoryTab": "سجل التحويلات",
-    "emptyValue": "—"
+    "emptyValue": "—",
+    "conversationDetails": "تفاصيل المحادثة",
+    "conversationMenuAriaLabel": "إجراءات المحادثة",
+    "closeDetailsAriaLabel": "إغلاق تفاصيل المحادثة"
   },
   "ConversationSidebar": {
     "releaseErrorFallback": "تعذر تحرير هذه المحادثة.",

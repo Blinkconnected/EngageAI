@@ -62,7 +62,10 @@
     "messagesTab": "Messages",
     "internalNotesTab": "Internal notes",
     "transferHistoryTab": "Transfer history",
-    "emptyValue": "—"
+    "emptyValue": "—",
+    "conversationDetails": "Conversation details",
+    "conversationMenuAriaLabel": "Conversation actions",
+    "closeDetailsAriaLabel": "Close conversation details"
   },
   "ConversationSidebar": {
     "releaseErrorFallback": "Could not release this conversation.",

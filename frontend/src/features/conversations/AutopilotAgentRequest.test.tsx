@@ -21,7 +21,21 @@ function renderConversation() {
   )
 }
 
+/** Every assertion in this file is about controls that live in the
+ * customer-details panel, which is now opened on demand from the
+ * conversation's ⋮ menu rather than being a permanent column — so
+ * "loaded" here means "details open and populated". */
+/** Page-ready without opening anything — for the reply-composer tests
+ * below, which sit *behind* the details overlay and can't be typed into
+ * while it's open. */
+async function waitForComposer() {
+  return screen.findByRole('tab', { name: /messages/i })
+}
+
 async function waitForLoaded() {
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: /conversation actions/i }))
+  await user.click(await screen.findByRole('menuitem', { name: /conversation details/i }))
   return screen.findByLabelText(/^status/i)
 }
 
@@ -232,7 +246,7 @@ describe('AI-assisted composer', () => {
       }),
     )
     renderConversation()
-    await waitForLoaded()
+    await waitForComposer()
 
     await user.type(screen.getByPlaceholderText(/write a reply/i), 'Typed by hand')
     await user.click(screen.getByLabelText(/send reply/i))
@@ -271,7 +285,7 @@ describe('AI-assisted composer', () => {
       }),
     )
     renderConversation()
-    await waitForLoaded()
+    await waitForComposer()
 
     await user.click(await screen.findByRole('button', { name: /suggest a reply with ai/i }))
     const box = screen.getByPlaceholderText(/write a reply/i)
@@ -315,7 +329,7 @@ describe('AI-assisted composer', () => {
       }),
     )
     renderConversation()
-    await waitForLoaded()
+    await waitForComposer()
 
     await user.click(await screen.findByRole('button', { name: /suggest a reply with ai/i }))
     const box = screen.getByPlaceholderText(/write a reply/i)

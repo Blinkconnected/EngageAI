@@ -8,35 +8,38 @@ import { CONVERSATION_STATUSES, type ConversationStatus } from './types'
 
 const FILTERS_PANE_WIDTH = 220
 const LIST_PANE_WIDTH = 320
-const CUSTOMER_PANE_WIDTH = 280
-// AppLayout's nav + this workspace's own filters and list panes +
-// ConversationSidebar's fixed customer panel = the chrome that never
-// shrinks, before the message thread gets anything. `DRAWER_WIDTH` is
-// imported rather than repeated: it was hard-coded here as 260, so
-// narrowing the sidebar silently left this threshold wrong.
-// This is the actual minimum width the message column needs to stay
-// usable, not an arbitrary round number.
+// AppLayout's nav + this workspace's own filters and list panes = the
+// chrome that never shrinks, before the message thread gets anything.
+// `DRAWER_WIDTH` is imported rather than repeated: it was hard-coded
+// here as 260, so narrowing the sidebar silently left this threshold
+// wrong.
+//
+// Customer details are deliberately NOT in this sum any more. They used
+// to be a permanent fifth column costing the chat 280px at all times;
+// they are now an on-demand overlay (see `ConversationViewPage`), so
+// they take no width from the layout and the message thread gets that
+// space back — including at widths that previously fell below the
+// threshold and dropped the filters and list panes entirely.
 const MESSAGE_COLUMN_MIN_WIDTH = 400
-const FIVE_COLUMN_MIN_WIDTH =
-  DRAWER_WIDTH +
-  FILTERS_PANE_WIDTH +
-  LIST_PANE_WIDTH +
-  CUSTOMER_PANE_WIDTH +
-  MESSAGE_COLUMN_MIN_WIDTH
+const WORKSPACE_MIN_WIDTH =
+  DRAWER_WIDTH + FILTERS_PANE_WIDTH + LIST_PANE_WIDTH + MESSAGE_COLUMN_MIN_WIDTH
 
 function isConversationStatus(value: string | null): value is ConversationStatus {
   return value !== null && (CONVERSATION_STATUSES as readonly string[]).includes(value)
 }
 
-/** The five-column conversation workspace:
+/** The conversation workspace:
  *
  * ```
- * | Sidebar | Filters & Queues | Conversation List | Conversation | Customer Details |
+ * | Sidebar | Filters & Queues | Conversation List | Conversation |
  * ```
  *
- * The Sidebar is `AppLayout`'s own nav; the remaining four live here
- * (the last two inside `ConversationViewPage`). Every column owns its
- * own scroll region and the page itself never scrolls — see
+ * The Sidebar is `AppLayout`'s own nav; the remaining three live here
+ * (the last inside `ConversationViewPage`). Customer details were once a
+ * permanent fifth column; they are now an overlay opened from the
+ * conversation's ⋮ menu, so the chat keeps that width whenever they are
+ * closed. Every column owns its own scroll region and the page itself
+ * never scrolls — see
  * `docs/architecture/frontend.md`'s "Independent per-column scrolling"
  * section for the rules this implements, and `AppLayout`'s
  * `isFullBleedRoute`, which drops the page gutter and outer scrollbar
@@ -46,7 +49,7 @@ function isConversationStatus(value: string | null): value is ConversationStatus
  * unmounts whenever the agent navigates away and back, which would
  * otherwise silently reset their chosen status/queue every time.
  *
- * Below `FIVE_COLUMN_MIN_WIDTH` there is no room for all five at once,
+ * Below `WORKSPACE_MIN_WIDTH` there is no room for all of them at once,
  * so the filters and list panes drop out and only the open conversation
  * shows — the same master-detail fallback a phone's Mail app uses, with
  * `ConversationViewPage`'s own back button returning to the Inbox.
@@ -54,7 +57,7 @@ function isConversationStatus(value: string | null): value is ConversationStatus
 export function ConversationWorkspacePage() {
   const { conversationId } = useParams<{ conversationId: string }>()
   const theme = useTheme()
-  const isDesktop = useMediaQuery(theme.breakpoints.up(FIVE_COLUMN_MIN_WIDTH))
+  const isDesktop = useMediaQuery(theme.breakpoints.up(WORKSPACE_MIN_WIDTH))
   const [searchParams, setSearchParams] = useSearchParams()
 
   const statusParam = searchParams.get('status')

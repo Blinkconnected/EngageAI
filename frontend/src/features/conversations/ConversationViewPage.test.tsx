@@ -34,8 +34,20 @@ function renderConversationView() {
 // The Status field is unique and only mounts once the conversation and its
 // sidebar have loaded, so it's used as the "page is ready" signal instead.
 async function waitForLoaded() {
+  return screen.findByRole('tab', { name: /messages/i })
+}
+
+/** Customer details are no longer a permanent column — they open from
+ * the conversation's ⋮ menu as an overlay, so the chat keeps the full
+ * width whenever they're closed. Any assertion about the details panel
+ * has to open it first, exactly as an agent now does. */
+async function openDetails() {
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: /conversation actions/i }))
+  await user.click(await screen.findByRole('menuitem', { name: /conversation details/i }))
   return screen.findByLabelText(/^status/i)
 }
+
 
 describe('ConversationViewPage', () => {
   afterEach(() => {
@@ -44,16 +56,42 @@ describe('ConversationViewPage', () => {
     onlineManager.setOnline(true)
   })
 
-  it('shows the customer name and the seeded message', async () => {
+  it('keeps customer details out of the way until the agent asks for them', async () => {
+    // The point of the change: the chat gets the full width, and the
+    // details panel is not occupying it in the meantime.
     renderConversationView()
     await waitForLoaded()
+
+    expect(screen.queryByRole('combobox', { name: /^status/i })).not.toBeInTheDocument()
+
+    await openDetails()
+
+    expect(screen.getByRole('combobox', { name: /^status/i })).toBeInTheDocument()
+  })
+
+  it('closes the details panel again, giving the chat its width back', async () => {
+    const user = userEvent.setup()
+    renderConversationView()
+    await waitForLoaded()
+    await openDetails()
+
+    await user.click(screen.getByRole('button', { name: /close conversation details/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('combobox', { name: /^status/i })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('shows the customer name and the seeded message', async () => {
+    renderConversationView()
+    await openDetails()
     expect(await screen.findAllByText('Grace Blake')).not.toHaveLength(0)
     expect(await screen.findByText('Hi, I need help with my order.')).toBeInTheDocument()
   })
 
   it('has no detectable accessibility violations', async () => {
     const { container } = renderConversationView()
-    await waitForLoaded()
+    await openDetails()
     expect(await axe(container)).toHaveNoViolations()
   })
 
@@ -133,7 +171,7 @@ describe('ConversationViewPage', () => {
   it('changes the conversation status', async () => {
     const user = userEvent.setup()
     renderConversationView()
-    const statusField = await waitForLoaded()
+    const statusField = await openDetails()
 
     await user.click(statusField)
     await user.click(await screen.findByRole('option', { name: 'Resolved' }))
@@ -149,7 +187,7 @@ describe('ConversationViewPage', () => {
     // Box (ConversationViewPage.tsx, one level above ConversationSidebar's
     // own root Stack) is what carries the scroll containment.
     renderConversationView()
-    const statusField = await waitForLoaded()
+    const statusField = await openDetails()
     const sidebarRoot = statusField.closest('.MuiStack-root') as HTMLElement
     const wrapperBox = sidebarRoot.parentElement as HTMLElement
 
@@ -165,7 +203,7 @@ describe('ConversationViewPage', () => {
     // declared floor and could get squeezed instead of always keeping
     // its full height with MessageThread absorbing the remaining space.
     renderConversationView()
-    await waitForLoaded()
+    await openDetails()
     const composerRoot = screen.getByPlaceholderText(/write a reply/i).closest(
       '.MuiBox-root',
     ) as HTMLElement
@@ -180,7 +218,7 @@ describe('ConversationViewPage', () => {
   it('claims an unassigned conversation via the sidebar Pick button', async () => {
     const user = userEvent.setup()
     renderConversationView()
-    await waitForLoaded()
+    await openDetails()
 
     const pickButton = await screen.findByRole('button', { name: /pick up/i })
     await user.click(pickButton)
@@ -244,7 +282,7 @@ describe('ConversationViewPage', () => {
 
   it("shows the customer's internal rating summary in the sidebar once rated", async () => {
     renderConversationView()
-    await waitForLoaded()
+    await openDetails()
     expect(screen.queryByText(/based on \d+ internal ratings/i)).not.toBeInTheDocument()
 
     await apiClient.post(`/customers/${MOCK_CUSTOMER.id}/ratings`, { stars: 4 })
@@ -267,14 +305,14 @@ describe('ConversationViewPage', () => {
 
     it('is hidden while the conversation is unassigned', async () => {
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
       expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
     })
 
     it('appears once assigned, and releasing it clears the assignment', async () => {
       const user = userEvent.setup()
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       await pickTheConversation()
       expect(await screen.findByText('Mock Self Agent')).toBeInTheDocument()
@@ -290,7 +328,7 @@ describe('ConversationViewPage', () => {
 
     it('has no detectable accessibility violations once shown', async () => {
       const { container } = renderConversationView()
-      await waitForLoaded()
+      await openDetails()
       await pickTheConversation()
       await screen.findByRole('button', { name: /^release$/i })
 
@@ -308,7 +346,7 @@ describe('ConversationViewPage', () => {
       )
       queryClient.clear()
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       await pickTheConversation()
       await screen.findByText('Mock Self Agent')
@@ -360,7 +398,7 @@ describe('ConversationViewPage', () => {
       )
       queryClient.clear()
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       expect(await screen.findByText('Grace Hopper')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
@@ -369,7 +407,7 @@ describe('ConversationViewPage', () => {
     it('a 409 conflict shows an error and immediately refetches the conversation', async () => {
       const user = userEvent.setup()
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       await pickTheConversation()
       const releaseButton = await screen.findByRole('button', { name: /^release$/i })
@@ -463,7 +501,7 @@ describe('ConversationViewPage', () => {
         ),
       )
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       expect(
         screen.queryByRole('button', { name: /suggest a reply with ai/i }),
@@ -474,7 +512,7 @@ describe('ConversationViewPage', () => {
     it('generates and displays a conversation summary on demand', async () => {
       const user = userEvent.setup()
       renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       expect(screen.queryByText(MOCK_CONVERSATION_SUMMARY)).not.toBeInTheDocument()
       await user.click(await screen.findByRole('button', { name: /generate summary/i }))
@@ -485,7 +523,7 @@ describe('ConversationViewPage', () => {
     it('has no detectable accessibility violations with a summary shown', async () => {
       const user = userEvent.setup()
       const { container } = renderConversationView()
-      await waitForLoaded()
+      await openDetails()
 
       await user.click(await screen.findByRole('button', { name: /generate summary/i }))
       await screen.findByText(MOCK_CONVERSATION_SUMMARY)

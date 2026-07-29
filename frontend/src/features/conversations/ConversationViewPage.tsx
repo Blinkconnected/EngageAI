@@ -1,7 +1,26 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Box, IconButton, Stack, Tab, Tabs } from '@mui/material'
+import {
+  Box,
+  Drawer,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Stack,
+  Tab,
+  Tabs,
+  Typography,
+} from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+
+/** Wide enough for the status/queue/assignment controls the panel holds
+ * without becoming a second workspace. */
+const DETAILS_PANEL_WIDTH = 340
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { PageHeader } from '../../shared/components/PageHeader'
 import { LoadingState } from '../../shared/components/LoadingState'
@@ -20,6 +39,8 @@ export function ConversationViewPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
   const navigate = useNavigate()
   const [tab, setTab] = useState<'messages' | 'notes' | 'transfers'>('messages')
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const conversationQuery = useConversationQuery(conversationId)
   const customerQuery = useCustomerQuery(conversationQuery.data?.customer_id)
@@ -70,6 +91,30 @@ export function ConversationViewPage() {
             title={customerQuery.data?.full_name ?? t('ConversationViewPage.defaultTitle')}
           />
         </Box>
+        <IconButton
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          aria-label={t('ConversationViewPage.conversationMenuAriaLabel')}
+          sx={{ mt: 0.5 }}
+        >
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          anchorEl={menuAnchor}
+          open={menuAnchor !== null}
+          onClose={() => setMenuAnchor(null)}
+        >
+          <MenuItem
+            onClick={() => {
+              setMenuAnchor(null)
+              setDetailsOpen(true)
+            }}
+          >
+            <ListItemIcon>
+              <InfoOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>{t('ConversationViewPage.conversationDetails')}</ListItemText>
+          </MenuItem>
+        </Menu>
       </Stack>
 
       <Stack
@@ -129,38 +174,55 @@ export function ConversationViewPage() {
           {tab === 'transfers' && <TransferHistoryPanel conversationId={conversation.id} />}
         </Box>
 
-        <Box
+      </Stack>
+
+      {/* On demand, never permanent. The details panel used to be a
+          fifth always-visible column, which cost the chat 280px at all
+          times for information an agent needs occasionally. As a
+          temporary right-anchored Drawer it overlays instead of
+          reflowing, so opening and closing it never resizes the message
+          thread — the chat keeps the full width the moment it closes.
+          `keepMounted` so its data isn't refetched on every open. */}
+      <Drawer
+        anchor="right"
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        ModalProps={{ keepMounted: true }}
+        slotProps={{
+          paper: {
+            sx: {
+              width: { xs: '100%', sm: DETAILS_PANEL_WIDTH },
+              display: 'flex',
+              flexDirection: 'column',
+            },
+          },
+        }}
+      >
+        <Stack
+          direction="row"
           sx={{
-            // Border is drawn by the parent Stack's
-            // '& > *:not(:first-of-type)' rule above, not here — kept in
-            // one place so the divider between the two panes is a single
-            // decision, not each pane separately guessing at the other's
-            // border. Width matches ConversationSidebar's own fixed
-            // 280px so this wrapper (its actual scroll-bounding parent —
-            // see the ConversationViewPage.test.tsx assertion this relies
-            // on) doesn't collapse to content width and pull the divider
-            // in from where the sidebar visually starts.
-            width: { xs: '100%', md: 280 },
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 2,
+            py: 1.5,
+            borderBottom: 1,
+            borderColor: 'divider',
             flexShrink: 0,
-            bgcolor: 'action.hover',
-            // The sidebar (Status/Transfer/Release/Queue, etc.) gets its
-            // own bounded, independently scrolling box on BOTH mobile and
-            // desktop — this used to be `overflowY: 'visible'` /
-            // `maxHeight: 'none'` on desktop, which meant the sidebar had
-            // no scroll container of its own there at all: a tall
-            // sidebar (e.g. many ratings, a long note) would overflow the
-            // row's `minHeight: 0` bound and grow the whole page instead,
-            // dragging the message list/thread along with it on scroll —
-            // exactly the "everything scrolls together" bug this fixes.
-            // On mobile the cap is a fixed 320px (it's stacked below the
-            // already-scrolling message thread); on desktop it's a
-            // sibling in the same row, so it just needs to fill and
-            // scroll within that row's own height.
-            overflowY: 'auto',
-            maxHeight: { xs: 320, md: '100%' },
-            minHeight: 0,
           }}
         >
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            {t('ConversationViewPage.conversationDetails')}
+          </Typography>
+          <IconButton
+            onClick={() => setDetailsOpen(false)}
+            aria-label={t('ConversationViewPage.closeDetailsAriaLabel')}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+        {/* The panel scrolls on its own, like every other column in this
+            workspace — a long details panel must never scroll the page. */}
+        <Box sx={{ overflowY: 'auto', minHeight: 0, flexGrow: 1 }}>
           <ConversationSidebar
             conversation={conversation}
             customerName={customerQuery.data?.full_name ?? t('ConversationViewPage.emptyValue')}
@@ -168,7 +230,7 @@ export function ConversationViewPage() {
             customerRatingCount={customerQuery.data?.rating_count ?? 0}
           />
         </Box>
-      </Stack>
+      </Drawer>
     </Box>
   )
 }
