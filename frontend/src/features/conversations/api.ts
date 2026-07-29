@@ -163,6 +163,13 @@ async function requestAutopilot(conversationId: string): Promise<Conversation> {
   return data
 }
 
+async function stopAutopilot(conversationId: string): Promise<Conversation> {
+  const { data } = await apiClient.delete<Conversation>(
+    `/conversations/${conversationId}/autopilot`,
+  )
+  return data
+}
+
 async function releaseConversation(conversationId: string): Promise<Conversation> {
   const { data } = await apiClient.post<Conversation>(`/conversations/${conversationId}/release`)
   return data
@@ -324,6 +331,22 @@ export function useRequestAutopilotMutation() {
       void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
       // Autopilot's reply is a new message on the thread.
       void queryClient.invalidateQueries({ queryKey: MESSAGES_KEY(conversationId) })
+    },
+  })
+}
+
+/** Takes a conversation back from AI Autopilot — the inverse of
+ * `useRequestAutopilotMutation`. Works whether or not the conversation is
+ * assigned, which is why it isn't just `pick`: an agent who handed their
+ * own chat to AI still holds the assignment, so there is nothing for
+ * `pick` to claim. */
+export function useStopAutopilotMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => stopAutopilot(conversationId),
+    onSuccess: (data, conversationId) => {
+      queryClient.setQueryData(CONVERSATION_KEY(conversationId), data)
+      void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
     },
   })
 }

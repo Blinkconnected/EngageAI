@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
+import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useTranslation } from 'react-i18next'
 import {
   Alert,
@@ -29,6 +30,7 @@ import {
   CONVERSATIONS_LIST_KEY,
   usePickConversationMutation,
   useRequestAutopilotMutation,
+  useStopAutopilotMutation,
   useReleaseConversationMutation,
   useUpdateConversationMutation,
 } from './api'
@@ -76,6 +78,7 @@ export function ConversationSidebar({
   const releaseMutation = useReleaseConversationMutation()
   const pickMutation = usePickConversationMutation()
   const autopilotMutation = useRequestAutopilotMutation()
+  const stopAutopilotMutation = useStopAutopilotMutation()
   const summaryMutation = useSummarizeConversationMutation()
   const queryClient = useQueryClient()
 
@@ -124,6 +127,17 @@ export function ConversationSidebar({
           void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversation.id) })
           void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
         }
+      },
+    })
+  }
+
+  function handleTakeOverFromAutopilot() {
+    setPickError(null)
+    stopAutopilotMutation.mutate(conversation.id, {
+      onError: (error) => {
+        setPickError(
+          extractErrorMessage(error, t('ConversationSidebar.autopilotTakeOverErrorFallback')),
+        )
       },
     })
   }
@@ -279,6 +293,24 @@ export function ConversationSidebar({
               conversation yet (and it isn't Autopilot's) — once someone
               does, claiming it is a reassignment and goes through
               Transfer instead, not a second Pick. */}
+          {/* Taking the conversation back from AI. Shown whenever
+              Autopilot holds it, regardless of assignment: an agent who
+              handed their *own* chat to AI still holds the assignment, so
+              there is nothing for Pick up to claim and it stays hidden
+              below — this is the only route back for them. */}
+          {canManage && conversation.autopilot_active && (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<PersonOutlineIcon />}
+              disabled={stopAutopilotMutation.isPending}
+              onClick={handleTakeOverFromAutopilot}
+            >
+              {stopAutopilotMutation.isPending
+                ? t('ConversationSidebar.autopilotTakingOverButton')
+                : t('ConversationSidebar.autopilotTakeOverButton')}
+            </Button>
+          )}
           {canPick && !conversation.assigned_agent_id && !conversation.autopilot_active && (
             <Button
               size="small"

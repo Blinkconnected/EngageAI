@@ -82,7 +82,7 @@
     "statusClosed": "Closed",
     "assignedToLabel": "Assigned to",
     "autopilotActiveLabel": "AI Autopilot",
-    "autopilotActiveHelperText": "AI is currently replying to this conversation. Pick it up to take over.",
+    "autopilotActiveHelperText": "AI is currently replying to this conversation. Take over to handle it yourself.",
     "unassignedValue": "Unassigned",
     "departmentSuffixLabel": "{{departmentName}} (department)",
     "autopilotRequestButton": "Ask AI to reply",
@@ -95,7 +95,10 @@
     "pickButton": "Pick up",
     "pickErrorFallback": "Could not pick up this conversation.",
     "queueLabel": "Queue",
-    "noQueueOption": "No queue"
+    "noQueueOption": "No queue",
+    "autopilotTakeOverButton": "Take over from AI",
+    "autopilotTakingOverButton": "Taking over…",
+    "autopilotTakeOverErrorFallback": "Could not take this conversation back from AI Autopilot."
   },
   "MessageThread": {
     "senderAgent": "You",

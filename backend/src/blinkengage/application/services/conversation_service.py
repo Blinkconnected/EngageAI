@@ -527,6 +527,71 @@ class ConversationService:
         )
         return conversation
 
+    async def take_over_from_autopilot(
+        self, *, company_id: UUID, conversation_id: UUID, actor_user_id: UUID
+    ) -> Conversation:
+        """Hands a conversation back from AI Autopilot to a human.
+
+        Deliberately separate from ``pick()``, which cannot serve this
+        case at all: ``pick()`` requires a queued **unassigned**
+        conversation, but an agent who hands their *own* chat to Autopilot
+        (the "on agent request" mode) keeps ``assigned_agent_id`` set, and
+        a conversation Autopilot was given on request may have no queue.
+        Either would make ``pick()`` raise while the agent is simply
+        trying to resume a conversation they never really left.
+
+        Idempotent: taking over a conversation Autopilot doesn't hold is a
+        no-op rather than an error, so a double-click (or a stale row from
+        the last poll) can't fail.
+
+        Assigns the conversation to the caller when nobody holds it and
+        the caller is an agent, so taking it off AI usually leaves a real
+        owner behind. When it is already assigned — the agent-request
+        case — that assignment is left exactly as it was; and when the
+        caller has no Agent profile at all, the conversation simply
+        returns to its queue unassigned.
+        """
+        conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
+        if not conversation.autopilot_active:
+            return conversation
+
+        # The caller is assigned the conversation only when nobody holds
+        # it *and* they actually have an Agent profile. Neither condition
+        # is required to stop AI: a supervisor or Owner who never became
+        # an agent can still take a conversation off Autopilot, it simply
+        # returns to the queue unassigned rather than to them. Failing
+        # here instead would leave AI running with no way to stop it.
+        previously_unassigned = conversation.assigned_agent_id is None
+        agent = (
+            await self._agents.get_by_user_id(company_id=company_id, user_id=actor_user_id)
+            if previously_unassigned
+            else None
+        )
+
+        conversation.autopilot_active = False
+        if agent is not None:
+            now = datetime.now(UTC)
+            conversation.assigned_agent_id = agent.id
+            conversation.picked_up_at = now
+            if conversation.first_picked_up_at is None:
+                conversation.first_picked_up_at = now
+
+        await self._events.publish(
+            DomainEvent(
+                event_type="conversation.autopilot_stopped",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                actor_user_id=actor_user_id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "agent_id": str(agent.id) if agent is not None else None,
+                    "assigned_by_takeover": previously_unassigned,
+                },
+            )
+        )
+        return conversation
+
     async def release(
         self,
         *,

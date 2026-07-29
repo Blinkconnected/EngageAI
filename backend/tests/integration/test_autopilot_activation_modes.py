@@ -423,3 +423,119 @@ class TestNewConversationMode:
             conversation = (await db_session.execute(select(Conversation))).scalar_one()
 
         assert conversation.autopilot_active is False
+
+
+class TestTakeOverFromAutopilot:
+    """Taking a conversation back from AI — the inverse of the agent
+    request. `pick` cannot serve this: it needs a queued *unassigned*
+    conversation, and the agent-request mode leaves the requesting
+    agent's assignment in place."""
+
+    async def test_an_assigned_agent_can_take_their_conversation_back(
+        self, client: AsyncClient, owner_headers: dict, app: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seed = await _seed_human_conversation(
+            client,
+            owner_headers,
+            app,
+            autopilot_settings={"enabled": True, "activate_on_agent_request": True},
+        )
+        from blinkengage.api import deps
+
+        monkeypatch.setattr(
+            deps,
+            "build_ai_provider_for_company",
+            lambda settings, config: FakeAiProvider(reply="On it!", confidence=95, handoff="NO"),
+        )
+        # Assign the conversation to the owner first, so this reproduces
+        # the real agent-request shape: assigned AND autopilot-driven.
+        session_factory = app.state.container.session_factory()
+        me = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()
+        agent_id = (
+            await client.post(
+                "/api/v1/agents",
+                json={
+                    "email": "takeover@acme.example",
+                    "full_name": "Takeover Agent",
+                    "password": "correct-horse-battery-9",
+                },
+                headers=owner_headers,
+            )
+        ).json()["id"]
+        async with session_factory() as session:
+            conversation = await session.get(Conversation, UUID(seed["conversation_id"]))
+            assert conversation is not None
+            conversation.assigned_agent_id = UUID(agent_id)
+            await session.commit()
+
+        handed = await client.post(
+            f"/api/v1/conversations/{seed['conversation_id']}/autopilot", headers=owner_headers
+        )
+        assert handed.status_code == 200, handed.text
+        assert handed.json()["autopilot_active"] is True
+        # The assignment survives handing it to AI — which is exactly why
+        # `pick` could never take it back.
+        assert handed.json()["assigned_agent_id"] == agent_id
+
+        response = await client.delete(
+            f"/api/v1/conversations/{seed['conversation_id']}/autopilot", headers=owner_headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["autopilot_active"] is False
+        # Taking over must not steal the conversation from whoever held it.
+        assert response.json()["assigned_agent_id"] == agent_id
+        assert me["id"]
+
+    async def test_a_supervisor_without_an_agent_profile_can_still_stop_ai(
+        self, client: AsyncClient, owner_headers: dict, app: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An Owner who never became an agent has nobody to assign the
+        conversation to — but must still be able to stop AI. It returns
+        to its queue unassigned rather than the call failing and leaving
+        Autopilot running with no way to stop it."""
+        seed = await _seed_human_conversation(
+            client,
+            owner_headers,
+            app,
+            autopilot_settings={"enabled": True, "activate_on_agent_request": True},
+        )
+        from blinkengage.api import deps
+
+        monkeypatch.setattr(
+            deps,
+            "build_ai_provider_for_company",
+            lambda settings, config: FakeAiProvider(reply="Sure!", confidence=95, handoff="NO"),
+        )
+        handed = await client.post(
+            f"/api/v1/conversations/{seed['conversation_id']}/autopilot", headers=owner_headers
+        )
+        assert handed.status_code == 200
+        assert handed.json()["assigned_agent_id"] is None
+
+        response = await client.delete(
+            f"/api/v1/conversations/{seed['conversation_id']}/autopilot", headers=owner_headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["autopilot_active"] is False
+        assert response.json()["assigned_agent_id"] is None
+
+    async def test_taking_over_is_idempotent(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        seed = await _seed_human_conversation(
+            client,
+            owner_headers,
+            app,
+            autopilot_settings={"enabled": True, "activate_on_agent_request": True},
+        )
+
+        # Autopilot never held this one — a stale row or a double-click
+        # must not turn into an error.
+        response = await client.delete(
+            f"/api/v1/conversations/{seed['conversation_id']}/autopilot", headers=owner_headers
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["autopilot_active"] is False

@@ -95,7 +95,10 @@
     "pickButton": "التقاط",
     "pickErrorFallback": "تعذّر التقاط هذه المحادثة.",
     "queueLabel": "قائمة الانتظار",
-    "noQueueOption": "بدون قائمة انتظار"
+    "noQueueOption": "بدون قائمة انتظار",
+    "autopilotTakeOverButton": "استلام المحادثة من الذكاء الاصطناعي",
+    "autopilotTakingOverButton": "جارٍ الاستلام…",
+    "autopilotTakeOverErrorFallback": "تعذّر استرجاع هذه المحادثة من الطيار الآلي."
   },
   "MessageThread": {
     "senderAgent": "أنت",

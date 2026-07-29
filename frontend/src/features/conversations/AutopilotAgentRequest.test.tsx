@@ -25,6 +25,34 @@ async function waitForLoaded() {
   return screen.findByLabelText(/^status/i)
 }
 
+/** A conversation Autopilot holds *and* that is still assigned — the
+ * shape the "on agent request" mode produces, which `pick` cannot
+ * resolve. */
+const CONV_ASSIGNED_AUTOPILOT = {
+          id: 'conv-1',
+          customer_id: '33333333-3333-3333-3333-333333333333',
+          channel_config_id: 'c1',
+          external_thread_id: 'ext-thread-1',
+          status: 'open',
+          priority: 'normal',
+          queue_id: 'q1',
+          assigned_agent_id: 'a-self',
+          department_id: null,
+          last_message_at: '2026-01-01T00:05:00Z',
+          first_response_at: null,
+          sla_first_response_breached_at: null,
+          sla_resolution_breached_at: null,
+          sla_first_response_warned_at: null,
+          sla_resolution_warned_at: null,
+          queue_entered_at: '2026-01-01T00:00:00Z',
+          picked_up_at: null,
+          closed_at: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          autopilot_active: true,
+          unread_count: 0,
+        }
+
 describe('AI Autopilot — On Agent Request', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
@@ -106,6 +134,63 @@ describe('AI Autopilot — On Agent Request', () => {
     await user.click(await screen.findByRole('button', { name: /ask ai to reply/i }))
 
     expect(await screen.findByText(/on agent request.*turned off/i)).toBeInTheDocument()
+  })
+})
+
+describe('Taking a conversation back from AI Autopilot', () => {
+  afterEach(() => {
+    store.dispatch(loggedOut())
+    queryClient.clear()
+    resetConversationsMock()
+  })
+
+  it('offers a takeover button while Autopilot holds the conversation, even though it is assigned', async () => {
+    // The agent-request case: the requesting agent keeps the assignment,
+    // so "Pick up" has nothing to claim and stays hidden — this button is
+    // their only route back.
+    server.use(
+      http.get(`${API_BASE_URL}/conversations/:conversationId`, () =>
+        HttpResponse.json(CONV_ASSIGNED_AUTOPILOT),
+      ),
+    )
+    renderConversation()
+    await waitForLoaded()
+
+    expect(await screen.findByRole('button', { name: /take over from ai/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^pick up$/i })).not.toBeInTheDocument()
+  })
+
+  it('stops Autopilot and returns the conversation to the agent', async () => {
+    const user = userEvent.setup()
+    let stopped = false
+    server.use(
+      http.get(`${API_BASE_URL}/conversations/:conversationId`, () =>
+        HttpResponse.json(CONV_ASSIGNED_AUTOPILOT),
+      ),
+      http.delete(`${API_BASE_URL}/conversations/:conversationId/autopilot`, () => {
+        stopped = true
+        return HttpResponse.json({ ...CONV_ASSIGNED_AUTOPILOT, autopilot_active: false })
+      }),
+    )
+    renderConversation()
+    await waitForLoaded()
+
+    await user.click(await screen.findByRole('button', { name: /take over from ai/i }))
+
+    await waitFor(() => expect(stopped).toBe(true))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /take over from ai/i })).not.toBeInTheDocument(),
+    )
+    // Back under human control, so handing it to AI is on offer again.
+    expect(await screen.findByRole('button', { name: /ask ai to reply/i })).toBeInTheDocument()
+  })
+
+  it('does not offer a takeover on a conversation Autopilot does not hold', async () => {
+    renderConversation()
+    await waitForLoaded()
+    await screen.findByRole('button', { name: /ask ai to reply/i })
+
+    expect(screen.queryByRole('button', { name: /take over from ai/i })).not.toBeInTheDocument()
   })
 })
 

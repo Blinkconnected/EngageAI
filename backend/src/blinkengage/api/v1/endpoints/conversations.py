@@ -207,6 +207,31 @@ async def request_autopilot(
     return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
 
 
+@router.delete("/{conversation_id}/autopilot", response_model=ConversationResponse)
+async def stop_autopilot(
+    conversation_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> ConversationResponse:
+    """Take a conversation back from AI Autopilot — the inverse of
+    ``POST /conversations/{id}/autopilot``, and the only way to stop
+    Autopilot on a conversation that is already assigned (which
+    ``/pick`` cannot do).
+
+    Rides ``conversations.manage``, symmetric with the POST: an agent who
+    may hand a conversation to AI may take it back. Idempotent — stopping
+    Autopilot on a conversation it doesn't hold returns the conversation
+    unchanged rather than erroring.
+    """
+    conversation = await service.take_over_from_autopilot(
+        company_id=auth.company_id,
+        conversation_id=conversation_id,
+        actor_user_id=auth.user_id,
+    )
+    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
+    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+
+
 @router.post("/{conversation_id}/release", response_model=ConversationResponse)
 async def release_conversation(
     conversation_id: UUID,

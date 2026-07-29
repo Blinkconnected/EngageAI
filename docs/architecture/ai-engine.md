@@ -445,6 +445,36 @@ the SLA or agent-request paths: that flag governs which queues hand
 *brand-new* conversations to AI instead of to a human, a different
 decision from "nothing has happened for too long" or "this agent asked".
 
+### Taking a conversation back from AI
+
+`DELETE /conversations/{id}/autopilot` is the inverse of the POST, and
+the **only** way to stop Autopilot on a conversation that is already
+assigned. `pick()` cannot serve this case: it requires a queued
+*unassigned* conversation, but the agent-request mode deliberately leaves
+`assigned_agent_id` untouched, so an agent who handed their own chat to
+AI still holds it and there is nothing for `pick` to claim. Before this
+existed the sidebar hid "Pick up" whenever `autopilot_active` was true —
+while telling the agent to "pick it up to take over" — leaving no route
+back at all.
+
+Behavior (`ConversationService.take_over_from_autopilot`):
+
+- **Idempotent** — stopping Autopilot on a conversation it doesn't hold
+  returns the conversation unchanged rather than erroring, so a
+  double-click or a stale row can't fail.
+- **Assignment is preserved** when somebody already holds it (the
+  agent-request case); the caller does not steal it.
+- **The caller is assigned it** when nobody holds it *and* they have an
+  Agent profile, so taking it off AI usually leaves a real owner.
+- **An Owner/supervisor with no Agent profile can still stop AI** — the
+  conversation simply returns to its queue unassigned. Requiring an agent
+  profile here would leave AI running with no way to stop it, which is
+  strictly worse than an unassigned conversation.
+- Publishes `conversation.autopilot_stopped` (audited automatically).
+
+Rides `conversations.manage`, symmetric with the POST: an agent who may
+hand a conversation to AI may take it back.
+
 ## Per-agent usage tracking and AI provenance (2026-07-28)
 
 The `ai.completed` event now carries `actor_user_id` (every

@@ -14,6 +14,17 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Fixed
+
+- **You can now take a conversation back from AI Autopilot.** When an
+  agent handed a chat to AI (or AI stepped in on its own), there was no
+  way to resume it — the conversation showed "AI is currently replying…
+  pick it up to take over", but the button to do that was hidden exactly
+  when AI was in control. A **"Take over from AI"** button now appears
+  whenever AI holds the conversation. It keeps the conversation with
+  whoever it was already assigned to, and assigns it to you if nobody
+  held it.
+
 ## [1.0.0-beta.5] - 2026-07-28
 
 ### Added
