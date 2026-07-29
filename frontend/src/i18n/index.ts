@@ -26,6 +26,7 @@ import enRoles from '../locales/en/roles.json'
 import enSearch from '../locales/en/search.json'
 import enSla from '../locales/en/sla.json'
 import enStatus from '../locales/en/status.json'
+import enPlatform from '../locales/en/platform.json'
 import enPages from '../locales/en/pages.json'
 import enShared from '../locales/en/shared.json'
 
@@ -54,6 +55,7 @@ import arRoles from '../locales/ar/roles.json'
 import arSearch from '../locales/ar/search.json'
 import arSla from '../locales/ar/sla.json'
 import arStatus from '../locales/ar/status.json'
+import arPlatform from '../locales/ar/platform.json'
 import arPages from '../locales/ar/pages.json'
 import arShared from '../locales/ar/shared.json'
 
@@ -91,6 +93,7 @@ export const NAMESPACES = [
   'sla',
   'status',
   'pages',
+  'platform',
   'shared',
 ] as const
 
@@ -150,6 +153,7 @@ void i18n.use(initReactI18next).init({
       sla: enSla,
       status: enStatus,
       pages: enPages,
+      platform: enPlatform,
       shared: enShared,
     },
     ar: {
@@ -179,6 +183,7 @@ void i18n.use(initReactI18next).init({
       sla: arSla,
       status: arStatus,
       pages: arPages,
+      platform: arPlatform,
       shared: arShared,
     },
   },

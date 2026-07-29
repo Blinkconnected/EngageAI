@@ -14,18 +14,21 @@ confined to this file.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from blinkengage.api.deps import get_platform_auth, get_platform_service
+from blinkengage.api.deps import get_db_session, get_platform_auth, get_platform_service
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.api.schemas.platform import (
     CompanyOverviewResponse,
     CompanyStatusUpdateRequest,
+    PlatformProfileResponse,
 )
 from blinkengage.application.services.platform_service import PlatformService
 from blinkengage.core.auth_context import PlatformContext
 from blinkengage.infrastructure.database.models.company import CompanyStatus
 from blinkengage.infrastructure.repositories.platform_repository import CompanyOverview
+from blinkengage.infrastructure.repositories.user_repository import UserRepository
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
@@ -42,6 +45,24 @@ def _to_response(overview: CompanyOverview) -> CompanyOverviewResponse:
         agent_count=overview.agent_count,
         conversation_count=overview.conversation_count,
     )
+
+
+@router.get("/me", response_model=PlatformProfileResponse)
+async def platform_me(
+    platform: Annotated[PlatformContext, Depends(get_platform_auth)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PlatformProfileResponse:
+    """Identifies the signed-in platform operator.
+
+    `/auth/me` refuses a platform token by design — it describes a user
+    *within a company*, and a platform admin has none. The frontend needs
+    something to ask instead, otherwise a successful platform sign-in is
+    indistinguishable from a broken session and renders nothing at all.
+    """
+    user = await UserRepository(session).get_by_id(platform.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return PlatformProfileResponse(id=user.id, email=user.email, full_name=user.full_name)
 
 
 @router.get("/companies", response_model=Page[CompanyOverviewResponse])

@@ -1,0 +1,37 @@
+{
+  "PlatformLayout": {
+    "title": "Platform Console",
+    "subtitle": "Manage companies on this installation",
+    "signOut": "Sign out"
+  },
+  "PlatformCompaniesPage": {
+    "title": "Companies",
+    "description": "Every company on this installation. Suspending one blocks its people from signing in; their customers' messages keep arriving.",
+    "columnName": "Company",
+    "columnSlug": "Identifier",
+    "columnStatus": "Status",
+    "columnUsers": "Users",
+    "columnAgents": "Agents",
+    "columnConversations": "Conversations",
+    "columnActions": "Actions",
+    "status": {
+      "trial": "Trial",
+      "active": "Active",
+      "suspended": "Suspended"
+    },
+    "suspendButton": "Suspend",
+    "reactivateButton": "Reactivate",
+    "searchPlaceholder": "Search companies…",
+    "searchAriaLabel": "Search companies",
+    "statusFilterLabel": "Status",
+    "allStatusesOption": "All statuses",
+    "emptyTitle": "No companies",
+    "emptyDescription": "No company matches this filter.",
+    "tableAriaLabel": "Companies",
+    "confirmSuspendTitle": "Suspend this company?",
+    "confirmReactivateTitle": "Reactivate this company?",
+    "confirmSuspendDescription": "{{companyName}} will be blocked from signing in immediately, including anyone already signed in. Their customers' messages keep arriving, so nothing is lost.",
+    "confirmReactivateDescription": "{{companyName}} will be able to sign in again straight away.",
+    "statusErrorFallback": "Could not change this company's status."
+  }
+}

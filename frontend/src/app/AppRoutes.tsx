@@ -1,6 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
+import { PlatformRoute } from '../features/platform/PlatformRoute'
+import { PlatformLayout } from '../features/platform/PlatformLayout'
+import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPage'
 import { AppLayout } from '../features/layout/AppLayout'
 import { RequirePermission } from '../features/layout/RequirePermission'
 import { RequireErpEnabled } from '../features/layout/RequireErpEnabled'
@@ -106,6 +109,21 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/changelog" element={<ChangelogPage />} />
+
+        {/* The platform console. Outside ProtectedRoute/AppLayout on
+            purpose: a platform operator has no company, so the tenant
+            shell's navigation (Inbox, Customers, Reports…) would be a
+            dozen links that all 403 for them. */}
+        <Route
+          path="/platform"
+          element={
+            <PlatformRoute>
+              <PlatformLayout />
+            </PlatformRoute>
+          }
+        >
+          <Route index element={<PlatformCompaniesPage />} />
+        </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route
           path="/"

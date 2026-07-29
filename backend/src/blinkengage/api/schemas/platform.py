@@ -28,3 +28,17 @@ class CompanyStatusUpdateRequest(BaseModel):
     #: Recorded on the audit event, not on the company — why an account
     #: was suspended matters when reconstructing what happened later.
     reason: str | None = Field(default=None, max_length=500)
+
+
+class PlatformProfileResponse(BaseModel):
+    """Who the platform operator is. The counterpart to `/auth/me`, which
+    deliberately refuses a platform token (it has no company to describe)
+    — without this the frontend has no way to tell a platform admin from
+    a broken session, and lands them on a blank page."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    full_name: str
+    is_platform_admin: bool = True

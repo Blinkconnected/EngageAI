@@ -122,6 +122,36 @@ Every status change publishes `platform.company_status_changed`, which
 the audit-log consumer records automatically — a platform operator
 changing a customer's account state must be reconstructable later.
 
+## The console
+
+`/platform` — outside `ProtectedRoute` and `AppLayout` on purpose. The
+tenant shell's navigation is the product itself (Inbox, Customers,
+Reports…), none of which a platform operator can open; rendering it
+would offer a dozen links that all 403.
+
+**Sign-in routes automatically.** A platform admin signs in at the same
+`/login` as everyone else. `ProtectedRoute` then sees `/auth/me` return
+403, asks `GET /platform/me`, and redirects to the console. Before this
+existed, a successful platform sign-in rendered the tenant shell against
+a failed profile query and produced a **blank page** — indistinguishable
+from a broken session. `/platform/me` exists precisely so the frontend
+can tell those two apart; `/auth/me` cannot answer it, since it describes
+a user *within a company*.
+
+`PlatformRoute` guards the console in the other direction: a tenant user
+who follows a `/platform` link is sent back to their own workspace rather
+than shown an error, because they simply followed a link that isn't
+theirs.
+
+The companies grid shows name, identifier, status, and user/agent/
+conversation **counts**, with search, a status filter, and a
+suspend/reactivate action behind a confirmation that states both
+consequences: people are locked out immediately, and their customers'
+messages keep arriving. A frontend test asserts the page issues **no
+requests to tenant endpoints** — pinned on requests rather than rendered
+copy, since the page legitimately uses words like "Conversations" as a
+column header.
+
 ## Deliberately not built
 
 - **Impersonation.** Considered and rejected for this milestone: reading

@@ -1,0 +1,37 @@
+{
+  "PlatformLayout": {
+    "title": "وحدة تحكم المنصة",
+    "subtitle": "إدارة الشركات على هذا التثبيت",
+    "signOut": "تسجيل الخروج"
+  },
+  "PlatformCompaniesPage": {
+    "title": "الشركات",
+    "description": "جميع الشركات على هذا التثبيت. تعليق أي شركة يمنع موظفيها من تسجيل الدخول، مع استمرار وصول رسائل عملائهم.",
+    "columnName": "الشركة",
+    "columnSlug": "المعرّف",
+    "columnStatus": "الحالة",
+    "columnUsers": "المستخدمون",
+    "columnAgents": "الموظفون",
+    "columnConversations": "المحادثات",
+    "columnActions": "الإجراءات",
+    "status": {
+      "trial": "تجريبي",
+      "active": "نشط",
+      "suspended": "معلّق"
+    },
+    "suspendButton": "تعليق",
+    "reactivateButton": "إعادة التفعيل",
+    "searchPlaceholder": "ابحث عن شركة…",
+    "searchAriaLabel": "البحث عن الشركات",
+    "statusFilterLabel": "الحالة",
+    "allStatusesOption": "جميع الحالات",
+    "emptyTitle": "لا توجد شركات",
+    "emptyDescription": "لا توجد شركة مطابقة لهذا الفلتر.",
+    "tableAriaLabel": "الشركات",
+    "confirmSuspendTitle": "تعليق هذه الشركة؟",
+    "confirmReactivateTitle": "إعادة تفعيل هذه الشركة؟",
+    "confirmSuspendDescription": "سيتم منع {{companyName}} من تسجيل الدخول فورًا، بما في ذلك من هم مسجّلون حاليًا. تستمر رسائل عملائهم في الوصول، فلا يضيع شيء.",
+    "confirmReactivateDescription": "سيتمكن {{companyName}} من تسجيل الدخول مرة أخرى على الفور.",
+    "statusErrorFallback": "تعذّر تغيير حالة هذه الشركة."
+  }
+}

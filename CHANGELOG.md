@@ -28,6 +28,13 @@ for more detail on how this page is put together.
   conversations, messages or customers**; they manage accounts, not
   content. They are created from the server command line, never through
   the app.
+- **Platform console.** A super administrator signs in at the normal
+  sign-in page and is taken straight to a console listing every company
+  with its user, agent and conversation counts, where each can be
+  suspended or reactivated in one click (with a confirmation explaining
+  exactly what that does). Previously signing in as a super
+  administrator showed a blank page, because the app had no screen for
+  someone who belongs to no company.
 
 ### Fixed
 
