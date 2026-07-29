@@ -161,6 +161,89 @@ requests to tenant endpoints** — pinned on requests rather than rendered
 copy, since the page legitimately uses words like "Conversations" as a
 column header.
 
+## Installation settings
+
+`platform_settings` — one row per settings group, keyed by a string, the
+value encrypted as a whole with `EncryptedJSON`. Encrypting the row
+rather than one column means a field added later is protected by
+default instead of by whoever remembers.
+
+Today the only group is `smtp`: the outbound mail relay the product
+sends notifications, invites and verification emails from. Deliberately
+**not** the same thing as a company's customer-facing email *channel*
+credentials, which belong to the tenant and live on `channel_configs`.
+
+### Stored settings override the environment; they never replace it
+
+SMTP has always been configured by environment variable, and existing
+installations depend on that. So an installation that has never opened
+the console keeps working exactly as before, and one that has keeps
+working if the row is deleted. A setting that only works after somebody
+fills in a form is one that takes the next fresh deployment down.
+
+`DELETE /platform/settings/mail` drops the override and falls back —
+the way back for an operator who has misconfigured the relay from the
+console, and a safer instruction than "guess what the environment
+variables were".
+
+### The password is write-only
+
+It is accepted on the way in and never sent back. An operator who can
+read a credential off a screen has a way to exfiltrate it, and there is
+no legitimate reason to need it again once set.
+
+That creates one ambiguity, which the API resolves explicitly:
+
+| What the client sends | What it means |
+| --- | --- |
+| `password` omitted | Keep the stored password |
+| `password: ""` | Clear it |
+| `password: "…"` | Replace it |
+
+A naive round-trip of the form would otherwise erase the password every
+time somebody edited the host. The read path returns `password_set`
+instead, because a blank field means two different things — "no
+authentication" and "authenticated, but hidden" — and an operator cannot
+tell which without trying to send.
+
+### Encryption is a choice, not a mode
+
+`MailSecurity` is one field with three values rather than a pair of
+booleans. `use_tls` and `start_tls` as separate flags admit a
+combination that means nothing (both true) and one that silently sends
+credentials in clear (both false) — and the second is indistinguishable
+from a deliberate choice when it is rendered as two checkboxes. The
+values are passed explicitly to `aiosmtplib` rather than left to its
+autodetection, which would otherwise fall back to an unencrypted session
+against a relay that does not offer STARTTLS.
+
+### Testing sends a real message
+
+`POST /platform/settings/mail/test` sends, rather than merely
+connecting. A relay that accepts a TCP connection and authenticates can
+still reject the envelope sender, and "connected successfully" followed
+by silent non-delivery is worse than no test at all.
+
+It answers **200 with `delivered: false`** on failure, carrying the
+relay's own words. The refusal is the *answer* to the request, not an
+error in serving it — and "535 authentication failed" tells an operator
+to fix the password, while a generic failure sends them looking at DNS.
+
+Rate-limited like the channel and ERP connection tests, even though the
+caller is a platform administrator: trusting the operator is not the
+point, and a stolen platform token should not turn the installation into
+a port scanner.
+
+### Sender-address validation is permissive
+
+A format check, not `EmailStr`. Pydantic's validator rejects special-use
+domains, and this installation's own shipped default is
+`notifications@blinkengage.local` — so an operator on a fresh install who
+changed only the host would have been refused because of a field they
+never touched. Internal relays legitimately send from `.local` and
+`.internal`, and the authority on whether an envelope sender is
+acceptable is the relay, which says so in the test-send result.
+
 ## Deliberately not built
 
 - **Impersonation.** Considered and rejected for this milestone: reading

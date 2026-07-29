@@ -12,6 +12,11 @@ import type {
   PricingHealth,
   PricingProfile,
 } from './types'
+import type {
+  MailSettings,
+  MailSettingsInput,
+  TestMailResult,
+} from './types'
 
 export const PLATFORM_ME_KEY = ['platform', 'me']
 const COMPANIES_KEY = ['platform', 'companies']
@@ -258,6 +263,53 @@ export function useAssignPricingProfileMutation() {
     mutationFn: assignPricingProfile,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PRICING_KEY })
+    },
+  })
+}
+
+const MAIL_SETTINGS_KEY = ['platform', 'settings', 'mail']
+
+async function fetchMailSettings(): Promise<MailSettings> {
+  const { data } = await apiClient.get<MailSettings>('/platform/settings/mail')
+  return data
+}
+
+export function useMailSettingsQuery() {
+  return useQuery({ queryKey: MAIL_SETTINGS_KEY, queryFn: fetchMailSettings })
+}
+
+export function useSaveMailSettingsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: MailSettingsInput) => {
+      const { data } = await apiClient.put<MailSettings>('/platform/settings/mail', input)
+      return data
+    },
+    // Seed the cache from the response rather than invalidating: the
+    // PUT already returns the resolved settings, and a refetch would
+    // briefly render the previous values over the ones just saved.
+    onSuccess: (data) => queryClient.setQueryData(MAIL_SETTINGS_KEY, data),
+  })
+}
+
+export function useResetMailSettingsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.delete<MailSettings>('/platform/settings/mail')
+      return data
+    },
+    onSuccess: (data) => queryClient.setQueryData(MAIL_SETTINGS_KEY, data),
+  })
+}
+
+export function useTestMailMutation() {
+  return useMutation({
+    mutationFn: async (toAddress: string) => {
+      const { data } = await apiClient.post<TestMailResult>('/platform/settings/mail/test', {
+        to_address: toAddress,
+      })
+      return data
     },
   })
 }

@@ -47,6 +47,9 @@ export function PlatformLayout() {
             <Button component={NavLink} to="/platform/pricing" size="small">
               {t('PlatformLayout.pricing')}
             </Button>
+            <Button component={NavLink} to="/platform/mail" size="small">
+              {t('PlatformLayout.mail')}
+            </Button>
           </Stack>
           {profileQuery.data && (
             <Typography variant="body2" color="text.secondary">

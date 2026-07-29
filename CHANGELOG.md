@@ -16,6 +16,19 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The email server is now configurable from the platform console**,
+  under a new **Email** tab. Previously the mail server could only be
+  changed by editing the server's configuration files and redeploying.
+  Set the address, port, encryption, sender name and credentials, and
+  **send a test message** to confirm it works — a real email, not just a
+  connection check, because a server can accept a connection and still
+  refuse to send. If it fails you are shown exactly what the mail server
+  said, so "the password is wrong" doesn't look the same as "the address
+  is wrong". The password is stored encrypted and never shown again.
+  Existing installations are unaffected: settings entered here override
+  the server configuration, and **Reset to server configuration** always
+  puts it back.
+
 - **Customers can now pay their invoices, and unpaid invoices are chased
   automatically.** Invoices can be paid by **PayPal** or recorded as
   **bank transfers**, and the two are treated identically everywhere

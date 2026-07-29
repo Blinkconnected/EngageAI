@@ -4,7 +4,8 @@
     "subtitle": "Manage companies on this installation",
     "signOut": "Sign out",
     "companies": "Companies",
-    "pricing": "Pricing"
+    "pricing": "Pricing",
+    "mail": "Email"
   },
   "PlatformCompaniesPage": {
     "title": "Companies",
@@ -96,5 +97,43 @@
     "historyDescription": "Every pricing change ever made, newest first. This record is never deleted.",
     "historyAriaLabel": "Pricing history",
     "historyEmpty": "No pricing changes yet."
+  },
+  "PlatformMailPage": {
+    "title": "Email delivery",
+    "subtitle": "The mail server this installation sends notifications, invites and verification emails from.",
+    "usingEnvironment": "These settings come from this server's environment configuration. Saving here overrides them; you can always reset back.",
+    "loadFailed": "Could not load the email settings.",
+    "host": "Server address",
+    "port": "Port",
+    "security": "Encryption",
+    "securityMode": {
+      "starttls": "STARTTLS (recommended)",
+      "tls": "SSL/TLS",
+      "none": "None"
+    },
+    "securityHelp": {
+      "starttls": "Connects normally, then upgrades to an encrypted session. What most providers expect.",
+      "tls": "Encrypted from the first byte. Usually port 465.",
+      "none": "Unencrypted. Only safe for a mail server on this machine or a trusted private network."
+    },
+    "fromName": "Sender name",
+    "fromAddress": "Sender address",
+    "username": "Username",
+    "password": "Password",
+    "passwordSet": "A password is saved",
+    "passwordNone": "No password",
+    "passwordUnchanged": "Leave blank to keep the saved password.",
+    "passwordWillChange": "This will replace the saved password.",
+    "lastChanged": "Last changed by {{email}} on {{when}}",
+    "save": "Save",
+    "saved": "Saved",
+    "saveFailed": "Could not save the email settings.",
+    "reset": "Reset to server configuration",
+    "testTitle": "Send a test message",
+    "testSubtitle": "Sends a real email using the settings currently in force, so you find out now rather than when a customer doesn't receive something.",
+    "testAddress": "Send to",
+    "sendTest": "Send test",
+    "testDelivered": "Test message sent. Check that inbox to confirm it arrived.",
+    "testFailed": "The mail server refused it: {{detail}}"
   }
 }

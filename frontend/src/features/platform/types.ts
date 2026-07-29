@@ -123,3 +123,46 @@ export interface PricingHealth {
   ok: boolean
   metrics: MetricCoverage[]
 }
+
+/** How the connection to the outbound mail relay is protected.
+ *
+ * Three values rather than a pair of booleans: `useTls` and `startTls`
+ * as separate flags admit a combination that means nothing (both true)
+ * and one that silently sends credentials in clear (both false). */
+export type MailSecurity = 'tls' | 'starttls' | 'none'
+
+export interface MailSettings {
+  host: string
+  port: number
+  security: MailSecurity
+  from_address: string
+  from_name: string
+  username: string | null
+  /** Whether *a* password is configured. The password itself is never
+   * sent back — a blank field would otherwise mean both "no
+   * authentication" and "authenticated, but hidden". */
+  password_set: boolean
+  timeout_seconds: number
+  /** False when these values come from environment variables. */
+  customised: boolean
+  updated_by_email: string | null
+  updated_at: string | null
+}
+
+export interface MailSettingsInput {
+  host: string
+  port: number
+  security: MailSecurity
+  from_address: string
+  from_name: string
+  username: string | null
+  /** Omit to keep the stored password; send an empty string to clear it. */
+  password?: string | null
+  timeout_seconds: number
+}
+
+export interface TestMailResult {
+  delivered: boolean
+  /** The relay's own words when it refused. */
+  detail: string | null
+}

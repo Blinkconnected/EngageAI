@@ -66,6 +66,9 @@ from blinkengage.infrastructure.database.models.payments import (
     PaymentIntent,
     PaymentRefund,
 )
+from blinkengage.infrastructure.database.models.platform_settings import (
+    PlatformSetting,
+)
 from blinkengage.infrastructure.database.models.pricing import (
     CompanyPricingProfileAssignment,
     PricingAuditLog,
@@ -127,6 +130,7 @@ __all__ = [
     "InvoiceLine",
     "DunningNotice",
     "Payment",
+    "PlatformSetting",
     "PaymentIntent",
     "PaymentRefund",
     "PaymentAllocation",

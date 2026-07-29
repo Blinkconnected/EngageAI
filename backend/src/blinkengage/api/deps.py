@@ -44,6 +44,9 @@ from blinkengage.application.services.notification_preference_service import (
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.payment_service import PaymentService
 from blinkengage.application.services.platform_service import PlatformService
+from blinkengage.application.services.platform_settings_service import (
+    PlatformSettingsService,
+)
 from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
@@ -143,6 +146,9 @@ from blinkengage.infrastructure.repositories.payments_repository import (
     PaymentRefundRepository,
 )
 from blinkengage.infrastructure.repositories.platform_repository import PlatformRepository
+from blinkengage.infrastructure.repositories.platform_settings_repository import (
+    PlatformSettingsRepository,
+)
 from blinkengage.infrastructure.repositories.pricing_repository import (
     CompanyPricingAssignmentRepository,
     PricingAuditRepository,
@@ -1141,3 +1147,35 @@ async def enforce_erp_test_connection_rate_limit(
     )
     await enforce_rate_limit(limiter, str(auth.user_id))
     return auth
+
+async def enforce_platform_test_connection_rate_limit(
+    platform: Annotated[PlatformContext, Depends(get_platform_auth)],
+    redis: Annotated[Redis, Depends(get_redis)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> PlatformContext:
+    """Same reasoning as the channel and ERP connection tests, applied to
+    the platform mail test: it makes the server originate an outbound
+    connection to an operator-chosen host and port.
+
+    Rate-limited even though the caller is a platform administrator.
+    Trusting the operator is not the point — a stolen platform token
+    should not turn this installation into a port scanner.
+    """
+    limiter = FixedWindowRateLimiter(
+        redis,
+        scope="platform-test-connection",
+        limit=settings.erp_test_connection_rate_limit_per_minute,
+        window_seconds=60,
+    )
+    await enforce_rate_limit(limiter, str(platform.user_id))
+    return platform
+
+
+def get_platform_settings_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> PlatformSettingsService:
+    return PlatformSettingsService(
+        repository=PlatformSettingsRepository(session), settings=settings
+    )
+
