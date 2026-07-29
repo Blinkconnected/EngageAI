@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from blinkengage.domain.exceptions import (
     AgentMissingRequiredSkillError,
     AiNotConfiguredError,
+    AmbiguousPricingConfigurationError,
     AuthenticationError,
     AuthorizationError,
     ConversationAlreadyClaimedError,
@@ -18,6 +19,12 @@ from blinkengage.domain.exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,
     ErpNotConfiguredError,
+    MetricNotPriceableError,
+    PricingConcurrentEditError,
+    PricingNotConfiguredError,
+    PricingRangeOverlapError,
+    RateAlreadyEffectiveError,
+    SystemProfileNotPriceableError,
 )
 
 _STATUS_MAP: dict[type[Exception], int] = {
@@ -27,6 +34,13 @@ _STATUS_MAP: dict[type[Exception], int] = {
     AuthorizationError: status.HTTP_403_FORBIDDEN,
     AiNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErpNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    PricingNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    AmbiguousPricingConfigurationError: status.HTTP_409_CONFLICT,
+    MetricNotPriceableError: status.HTTP_409_CONFLICT,
+    PricingRangeOverlapError: status.HTTP_409_CONFLICT,
+    PricingConcurrentEditError: status.HTTP_409_CONFLICT,
+    RateAlreadyEffectiveError: status.HTTP_409_CONFLICT,
+    SystemProfileNotPriceableError: status.HTTP_409_CONFLICT,
     ConversationAlreadyClaimedError: status.HTTP_409_CONFLICT,
     AgentMissingRequiredSkillError: status.HTTP_403_FORBIDDEN,
 }

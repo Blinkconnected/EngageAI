@@ -154,6 +154,94 @@ class ErpNotConfiguredError(DomainError):
         super().__init__("ERPNext is not configured for this company")
 
 
+class PricingNotConfiguredError(DomainError):
+    """No price is configured for a metric at the requested instant, at
+    any level of the hierarchy.
+
+    A deployment/configuration state rather than a missing resource, so
+    it maps to 503 like ``AiNotConfiguredError`` — the caller asked a
+    well-formed question the installation is not yet set up to answer.
+    Deliberately an error rather than a zero: a silent zero is a revenue
+    leak that looks exactly like a working system."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class AmbiguousPricingConfigurationError(DomainError):
+    """Two rates of equal precedence cover the same instant.
+
+    An integrity violation, mapped to 409. There is deliberately no
+    tiebreak — a billing engine that guesses which of two prices applies
+    is worse than one that stops and says so."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class MetricNotPriceableError(DomainError):
+    """The metric exists but nothing measures it yet, so it cannot carry
+    a price. 409, not 404: a typo and "we can't measure that yet" are
+    different problems with different fixes."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(
+            f"{code} has no measurement engine yet, so it cannot be priced. "
+            "It becomes priceable in the release that ships its meter."
+        )
+
+
+class PricingRangeOverlapError(DomainError):
+    """The requested effective range overlaps an existing rate for the
+    same target. 409 — resolving it is the operator's decision, not
+    something to guess at."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class PricingConcurrentEditError(DomainError):
+    """The price changed between the operator reading it and writing it.
+
+    409, carrying what the value is now, so they can re-read and decide
+    rather than silently overwriting somebody else's change."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class PricingBackdatingRefusedError(DomainError):
+    """An effective date in the past, without explicit opt-in.
+
+    Backdating is not forbidden outright — an operator who genuinely
+    needs it (a contract signed on the 10th, effective the 1st) would
+    otherwise do it in psql, unaudited. It requires ``allow_backdating``
+    plus a reason, and is recorded distinctly."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class SystemProfileNotPriceableError(DomainError):
+    """The seeded Default profile deliberately carries no prices of its
+    own; it falls through to the global default. One editable place."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            f"{name} has no prices of its own — it falls through to the global "
+            "default. Edit the global price instead."
+        )
+
+
+class RateAlreadyEffectiveError(DomainError):
+    """Voiding is only for a rate that has not taken effect yet. A rate
+    that has been live may already have priced usage, and unwinding that
+    is not a schema operation."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
 class ConversationNotInQueueError(DomainError):
     """Raised when ``ConversationService.pick()`` is called on a
     conversation with no ``queue_id`` — picking only makes sense for a

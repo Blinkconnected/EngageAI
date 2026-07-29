@@ -16,6 +16,21 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The installation now runs under a real domain name with a trusted
+  HTTPS certificate** (`engage.blinkconnected.com`), replacing the
+  self-signed certificate tied to the server's bare IP address. This is
+  what unblocks the Meta-platform channels — Facebook Messenger,
+  Instagram and WhatsApp all refuse to deliver webhooks to an address
+  whose certificate isn't signed by a recognised authority, so none of
+  them could be connected before. The certificate is issued by Let's
+  Encrypt and **renews itself automatically** roughly every 60 days,
+  with no interruption to the running site: renewal is proved over
+  plain HTTP through a dedicated path nginx serves straight from disk,
+  and nginx is then reloaded gracefully rather than restarted, so
+  in-flight requests are never dropped. The previous self-signed
+  certificate is left in place as the fallback for a local checkout
+  that has no domain.
+
 - **Super administrator.** A platform operator account that manages the
   whole installation: see every company with its user, agent and
   conversation counts, search and filter them, and **suspend or
@@ -35,6 +50,28 @@ for more detail on how this page is put together.
   entitled to disappears from their navigation instead of failing when
   opened. **Nothing changes for existing companies:** with no overrides
   set, every feature stays on exactly as before.
+- **Pricing engine.** Super administrators can now set what companies
+  pay per unit of usage, from a new **Pricing** page in the platform
+  console. A price can be set globally, for a reusable tier (Startup,
+  SMB, Enterprise, Government, Partner), or for one individual company —
+  and the most specific one always wins, automatically. The page shows
+  which of the three a price came from, and what it overrode.
+- **Changing a price never re-prices the past.** Every price carries the
+  date it takes effect, and the old one is kept rather than overwritten,
+  so usage is always charged at the price that applied when it happened.
+  A previously issued bill can never change because somebody edited a
+  price today.
+- **Every pricing change is recorded permanently** — the old value, the
+  new value, who changed it, when, from what date, and why. This history
+  is never deleted, and includes the very first price the system was set
+  up with, so there is no gap at the beginning.
+- Prices are kept to six decimal places, so genuinely small per-unit
+  prices (a conversation at $0.0005) are exact rather than rounded away.
+  A metric with no price set shows as "Not set" rather than "$0.00", and
+  the page warns when something measurable has no price at all.
+- Two administrators editing the same price at once no longer silently
+  overwrite each other — the second is told the price changed and asked
+  to re-read it.
 - **All money is handled to six decimal places and rounded only once, at
   the end of a calculation.** Usage prices are genuinely sub-cent — a
   conversation might cost $0.0005 — and rounding those to cents along the
@@ -77,6 +114,13 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **The app is now reachable through its domain in a browser.** The
+  development front-end server rejects requests arriving under a host
+  name it hasn't been told about — a deliberate safety check against
+  DNS rebinding — which made every page return "Blocked request" once
+  traffic started arriving through the new domain. The deployment's host
+  name is now listed explicitly, rather than switching the check off
+  altogether.
 - The Release Notes page no longer breaks when a release removes
   something. "Removed" is a standard changelog section, but the parser
   didn't recognise it — and an unrecognised section failed the whole

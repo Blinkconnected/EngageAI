@@ -4,6 +4,7 @@ import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { PlatformRoute } from '../features/platform/PlatformRoute'
 import { PlatformLayout } from '../features/platform/PlatformLayout'
 import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPage'
+import { PlatformPricingPage } from '../features/platform/PlatformPricingPage'
 import { AppLayout } from '../features/layout/AppLayout'
 import { RequirePermission } from '../features/layout/RequirePermission'
 import { RequireErpEnabled } from '../features/layout/RequireErpEnabled'
@@ -123,6 +124,7 @@ export function AppRoutes() {
           }
         >
           <Route index element={<PlatformCompaniesPage />} />
+          <Route path="pricing" element={<PlatformPricingPage />} />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route

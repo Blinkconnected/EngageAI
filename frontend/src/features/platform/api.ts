@@ -1,7 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page } from '../../shared/api/pagination'
-import type { CompanyOverview, CompanyStatus, FeatureState, PlatformProfile } from './types'
+import type {
+  BillableMetric,
+  CompanyOverview,
+  CompanyStatus,
+  EffectivePricing,
+  FeatureState,
+  PlatformProfile,
+  PricingAuditEntry,
+  PricingHealth,
+  PricingProfile,
+} from './types'
 
 export const PLATFORM_ME_KEY = ['platform', 'me']
 const COMPANIES_KEY = ['platform', 'companies']
@@ -120,3 +130,134 @@ export function useSetCompanyFeaturesMutation() {
   })
 }
 
+
+// --- Pricing engine ---------------------------------------------------
+
+const PRICING_KEY = ['platform', 'pricing']
+
+async function fetchMetrics(): Promise<BillableMetric[]> {
+  const { data } = await apiClient.get<BillableMetric[]>('/platform/pricing/metrics')
+  return data
+}
+
+/** The catalog never changes at runtime — metrics are code — so this is
+ * cached for the session rather than refetched. */
+export function useBillableMetricsQuery() {
+  return useQuery({ queryKey: [...PRICING_KEY, 'metrics'], queryFn: fetchMetrics, staleTime: Infinity })
+}
+
+async function fetchPricingProfiles(): Promise<PricingProfile[]> {
+  const { data } = await apiClient.get<PricingProfile[]>('/platform/pricing/profiles')
+  return data
+}
+
+export function usePricingProfilesQuery() {
+  return useQuery({ queryKey: [...PRICING_KEY, 'profiles'], queryFn: fetchPricingProfiles })
+}
+
+async function fetchEffectivePricing(params: {
+  companyId?: string
+  profileId?: string
+}): Promise<EffectivePricing> {
+  const { data } = await apiClient.get<EffectivePricing>('/platform/pricing/effective', {
+    params: { company_id: params.companyId, profile_id: params.profileId },
+  })
+  return data
+}
+
+export function useEffectivePricingQuery(params: { companyId?: string; profileId?: string } = {}) {
+  return useQuery({
+    queryKey: [...PRICING_KEY, 'effective', params],
+    queryFn: () => fetchEffectivePricing(params),
+  })
+}
+
+async function fetchPricingHealth(): Promise<PricingHealth> {
+  const { data } = await apiClient.get<PricingHealth>('/platform/pricing/health')
+  return data
+}
+
+export function usePricingHealthQuery() {
+  return useQuery({ queryKey: [...PRICING_KEY, 'health'], queryFn: fetchPricingHealth })
+}
+
+async function fetchPricingHistory(params: {
+  metricCode?: string
+  companyId?: string
+}): Promise<PricingAuditEntry[]> {
+  const { data } = await apiClient.get<PricingAuditEntry[]>('/platform/pricing/history', {
+    params: { metric_code: params.metricCode, company_id: params.companyId },
+  })
+  return data
+}
+
+export function usePricingHistoryQuery(params: { metricCode?: string; companyId?: string } = {}) {
+  return useQuery({
+    queryKey: [...PRICING_KEY, 'history', params],
+    queryFn: () => fetchPricingHistory(params),
+  })
+}
+
+export interface SetPriceInput {
+  /** Omit both for the global default; set one for a profile or company. */
+  companyId?: string
+  profileId?: string
+  metricCode: string
+  unitAmount: string
+  effectiveFrom: string
+  reason?: string
+  /** Optimistic concurrency — without one of these two, a second
+   * operator's edit silently overwrites the first. */
+  expectedCurrentRateId?: string
+  expectNoCurrentRate?: boolean
+}
+
+async function setPrice(input: SetPriceInput) {
+  const path = input.companyId
+    ? `/platform/pricing/companies/${input.companyId}/metrics/${input.metricCode}`
+    : input.profileId
+      ? `/platform/pricing/profiles/${input.profileId}/metrics/${input.metricCode}`
+      : `/platform/pricing/global/metrics/${input.metricCode}`
+  const { data } = await apiClient.put(path, {
+    unit_amount: input.unitAmount,
+    effective_from: input.effectiveFrom,
+    reason: input.reason ?? null,
+    ...(input.expectedCurrentRateId
+      ? { expected_current_rate_id: input.expectedCurrentRateId }
+      : { expect_no_current_rate: input.expectNoCurrentRate ?? false }),
+  })
+  return data
+}
+
+export function useSetPriceMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: setPrice,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PRICING_KEY })
+    },
+  })
+}
+
+async function assignPricingProfile(input: {
+  companyId: string
+  profileId: string | null
+  effectiveFrom: string
+  reason?: string
+}) {
+  await apiClient.put(`/platform/pricing/companies/${input.companyId}/profile`, {
+    profile_id: input.profileId,
+    effective_from: input.effectiveFrom,
+    reason: input.reason ?? null,
+  })
+}
+
+export function useAssignPricingProfileMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: assignPricingProfile,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PRICING_KEY })
+    },
+  })
+}

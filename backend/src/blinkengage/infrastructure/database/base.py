@@ -54,6 +54,38 @@ class GUID(TypeDecorator[uuid.UUID]):
         return value if type(value) is uuid.UUID else uuid.UUID(str(value))
 
 
+class UtcDateTime(TypeDecorator[datetime]):
+    """A timestamp that is **always** timezone-aware on the way out.
+
+    PostgreSQL's TIMESTAMPTZ round-trips an aware datetime faithfully.
+    SQLite has no timezone type at all, so ``DateTime(timezone=True)``
+    silently returns a *naive* datetime there — and code that compares
+    the two raises ``TypeError: can't compare offset-naive and
+    offset-aware datetimes``.
+
+    That asymmetry is a storage artifact, not a domain fact, so it is
+    corrected here at the boundary rather than defended against by every
+    reader. Naive values are interpreted as UTC, which is what this
+    application writes: `datetime.now(UTC)` everywhere.
+
+    Used by the pricing tables, where the comparison is load-bearing —
+    effective dating decides which price a customer is charged, and it
+    must behave identically on the production database and the one the
+    tests run against.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def __init__(self) -> None:
+        super().__init__(timezone=True)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 class Base(DeclarativeBase):
     """Base class for all ORM entities."""
 

@@ -440,6 +440,12 @@ services:
     volumes:
       - ./docker/nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
       - ./docker/nginx/certs:/etc/nginx/certs:ro
+      # ACME HTTP-01 webroot — certbot (on the host) writes challenge tokens
+      # here, nginx serves them over port 80. Zero-downtime issuance/renewal.
+      - ./docker/nginx/acme:/var/www/acme:ro
+      # Let's Encrypt live certs. Mounted read-only; `live/` holds symlinks
+      # into `archive/`, so the whole tree must be mounted, not just `live/`.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
       - frontend

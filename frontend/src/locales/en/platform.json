@@ -3,7 +3,8 @@
     "title": "Platform Console",
     "subtitle": "Manage companies on this installation",
     "signOut": "Sign out",
-    "companies": "Companies"
+    "companies": "Companies",
+    "pricing": "Pricing"
   },
   "PlatformCompaniesPage": {
     "title": "Companies",
@@ -49,5 +50,51 @@
     "cancel": "Cancel",
     "saveError": "Could not save these features.",
     "loadError": "Could not load this company's features."
+  },
+  "PlatformPricingPage": {
+    "title": "Pricing",
+    "description": "What companies pay per unit of usage. Company overrides beat pricing profiles, which beat the global default.",
+    "scopeLabel": "Showing prices for",
+    "globalDefault": "Global default",
+    "profileHint": "Prices set here apply to every company assigned to {{name}}, unless that company has its own override.",
+    "columnMetric": "Metric",
+    "columnPrice": "Price",
+    "columnSource": "Source",
+    "columnActions": "",
+    "columnWhen": "When",
+    "columnChange": "Change",
+    "columnWho": "Changed by",
+    "columnReason": "Reason",
+    "perUnit": "per {{unit}}",
+    "unit": {
+      "conversation": "conversation",
+      "reply": "reply",
+      "minute": "minute",
+      "gigabyte_month": "GB-month"
+    },
+    "scope": {
+      "company": "Company override",
+      "profile": "Pricing profile",
+      "global": "Global default"
+    },
+    "notSet": "Not set",
+    "uncoveredWarning": "No price is configured for: {{metrics}}. Usage of these can't be billed until they have one.",
+    "editButton": "Edit",
+    "editTitle": "Set the price for {{metric}}",
+    "amountLabel": "Price per unit",
+    "amountHelp": "Up to six decimal places — a price of 0.0005 is kept exactly, not rounded to a cent.",
+    "reasonLabel": "Reason (optional)",
+    "reasonHelp": "Recorded in the pricing history, which is never deleted.",
+    "historyNote": "The current price is kept. Anything already billed keeps the price it had — changing a price never re-rates past usage.",
+    "save": "Save price",
+    "cancel": "Cancel",
+    "saveError": "Could not save this price.",
+    "loadError": "Could not load pricing.",
+    "retry": "Retry",
+    "tableAriaLabel": "Effective pricing",
+    "historyTitle": "Pricing history",
+    "historyDescription": "Every pricing change ever made, newest first. This record is never deleted.",
+    "historyAriaLabel": "Pricing history",
+    "historyEmpty": "No pricing changes yet."
   }
 }

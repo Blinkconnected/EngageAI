@@ -40,6 +40,7 @@ from blinkengage.application.services.notification_preference_service import (
 )
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.platform_service import PlatformService
+from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
 from blinkengage.application.services.reporting_service import ReportingService
@@ -120,6 +121,13 @@ from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
 from blinkengage.infrastructure.repositories.platform_repository import PlatformRepository
+from blinkengage.infrastructure.repositories.pricing_repository import (
+    CompanyPricingAssignmentRepository,
+    PricingAuditRepository,
+    PricingCompanyLookup,
+    PricingProfileRepository,
+    PricingRateRepository,
+)
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.quick_reply_repository import QuickReplyRepository
 from blinkengage.infrastructure.repositories.reporting_repository import ReportingRepository
@@ -775,6 +783,21 @@ async def require_export_feature(
                 "Contact your provider to enable it."
             ),
         )
+
+
+def get_pricing_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> PricingService:
+    return PricingService(
+        rates=PricingRateRepository(session),
+        assignments=CompanyPricingAssignmentRepository(session),
+        profiles=PricingProfileRepository(session),
+        audit=PricingAuditRepository(session),
+        companies=PricingCompanyLookup(session),
+        users=UserRepository(session),
+        events=events,
+    )
 
 
 def get_platform_service(

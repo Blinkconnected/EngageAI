@@ -3,7 +3,8 @@
     "title": "وحدة تحكم المنصة",
     "subtitle": "إدارة الشركات على هذا التثبيت",
     "signOut": "تسجيل الخروج",
-    "companies": "الشركات"
+    "companies": "الشركات",
+    "pricing": "التسعير"
   },
   "PlatformCompaniesPage": {
     "title": "الشركات",
@@ -49,5 +50,51 @@
     "cancel": "إلغاء",
     "saveError": "تعذّر حفظ هذه المزايا.",
     "loadError": "تعذّر تحميل مزايا هذه الشركة."
+  },
+  "PlatformPricingPage": {
+    "title": "التسعير",
+    "description": "ما تدفعه الشركات لكل وحدة استخدام. تجاوزات الشركة تتقدّم على ملفات التسعير، والتي بدورها تتقدّم على السعر الافتراضي العام.",
+    "scopeLabel": "عرض أسعار",
+    "globalDefault": "الافتراضي العام",
+    "profileHint": "الأسعار المضبوطة هنا تسري على كل شركة معيّنة على {{name}}، ما لم يكن لها تجاوز خاص بها.",
+    "columnMetric": "المقياس",
+    "columnPrice": "السعر",
+    "columnSource": "المصدر",
+    "columnActions": "",
+    "columnWhen": "متى",
+    "columnChange": "التغيير",
+    "columnWho": "غيّرها",
+    "columnReason": "السبب",
+    "perUnit": "لكل {{unit}}",
+    "unit": {
+      "conversation": "محادثة",
+      "reply": "رد",
+      "minute": "دقيقة",
+      "gigabyte_month": "غيغابايت/شهر"
+    },
+    "scope": {
+      "company": "تجاوز الشركة",
+      "profile": "ملف التسعير",
+      "global": "الافتراضي العام"
+    },
+    "notSet": "غير محدّد",
+    "uncoveredWarning": "لا يوجد سعر محدّد لـ: {{metrics}}. لا يمكن فوترة استخدامها حتى يُحدَّد سعر.",
+    "editButton": "تعديل",
+    "editTitle": "ضبط سعر {{metric}}",
+    "amountLabel": "السعر لكل وحدة",
+    "amountHelp": "حتى ستة أرقام عشرية — سعر 0.0005 يُحفظ كما هو ولا يُقرَّب إلى سنت.",
+    "reasonLabel": "السبب (اختياري)",
+    "reasonHelp": "يُسجَّل في سجل التسعير، والذي لا يُحذف أبداً.",
+    "historyNote": "يُحتفظ بالسعر الحالي. كل ما فُوتر سابقاً يبقى بسعره — تغيير السعر لا يعيد تسعير الاستخدام السابق.",
+    "save": "حفظ السعر",
+    "cancel": "إلغاء",
+    "saveError": "تعذّر حفظ هذا السعر.",
+    "loadError": "تعذّر تحميل التسعير.",
+    "retry": "إعادة المحاولة",
+    "tableAriaLabel": "التسعير الساري",
+    "historyTitle": "سجل التسعير",
+    "historyDescription": "كل تغييرات التسعير، الأحدث أولاً. هذا السجل لا يُحذف أبداً.",
+    "historyAriaLabel": "سجل التسعير",
+    "historyEmpty": "لا توجد تغييرات تسعير بعد."
   }
 }

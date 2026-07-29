@@ -51,6 +51,12 @@ from blinkengage.infrastructure.database.models.notification import Notification
 from blinkengage.infrastructure.database.models.notification_preference import (
     NotificationPreference,
 )
+from blinkengage.infrastructure.database.models.pricing import (
+    CompanyPricingProfileAssignment,
+    PricingAuditLog,
+    PricingProfile,
+    PricingRate,
+)
 from blinkengage.infrastructure.database.models.queue import (
     AgentSkill,
     AgentSkillAssignment,
@@ -92,6 +98,10 @@ __all__ = [
     "AiDailyStats",
     "AttachmentValidationStatus",
     "AuditLog",
+    "CompanyPricingProfileAssignment",
+    "PricingAuditLog",
+    "PricingProfile",
+    "PricingRate",
     "ChannelConfig",
     "ChannelConnectionLog",
     "Company",

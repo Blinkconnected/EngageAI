@@ -7,6 +7,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // Vite's dev server rejects any request whose Host header it doesn't
+    // recognise (DNS-rebinding protection), which 403s every request that
+    // reaches it through nginx under the real domain rather than
+    // localhost. Listed explicitly instead of disabling the check with
+    // `true`, so only this deployment's hostname is accepted.
+    allowedHosts: ['engage.blinkconnected.com'],
   },
   test: {
     environment: 'jsdom',
