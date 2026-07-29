@@ -53,5 +53,16 @@
     "verifyTokenLabel": "رمز التحقق",
     "verifyTokenHelperText": "ستُدخل هذه القيمة نفسها في لوحة تحكم Meta",
     "generateButton": "إنشاء"
+  },
+  "MetaMessagingFields": {
+    "alertBeforeLink": "كلتا القيمتين من",
+    "alertLinkText": "Meta for Developers",
+    "alertAfterLinkMessenger": "← تطبيقك ← Messenger ← Settings. استخدم رمز وصول دائمًا للصفحة، لا رمزًا مؤقتًا.",
+    "alertAfterLinkInstagram": "← تطبيقك ← Instagram ← API setup. يجب أن يكون حساب Instagram حساب أعمال أو منشئ محتوى مرتبطًا بصفحة فيسبوك.",
+    "accessTokenLabel": "رمز الوصول",
+    "accessTokenHelperText": "رمز وصول دائم للصفحة، وليس رمزًا قصير الأجل",
+    "verifyTokenLabel": "رمز التحقق",
+    "verifyTokenHelperText": "أنت تختاره وتُدخل القيمة نفسها في لوحة Meta. اتركه فارغًا وسنُنشئ واحدًا.",
+    "generateButton": "إنشاء"
   }
 }

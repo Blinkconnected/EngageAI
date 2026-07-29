@@ -18,6 +18,7 @@ import {
   useUpdateChannelMutation,
 } from './api'
 import { ChannelCredentialFields } from './fields/ChannelCredentialFields'
+import { usesProviderSignedSecret } from './types'
 import { ChannelHealthBadge } from './ChannelHealthBadge'
 import { TestConnectionButton } from './TestConnectionButton'
 import { channelTypeLabel, type ChannelConfig, type ChannelConfigUpdateRequest } from './types'
@@ -46,6 +47,7 @@ function ChannelEditDialogFields({
   const [rotatingCredentials, setRotatingCredentials] = useState(false)
   const [credentials, setCredentials] = useState<Record<string, unknown>>({})
   const [webhookSecret, setWebhookSecret] = useState('')
+  const providerSigned = usesProviderSignedSecret(channel.channel_type)
 
   const updateMutation = useUpdateChannelMutation()
   const testConnectionMutation = useTestConnectionMutation()
@@ -119,12 +121,20 @@ function ChannelEditDialogFields({
               onChange={setCredentials}
             />
             <TextField
-              label={t('ChannelEditDialog.webhookSecretLabel')}
+              label={
+                providerSigned
+                  ? t('ChannelEditDialog.appSecretLabel')
+                  : t('ChannelEditDialog.webhookSecretLabel')
+              }
               type="password"
               value={webhookSecret}
               onChange={(event) => setWebhookSecret(event.target.value)}
               fullWidth
-              helperText={t('ChannelEditDialog.webhookSecretHelperText')}
+              helperText={
+                providerSigned
+                  ? t('ChannelEditDialog.appSecretHelperText')
+                  : t('ChannelEditDialog.webhookSecretHelperText')
+              }
             />
           </Stack>
         )}

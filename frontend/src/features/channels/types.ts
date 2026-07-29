@@ -85,7 +85,30 @@ export const CHANNEL_TYPES = [
  * Experience). Every other type still falls back to the generic JSON
  * credentials textarea — see channel-integration-spec.md's "priority
  * order" scoping. */
-export const GUIDED_CHANNEL_TYPES = ['whatsapp', 'telegram', 'email', 'web_chat'] as const
+export const GUIDED_CHANNEL_TYPES = [
+  'whatsapp',
+  'messenger',
+  'instagram',
+  'telegram',
+  'email',
+  'web_chat',
+] as const
+
+/** Channels whose webhook secret is **the provider's own signing
+ * secret**, not a value this system invents.
+ *
+ * Meta signs every webhook delivery with the App Secret from the app
+ * dashboard. Generating a random one produces the worst failure this
+ * integration has: verification passes (that uses the verify token), the
+ * channel reports itself healthy, and then every inbound message fails
+ * its signature check and is silently dropped. So the field is required
+ * and labelled for what it actually is. Mirrors
+ * PROVIDER_SIGNED_CHANNELS on the backend. */
+export const PROVIDER_SIGNED_CHANNELS = ['whatsapp', 'messenger', 'instagram'] as const
+
+export function usesProviderSignedSecret(channelType: string): boolean {
+  return (PROVIDER_SIGNED_CHANNELS as readonly string[]).includes(channelType)
+}
 
 export function channelTypeLabel(channelType: string): string {
   return CHANNEL_TYPES.find((type) => type.value === channelType)?.label ?? channelType

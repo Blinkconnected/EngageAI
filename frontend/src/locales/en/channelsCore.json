@@ -22,7 +22,9 @@
     "webhookSecretHelperText": "Used to verify inbound webhook signatures — leave blank to auto-generate a secure one",
     "cancelButton": "Cancel",
     "connectingButton": "Connecting…",
-    "connectChannelButton": "Connect channel"
+    "connectChannelButton": "Connect channel",
+    "appSecretLabel": "App Secret",
+    "appSecretHelperText": "From your Meta app → Settings → Basic → App Secret. Meta signs every message with this, so it must be exact — a wrong value lets setup succeed and then silently drops every incoming message."
   },
   "ChannelEditDialog": {
     "title": "Edit {{name}}",
@@ -32,7 +34,9 @@
     "updateCredentialsLabel": "Update credentials (reconnect)",
     "credentialsInfoAlert": "Credentials are write-only and never shown once saved — enter new values to replace them, then Test Connection to confirm they work before saving.",
     "webhookSecretLabel": "Webhook secret",
-    "webhookSecretHelperText": "Leave blank to keep the current secret"
+    "webhookSecretHelperText": "Leave blank to keep the current secret",
+    "appSecretLabel": "App Secret",
+    "appSecretHelperText": "From your Meta app → Settings → Basic → App Secret. Meta signs every message with this, so it must be exact — a wrong value lets setup succeed and then silently drops every incoming message."
   },
   "ChannelHealthBadge": {
     "notTestedYetLabel": "Not tested yet",

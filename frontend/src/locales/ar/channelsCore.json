@@ -22,7 +22,9 @@
     "webhookSecretHelperText": "يُستخدم للتحقق من توقيعات الويب هوك الواردة — اتركه فارغًا لإنشاء مفتاح سري آمن تلقائيًا",
     "cancelButton": "إلغاء",
     "connectingButton": "جارٍ الاتصال…",
-    "connectChannelButton": "توصيل قناة"
+    "connectChannelButton": "توصيل قناة",
+    "appSecretLabel": "سر التطبيق (App Secret)",
+    "appSecretHelperText": "من تطبيق Meta ← Settings ← Basic ← App Secret. توقّع Meta كل رسالة بهذا السر، لذا يجب أن يكون مطابقًا تمامًا — القيمة الخاطئة تُنجح الإعداد ثم تُسقط كل رسالة واردة بصمت."
   },
   "ChannelEditDialog": {
     "title": "تعديل {{name}}",
@@ -32,7 +34,9 @@
     "updateCredentialsLabel": "تحديث بيانات الاعتماد (إعادة الاتصال)",
     "credentialsInfoAlert": "بيانات الاعتماد للكتابة فقط ولا تُعرض مطلقًا بعد حفظها — أدخل قيمًا جديدة لاستبدالها، ثم اختبر الاتصال للتأكد من عملها قبل الحفظ.",
     "webhookSecretLabel": "مفتاح الويب هوك السري",
-    "webhookSecretHelperText": "اتركه فارغًا للاحتفاظ بالمفتاح السري الحالي"
+    "webhookSecretHelperText": "اتركه فارغًا للاحتفاظ بالمفتاح السري الحالي",
+    "appSecretLabel": "سر التطبيق (App Secret)",
+    "appSecretHelperText": "من تطبيق Meta ← Settings ← Basic ← App Secret. توقّع Meta كل رسالة بهذا السر، لذا يجب أن يكون مطابقًا تمامًا — القيمة الخاطئة تُنجح الإعداد ثم تُسقط كل رسالة واردة بصمت."
   },
   "ChannelHealthBadge": {
     "notTestedYetLabel": "لم يتم الاختبار بعد",

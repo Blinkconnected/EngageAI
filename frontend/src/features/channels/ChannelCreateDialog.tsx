@@ -20,7 +20,12 @@ import { extractErrorMessage } from '../../shared/api/errors'
 import { useCreateChannelMutation, useTestConnectionEphemeralMutation } from './api'
 import { ChannelCredentialFields } from './fields/ChannelCredentialFields'
 import { TestConnectionButton } from './TestConnectionButton'
-import { CHANNEL_TYPES, hasGuidedSetup, type ChannelConfigCreateResult } from './types'
+import {
+  CHANNEL_TYPES,
+  hasGuidedSetup,
+  usesProviderSignedSecret,
+  type ChannelConfigCreateResult,
+} from './types'
 
 function webhookUrlFor(channelConfigId: string): string {
   return `${window.location.origin}/api/v1/webhooks/${channelConfigId}`
@@ -86,6 +91,7 @@ export function ChannelCreateDialog({
   const testConnectionMutation = useTestConnectionEphemeralMutation()
   const isWhatsapp = channelType === 'whatsapp'
   const guided = hasGuidedSetup(channelType)
+  const providerSigned = usesProviderSignedSecret(channelType)
 
   function reset() {
     setChannelType(initialChannelType)
@@ -138,10 +144,15 @@ export function ChannelCreateDialog({
                   label={t('ChannelCreateDialog.webhookUrlLabel')}
                   value={webhookUrlFor(created.id)}
                 />
-                <CopyableField
-                  label={t('ChannelCreateDialog.webhookSecretLabel')}
-                  value={created.webhook_secret}
-                />
+                {/* Only shown when we generated it. For Meta channels the
+                    secret came *from* their dashboard, so echoing it back
+                    as something to paste in would be nonsense. */}
+                {!providerSigned && (
+                  <CopyableField
+                    label={t('ChannelCreateDialog.webhookSecretLabel')}
+                    value={created.webhook_secret}
+                  />
+                )}
               </>
             )}
             {isWhatsapp && created.verify_token && (
@@ -228,12 +239,23 @@ export function ChannelCreateDialog({
 
             {channelType !== 'web_chat' && (
               <TextField
-                label={t('ChannelCreateDialog.webhookSecretLabel')}
+                label={
+                  providerSigned
+                    ? t('ChannelCreateDialog.appSecretLabel')
+                    : t('ChannelCreateDialog.webhookSecretLabel')
+                }
                 type="password"
                 value={webhookSecret}
                 onChange={(event) => setWebhookSecret(event.target.value)}
                 fullWidth
-                helperText={t('ChannelCreateDialog.webhookSecretHelperText')}
+                // Required for Meta: it is their App Secret, and there is
+                // no correct value we could invent.
+                required={providerSigned}
+                helperText={
+                  providerSigned
+                    ? t('ChannelCreateDialog.appSecretHelperText')
+                    : t('ChannelCreateDialog.webhookSecretHelperText')
+                }
               />
             )}
 

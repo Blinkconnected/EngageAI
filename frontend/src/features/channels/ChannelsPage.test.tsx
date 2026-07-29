@@ -38,6 +38,10 @@ describe('ChannelsPage', () => {
     await user.type(screen.getByLabelText(/phone number id/i), '123456')
     await user.type(screen.getByLabelText(/^access token/i), 'secret-token')
     await user.type(screen.getByLabelText(/verify token/i), 'my-verify-token')
+    // Required for Meta channels: it is their App Secret, which they use
+    // to sign every delivery. A generated value would let setup succeed
+    // and then silently drop every incoming message.
+    await user.type(screen.getByLabelText(/app secret/i), 'meta-app-secret')
     await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
 
     expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()

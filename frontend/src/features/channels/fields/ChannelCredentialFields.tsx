@@ -1,5 +1,6 @@
 import { EmailFields } from './EmailFields'
 import { GenericJsonFields } from './GenericJsonFields'
+import { MetaMessagingFields } from './MetaMessagingFields'
 import { TelegramFields } from './TelegramFields'
 import type { ChannelFieldsProps } from './types'
 import { WebChatFields } from './WebChatFields'
@@ -21,6 +22,19 @@ export function ChannelCredentialFields({
   switch (channelType) {
     case 'whatsapp':
       return <WhatsAppFields credentials={credentials} onChange={onChange} />
+    // Messenger and Instagram share the Graph API surface and need the
+    // same two values, so they share the form — and no longer fall
+    // through to the raw JSON textarea, which required knowing the exact
+    // field names with no validation behind them.
+    case 'messenger':
+    case 'instagram':
+      return (
+        <MetaMessagingFields
+          credentials={credentials}
+          onChange={onChange}
+          channelType={channelType}
+        />
+      )
     case 'telegram':
       return <TelegramFields credentials={credentials} onChange={onChange} />
     case 'email':

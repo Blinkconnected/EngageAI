@@ -272,6 +272,23 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **Connecting WhatsApp, Messenger or Instagram no longer fails
+  silently.** The "Webhook secret" field said *"leave blank to
+  auto-generate a secure one"* — but Meta signs every message with **your
+  app's App Secret**, so a generated value meant setup succeeded,
+  verification went green, the channel reported itself healthy, and then
+  every single incoming message was rejected and thrown away with nothing
+  on screen to explain it. The field is now called **App Secret**, is
+  required, and says exactly where to find it in your Meta app and why it
+  has to match. Anyone who connected a Meta channel before this should
+  re-enter their App Secret from Meta → Settings → Basic.
+
+- **Facebook Messenger and Instagram now have proper setup forms.** They
+  previously required hand-writing JSON with no guidance and no
+  validation, so a single mistyped field name produced a channel that
+  saved cleanly and never delivered a message. They now have the same
+  guided form as WhatsApp, and their settings are validated before saving.
+
 - **The app is now reachable through its domain in a browser.** The
   development front-end server rejects requests arriving under a host
   name it hasn't been told about — a deliberate safety check against

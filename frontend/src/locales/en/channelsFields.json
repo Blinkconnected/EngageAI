@@ -53,5 +53,16 @@
     "verifyTokenLabel": "Verify token",
     "verifyTokenHelperText": "You'll enter this same value in Meta's dashboard",
     "generateButton": "Generate"
+  },
+  "MetaMessagingFields": {
+    "alertBeforeLink": "Both values come from",
+    "alertLinkText": "Meta for Developers",
+    "alertAfterLinkMessenger": "→ your app → Messenger → Settings. Use a permanent Page access token, not a temporary one.",
+    "alertAfterLinkInstagram": "→ your app → Instagram → API setup. The Instagram account must be a Business or Creator account linked to a Facebook Page.",
+    "accessTokenLabel": "Access token",
+    "accessTokenHelperText": "A permanent Page access token, not a short-lived one",
+    "verifyTokenLabel": "Verify token",
+    "verifyTokenHelperText": "You choose this and enter the same value in Meta's dashboard. Leave blank and we'll generate one.",
+    "generateButton": "Generate"
   }
 }

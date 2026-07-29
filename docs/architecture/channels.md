@@ -8,6 +8,36 @@ Instagram/SMS/Email are later, separate milestones (M15-M18), and Web Chat
 (the reference implementation) is M12. This milestone proves the
 architecture works using only a test-double provider.
 
+## The webhook secret is the provider's, not ours
+
+For **WhatsApp, Messenger and Instagram** the `webhook_secret` column
+holds Meta's **App Secret** — the value Meta uses to sign every delivery
+as `X-Hub-Signature-256`. It is required, and never generated.
+
+It used to be auto-generated when left blank, and the console's help text
+actively told operators to do that. The result was the worst failure mode
+this integration has:
+
+1. the verification handshake passes, because that uses `verify_token`;
+2. the channel saves, reports itself connected, and health checks green;
+3. every inbound message then fails its signature check and is discarded.
+
+"Verification is green and no messages arrive" gives an operator nothing
+to work from, which is why the value is now demanded up front with a
+message naming what it is and where to find it. `PROVIDER_SIGNED_CHANNELS`
+in `credential_schemas.py` is the list, and the frontend mirrors it in
+`types.ts` so the field is labelled **App Secret** and marked required.
+
+Telegram is the counter-example and stays auto-generated: it registers its
+own webhook server-side and has no dashboard to paste anything into, so
+there is no external secret to match.
+
+`verify_token` moves the opposite way — it is a value the *operator*
+invents and pastes into Meta, so it is generated when left blank for all
+three Meta channels. Nothing to look up means no reason to make somebody
+think one up.
+
+
 ## Goal
 
 Adding channel provider #50, ten years from now, must be one new class plus

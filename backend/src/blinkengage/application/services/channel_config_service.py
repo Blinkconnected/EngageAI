@@ -14,9 +14,14 @@ from blinkengage.core.config import Settings
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.channels import HealthStatus
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
-from blinkengage.domain.exceptions import EntityNotFoundError, InvalidChannelTypeError
+from blinkengage.domain.exceptions import (
+    EntityNotFoundError,
+    InvalidChannelCredentialsError,
+    InvalidChannelTypeError,
+)
 from blinkengage.infrastructure.channels.credential_schemas import (
     AUTO_GENERATED_CREDENTIAL_FIELDS,
+    PROVIDER_SIGNED_CHANNELS,
     validate_channel_credentials,
 )
 from blinkengage.infrastructure.channels.error_sanitizer import (
@@ -77,6 +82,20 @@ class ChannelConfigService:
         if auto_field and not credentials.get(auto_field):
             credentials = {**credentials, auto_field: secrets.token_urlsafe(24)}
         validate_channel_credentials(channel_type, credentials)
+
+        # For Meta channels this is the **App Secret**, which Meta uses to
+        # sign every delivery — not a secret this system chooses. Inventing
+        # one produced a channel that verified green and then silently
+        # discarded every message, so it is required rather than generated.
+        # See PROVIDER_SIGNED_CHANNELS.
+        if channel_type in PROVIDER_SIGNED_CHANNELS and not webhook_secret:
+            raise InvalidChannelCredentialsError(
+                channel_type,
+                "webhook_secret is required for this channel and must be the App "
+                "Secret from your Meta app (Settings -> Basic -> App Secret). Meta "
+                "signs every webhook with it, so a generated value would let "
+                "verification succeed and then reject every incoming message.",
+            )
 
         resolved_webhook_secret = webhook_secret or secrets.token_urlsafe(32)
 

@@ -359,10 +359,14 @@ async def test_create_whatsapp_channel_auto_generates_verify_token_when_omitted(
         json={
             "channel_type": "whatsapp",
             "display_name": "WhatsApp",
-            # verify_token deliberately omitted — server auto-generates
-            # one, same as webhook_secret, so the operator never has to
-            # invent a value themselves.
+            # verify_token deliberately omitted — the server generates one,
+            # because it is a value the operator invents and pastes into
+            # Meta rather than one they look up.
             "credentials": {"phone_number_id": "123", "access_token": "tok"},
+            # The App Secret, by contrast, comes *from* Meta and is now
+            # required: Meta signs every delivery with it, so a generated
+            # value let verification pass and then dropped every message.
+            "webhook_secret": "meta-app-secret",
         },
         headers=owner_headers,
     )
@@ -402,6 +406,7 @@ async def test_update_channel_config_rejects_incomplete_credentials(
                 "access_token": "tok",
                 "verify_token": "verify",
             },
+            "webhook_secret": "meta-app-secret",
         },
         headers=owner_headers,
     )

@@ -26,6 +26,26 @@ class WhatsAppCredentials(BaseModel):
     api_version: str | None = None
 
 
+class MetaMessagingCredentials(BaseModel):
+    """Facebook Messenger and Instagram.
+
+    Both ride the same Graph API surface and the same webhook shape as
+    WhatsApp — see ``_meta_messaging.py`` — so they need the same two
+    values and nothing else. They had **no schema at all** until now,
+    which is why the console offered them as "manual JSON setup": an
+    operator had to know the exact field names, with no validation and no
+    guidance, and a typo produced a channel that saved cleanly and never
+    delivered a message.
+    """
+
+    access_token: str = Field(min_length=1)
+    #: Auto-generated when left blank, like WhatsApp's — it is a value the
+    #: operator invents and pastes into Meta, not one Meta gives them.
+    verify_token: str | None = None
+    graph_api_base_url: str | None = None
+    api_version: str | None = None
+
+
 class TelegramCredentials(BaseModel):
     bot_token: str = Field(min_length=1)
     api_base_url: str | None = None
@@ -61,10 +81,27 @@ class WebChatCredentials(BaseModel):
 
 _CREDENTIAL_SCHEMAS: dict[str, type[BaseModel]] = {
     "whatsapp": WhatsAppCredentials,
+    "messenger": MetaMessagingCredentials,
+    "instagram": MetaMessagingCredentials,
     "telegram": TelegramCredentials,
     "email": EmailCredentials,
     "web_chat": WebChatCredentials,
 }
+
+#: Channels whose ``webhook_secret`` is **the provider's own signing
+#: secret**, not something this system invents.
+#:
+#: Meta signs every webhook delivery with the **App Secret** from the app
+#: dashboard and sends it as ``X-Hub-Signature-256``. Generating a random
+#: value there produces the worst failure mode this integration has: the
+#: verification handshake passes, because that uses ``verify_token``, the
+#: channel reports itself connected and healthy — and then every single
+#: inbound message fails its signature check and is silently discarded.
+#: "Verification is green and no messages arrive" is not a diagnosable
+#: symptom, so the value is required up front instead.
+PROVIDER_SIGNED_CHANNELS: frozenset[str] = frozenset(
+    {"whatsapp", "messenger", "instagram"}
+)
 
 #: channel_type -> the one credentials field that gets a random value
 #: filled in server-side when the operator leaves it blank, the same way
@@ -75,6 +112,11 @@ _CREDENTIAL_SCHEMAS: dict[str, type[BaseModel]] = {
 #: silently generated.
 AUTO_GENERATED_CREDENTIAL_FIELDS: dict[str, str] = {
     "whatsapp": "verify_token",
+    # Same reasoning: a value the operator invents and pastes into Meta,
+    # so there is nothing to look up and no reason to make them think of
+    # one.
+    "messenger": "verify_token",
+    "instagram": "verify_token",
 }
 
 
