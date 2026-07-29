@@ -44,9 +44,6 @@ export function PlatformLayout() {
             <Button component={NavLink} to="/platform" end size="small">
               {t('PlatformLayout.companies')}
             </Button>
-            <Button component={NavLink} to="/platform/plans" size="small">
-              {t('PlatformLayout.plans')}
-            </Button>
           </Stack>
           {profileQuery.data && (
             <Typography variant="body2" color="text.secondary">

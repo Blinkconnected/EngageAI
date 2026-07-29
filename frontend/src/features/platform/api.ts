@@ -1,18 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import type { Page } from '../../shared/api/pagination'
-import type {
-  BillingPlan,
-  CompanyOverview,
-  CompanyStatus,
-  FeatureState,
-  PlatformProfile,
-  Subscription,
-} from './types'
+import type { CompanyOverview, CompanyStatus, FeatureState, PlatformProfile } from './types'
 
 export const PLATFORM_ME_KEY = ['platform', 'me']
 const COMPANIES_KEY = ['platform', 'companies']
-const PLANS_KEY = ['platform', 'plans']
 const FEATURES_KEY = ['platform', 'features']
 
 async function fetchPlatformMe(): Promise<PlatformProfile> {
@@ -78,61 +70,6 @@ export function useSetCompanyStatusMutation() {
 }
 
 
-// --- Billing catalog ------------------------------------------------
-
-async function fetchPlans(): Promise<BillingPlan[]> {
-  const { data } = await apiClient.get<BillingPlan[]>('/platform/plans')
-  return data
-}
-
-/** Every plan, including withdrawn ones — an operator needs to see what
- * they have retired, not only what is on sale. */
-export function usePlatformPlansQuery() {
-  return useQuery({ queryKey: PLANS_KEY, queryFn: fetchPlans })
-}
-
-export interface CreatePlanInput {
-  name: string
-  description?: string | null
-  amount: string
-  currency: string
-  interval: 'month' | 'year'
-  features: string[] | null
-}
-
-async function createPlan(input: CreatePlanInput): Promise<BillingPlan> {
-  const { data } = await apiClient.post<BillingPlan>('/platform/plans', input)
-  return data
-}
-
-export function useCreatePlanMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: createPlan,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: PLANS_KEY })
-    },
-  })
-}
-
-async function setPlanStatus(input: { planId: string; isActive: boolean }): Promise<BillingPlan> {
-  const { data } = await apiClient.patch<BillingPlan>(
-    `/platform/plans/${input.planId}/status`,
-    { is_active: input.isActive },
-  )
-  return data
-}
-
-export function useSetPlanStatusMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: setPlanStatus,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: PLANS_KEY })
-    },
-  })
-}
-
 // --- Feature entitlements -------------------------------------------
 
 async function fetchFeatureCatalog(): Promise<FeatureState[]> {
@@ -183,17 +120,3 @@ export function useSetCompanyFeaturesMutation() {
   })
 }
 
-async function fetchCompanySubscription(companyId: string): Promise<Subscription | null> {
-  const { data } = await apiClient.get<Subscription | null>(
-    `/platform/companies/${companyId}/subscription`,
-  )
-  return data
-}
-
-export function useCompanySubscriptionQuery(companyId: string | null) {
-  return useQuery({
-    queryKey: [...COMPANIES_KEY, companyId, 'subscription'],
-    queryFn: () => fetchCompanySubscription(companyId as string),
-    enabled: companyId !== null,
-  })
-}

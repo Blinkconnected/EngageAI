@@ -27,6 +27,7 @@
     "searchPlaceholder": "ابحث في ملاحظات الإصدار…",
     "searchAriaLabel": "البحث في ملاحظات الإصدار",
     "noSearchResultsTitle": "لا توجد إصدارات مطابقة",
-    "noSearchResultsDescription": "لا يوجد شيء في سجل الإصدارات يطابق \"{{searchTerm}}\"."
+    "noSearchResultsDescription": "لا يوجد شيء في سجل الإصدارات يطابق \"{{searchTerm}}\".",
+    "removedLabel": "محذوف"
   }
 }

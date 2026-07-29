@@ -118,14 +118,12 @@ PERMISSIONS: tuple[Permission, ...] = (
     # conversations.*: no new access-control question behind viewing
     # data about a customer the agent can already see. ---
     Permission("erp.manage", "Configure the ERPNext connection and trigger manual sync/pull"),
-    # --- Billing (see docs/architecture/billing.md) — split read/manage
-    # because they are genuinely different acts: viewing the plan and
-    # past invoices is ordinary administration, while subscribing or
-    # cancelling commits the company to a recurring charge. Only Owner
-    # gets `billing.manage` by default, the one permission in this
-    # catalog that moves real money. ---
-    Permission("billing.read", "View the subscription, plan and payment history"),
-    Permission("billing.manage", "Subscribe to a plan, change it, or cancel the subscription"),
+    # --- Billing (see docs/architecture/billing.md) — read-only for now.
+    # Billing is usage-based and priced by the platform operator, so there
+    # is nothing here for a tenant to *change*; `billing.manage` existed
+    # for the retired subscription model and was removed rather than left
+    # as a permission that grants nothing. ---
+    Permission("billing.read", "View this company's effective pricing and usage charges"),
     # --- SLA Builder (see docs/architecture/sla.md) — a distinct
     # permission from queues.manage even though a policy is assigned to
     # queues, since SLA policies/holidays/escalation rules are a richer,

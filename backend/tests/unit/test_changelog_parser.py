@@ -407,3 +407,56 @@ Some text with no leading dash
     releases = parse_changelog(fixture)
 
     assert releases[0].added == ["Some text with no leading dash"]
+
+
+def test_every_keep_a_changelog_section_parses() -> None:
+    """Regression guard for a real outage-shaped bug.
+
+    ``Removed`` is one of Keep a Changelog's six canonical sections and
+    is named by this repository's own changelog policy, but the parser
+    did not map it. The first release to retire a feature therefore
+    raised ``ChangelogFormatError``, which does not merely lose that one
+    section — it fails the whole parse, so ``/changelog`` and the version
+    endpoint both break on a perfectly valid changelog.
+
+    Asserting on the section *names* rather than one example keeps the
+    next omission from shipping the same way.
+    """
+    changelog = """# Changelog
+
+## [9.9.9] - 2026-01-01
+
+### Added
+
+- An addition.
+
+### Changed
+
+- A change.
+
+### Deprecated
+
+- A deprecation.
+
+### Removed
+
+- A removal.
+
+### Fixed
+
+- A fix.
+
+### Security
+
+- A security note.
+"""
+    releases = parse_changelog(changelog)
+
+    assert len(releases) == 1
+    release = releases[0]
+    assert release.added == ["An addition."]
+    assert release.improved == ["A change."]
+    assert release.deprecated == ["A deprecation."]
+    assert release.removed == ["A removal."]
+    assert release.fixed == ["A fix."]
+    assert release.security == ["A security note."]

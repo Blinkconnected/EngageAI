@@ -11,7 +11,6 @@ import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
-import CreditCardOutlinedIcon from '@mui/icons-material/CreditCardOutlined'
 import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined'
 
 export interface NavItem {
@@ -115,12 +114,6 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'erp.manage',
     requiresErpEnabled: true,
     requiresFeature: 'erp',
-  },
-  {
-    label: 'SideNav.navBilling',
-    path: '/settings/billing',
-    icon: CreditCardOutlinedIcon,
-    permission: 'billing.read',
   },
   {
     label: 'SideNav.navSettings',

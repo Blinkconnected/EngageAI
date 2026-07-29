@@ -36,6 +36,7 @@ class Release(BaseModel):
     added: list[str] = Field(default_factory=list)
     improved: list[str] = Field(default_factory=list)
     fixed: list[str] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
     security: list[str] = Field(default_factory=list)
     breaking_changes: list[str] = Field(default_factory=list)
     deprecated: list[str] = Field(default_factory=list)
@@ -54,6 +55,11 @@ _SECTION_NAME_TO_FIELD: dict[str, str] = {
     "Improved": "improved",
     "Changed": "improved",
     "Fixed": "fixed",
+    # One of Keep a Changelog's six canonical sections, and named by this
+    # repo's own changelog policy — it was simply missing here, so the
+    # first release to retire a feature failed to parse and took the
+    # whole /changelog page down with it.
+    "Removed": "removed",
     "Security": "security",
     "Breaking Changes": "breaking_changes",
     "Deprecated": "deprecated",
@@ -64,6 +70,7 @@ _SECTION_FIELDS: tuple[str, ...] = (
     "added",
     "improved",
     "fixed",
+    "removed",
     "security",
     "breaking_changes",
     "deprecated",
@@ -341,13 +348,13 @@ def parse_changelog(markdown_text: str) -> list[Release]:
                 release_date=raw["release_date"],
                 channel=channel,
                 summary=summary,
-                added=sections["added"],
-                improved=sections["improved"],
-                fixed=sections["fixed"],
-                security=sections["security"],
-                breaking_changes=sections["breaking_changes"],
-                deprecated=sections["deprecated"],
-                known_issues=sections["known_issues"],
+                # Splatted rather than listing each field by hand. Naming
+                # them individually meant a section could be added to
+                # `_SECTION_FIELDS` and `_SECTION_NAME_TO_FIELD`, parse
+                # correctly into `sections`, and still arrive empty here
+                # because nobody remembered this third list — which is
+                # exactly how `Removed` shipped half-wired.
+                **sections,
             )
         )
 

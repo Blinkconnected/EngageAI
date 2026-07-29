@@ -10,7 +10,6 @@ from blinkengage.api.v1.endpoints import (
     ai,
     audit_logs,
     auth,
-    billing,
     channel_configs,
     company,
     conversations,
@@ -22,7 +21,6 @@ from blinkengage.api.v1.endpoints import (
     health,
     knowledge,
     notifications,
-    paypal_webhooks,
     platform,
     queues,
     quick_replies,
@@ -48,19 +46,12 @@ api_router.include_router(health.router)
 api_router.include_router(version.router)
 api_router.include_router(auth.router)
 api_router.include_router(platform.router)
-api_router.include_router(billing.router)
 api_router.include_router(departments.router)
 api_router.include_router(teams.router)
 api_router.include_router(agents.router)
 api_router.include_router(customers.router)
 api_router.include_router(audit_logs.router)
 api_router.include_router(channel_configs.router)
-# Before `webhooks.router`, whose `/webhooks/{channel_config_id}` path
-# parameter would otherwise swallow `/webhooks/paypal` and answer 422
-# ("paypal is not a valid UUID") — FastAPI matches routes in
-# registration order, so a literal path has to be registered ahead of the
-# parameterised one that shadows it.
-api_router.include_router(paypal_webhooks.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(web_chat.router)
 api_router.include_router(conversations.router)

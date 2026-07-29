@@ -37,7 +37,6 @@
     "navSlaBuilder": "SLA Builder",
     "navReports": "Reports",
     "navErpNext": "ERPNext",
-    "navSettings": "Settings",
-    "navBilling": "Billing"
+    "navSettings": "Settings"
   }
 }

@@ -21,7 +21,6 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.autopilot_service import AutopilotService
-from blinkengage.application.services.billing_service import BillingService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
@@ -63,7 +62,6 @@ from blinkengage.domain.exceptions import AiNotConfiguredError
 from blinkengage.domain.features import FEATURES, is_known_feature
 from blinkengage.domain.rbac import is_known_permission
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
-from blinkengage.infrastructure.billing.paypal_client import PayPalClient
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -74,12 +72,6 @@ from blinkengage.infrastructure.events.realtime_publisher import RealtimePublish
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
-from blinkengage.infrastructure.repositories.billing_repository import (
-    BillingPlanRepository,
-    PaymentRepository,
-    SubscriptionRepository,
-    WebhookEventRepository,
-)
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -711,45 +703,8 @@ def get_autopilot_service(
     )
 
 
-def get_billing_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-    settings: Annotated[Settings, Depends(get_settings_dep)],
-    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
-) -> BillingService:
-    """Builds the billing service, with a PayPal client only if this
-    installation is actually configured for it.
-
-    ``paypal=None`` is a first-class state, not an error: an installation
-    that does not sell subscriptions must still start, and every billing
-    endpoint must still answer. The service turns that into a clear
-    "billing is not configured" (503) or an ``is_configured: false`` in
-    the overview, rather than a crash at import time or a 500 at call
-    time.
-    """
-    paypal = (
-        PayPalClient(
-            client_id=settings.paypal_client_id,
-            client_secret=settings.paypal_client_secret,
-            environment=settings.paypal_environment,
-        )
-        if settings.paypal_client_id and settings.paypal_client_secret
-        else None
-    )
-    return BillingService(
-        plans=BillingPlanRepository(session),
-        subscriptions=SubscriptionRepository(session),
-        payments=PaymentRepository(session),
-        webhook_events=WebhookEventRepository(session),
-        companies=CompanyRepository(session),
-        events=events,
-        settings=settings,
-        paypal=paypal,
-    )
-
-
-#: Feature keys to their human names, so a 402 says "AI Engine is not
-#: included in this workspace's plan" rather than repeating a slug at
-#: somebody who never chose it.
+#: Feature keys to their human names, so a 402 names the capability
+#: rather than repeating a slug at somebody who never chose it.
 _FEATURE_NAMES: dict[str, str] = {feature.key: feature.name for feature in FEATURES}
 
 
@@ -757,12 +712,7 @@ def get_feature_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
 ) -> FeatureService:
-    return FeatureService(
-        companies=CompanyRepository(session),
-        subscriptions=SubscriptionRepository(session),
-        plans=BillingPlanRepository(session),
-        events=events,
-    )
+    return FeatureService(companies=CompanyRepository(session), events=events)
 
 
 def require_feature(
@@ -793,7 +743,7 @@ def require_feature(
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail=(
-                    f"{_FEATURE_NAMES.get(key, key)} is not included in this workspace's plan. "
+                    f"{_FEATURE_NAMES.get(key, key)} is not enabled for this workspace. "
                     "Contact your provider to enable it."
                 ),
             )
@@ -821,7 +771,7 @@ async def require_export_feature(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"{_FEATURE_NAMES['reports_export']} is not included in this workspace's plan. "
+                f"{_FEATURE_NAMES['reports_export']} is not enabled for this workspace. "
                 "Contact your provider to enable it."
             ),
         )

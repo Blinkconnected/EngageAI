@@ -15,10 +15,6 @@ from dataclasses import dataclass
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.domain.features import FEATURES, is_known_feature, resolve_features
-from blinkengage.infrastructure.repositories.billing_repository import (
-    BillingPlanRepository,
-    SubscriptionRepository,
-)
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 
 
@@ -26,16 +22,18 @@ from blinkengage.infrastructure.repositories.company_repository import CompanyRe
 class FeatureState:
     """One feature, resolved, plus *why* — which the console shows.
 
-    An operator looking at a disabled feature needs to know whether the
-    plan withholds it or somebody overrode it, because the fix is
-    different in each case.
+    An operator looking at a disabled feature needs to know whether
+    somebody overrode it or it is simply the product default, because
+    the fix is different in each case.
     """
 
     key: str
     name: str
     description: str
     enabled: bool
-    #: "override" | "plan" | "default"
+    #: "override" | "plan" | "default". "plan" is currently unreachable,
+    #: kept so the console keeps rendering correctly if entitlement is
+    #: later driven by a pricing profile.
     source: str
 
 
@@ -44,21 +42,22 @@ class FeatureService:
         self,
         *,
         companies: CompanyRepository,
-        subscriptions: SubscriptionRepository,
-        plans: BillingPlanRepository,
         events: DomainEventPublisher | None = None,
     ) -> None:
         self._companies = companies
-        self._subscriptions = subscriptions
-        self._plans = plans
         self._events = events
 
     async def _plan_features(self, company_id: uuid.UUID) -> list[str] | None:
-        subscription = await self._subscriptions.get_current_for_company(company_id)
-        if subscription is None:
-            return None
-        plan = await self._plans.get_by_id(subscription.plan_id)
-        return None if plan is None else plan.features
+        """Always ``None`` — "grants everything", the safe default.
+
+        Subscription plans used to be able to withhold features. They are
+        gone (billing is usage-based now), so nothing between the catalog
+        default and a platform administrator's explicit per-company
+        override withholds anything. Kept as a seam rather than deleted
+        because entitlement may later be driven by a pricing profile, and
+        the resolution order is already correct for that.
+        """
+        return None
 
     async def enabled_features(self, company_id: uuid.UUID) -> dict[str, bool]:
         """The flat map the tenant API and the frontend use."""
@@ -108,7 +107,7 @@ class FeatureService:
         """Replaces a company's overrides wholesale.
 
         Replace rather than merge, so "clear this override and go back to
-        following the plan" is expressible — with a merge there would be
+        the default" is expressible — with a merge there would be
         no way to *remove* one, only to flip it, and the company would be
         pinned to an operator's one-off decision forever.
 

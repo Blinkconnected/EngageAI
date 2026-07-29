@@ -27,6 +27,7 @@
     "searchPlaceholder": "Search release notes…",
     "searchAriaLabel": "Search release notes",
     "noSearchResultsTitle": "No matching releases",
-    "noSearchResultsDescription": "Nothing in the release history matches \"{{searchTerm}}\"."
+    "noSearchResultsDescription": "Nothing in the release history matches \"{{searchTerm}}\".",
+    "removedLabel": "Removed"
   }
 }

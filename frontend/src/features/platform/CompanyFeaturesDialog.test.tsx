@@ -20,8 +20,6 @@ const COMPANY: CompanyOverview = {
   user_count: 12,
   agent_count: 8,
   conversation_count: 431,
-  plan_name: 'Business',
-  subscription_status: 'active',
 }
 
 const FEATURES = [

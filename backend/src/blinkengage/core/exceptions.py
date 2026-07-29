@@ -13,13 +13,11 @@ from blinkengage.domain.exceptions import (
     AiNotConfiguredError,
     AuthenticationError,
     AuthorizationError,
-    BillingNotConfiguredError,
     ConversationAlreadyClaimedError,
     DomainError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     ErpNotConfiguredError,
-    SubscriptionAlreadyActiveError,
 )
 
 _STATUS_MAP: dict[type[Exception], int] = {
@@ -29,8 +27,6 @@ _STATUS_MAP: dict[type[Exception], int] = {
     AuthorizationError: status.HTTP_403_FORBIDDEN,
     AiNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
     ErpNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
-    BillingNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
-    SubscriptionAlreadyActiveError: status.HTTP_409_CONFLICT,
     ConversationAlreadyClaimedError: status.HTTP_409_CONFLICT,
     AgentMissingRequiredSkillError: status.HTTP_403_FORBIDDEN,
 }

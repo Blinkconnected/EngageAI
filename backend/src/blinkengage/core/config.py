@@ -156,34 +156,6 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
-    # --- Billing / PayPal (see docs/architecture/billing.md) ---
-    # Platform-level, not per-company: this is the *platform operator's*
-    # own merchant account, which companies pay — the opposite direction
-    # from ChannelConfig.credentials (a tenant's own provider account).
-    # So it follows the same env-var shape as smtp_password and
-    # openai_api_key rather than living in an encrypted column: there is
-    # exactly one of it per installation, and keeping it out of the
-    # database means no API response, backup or platform-admin session
-    # can ever expose it.
-    paypal_environment: Literal["sandbox", "live"] = "sandbox"
-    paypal_client_id: str | None = None
-    paypal_client_secret: str | None = None
-    # PayPal's id for the webhook subscription registered in its
-    # dashboard. Required to *verify* inbound webhooks — without it we
-    # cannot prove a request came from PayPal, so BillingService refuses
-    # to process any webhook rather than trusting an unverified one.
-    paypal_webhook_id: str | None = None
-    # Where PayPal returns the customer after they approve or cancel a
-    # subscription. Defaults derived from public_base_url at use time.
-    paypal_return_path: str = "/settings/billing?paypal=approved"
-    paypal_cancel_path: str = "/settings/billing?paypal=cancelled"
-    # How many consecutive failed payments PayPal may report before the
-    # company is suspended. PayPal runs its own dunning retries first, so
-    # this is a backstop behind that, not the primary retry mechanism —
-    # suspending on the first failure would lock a paying customer out
-    # over a transient card decline.
-    billing_failed_payments_before_suspend: int = 3
-
     # --- Rate limiting ---
     rate_limit_per_minute: int = 60
     # Tighter than the generic limit above, and per-*user* rather than

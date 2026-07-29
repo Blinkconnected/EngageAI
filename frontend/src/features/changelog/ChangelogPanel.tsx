@@ -75,7 +75,14 @@ function renderBulletText(text: string): ReactNode {
 }
 
 type SubsectionKey =
-  'added' | 'improved' | 'fixed' | 'security' | 'breaking_changes' | 'deprecated' | 'known_issues'
+  | 'added'
+  | 'improved'
+  | 'fixed'
+  | 'removed'
+  | 'security'
+  | 'breaking_changes'
+  | 'deprecated'
+  | 'known_issues'
 
 interface SubsectionSpec {
   key: SubsectionKey
@@ -90,6 +97,7 @@ const SUBSECTION_KEYS: { key: SubsectionKey; severe?: boolean }[] = [
   { key: 'added' },
   { key: 'improved' },
   { key: 'fixed' },
+  { key: 'removed' },
   { key: 'security', severe: true },
   { key: 'breaking_changes', severe: true },
   { key: 'deprecated' },
@@ -104,6 +112,8 @@ function subsectionLabel(key: SubsectionKey, t: TFunction): string {
       return t('ChangelogPanel.improvedLabel')
     case 'fixed':
       return t('ChangelogPanel.fixedLabel')
+    case 'removed':
+      return t('ChangelogPanel.removedLabel')
     case 'security':
       return t('ChangelogPanel.securityLabel')
     case 'breaking_changes':

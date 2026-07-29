@@ -28,6 +28,7 @@ export interface Release {
   added: string[]
   improved: string[]
   fixed: string[]
+  removed: string[]
   security: string[]
   breaking_changes: string[]
   deprecated: string[]

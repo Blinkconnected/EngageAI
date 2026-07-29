@@ -118,7 +118,10 @@ class TestEnforcement:
 
         response = await client.get("/api/v1/workflows", headers=owner_headers)
         assert response.status_code == 402
-        assert "not included in this workspace's plan" in response.json()["detail"]
+        # Wording follows the product: there are no plans any more, so a
+        # refusal says the capability is not enabled rather than blaming
+        # a plan that does not exist.
+        assert "not enabled for this workspace" in response.json()["detail"]
 
     async def test_a_revoked_feature_answers_402_not_403(
         self, client: AsyncClient, app: Any, owner_headers: dict

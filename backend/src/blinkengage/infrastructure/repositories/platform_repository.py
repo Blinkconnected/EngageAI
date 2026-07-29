@@ -18,11 +18,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.agent import Agent
-from blinkengage.infrastructure.database.models.billing import (
-    BillingPlan,
-    Subscription,
-    SubscriptionStatus,
-)
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.user import User
@@ -39,11 +34,6 @@ class CompanyOverview:
     user_count: int
     agent_count: int
     conversation_count: int
-    # Billing state, so the console's companies grid can answer "who is
-    # actually paying?" without a request per row. Both None for a
-    # company that has never subscribed.
-    plan_name: str | None = None
-    subscription_status: SubscriptionStatus | None = None
 
 
 class PlatformRepository:
@@ -78,35 +68,6 @@ class PlatformRepository:
             for company_id in company_ids
         }
 
-    async def _subscriptions_for(
-        self, company_ids: list[UUID]
-    ) -> dict[UUID, tuple[str, SubscriptionStatus]]:
-        """The live subscription per company, in one query for the whole
-        page — same batch-aggregate shape as ``_counts_for`` above.
-
-        This reads billing metadata only (plan name and lifecycle state).
-        It is the one join in this file that touches a per-company table
-        rather than a count, and it stays inside the promise: a plan name
-        is the platform's own catalog entry, not the tenant's content.
-        """
-        if not company_ids:
-            return {}
-        result = await self._session.execute(
-            select(Subscription.company_id, BillingPlan.name, Subscription.status)
-            .join(BillingPlan, BillingPlan.id == Subscription.plan_id)
-            .where(
-                Subscription.company_id.in_(company_ids),
-                Subscription.status.not_in(
-                    [SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED]
-                ),
-            )
-            .order_by(Subscription.created_at.desc())
-        )
-        current: dict[UUID, tuple[str, SubscriptionStatus]] = {}
-        for company_id, plan_name, status_value in result.all():
-            current.setdefault(company_id, (plan_name, status_value))
-        return current
-
     async def list_company_overviews(
         self,
         *,
@@ -133,7 +94,6 @@ class PlatformRepository:
         companies = list(result.scalars().all())
         company_ids = [company.id for company in companies]
         counts = await self._counts_for(company_ids)
-        subscriptions = await self._subscriptions_for(company_ids)
         return (
             [
                 CompanyOverview(
@@ -141,8 +101,6 @@ class PlatformRepository:
                     user_count=counts.get(company.id, (0, 0, 0))[0],
                     agent_count=counts.get(company.id, (0, 0, 0))[1],
                     conversation_count=counts.get(company.id, (0, 0, 0))[2],
-                    plan_name=subscriptions.get(company.id, (None, None))[0],
-                    subscription_status=subscriptions.get(company.id, (None, None))[1],
                 )
                 for company in companies
             ],
@@ -159,14 +117,9 @@ class PlatformRepository:
         users, agents, conversations = (await self._counts_for([company.id])).get(
             company.id, (0, 0, 0)
         )
-        plan_name, subscription_status = (await self._subscriptions_for([company.id])).get(
-            company.id, (None, None)
-        )
         return CompanyOverview(
             company=company,
             user_count=users,
             agent_count=agents,
             conversation_count=conversations,
-            plan_name=plan_name,
-            subscription_status=subscription_status,
         )

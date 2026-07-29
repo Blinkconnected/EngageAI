@@ -18,7 +18,7 @@ import { extractErrorMessage } from '../../shared/api/errors'
 import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
 import { CompanyFeaturesDialog } from './CompanyFeaturesDialog'
 import { useCompaniesQuery, useSetCompanyStatusMutation } from './api'
-import type { CompanyOverview, CompanyStatus, SubscriptionStatus } from './types'
+import type { CompanyOverview, CompanyStatus } from './types'
 
 const STATUS_COLOR: Record<CompanyStatus, 'default' | 'success' | 'error'> = {
   trial: 'default',
@@ -27,15 +27,6 @@ const STATUS_COLOR: Record<CompanyStatus, 'default' | 'success' | 'error'> = {
 }
 
 const STATUS_OPTIONS: CompanyStatus[] = ['trial', 'active', 'suspended']
-
-const SUBSCRIPTION_COLOR: Record<SubscriptionStatus, 'default' | 'success' | 'warning' | 'error'> = {
-  approval_pending: 'warning',
-  active: 'success',
-  past_due: 'warning',
-  suspended: 'error',
-  cancelled: 'default',
-  expired: 'default',
-}
 
 /**
  * The platform operator's console: every company on the installation,
@@ -96,34 +87,6 @@ export function PlatformCompaniesPage() {
           color={STATUS_COLOR[params.value as CompanyStatus]}
         />
       ),
-    },
-    {
-      field: 'plan_name',
-      headerName: t('PlatformCompaniesPage.columnPlan'),
-      flex: 1,
-      minWidth: 160,
-      sortable: false,
-      renderCell: (params) => {
-        const status = params.row.subscription_status
-        if (status === null) {
-          return (
-            <Typography variant="body2" color="text.secondary">
-              {t('PlatformCompaniesPage.noSubscription')}
-            </Typography>
-          )
-        }
-        return (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Typography variant="body2">{params.row.plan_name}</Typography>
-            <Chip
-              size="small"
-              variant="outlined"
-              color={SUBSCRIPTION_COLOR[status]}
-              label={t(`PlatformCompaniesPage.subscriptionStatus.${status}`)}
-            />
-          </Stack>
-        )
-      },
     },
     {
       field: 'user_count',

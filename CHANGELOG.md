@@ -28,31 +28,23 @@ for more detail on how this page is put together.
   conversations, messages or customers**; they manage accounts, not
   content. They are created from the server command line, never through
   the app.
-- **Subscription billing through PayPal.** Companies can now be charged
-  a recurring monthly or yearly fee. A super administrator publishes
-  plans (which are created in PayPal automatically), and each company
-  sees them on a new **Billing** page where they can subscribe, see what
-  they're paying, and review every past payment. Subscribing hands off
-  to PayPal's own checkout; the subscription starts only once PayPal
-  confirms the customer approved it.
-- **Workspaces are suspended automatically when payment stops, and come
-  back on their own when it resumes.** A single failed payment does
-  *not* lock anyone out — PayPal retries on its own schedule first, and
-  only a genuinely lapsed subscription suspends the workspace. A
-  suspension caused by billing lifts itself as soon as a payment goes
-  through, but a suspension a person applied deliberately never does, so
-  nobody can pay their way back in. Customers' messages keep arriving
-  throughout.
-- **Cancelling keeps access until the end of the period already paid
-  for**, rather than ending it the moment the button is clicked.
 - **Super administrators can now control which features each company
   gets.** Features (AI, ERP, Workflows, Knowledge Base, SLA, and report
-  downloads) can be attached to a plan, or turned on and off for one
-  individual company — useful for a pilot or a negotiated contract
-  without inventing a one-off plan. Anything a company isn't entitled to
-  disappears from their navigation instead of failing when opened.
-  **Nothing changes for existing companies:** with no plan and no
-  overrides, every feature stays on exactly as before.
+  downloads) can be turned on or off for any individual company — useful
+  for a pilot or a negotiated contract. Anything a company isn't
+  entitled to disappears from their navigation instead of failing when
+  opened. **Nothing changes for existing companies:** with no overrides
+  set, every feature stays on exactly as before.
+- **All money is handled to six decimal places and rounded only once, at
+  the end of a calculation.** Usage prices are genuinely sub-cent — a
+  conversation might cost $0.0005 — and rounding those to cents along the
+  way would bill nothing at all for ten thousand of them. Amounts are
+  never stored or calculated as floating-point numbers, so a total can
+  never disagree with the lines that make it up.
+- Prices and totals are shown consistently across the product from a
+  single currency setting (US dollars for this release). A price that
+  hasn't been set shows as "—" rather than "$0.00", so "not set" is
+  never mistaken for "free".
 - **Platform console.** A super administrator signs in at the normal
   sign-in page and is taken straight to a console listing every company
   with its user, agent and conversation counts, where each can be
@@ -73,8 +65,23 @@ for more detail on how this page is put together.
 - The main navigation sidebar is now narrower (200px), leaving more room
   for the page beside it.
 
+### Removed
+
+- **Subscription plans and recurring PayPal billing.** Blink Engage is
+  moving to usage-based pricing: you pay for what you actually use, with
+  no monthly plan, no seat licensing, and no limits on agents,
+  departments or channels. The subscription model built earlier in this
+  unreleased cycle has been removed rather than left running alongside
+  the new one. No installation ever had it released, and which features
+  each company gets is unaffected.
+
 ### Fixed
 
+- The Release Notes page no longer breaks when a release removes
+  something. "Removed" is a standard changelog section, but the parser
+  didn't recognise it — and an unrecognised section failed the whole
+  file, so one such entry would have taken down the entire Release Notes
+  page and the version banner with it.
 - Closing a company now actually blocks its people from signing in.
   Nothing checked whether a company had been closed, so its users could
   keep signing in indefinitely.

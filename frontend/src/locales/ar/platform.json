@@ -3,8 +3,7 @@
     "title": "وحدة تحكم المنصة",
     "subtitle": "إدارة الشركات على هذا التثبيت",
     "signOut": "تسجيل الخروج",
-    "companies": "الشركات",
-    "plans": "الخطط"
+    "companies": "الشركات"
   },
   "PlatformCompaniesPage": {
     "title": "الشركات",
@@ -35,48 +34,7 @@
     "confirmSuspendDescription": "سيتم منع {{companyName}} من تسجيل الدخول فورًا، بما في ذلك من هم مسجّلون حاليًا. تستمر رسائل عملائهم في الوصول، فلا يضيع شيء.",
     "confirmReactivateDescription": "سيتمكن {{companyName}} من تسجيل الدخول مرة أخرى على الفور.",
     "statusErrorFallback": "تعذّر تغيير حالة هذه الشركة.",
-    "columnPlan": "الخطة",
-    "noSubscription": "لا يوجد اشتراك",
-    "featuresButton": "المزايا",
-    "subscriptionStatus": {
-      "approval_pending": "بانتظار الموافقة",
-      "active": "نشط",
-      "past_due": "متأخر السداد",
-      "suspended": "موقوف",
-      "cancelled": "ملغى",
-      "expired": "منتهٍ"
-    }
-  },
-  "PlatformPlansPage": {
-    "title": "الخطط",
-    "description": "قائمة الأسعار المعروضة على كل الشركات. إنشاء خطة ينشرها في باي بال.",
-    "newPlan": "خطة جديدة",
-    "nameLabel": "اسم الخطة",
-    "descriptionLabel": "الوصف",
-    "amountLabel": "السعر",
-    "currencyLabel": "العملة",
-    "intervalLabel": "الفوترة",
-    "interval": {
-      "month": "شهرياً",
-      "year": "سنوياً"
-    },
-    "priceIsFinal": "لا يمكن تغيير السعر ولا مدة الفوترة بعد إنشاء الخطة، لأن باي بال يحصّل بناءً عليهما. لتغيير السعر أنشئ خطة جديدة.",
-    "restrictFeatures": "حصر هذه الخطة بمزايا محددة",
-    "allFeatures": "كل المزايا",
-    "noFeatures": "لا توجد مزايا",
-    "includes": "تشمل: {{features}}",
-    "activeChip": "معروضة",
-    "withdrawnChip": "مسحوبة",
-    "notPublishedChip": "غير منشورة في باي بال",
-    "withdrawButton": "سحب",
-    "restoreButton": "عرض للبيع",
-    "create": "إنشاء الخطة",
-    "cancel": "إلغاء",
-    "retry": "إعادة المحاولة",
-    "loadError": "تعذّر تحميل الخطط.",
-    "createError": "تعذّر إنشاء هذه الخطة.",
-    "emptyTitle": "لا توجد خطط بعد",
-    "emptyDescription": "أنشئ خطة لتبدأ بتحصيل رسوم مساحات العمل من الشركات."
+    "featuresButton": "المزايا"
   },
   "CompanyFeaturesDialog": {
     "title": "مزايا {{companyName}}",
