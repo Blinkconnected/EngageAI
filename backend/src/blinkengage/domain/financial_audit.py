@@ -71,6 +71,12 @@ class FinancialEventType(StrEnum):
     PAYMENT_ALLOCATION_REVERSED = "payment.allocation_reversed"
     PAYMENT_REFUNDED = "payment.refunded"
     PAYMENT_REFUND_FAILED = "payment.refund_failed"
+    #: A bank took the money back. Distinct from a refund because the
+    #: cause matters commercially: a refund is something we chose to do.
+    PAYMENT_CHARGEBACK = "payment.chargeback"
+    #: A receivable abandoned as uncollectable. An expense, not a
+    #: discount — the invoice was correct and went unpaid.
+    RECEIVABLE_WRITTEN_OFF = "receivable.written_off"
 
     # --- Gateway attempts ---
     # An intent is a request for money, not money. These are
@@ -104,6 +110,8 @@ MONEY_MOVING_EVENTS: frozenset[FinancialEventType] = frozenset(
         # change to what they owe even though no money moved in that
         # instant.
         FinancialEventType.INVOICE_REOPENED,
+        FinancialEventType.PAYMENT_CHARGEBACK,
+        FinancialEventType.RECEIVABLE_WRITTEN_OFF,
     }
 )
 

@@ -48,6 +48,7 @@ from blinkengage.infrastructure.database.models.knowledge import (
     KnowledgeArticleTag,
     KnowledgeCategory,
 )
+from blinkengage.infrastructure.database.models.ledger import LedgerEntry
 from blinkengage.infrastructure.database.models.message import (
     AttachmentValidationStatus,
     DeliveryStatus,
@@ -133,6 +134,7 @@ __all__ = [
     "InvoiceLine",
     "DunningNotice",
     "EmailVerificationToken",
+    "LedgerEntry",
     "Payment",
     "PlatformSetting",
     "PaymentIntent",

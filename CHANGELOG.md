@@ -16,6 +16,20 @@ for more detail on how this page is put together.
 
 ### Changed
 
+- **Every financial movement is now recorded in a double-entry ledger**,
+  and balances are answered from it rather than from a column on an
+  invoice. Issuing an invoice, crediting one, receiving a payment,
+  applying it, reversing it, refunding, a chargeback, a write-off and
+  manual adjustments each post a balanced entry naming both accounts it
+  moved value between. Entries can never be edited or deleted — a
+  mistake is corrected by posting the opposite entry — and the database
+  itself refuses any attempt. New reports show the **trial balance**
+  (proof the books balance), each company's position, and a
+  **reconciliation** confirming the figures on invoices still match the
+  ledger. Existing invoices and payments were reconstructed into entries
+  so the ledger is correct from its first day, and every reconstructed
+  row is labelled as such.
+
 - **The navigation sidebar now sizes itself to its labels** instead of a
   fixed width, so nothing is clipped and no space is wasted. This matters
   most in Arabic, where the same menu needs a different amount of room —

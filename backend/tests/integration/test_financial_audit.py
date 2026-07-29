@@ -293,6 +293,7 @@ class TestActor:
                 FinancialAuditRecorder,
             )
             from blinkengage.application.services.invoice_service import InvoiceService
+            from blinkengage.application.services.ledger_service import LedgerService
             from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
             from blinkengage.infrastructure.repositories.event_outbox_repository import (
                 EventOutboxRepository,
@@ -307,6 +308,9 @@ class TestActor:
                 InvoiceLineRepository,
                 InvoiceRepository,
                 PaymentRepository,
+            )
+            from blinkengage.infrastructure.repositories.ledger_repository import (
+                LedgerRepository,
             )
             from blinkengage.infrastructure.repositories.usage_repository import (
                 BillingPeriodRepository,
@@ -324,6 +328,10 @@ class TestActor:
                 companies=InvoiceCompanyLookup(session),
                 events=OutboxEventPublisher(EventOutboxRepository(session)),
                 audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
+                ledger=LedgerService(
+                    entries=LedgerRepository(session),
+                    numbers=DocumentNumberRepository(session),
+                ),
             )
             moved = await service.mark_overdue()
             await session.commit()

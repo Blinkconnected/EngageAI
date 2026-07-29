@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from blinkengage.application.services.collections_service import CollectionsService
 from blinkengage.application.services.financial_audit_service import FinancialAuditRecorder
 from blinkengage.application.services.invoice_service import InvoiceService
+from blinkengage.application.services.ledger_service import LedgerService
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.payment_service import PaymentService
 from blinkengage.core.celery_app import celery_app
@@ -58,6 +59,7 @@ from blinkengage.infrastructure.repositories.invoicing_repository import (
     InvoiceRepository,
     PaymentRepository,
 )
+from blinkengage.infrastructure.repositories.ledger_repository import LedgerRepository
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
@@ -112,6 +114,10 @@ def build_invoice_service(session: AsyncSession) -> InvoiceService:
         companies=InvoiceCompanyLookup(session),
         events=events,
         audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
+        ledger=LedgerService(
+            entries=LedgerRepository(session),
+            numbers=DocumentNumberRepository(session),
+        ),
     )
 
 
@@ -133,6 +139,10 @@ async def _run_async() -> tuple[int, str]:
             invoice_service=invoice_service,
             providers=providers,
             audit=audit,
+            ledger=LedgerService(
+                entries=LedgerRepository(session),
+                numbers=DocumentNumberRepository(session),
+            ),
             settings=settings,
         ).reconcile_pending(older_than=datetime.now(UTC) - _RECONCILE_AFTER)
 

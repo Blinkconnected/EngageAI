@@ -36,6 +36,7 @@ from blinkengage.application.services.financial_audit_service import (
     AuditActor,
     FinancialAuditRecorder,
 )
+from blinkengage.application.services.ledger_service import LedgerService
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
     EntityNotFoundError,
@@ -53,6 +54,7 @@ from blinkengage.domain.invoicing import (
     invoice_number,
     is_frozen,
 )
+from blinkengage.domain.ledger import LedgerEntryType
 from blinkengage.domain.money import (
     BILLING_CURRENCY,
     to_billable_amount,
@@ -105,6 +107,7 @@ class InvoiceService:
         companies: InvoiceCompanyLookup,
         events: DomainEventPublisher,
         audit: FinancialAuditRecorder,
+        ledger: LedgerService,
     ) -> None:
         self._invoices = invoices
         self._lines = lines
@@ -116,6 +119,7 @@ class InvoiceService:
         self._companies = companies
         self._events = events
         self._audit = audit
+        self._ledger = ledger
 
     # --- Generation -------------------------------------------------
 
@@ -262,6 +266,21 @@ class InvoiceService:
             currency=invoice.currency,
             details={"invoice_number": number, "due_date": str(invoice.due_date)},
         )
+        # Issuance is the moment the money becomes real: a receivable
+        # exists and revenue is recognised. A draft posts nothing, which
+        # is why this lives here and not in generation.
+        if invoice.total_amount > 0:
+            await self._ledger.record(
+                entry_type=LedgerEntryType.INVOICE_ISSUED,
+                company_id=invoice.company_id,
+                amount=invoice.total_amount,
+                reference_entity="invoice",
+                reference_id=invoice_id,
+                reference_number=number,
+                description=f"Invoice {number} issued to {invoice.customer_name}",
+                occurred_at=issued_at,
+                currency=invoice.currency,
+            )
         await self._publish(
             invoice, "billing.invoice_issued", actor_user_id, {"invoice_number": number}
         )
@@ -418,6 +437,21 @@ class InvoiceService:
             currency=payment.currency,
             details={"provider": provider, "reference": reference},
         )
+        # Cash in, and a liability: the money is still the customer's
+        # until it settles something. Allocation is what discharges it.
+        await self._ledger.record(
+            entry_type=LedgerEntryType.PAYMENT_RECEIVED,
+            company_id=company_id,
+            amount=payment.amount,
+            reference_entity="payment",
+            reference_id=payment.id,
+            description=(
+                f"Payment received{f' ({reference})' if reference else ''}"
+                f"{f' via {provider}' if provider else ''}"
+            ),
+            occurred_at=received_at,
+            currency=payment.currency,
+        )
         await self._events.publish(
             DomainEvent(
                 event_type="billing.payment_recorded",
@@ -494,6 +528,21 @@ class InvoiceService:
                 "invoice_id": str(invoice_id),
                 "invoice_number": invoice.invoice_number,
             },
+        )
+        # Discharges the liability against the receivable. Neither cash
+        # nor revenue moves here — which is exactly why receiving and
+        # allocating are separate operations.
+        await self._ledger.record(
+            entry_type=LedgerEntryType.PAYMENT_ALLOCATED,
+            company_id=invoice.company_id,
+            amount=to_storage(amount),
+            reference_entity="payment_allocation",
+            reference_id=allocation.id,
+            reference_number=invoice.invoice_number,
+            description=(
+                f"Payment applied to {invoice.invoice_number or 'an invoice'}"
+            ),
+            currency=invoice.currency,
         )
         await self._settle_if_covered(invoice_id, actor_user_id)
         return await self._require(invoice_id)
@@ -626,6 +675,22 @@ class InvoiceService:
                 "invoice_id": str(invoice_id),
                 "invoice_number": invoice.invoice_number,
             },
+        )
+        # Reduces what they owe at the cost of revenue. Contra-revenue,
+        # not a negative posting to REVENUE: "what did we bill" and "what
+        # did we give back" have to stay separately answerable.
+        await self._ledger.record(
+            entry_type=LedgerEntryType.CREDIT_NOTE_ISSUED,
+            company_id=invoice.company_id,
+            amount=note.total_amount,
+            reference_entity="credit_note",
+            reference_id=note.id,
+            reference_number=note.credit_note_number,
+            description=(
+                f"Credit note {note.credit_note_number} against "
+                f"{invoice.invoice_number or 'an invoice'}: {reason}"
+            ),
+            currency=note.currency,
         )
         await self._settle_if_covered(invoice_id, actor_user_id)
         await self._events.publish(

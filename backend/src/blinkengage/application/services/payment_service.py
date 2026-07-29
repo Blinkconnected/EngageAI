@@ -42,6 +42,7 @@ from blinkengage.application.services.financial_audit_service import (
     FinancialAuditRecorder,
 )
 from blinkengage.application.services.invoice_service import InvoiceService
+from blinkengage.application.services.ledger_service import LedgerService
 from blinkengage.core.config import Settings
 from blinkengage.domain.exceptions import (
     EntityNotFoundError,
@@ -50,6 +51,7 @@ from blinkengage.domain.exceptions import (
 )
 from blinkengage.domain.financial_audit import FinancialEntityType, FinancialEventType
 from blinkengage.domain.invoicing import OPEN_STATES, InvoiceStatus
+from blinkengage.domain.ledger import LedgerAccount, LedgerEntryType
 from blinkengage.domain.money import BILLING_CURRENCY, to_storage, zero
 from blinkengage.domain.payments import (
     PaymentIntentStatus,
@@ -102,6 +104,7 @@ class PaymentService:
         invoice_service: InvoiceService,
         providers: PaymentProviderRegistry,
         audit: FinancialAuditRecorder,
+        ledger: LedgerService,
         settings: Settings,
     ) -> None:
         self._intents = intents
@@ -112,6 +115,7 @@ class PaymentService:
         self._invoice_service = invoice_service
         self._providers = providers
         self._audit = audit
+        self._ledger = ledger
         self._settings = settings
 
     # --- starting a payment ------------------------------------------
@@ -459,6 +463,23 @@ class PaymentService:
                 "invoice_number": invoice.invoice_number,
             },
         )
+        # Puts the money back where it came from: the receivable is
+        # restored and the customer credit reinstated. Its own entry,
+        # never a deletion of the original — the history has to show that
+        # money was applied and then un-applied.
+        await self._ledger.record(
+            entry_type=LedgerEntryType.ALLOCATION_REVERSED,
+            company_id=invoice.company_id,
+            amount=allocation.amount,
+            reference_entity="payment_allocation",
+            reference_id=allocation_id,
+            reference_number=invoice.invoice_number,
+            description=(
+                f"Allocation to {invoice.invoice_number or 'an invoice'} reversed: {reason}"
+            ),
+            occurred_at=now,
+            currency=invoice.currency,
+        )
         await self._reopen_if_unsettled(invoice.id, reason=reason, actor=actor, today=today)
         refreshed = await self._invoices.get_by_id(invoice.id)
         assert refreshed is not None
@@ -634,9 +655,137 @@ class PaymentService:
                 "refund_reference": result.refund_reference,
             },
         )
+        if result.succeeded:
+            # Only on success: a pending or failed refund moved no money,
+            # and posting one would show cash leaving that never left.
+            await self._ledger.record(
+                entry_type=LedgerEntryType.REFUND_ISSUED,
+                company_id=payment.company_id,
+                amount=record.amount,
+                reference_entity="payment_refund",
+                reference_id=record.id,
+                description=f"Refund issued: {reason}",
+                currency=record.currency,
+            )
+
         refreshed = await self._refunds.get_by_id(record.id)
         assert refreshed is not None
         return refreshed
+
+    # --- write-offs and chargebacks ----------------------------------
+
+    async def write_off(
+        self,
+        *,
+        invoice_id: uuid.UUID,
+        reason: str,
+        actor: AuditActor | None = None,
+    ) -> Decimal:
+        """Abandons a receivable as uncollectable.
+
+        An **expense**, not a discount. A write-off says we billed
+        correctly and did not get paid; a credit note says we billed too
+        much. Collapsing them would make revenue look wrong in one
+        direction or bad debt invisible in the other.
+
+        Deliberately does **not** change the invoice's status. There is no
+        ``WRITTEN_OFF`` state, and inventing one would be a new billing
+        concept; more importantly the invoice remains unpaid and overdue,
+        which is the truth. The ledger is where the receivable stops
+        being an asset.
+        """
+        if not reason.strip():
+            raise PaymentProcessingError("A write-off must state a reason.")
+
+        invoice = await self._invoices.get_by_id(invoice_id)
+        if invoice is None:
+            raise EntityNotFoundError("Invoice", invoice_id)
+
+        outstanding = await self._ledger.account_balance(
+            LedgerAccount.ACCOUNTS_RECEIVABLE, company_id=invoice.company_id
+        )
+        document_outstanding = (
+            invoice.total_amount - invoice.amount_paid - invoice.amount_credited
+        )
+        # Bounded by the invoice, not by the company's whole receivable:
+        # writing off "everything outstanding" when the operator named one
+        # invoice would quietly clear the others too.
+        amount = min(document_outstanding, outstanding) if outstanding > zero() else zero()
+        if amount <= zero():
+            raise PaymentProcessingError(
+                "That invoice has nothing outstanding to write off."
+            )
+
+        await self._ledger.record(
+            entry_type=LedgerEntryType.WRITE_OFF,
+            company_id=invoice.company_id,
+            amount=amount,
+            reference_entity="invoice",
+            reference_id=invoice_id,
+            reference_number=invoice.invoice_number,
+            description=(
+                f"Receivable on {invoice.invoice_number or 'an invoice'} "
+                f"written off: {reason}"
+            ),
+            currency=invoice.currency,
+        )
+        await self._audit.record(
+            event_type=FinancialEventType.RECEIVABLE_WRITTEN_OFF,
+            entity_type=FinancialEntityType.INVOICE,
+            entity_id=invoice_id,
+            company_id=invoice.company_id,
+            actor=actor or AuditActor.system_actor(),
+            previous_state=invoice.status.value,
+            new_state=invoice.status.value,
+            amount=amount,
+            currency=invoice.currency,
+            reason=reason,
+            details={"invoice_number": invoice.invoice_number},
+        )
+        return amount
+
+    async def record_chargeback(
+        self,
+        *,
+        allocation_id: uuid.UUID,
+        reason: str,
+        actor: AuditActor | None = None,
+    ) -> Invoice:
+        """A bank has taken the money back.
+
+        Mechanically a reversal plus cash leaving, so it reuses the
+        reversal path and then posts the cash movement. Kept distinct from
+        a refund because the *cause* matters commercially — a refund is
+        something we chose to do, a chargeback is something done to us —
+        and a ledger where both look identical cannot answer "how much are
+        we losing to disputes".
+        """
+        allocation = await self._reversals.get(allocation_id)
+        if allocation is None:
+            raise EntityNotFoundError("PaymentAllocation", allocation_id)
+        amount = allocation.amount
+
+        invoice = await self.reverse_allocation(
+            allocation_id=allocation_id,
+            reason=f"Chargeback: {reason}",
+            actor=actor,
+        )
+        # The reversal restored the receivable and the customer credit;
+        # this takes the cash out against that credit, leaving the
+        # customer owing again with no money held on their behalf.
+        await self._ledger.record(
+            entry_type=LedgerEntryType.CHARGEBACK,
+            company_id=invoice.company_id,
+            amount=amount,
+            reference_entity="payment_allocation",
+            reference_id=allocation_id,
+            reference_number=invoice.invoice_number,
+            description=f"Chargeback on {invoice.invoice_number or 'an invoice'}: {reason}",
+            currency=invoice.currency,
+            debit=LedgerAccount.CUSTOMER_CREDIT,
+            credit=LedgerAccount.CASH,
+        )
+        return invoice
 
     # --- reads -------------------------------------------------------
 

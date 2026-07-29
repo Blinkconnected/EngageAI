@@ -38,6 +38,10 @@ from blinkengage.application.services.financial_audit_service import FinancialAu
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.invoice_service import InvoiceService
 from blinkengage.application.services.knowledge_service import KnowledgeService
+from blinkengage.application.services.ledger_service import (
+    LedgerReconciliation,
+    LedgerService,
+)
 from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
 )
@@ -132,6 +136,7 @@ from blinkengage.infrastructure.repositories.knowledge_repository import (
     KnowledgeArticleRepository,
     KnowledgeCategoryRepository,
 )
+from blinkengage.infrastructure.repositories.ledger_repository import LedgerRepository
 from blinkengage.infrastructure.repositories.message_attachment_repository import (
     MessageAttachmentRepository,
 )
@@ -870,7 +875,32 @@ def get_invoice_service(
         companies=InvoiceCompanyLookup(session),
         events=events,
         audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
+        ledger=build_ledger_service(session),
     )
+
+
+def build_ledger_service(session: AsyncSession) -> LedgerService:
+    """The ledger, on the caller's session.
+
+    Deliberately the *same* session as the operation being recorded: an
+    entry written on another connection can disagree with the thing it
+    records, and a ledger that disagrees is worse than none.
+    """
+    return LedgerService(
+        entries=LedgerRepository(session), numbers=DocumentNumberRepository(session)
+    )
+
+
+def get_ledger_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LedgerService:
+    return build_ledger_service(session)
+
+
+def get_ledger_reconciliation(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LedgerReconciliation:
+    return LedgerReconciliation(session=session, ledger=build_ledger_service(session))
 
 
 def get_payment_providers(
@@ -900,6 +930,7 @@ def get_payment_service(
         invoice_service=invoice_service,
         providers=providers,
         audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
+        ledger=build_ledger_service(session),
         settings=settings,
     )
 

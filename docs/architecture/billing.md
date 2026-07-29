@@ -974,6 +974,151 @@ second, for the reason given above. Every step is idempotent, so the
 notices a customer receives depend on the dates, not on how often the
 task runs.
 
+## The financial ledger
+
+The accounting substrate everything else sits on. Invoices, credit notes
+and payments are **documents**: they describe commitments. The ledger
+records what those documents did to the money, and a balance is a
+question about the ledger rather than a column on a document.
+
+### Every entry carries both sides
+
+One positive amount, one debit account, one credit account. That makes
+every entry balanced *by construction* — there is nowhere to put an
+imbalance, so an unbalanced ledger cannot be written.
+
+The classic alternative (N signed lines per transaction summing to zero)
+is more general and would be needed the day one operation posts to three
+accounts. Taxes and multi-leg settlement are out of scope, and a shape
+that cannot represent an error is worth more here than one that can
+represent anything.
+
+Direction is carried by **which account is debited**, never by the sign.
+A negative amount would let one movement be written two ways, and every
+total would then depend on which way each writer happened to choose. A
+check constraint refuses `amount <= 0`, and another refuses an entry
+that debits and credits the same account.
+
+### The chart of accounts
+
+| Account | Kind | Holds |
+| --- | --- | --- |
+| `accounts_receivable` | Asset | What customers owe |
+| `cash` | Asset | Money that has arrived |
+| `customer_credit` | **Liability** | Money held on a customer's behalf, not yet applied |
+| `revenue` | Income | What was billed |
+| `revenue_adjustments` | Contra-income | What was credited back |
+| `bad_debt` | Expense | Receivables abandoned |
+
+`customer_credit` is why payments are independent of invoices. A payment
+that has arrived but settled nothing is a **liability** — the money is
+still the customer's — and allocation is what discharges it against the
+receivable.
+
+Debit and credit are not "plus" and "minus": whether a debit increases an
+account depends on its kind, which is why `AccountKind` exists rather
+than a signed amount. `balance_of()` returns a positive number when an
+account holds what it normally holds, so callers get "how much" without
+needing to know which way the account runs.
+
+### Posting rules
+
+| Operation | Debit | Credit |
+| --- | --- | --- |
+| Invoice issued | `accounts_receivable` | `revenue` |
+| Credit note issued | `revenue_adjustments` | `accounts_receivable` |
+| Payment received | `cash` | `customer_credit` |
+| Payment allocated | `customer_credit` | `accounts_receivable` |
+| Allocation reversed | `accounts_receivable` | `customer_credit` |
+| Refund issued | `customer_credit` | `cash` |
+| Chargeback | `customer_credit` | `cash` |
+| Write-off | `bad_debt` | `accounts_receivable` |
+| Manual adjustment | *operator names both* |  |
+
+Read each row as "value leaves the credit account and arrives in the
+debit account". A table rather than branching code, because this *is* the
+accounting policy of the product and it should be readable in one screen
+by somebody who knows accounting and not this codebase.
+
+Three of those choices are worth stating:
+
+- **A draft invoice posts nothing.** Issuance is the moment a receivable
+  exists and revenue is recognised. Recognising it earlier would book
+  money the customer has never been asked for.
+- **Allocation moves neither cash nor revenue.** It only discharges the
+  liability against the receivable — which is precisely why receiving and
+  allocating are separate operations.
+- **A write-off is an expense, not a discount.** It says we billed
+  correctly and were not paid; a credit note says we billed too much.
+  Collapsing them would make revenue wrong in one direction or bad debt
+  invisible in the other. `write_off` deliberately leaves the invoice's
+  status alone: there is no `WRITTEN_OFF` state, and the invoice really
+  is still unpaid. The ledger is where the receivable stops being an
+  asset.
+
+A **chargeback** is kept distinct from a refund even though the cash
+effect is similar, because the cause matters commercially — a refund is
+something we chose to do — and a ledger where both look identical cannot
+answer "how much are we losing to disputes".
+
+### Nothing is ever amended
+
+A mistake is corrected by posting the opposite entry. The repository
+exposes no update and no delete, the API offers no endpoint that edits an
+entry, and on PostgreSQL a trigger refuses `UPDATE` and `DELETE`
+outright, so the rule survives a `psql` session.
+
+`entry_number` comes from the same locked counter that hands out invoice
+numbers, which makes it **gapless** and transactional — a rolled-back
+write releases the number rather than burning it. A database sequence
+would have been cheaper, but sequences are explicitly not transactional,
+and a ledger with holes in its numbering is something an auditor makes
+somebody explain. It also gives a deterministic order that `occurred_at`
+cannot: entries written in one transaction share a timestamp to the
+microsecond, so ordering by time alone can show a payment before the
+invoice it settles.
+
+### Derived, not duplicated
+
+`GET /platform/ledger/{company_id}` answers what a company owes **from
+the entries**. That is the authoritative figure.
+
+The denormalized columns on documents (`invoices.amount_paid`,
+`amount_credited`) remain, as a **projection**: "what is still owed" is
+read on every list screen, and summing the ledger per row would be an
+N+1. They are a cache of what the ledger says, not a second record of
+it — and `GET /platform/ledger/reconciliation` proves the two agree,
+per company. A cache nobody checks is just a second source of truth with
+extra steps, so the check is exposed rather than buried in a log: the
+only useful response to a divergence is a person looking at it.
+
+`GET /platform/ledger/trial-balance` reports every account plus
+`in_balance`. It cannot go false through normal use, which is exactly why
+it is worth watching.
+
+### Entries are written on the same session
+
+Same reasoning as the audit trail: a ledger on a separate connection can
+disagree with the thing it records, and one that disagrees is worse than
+none because it will be believed. Either the invoice is issued and the
+entry exists, or neither happened.
+
+### Reconstructed entries
+
+Documents predating the ledger are backfilled, because a source of truth
+that disagrees with reality on its first day is not one. Every such row
+is flagged `reconstructed = true`: it is an *inference* from a document
+rather than a record of something observed, and a reader is entitled to
+know which rows are which. Draft and cancelled invoices are skipped — a
+draft was never billed, and a cancelled invoice's number is consumed but
+nothing was ever owed.
+
+The backfill is a single ordered INSERT so `entry_number` follows real
+chronology across document types. It orders by the documents' own
+timestamps and does not silently correct them, so a payment dated after
+the allocation that drew on it will appear out of causal order —
+surfacing a pre-existing data problem rather than hiding it.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:

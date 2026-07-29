@@ -32,6 +32,7 @@ from blinkengage.domain.exceptions import (
     SystemProfileNotPriceableError,
 )
 from blinkengage.domain.invoicing import InvalidInvoiceTransitionError
+from blinkengage.domain.ledger import LedgerError
 
 _STATUS_MAP: dict[type[Exception], int] = {
     EmailNotVerifiedError: status.HTTP_403_FORBIDDEN,
@@ -47,6 +48,7 @@ _STATUS_MAP: dict[type[Exception], int] = {
     InvoiceStateError: status.HTTP_409_CONFLICT,
     InvalidInvoiceTransitionError: status.HTTP_409_CONFLICT,
     InvoiceNotPayableError: status.HTTP_409_CONFLICT,
+    LedgerError: status.HTTP_409_CONFLICT,
     PaymentProcessingError: status.HTTP_409_CONFLICT,
     RefundNotPermittedError: status.HTTP_409_CONFLICT,
     PricingRangeOverlapError: status.HTTP_409_CONFLICT,

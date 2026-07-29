@@ -24,6 +24,7 @@ from blinkengage.api.v1.endpoints import (
     payment_webhooks,
     platform,
     platform_invoicing,
+    platform_ledger,
     platform_payments,
     platform_pricing,
     platform_settings,
@@ -55,6 +56,7 @@ api_router.include_router(platform.router)
 api_router.include_router(platform_pricing.router)
 api_router.include_router(platform_usage.router)
 api_router.include_router(platform_invoicing.router)
+api_router.include_router(platform_ledger.router)
 api_router.include_router(platform_payments.router)
 api_router.include_router(platform_settings.router)
 api_router.include_router(payment_webhooks.router)
