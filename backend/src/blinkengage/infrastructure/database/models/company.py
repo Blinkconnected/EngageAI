@@ -55,6 +55,20 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     # let the collections sweep silently un-suspend a compliance
     # suspension the moment an invoice was paid.
     # See domain/collections.py and docs/architecture/billing.md.
+    #: ISO 3166-1 alpha-2, chosen at signup. Decides the billing currency
+    #: and which payment methods are offered — see domain/countries.py.
+    #: NULL for companies that predate countries.
+    country_code: Mapped[str | None] = mapped_column(String(2), default=None)
+    #: ISO 4217, derived from ``country_code`` at signup and then **fixed**.
+    #: Stored rather than derived on read so it cannot change underneath
+    #: issued invoices and ledger entries if the country table is ever
+    #: edited: an invoice states an amount in a currency, and a document
+    #: that silently changes currency is a different document with the
+    #: same number.
+    billing_currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="USD", server_default="USD"
+    )
+
     #: When the signup owner proved they control the address they
     #: registered with. NULL means the company has not verified and its
     #: people can sign in but cannot act — see domain/verification.py.

@@ -16,6 +16,19 @@ for more detail on how this page is put together.
 
 ### Changed
 
+- **Jordanian companies are now billed in dinars.** Signup asks for a
+  country and tells you which currency you'll be billed in before you
+  commit — Jordan means JOD, everywhere else USD — and it can't change
+  afterwards, because re-denominating an invoice that has already been
+  sent isn't something anyone should be able to do. **JOD is handled at
+  three decimal places**, not two, so a price of 0.035 dinars stays
+  0.035 rather than rounding to 0.04 and overcharging by 14% on every
+  conversation. Prices, invoices, payments and the ledger all stay in the
+  company's own currency throughout, nothing is converted, and the trial
+  balance is reported as one set of books per currency — because adding
+  dinars to dollars produces a number that means nothing. Existing
+  companies are unchanged and stay on USD.
+
 - **Every financial movement is now recorded in a double-entry ledger**,
   and balances are answered from it rather than from a column on an
   invoice. Issuing an invoice, crediting one, receiving a payment,

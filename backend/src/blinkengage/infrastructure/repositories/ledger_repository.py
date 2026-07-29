@@ -95,8 +95,23 @@ class LedgerRepository:
         )
         return list(result.scalars().all())
 
+    async def currencies_present(self) -> list[str]:
+        """Which currencies the ledger actually holds entries in.
+
+        The trial balance is reported per currency: adding dinars to
+        dollars produces a number that means nothing, and no exchange rate
+        is stored to make it mean something.
+        """
+        result = await self._session.execute(
+            select(LedgerEntry.currency).distinct().order_by(LedgerEntry.currency)
+        )
+        return [str(row[0]) for row in result.all()]
+
     async def sums_by_account(
-        self, *, company_id: uuid.UUID | None = None
+        self,
+        *,
+        company_id: uuid.UUID | None = None,
+        currency: str | None = None,
     ) -> tuple[dict[LedgerAccount, Decimal], dict[LedgerAccount, Decimal]]:
         """Total debited and total credited, per account.
 
@@ -111,6 +126,8 @@ class LedgerRepository:
             stmt = select(column, func.coalesce(func.sum(LedgerEntry.amount), 0))
             if company_id is not None:
                 stmt = stmt.where(LedgerEntry.company_id == company_id)
+            if currency is not None:
+                stmt = stmt.where(LedgerEntry.currency == currency)
             result = await self._session.execute(stmt.group_by(column))
             # Keyed by the enum member, not by a string. SQLAlchemy
             # converts the stored NAME back to a LedgerAccount on read,
@@ -121,8 +138,11 @@ class LedgerRepository:
 
         return await _sums(LedgerEntry.debit_account), await _sums(LedgerEntry.credit_account)
 
-    async def entry_count(self) -> int:
-        result = await self._session.execute(select(func.count()).select_from(LedgerEntry))
+    async def entry_count(self, *, currency: str | None = None) -> int:
+        stmt = select(func.count()).select_from(LedgerEntry)
+        if currency is not None:
+            stmt = stmt.where(LedgerEntry.currency == currency)
+        result = await self._session.execute(stmt)
         return int(result.scalar_one())
 
 

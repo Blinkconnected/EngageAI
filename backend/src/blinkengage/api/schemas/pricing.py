@@ -26,6 +26,7 @@ from pydantic import (
 )
 
 from blinkengage.domain.billable_metrics import MeasurementUnit
+from blinkengage.domain.money import DEFAULT_CURRENCY
 from blinkengage.domain.pricing_scope import PricingScope
 
 #: The money wire type. See the module docstring.
@@ -115,9 +116,15 @@ class _RateWriteRequest(BaseModel):
 
 
 class SetRateRequest(_RateWriteRequest):
-    """Body for setting a global, profile or company price. ``currency``
-    is deliberately absent: v1 is single-currency and it is stamped from
-    the platform configuration."""
+    """Body for setting a global, profile or company price.
+
+    ``currency`` defaults to the installation default. A **company**
+    override must be set in the currency that company is billed in, or
+    resolution will not find it — a dinar company simply will not see a
+    dollar rate, and its month closes unpriced.
+    """
+
+    currency: str = Field(default=DEFAULT_CURRENCY.code, min_length=3, max_length=3)
 
 
 class EndCompanyRateRequest(BaseModel):

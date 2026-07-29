@@ -73,24 +73,38 @@ async def _actor(platform: PlatformContext, session: AsyncSession) -> AuditActor
 # --- the books --------------------------------------------------------
 
 
-@router.get("/trial-balance", response_model=TrialBalanceResponse)
+@router.get("/trial-balance", response_model=list[TrialBalanceResponse])
 async def trial_balance(
     ledger: Annotated[LedgerService, Depends(get_ledger_service)],
-) -> TrialBalanceResponse:
+    currency: Annotated[str | None, Query(min_length=3, max_length=3)] = None,
+) -> list[TrialBalanceResponse]:
     """Every account, and the proof that the books balance.
+
+    **One set of books per currency**, returned as a list rather than a
+    combined total: adding dinars to dollars produces a number that means
+    nothing, and this build stores no exchange rate to make it mean
+    something. Pass ``currency`` for one.
 
     ``in_balance`` is what to watch: total debits must equal total
     credits. Every entry carries both sides, so this cannot go false
     through normal use — which is exactly why it is worth checking.
     """
-    tb = await ledger.trial_balance()
-    return TrialBalanceResponse(
-        accounts=[_balance(row) for row in tb.accounts],
-        total_debits=tb.total_debits,
-        total_credits=tb.total_credits,
-        entry_count=tb.entry_count,
-        in_balance=tb.in_balance,
+    books = (
+        [await ledger.trial_balance(currency)]
+        if currency
+        else await ledger.trial_balances()
     )
+    return [
+        TrialBalanceResponse(
+            currency=tb.currency,
+            accounts=[_balance(row) for row in tb.accounts],
+            total_debits=tb.total_debits,
+            total_credits=tb.total_credits,
+            entry_count=tb.entry_count,
+            in_balance=tb.in_balance,
+        )
+        for tb in books
+    ]
 
 
 @router.get("/reconciliation", response_model=ReconciliationResponse)
@@ -258,8 +272,10 @@ async def company_position(
     ledger: Annotated[LedgerService, Depends(get_ledger_service)],
 ) -> CompanyLedgerPositionResponse:
     """What one company owes and holds, derived from the entries."""
+    currency = await ledger.company_currency(company_id)
     return CompanyLedgerPositionResponse(
         company_id=company_id,
+        currency=currency,
         outstanding=await ledger.outstanding(company_id),
         credit_balance=await ledger.credit_balance(company_id),
         accounts=[_balance(row) for row in await ledger.balances(company_id)],

@@ -299,6 +299,20 @@ class InvoiceCompanyLookup:
         row = result.one_or_none()
         return (row[0], row[1]) if row else None
 
+    async def currency(self, company_id: uuid.UUID) -> str | None:
+        """The currency this company is billed in.
+
+        Its own read rather than part of ``snapshot`` because currency is
+        needed on paths that do not snapshot a customer at all — recording
+        a payment, for one.
+        """
+        from blinkengage.infrastructure.database.models.company import Company
+
+        result = await self._session.execute(
+            select(Company.billing_currency).where(Company.id == company_id)
+        )
+        return result.scalar_one_or_none()
+
 
 __all__ = [
     "CreditNoteRepository",

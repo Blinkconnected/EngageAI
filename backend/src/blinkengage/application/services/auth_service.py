@@ -26,6 +26,7 @@ from blinkengage.core.security import (
 )
 from blinkengage.domain.collections import PRODUCT_BLOCKING_STATUSES
 from blinkengage.domain.company_settings import min_password_length
+from blinkengage.domain.countries import require_country
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
     AuthenticationError,
@@ -33,6 +34,7 @@ from blinkengage.domain.exceptions import (
     EntityAlreadyExistsError,
     WeakPasswordError,
 )
+from blinkengage.domain.money import DEFAULT_CURRENCY
 from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
@@ -103,14 +105,31 @@ class AuthService:
         owner_email: str,
         owner_password: str,
         owner_full_name: str,
+        country_code: str | None = None,
     ) -> RegisteredAccount:
         normalized_email = owner_email.strip().lower()
         if await self._users.get_by_email(normalized_email) is not None:
             raise EntityAlreadyExistsError("User", "email", normalized_email)
 
+        # The country decides the billing currency, and it is fixed from
+        # here: re-denominating issued invoices and ledger entries is
+        # never safe. An unrecognised country is refused rather than
+        # defaulted — signup that accepts a country the billing engine has
+        # no prices for produces a customer nobody discovers is
+        # unbillable until the month closes.
+        country = require_country(country_code) if country_code else None
+
         slug = await self._unique_slug(slugify(company_name))
         company = await self._companies.add(
-            Company(name=company_name.strip(), slug=slug, status=CompanyStatus.TRIAL)
+            Company(
+                name=company_name.strip(),
+                slug=slug,
+                status=CompanyStatus.TRIAL,
+                country_code=country.code if country else None,
+                billing_currency=(
+                    country.currency.code if country else DEFAULT_CURRENCY.code
+                ),
+            )
         )
 
         user = await self._users.add(

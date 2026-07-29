@@ -46,7 +46,7 @@ from blinkengage.domain.exceptions import (
     RateAlreadyEffectiveError,
     SystemProfileNotPriceableError,
 )
-from blinkengage.domain.money import BILLING_CURRENCY
+from blinkengage.domain.money import DEFAULT_CURRENCY, currency_for
 from blinkengage.domain.pricing import (
     PRICING_EPOCH,
     AmbiguousPricingError,
@@ -228,14 +228,33 @@ class PricingService:
             window_end=window_end,
         )
 
+        # A rate is priced *in a currency*, so a company can only be
+        # billed from rates in its own. Without this, a Jordanian company
+        # would resolve the dollar global default and be invoiced 0.050
+        # JOD for something priced at $0.050 — a silent 40% mispricing
+        # that nothing downstream could detect.
+        #
+        # Grouped once rather than filtered per request: resolution runs
+        # once per usage line when a period closes.
+        currencies = await self._companies.billing_currencies(list(company_ids))
+        by_currency: dict[str, list[RateCandidate]] = {}
+        for candidate in candidates:
+            by_currency.setdefault(candidate.currency, []).append(candidate)
+
         prices: dict[tuple[uuid.UUID, str, datetime], ResolvedPrice] = {}
         unpriced: list[UnpricedItem] = []
         for request in requests:
             metric = get_metric(request.metric_code)
             assert metric is not None  # checked above
+            # A company with no rate in its currency is *unpriced*, which
+            # the usage engine already reports rather than guessing. That
+            # is the correct, visible failure: a new currency needs prices
+            # before anybody in it can be billed.
+            company_currency = currencies.get(request.company_id, DEFAULT_CURRENCY.code)
+            in_currency = by_currency.get(company_currency, [])
             try:
                 resolved = select_price(
-                    request, rates=candidates, assignments=assignments, unit=metric.unit
+                    request, rates=in_currency, assignments=assignments, unit=metric.unit
                 )
             except AmbiguousPricingError as exc:
                 raise AmbiguousPricingConfigurationError(str(exc)) from exc
@@ -427,6 +446,18 @@ class PricingService:
             include_voided=True,
         )
 
+    async def company_currencies(
+        self, company_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, str]:
+        """Each company's billing currency.
+
+        Exposed here rather than making every caller reach for a company
+        repository: the pricing engine already owns the one cross-tenant
+        company read, and currency is a pricing concern — a rate and the
+        company it applies to have to agree on it.
+        """
+        return await self._companies.billing_currencies(company_ids)
+
     # --- Writing rates ----------------------------------------------
 
     def _validate_metric(self, metric_code: str) -> None:
@@ -434,14 +465,6 @@ class PricingService:
             raise EntityNotFoundError("BillableMetric", metric_code)
         if not is_priceable(metric_code):
             raise MetricNotPriceableError(metric_code)
-
-    @staticmethod
-    def _validate_currency(currency: str) -> None:
-        if currency != BILLING_CURRENCY.code:
-            raise PricingRangeOverlapError(
-                f"{currency} is not supported; this installation bills in "
-                f"{BILLING_CURRENCY.code}."
-            )
 
     def _validate_effective_from(
         self, effective_from: datetime, *, allow_backdating: bool, reason: str | None
@@ -472,6 +495,7 @@ class PricingService:
         profile_id: uuid.UUID | None,
         effective_from: datetime,
         effective_until: datetime | None,
+        currency: str,
         ignore_rate_id: uuid.UUID | None = None,
     ) -> None:
         """Application-level overlap check.
@@ -480,7 +504,15 @@ class PricingService:
         real guarantee. This exists so the operator gets a 409 naming the
         conflict instead of a raw integrity error — and so the rule still
         holds on SQLite, where the constraint does not exist.
+
+        Scoped **per currency**, matching the constraint: a dollar price
+        and a dinar price for the same metric over the same window are not
+        a conflict, they are how two currencies coexist. Without this the
+        application would refuse what the database allows, which is the
+        more confusing of the two failures because it names a conflict
+        that is not one.
         """
+
         existing = await self._rates.rates_for_target(
             scope=scope,
             metric_code=metric_code,
@@ -491,11 +523,14 @@ class PricingService:
         for rate in existing:
             if ignore_rate_id is not None and rate.id == ignore_rate_id:
                 continue
+            if rate.currency != currency:
+                continue
             if ranges_overlap(
                 rate.effective_from, rate.effective_until, effective_from, effective_until
             ):
                 raise PricingRangeOverlapError(
-                    f"An existing {scope.value} price for {metric_code} already covers "
+                    f"An existing {scope.value} {currency} price for {metric_code} "
+                    f"already covers "
                     f"{effective_from.isoformat()} (from {rate.effective_from.isoformat()}"
                     + (
                         f" until {rate.effective_until.isoformat()})."
@@ -519,6 +554,11 @@ class PricingService:
         expected_current_rate_id: uuid.UUID | None = None,
         expect_no_current_rate: bool = False,
         allow_backdating: bool = False,
+        #: Which currency the rate is priced in. Defaults to the
+        #: installation default; a company override should be set in the
+        #: currency that company is billed in, or resolution will not
+        #: find it.
+        currency: str = DEFAULT_CURRENCY.code,
     ) -> PricingRate:
         """Close the current price and insert its successor.
 
@@ -563,6 +603,7 @@ class PricingService:
             profile_id=profile_id,
             effective_from=effective_from,
             effective_until=effective_until,
+            currency=currency_for(currency).code,
             ignore_rate_id=current.id if current else None,
         )
 
@@ -573,7 +614,7 @@ class PricingService:
                 company_id=company_id,
                 profile_id=profile_id,
                 unit_amount=unit_amount,
-                currency=BILLING_CURRENCY.code,
+                currency=currency_for(currency).code,
                 effective_from=effective_from,
                 effective_until=effective_until,
                 created_by_user_id=actor.user_id,
@@ -825,6 +866,11 @@ class PricingService:
         actor: Actor,
         reason: str | None,
         details: dict[str, object],
+        #: The currency the rate is priced in. Recorded on the audit row
+        #: because "the price changed to 0.050" means different things in
+        #: dollars and dinars, and a history that omits it is unreadable
+        #: once a second currency exists.
+        currency: str = DEFAULT_CURRENCY.code,
     ) -> None:
         await self._audit.add(
             PricingAuditLog(
@@ -835,7 +881,7 @@ class PricingService:
                 profile_id=profile_id,
                 old_unit_amount=old_unit_amount,
                 new_unit_amount=new_unit_amount,
-                currency=BILLING_CURRENCY.code,
+                currency=currency,
                 rate_id=rate_id,
                 previous_rate_id=previous_rate_id,
                 effective_from=effective_from,
@@ -863,7 +909,7 @@ class PricingService:
                     "scope": scope.value if scope else None,
                     "old_unit_amount": str(old_unit_amount) if old_unit_amount else None,
                     "new_unit_amount": str(new_unit_amount) if new_unit_amount else None,
-                    "currency": BILLING_CURRENCY.code,
+                    "currency": currency,
                     "effective_from": effective_from.isoformat() if effective_from else None,
                     "reason": reason,
                     **details,

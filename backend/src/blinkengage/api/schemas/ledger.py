@@ -52,6 +52,9 @@ class AccountBalanceResponse(BaseModel):
 
 
 class TrialBalanceResponse(BaseModel):
+    #: Which set of books this is. Reported per currency because there is
+    #: no honest way to add dinars to dollars.
+    currency: str
     accounts: list[AccountBalanceResponse]
     total_debits: Money
     total_credits: Money
@@ -64,6 +67,8 @@ class TrialBalanceResponse(BaseModel):
 
 class CompanyLedgerPositionResponse(BaseModel):
     company_id: uuid.UUID
+    #: The currency this company is billed in. Every figure below is in it.
+    currency: str
     #: What the ledger says is owed — the authoritative figure.
     outstanding: Money
     #: Money held on the company's behalf, not yet applied to anything.

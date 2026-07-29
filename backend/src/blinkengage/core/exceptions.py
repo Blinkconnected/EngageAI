@@ -8,6 +8,7 @@ the API boundary.
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from blinkengage.domain.countries import UnknownCountryError
 from blinkengage.domain.exceptions import (
     AgentMissingRequiredSkillError,
     AiNotConfiguredError,
@@ -33,6 +34,7 @@ from blinkengage.domain.exceptions import (
 )
 from blinkengage.domain.invoicing import InvalidInvoiceTransitionError
 from blinkengage.domain.ledger import LedgerError
+from blinkengage.domain.money import UnknownCurrencyError
 
 _STATUS_MAP: dict[type[Exception], int] = {
     EmailNotVerifiedError: status.HTTP_403_FORBIDDEN,
@@ -49,6 +51,11 @@ _STATUS_MAP: dict[type[Exception], int] = {
     InvalidInvoiceTransitionError: status.HTTP_409_CONFLICT,
     InvoiceNotPayableError: status.HTTP_409_CONFLICT,
     LedgerError: status.HTTP_409_CONFLICT,
+    # A country or currency this build cannot bill in is a bad
+    # request, not a conflict: nothing about the system's state
+    # would make it acceptable.
+    UnknownCountryError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    UnknownCurrencyError: status.HTTP_422_UNPROCESSABLE_ENTITY,
     PaymentProcessingError: status.HTTP_409_CONFLICT,
     RefundNotPermittedError: status.HTTP_409_CONFLICT,
     PricingRangeOverlapError: status.HTTP_409_CONFLICT,

@@ -56,7 +56,7 @@ from blinkengage.domain.invoicing import (
 )
 from blinkengage.domain.ledger import LedgerEntryType
 from blinkengage.domain.money import (
-    BILLING_CURRENCY,
+    DEFAULT_CURRENCY,
     to_billable_amount,
     to_storage,
     total,
@@ -173,7 +173,8 @@ class InvoiceService:
                 # precision; only what the customer is asked to pay is
                 # rounded to the currency.
                 total_amount=to_storage(to_billable_amount(subtotal)),
-                currency=period.currency or BILLING_CURRENCY.code,
+                currency=period.currency
+                or await self._company_currency(period.company_id),
                 amount_paid=zero(),
                 amount_credited=zero(),
                 due_date=period.due_date.date() if period.due_date else None,
@@ -382,6 +383,16 @@ class InvoiceService:
 
     # --- Payments ---------------------------------------------------
 
+    async def _company_currency(self, company_id: uuid.UUID) -> str:
+        """The currency a company is billed in.
+
+        Falls back to the installation default only when the company
+        cannot be read at all — every company has this column, backfilled
+        for those that predate currencies.
+        """
+        snapshot = await self._companies.currency(company_id)
+        return snapshot or DEFAULT_CURRENCY.code
+
     async def record_payment(
         self,
         *,
@@ -412,11 +423,17 @@ class InvoiceService:
                 # payment is the correct response, not an error.
                 return existing
 
+        # The company's own currency: recording a Jordanian customer's
+        # payment as dollars would make it unallocatable against their
+        # dinar invoice, and the mismatch would only surface as a balance
+        # that refuses to settle.
+        company_currency = await self._company_currency(company_id)
+
         payment = await self._payments.add(
             Payment(
                 company_id=company_id,
                 amount=to_storage(amount),
-                currency=BILLING_CURRENCY.code,
+                currency=company_currency,
                 received_at=received_at,
                 provider=provider,
                 provider_reference=provider_reference,

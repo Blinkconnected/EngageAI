@@ -32,7 +32,7 @@ from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.domain.billable_metrics import get_metric
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import EntityNotFoundError
-from blinkengage.domain.money import BILLING_CURRENCY, to_storage, total, zero
+from blinkengage.domain.money import DEFAULT_CURRENCY, to_storage, total, zero
 from blinkengage.domain.pricing import PriceRequest
 from blinkengage.domain.usage import (
     BillingPeriodStatus,
@@ -247,6 +247,12 @@ class UsageService:
 
         aggregated = await self._records.aggregate_for_period(period_id)
 
+        # The company's own currency. Read once and used for every line
+        # this close writes, so a period cannot end up with lines in two
+        # currencies — which would make its total meaningless.
+        currencies = await self._pricing.company_currencies([period.company_id])
+        company_currency = currencies.get(period.company_id, DEFAULT_CURRENCY.code)
+
         # Price at the end of the period, not at "now": closing a month
         # late must not apply a rate that came into force afterwards.
         # `period_end` is exclusive, so the last billable instant is just
@@ -288,7 +294,11 @@ class UsageService:
                         unit=unit,
                         quantity=to_storage(quantity),
                         unit_amount=zero(),
-                        currency=BILLING_CURRENCY.code,
+                        # The *company's* currency, not the installation
+                        # default: an unpriced JOD line labelled USD
+                        # would put the wrong symbol on an invoice and
+                        # round to the wrong number of places.
+                        currency=company_currency,
                         subtotal=zero(),
                         rate_id=None,
                         unpriced=True,
@@ -337,7 +347,7 @@ class UsageService:
             closed_at=datetime.now(UTC),
             closed_by_user_id=actor_user_id,
             total_amount=period_total,
-            currency=BILLING_CURRENCY.code,
+            currency=company_currency,
             due_date=datetime.combine(due_date(period.period_end), datetime.min.time(), tzinfo=UTC),
         )
         if not won:
@@ -362,7 +372,7 @@ class UsageService:
                     "period_start": period.period_start.isoformat(),
                     "period_end": period.period_end.isoformat(),
                     "total_amount": str(period_total),
-                    "currency": BILLING_CURRENCY.code,
+                    "currency": company_currency,
                     "line_count": len(lines),
                     "unpriced_metrics": unpriced,
                 },

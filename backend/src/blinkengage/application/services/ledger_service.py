@@ -39,7 +39,7 @@ from blinkengage.domain.ledger import (
     validate_accounts,
     validate_amount,
 )
-from blinkengage.domain.money import BILLING_CURRENCY, to_storage, zero
+from blinkengage.domain.money import BILLING_CURRENCY, currency_for, to_storage, zero
 from blinkengage.infrastructure.database.models.ledger import LedgerEntry
 from blinkengage.infrastructure.repositories.invoicing_repository import (
     DocumentNumberRepository,
@@ -64,13 +64,19 @@ class AccountBalance:
 
 @dataclass(frozen=True, slots=True)
 class TrialBalance:
-    """Every account, and the proof that the books balance.
+    """Every account in one currency, and the proof that it balances.
+
+    **Per currency, never combined.** Adding dinars to dollars produces a
+    number that means nothing, and this build stores no exchange rate to
+    make it mean something. A set of books per currency is also what an
+    accountant expects.
 
     ``in_balance`` is the single most important number in the system: if
     total debits ever stop equalling total credits, something has written
     an entry that cannot exist, and every derived figure is suspect.
     """
 
+    currency: str
     accounts: tuple[AccountBalance, ...]
     total_debits: Decimal
     total_credits: Decimal
@@ -174,9 +180,19 @@ class LedgerService:
 
     # --- deriving ----------------------------------------------------
 
-    async def balances(self, company_id: uuid.UUID | None = None) -> list[AccountBalance]:
-        """Every account's balance, from the entries alone."""
-        debits, credits = await self._entries.sums_by_account(company_id=company_id)
+    async def balances(
+        self, company_id: uuid.UUID | None = None, *, currency: str | None = None
+    ) -> list[AccountBalance]:
+        """Every account's balance, from the entries alone.
+
+        Scoped to one currency when given. A caller that omits it for a
+        company is safe — a company is billed in exactly one currency —
+        but omitting it installation-wide mixes currencies, which is why
+        the trial balance always passes one.
+        """
+        debits, credits = await self._entries.sums_by_account(
+            company_id=company_id, currency=currency
+        )
         rows: list[AccountBalance] = []
         for account in STATEMENT_ACCOUNTS:
             debited = debits.get(account, zero())
@@ -192,9 +208,13 @@ class LedgerService:
         return rows
 
     async def account_balance(
-        self, account: LedgerAccount, *, company_id: uuid.UUID | None = None
+        self,
+        account: LedgerAccount,
+        *,
+        company_id: uuid.UUID | None = None,
+        currency: str | None = None,
     ) -> Decimal:
-        for row in await self.balances(company_id):
+        for row in await self.balances(company_id, currency=currency):
             if row.account is account:
                 return row.balance
         return zero()
@@ -215,14 +235,39 @@ class LedgerService:
             LedgerAccount.CUSTOMER_CREDIT, company_id=company_id
         )
 
-    async def trial_balance(self) -> TrialBalance:
-        rows = await self.balances()
+    async def company_currency(self, company_id: uuid.UUID) -> str:
+        """Which currency this company's figures are in.
+
+        Taken from the currency its own entries carry rather than from the
+        company row: the ledger is the source of truth, and an entry
+        stating its currency is a stronger answer than a column that
+        could in principle have been edited afterwards.
+        """
+        entries = await self._entries.statement(company_id=company_id, limit=1)
+        if entries:
+            return str(entries[0].currency)
+        return BILLING_CURRENCY.code
+
+    async def trial_balance(self, currency: str) -> TrialBalance:
+        """One currency's books."""
+        code = currency_for(currency).code
+        rows = await self.balances(currency=code)
         return TrialBalance(
+            currency=code,
             accounts=tuple(rows),
             total_debits=sum((row.debits for row in rows), start=zero()),
             total_credits=sum((row.credits for row in rows), start=zero()),
-            entry_count=await self._entries.entry_count(),
+            entry_count=await self._entries.entry_count(currency=code),
         )
+
+    async def trial_balances(self) -> list[TrialBalance]:
+        """A set of books per currency the ledger holds entries in.
+
+        Returned as a list rather than a combined total, because there is
+        no honest way to combine them.
+        """
+        present = await self._entries.currencies_present()
+        return [await self.trial_balance(code) for code in present or [BILLING_CURRENCY.code]]
 
 
 class LedgerReconciliation:

@@ -1,13 +1,23 @@
 import { useState, type FormEvent } from 'react'
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom'
-import { Alert, Box, Button, Link, Paper, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  Link,
+  MenuItem,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { useAppSelector } from '../../app/hooks'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { Footer } from '../../shared/components/Footer'
 import logoLight from '../../assets/logo-light.png'
 import { selectIsAuthenticated } from './authSlice'
-import { useRegisterMutation } from './api'
+import { useCountriesQuery, useRegisterMutation } from './api'
 
 export function RegisterPage() {
   const { t } = useTranslation('auth')
@@ -15,6 +25,8 @@ export function RegisterPage() {
   const [ownerFullName, setOwnerFullName] = useState('')
   const [ownerEmail, setOwnerEmail] = useState('')
   const [ownerPassword, setOwnerPassword] = useState('')
+  const [countryCode, setCountryCode] = useState('')
+  const countriesQuery = useCountriesQuery()
   const isAuthenticated = useAppSelector(selectIsAuthenticated)
   const navigate = useNavigate()
   const registerMutation = useRegisterMutation()
@@ -22,6 +34,10 @@ export function RegisterPage() {
   if (isAuthenticated) {
     return <Navigate to="/" replace />
   }
+
+  const selectedCountry = (countriesQuery.data ?? []).find(
+    (country) => country.code === countryCode,
+  )
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -31,6 +47,10 @@ export function RegisterPage() {
         owner_full_name: ownerFullName,
         owner_email: ownerEmail,
         owner_password: ownerPassword,
+        // Omitted rather than sent empty: the backend treats an absent
+        // country as "not recorded", while an empty string is a value it
+        // would have to reject.
+        ...(countryCode ? { country_code: countryCode } : {}),
       },
       { onSuccess: () => navigate('/onboarding', { replace: true }) },
     )
@@ -99,6 +119,31 @@ export function RegisterPage() {
             fullWidth
             autoComplete="email"
           />
+          <TextField
+            select
+            label={t('RegisterPage.countryLabel')}
+            value={countryCode}
+            onChange={(event) => setCountryCode(event.target.value)}
+            required
+            fullWidth
+            disabled={countriesQuery.isPending}
+            // Says which currency they will be billed in *before* they
+            // sign up: it cannot be changed afterwards, so it must not be
+            // a surprise on the first invoice.
+            helperText={
+              selectedCountry
+                ? t('RegisterPage.countryCurrencyHelp', {
+                    currency: selectedCountry.currency,
+                  })
+                : t('RegisterPage.countryHelp')
+            }
+          >
+            {(countriesQuery.data ?? []).map((country) => (
+              <MenuItem key={country.code} value={country.code}>
+                {country.name}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField
             label={t('RegisterPage.passwordLabel')}
             type="password"

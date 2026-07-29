@@ -384,6 +384,25 @@ class PricingCompanyLookup:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def billing_currencies(
+        self, company_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, str]:
+        """Each company's billing currency.
+
+        Resolution needs this because a rate is priced in a currency, and
+        a Jordanian company must not be billed from a dollar rate. Read
+        in the same batch as the existence check rather than per company
+        — resolution is called once per usage line at close time.
+        """
+        if not company_ids:
+            return {}
+        result = await self._session.execute(
+            select(Company.id, Company.billing_currency).where(
+                Company.id.in_(list(company_ids)), Company.deleted_at.is_(None)
+            )
+        )
+        return {row[0]: row[1] for row in result.all()}
+
     async def existing_ids(self, company_ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
         if not company_ids:
             return set()

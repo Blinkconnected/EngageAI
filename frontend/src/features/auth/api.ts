@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
 import { SESSION_QUERY_KEY } from '../../shared/api/queryKeys'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
@@ -21,6 +21,9 @@ interface RegisterRequest {
   owner_full_name: string
   owner_email: string
   owner_password: string
+  /** ISO 3166-1 alpha-2. Sets the billing currency, and is fixed
+   * afterwards — re-denominating issued invoices is never safe. */
+  country_code?: string
 }
 
 interface RegisterResponse {
@@ -82,4 +85,31 @@ export function useLogout() {
       queryClient.removeQueries({ queryKey: SESSION_QUERY_KEY })
     }
   }
+}
+
+
+export interface CountryOption {
+  code: string
+  name: string
+  currency: string
+  currency_symbol: string
+}
+
+/** Countries this installation can bill in.
+ *
+ * Fetched rather than hardcoded in the client: the list is whichever
+ * countries the billing engine has prices for, and a form offering one
+ * it does not would create a customer nobody discovers is unbillable
+ * until the month closes. */
+export function useCountriesQuery() {
+  return useQuery({
+    queryKey: ['countries'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CountryOption[]>('/auth/countries')
+      return data
+    },
+    // The list changes when the product enters a new market, not during
+    // a session.
+    staleTime: Infinity,
+  })
 }

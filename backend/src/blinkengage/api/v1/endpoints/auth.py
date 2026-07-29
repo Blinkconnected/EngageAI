@@ -12,6 +12,7 @@ from blinkengage.api.deps import (
 )
 from blinkengage.api.schemas.auth import (
     ChangePasswordRequest,
+    CountryResponse,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
@@ -27,6 +28,7 @@ from blinkengage.application.services.feature_service import FeatureService
 from blinkengage.application.services.verification_service import VerificationService
 from blinkengage.core.config import get_settings
 from blinkengage.core.rate_limit import rate_limit_dependency
+from blinkengage.domain.countries import sorted_countries
 from blinkengage.domain.features import enabled_feature_keys
 from blinkengage.infrastructure.database.models.user import User
 
@@ -51,6 +53,8 @@ def _company_ref(user: User) -> dict[str, object]:
         "id": user.company.id,
         "name": user.company.name,
         "slug": user.company.slug,
+        "billing_currency": user.company.billing_currency,
+        "country_code": user.company.country_code,
         "verified": user.company.verified_at is not None,
     }
 
@@ -93,6 +97,7 @@ async def register(
         owner_email=payload.owner_email,
         owner_password=payload.owner_password,
         owner_full_name=payload.owner_full_name,
+        country_code=payload.country_code,
     )
     # Sent here rather than inside `register_company` so a mail failure
     # cannot roll the registration back: a customer whose account was
@@ -230,3 +235,23 @@ async def resend_verification(
     """
     sent = await verification.resend(user)
     return ResendVerificationResponse(sent=sent)
+
+
+@router.get("/countries", response_model=list[CountryResponse])
+async def countries() -> list[CountryResponse]:
+    """Countries this installation can bill in, for the signup picker.
+
+    Unauthenticated: it is needed to render the signup form. Deliberately
+    a curated list rather than all of ISO 3166 — signup must not offer a
+    country the billing engine has no prices for, because that produces a
+    customer nobody discovers is unbillable until the month closes.
+    """
+    return [
+        CountryResponse(
+            code=country.code,
+            name=country.name,
+            currency=country.currency.code,
+            currency_symbol=country.currency.symbol,
+        )
+        for country in sorted_countries()
+    ]

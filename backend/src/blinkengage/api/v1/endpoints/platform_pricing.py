@@ -243,6 +243,7 @@ async def update_global_pricing(
         expected_current_rate_id=payload.expected_current_rate_id,
         expect_no_current_rate=payload.expect_no_current_rate,
         allow_backdating=payload.allow_backdating,
+        currency=payload.currency,
     )
     return SetRateResponse(rate=PricingRateResponse.model_validate(rate), resolved=None)
 
@@ -273,6 +274,7 @@ async def update_profile_pricing(
         expected_current_rate_id=payload.expected_current_rate_id,
         expect_no_current_rate=payload.expect_no_current_rate,
         allow_backdating=payload.allow_backdating,
+        currency=payload.currency,
     )
     return SetRateResponse(rate=PricingRateResponse.model_validate(rate), resolved=None)
 
@@ -306,6 +308,7 @@ async def update_company_pricing(
         expected_current_rate_id=payload.expected_current_rate_id,
         expect_no_current_rate=payload.expect_no_current_rate,
         allow_backdating=payload.allow_backdating,
+        currency=payload.currency,
     )
     return await _set_rate_response(
         service,

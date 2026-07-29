@@ -60,6 +60,10 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/your full name/i), 'Ada Lovelace')
     await user.type(screen.getByLabelText(/^email/i), 'owner@example.com')
     await user.type(screen.getByLabelText(/^password/i), 'correct-horse-battery-staple-1')
+    // The country picker sets the billing currency and is required: it
+    // cannot be changed once the company has been invoiced.
+    await user.click(screen.getByLabelText(/country/i))
+    await user.click(await screen.findByRole('option', { name: 'United States' }))
     await user.click(screen.getByRole('button', { name: /create company/i }))
 
     expect(await screen.findByText('Acme Corp')).toBeInTheDocument()

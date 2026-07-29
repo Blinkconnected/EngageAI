@@ -58,6 +58,14 @@ export const authHandlers = [
     HttpResponse.json({ user: MOCK_USER, tokens: MOCK_TOKENS }, { status: 201 }),
   ),
 
+  // The signup form fetches these to build its country picker.
+  http.get(`${API_BASE_URL}/auth/countries`, () =>
+    HttpResponse.json([
+      { code: 'JO', name: 'Jordan', currency: 'JOD', currency_symbol: 'JD' },
+      { code: 'US', name: 'United States', currency: 'USD', currency_symbol: '$' },
+    ]),
+  ),
+
   http.post(`${API_BASE_URL}/auth/refresh`, () => HttpResponse.json(MOCK_TOKENS)),
 
   http.post(`${API_BASE_URL}/auth/logout`, () => new HttpResponse(null, { status: 204 })),

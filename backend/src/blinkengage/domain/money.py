@@ -2,21 +2,30 @@
 
 See ``docs/architecture/billing.md``.
 
-Blink Engage v1 bills in a **single currency, USD**. Multi-currency is
-deliberately not implemented. But "single currency" and "currency
-hardcoded everywhere" are very different things, and only the first is
-intended here: every amount that reaches a user, a column definition, or
-a calculation goes through this module, so introducing a second currency
-later is a change to this file and the rows that reference it — not an
-archaeology exercise across the codebase looking for stray ``"USD"``
-literals and ``$`` signs.
+Blink Engage bills each company in **its own currency**, decided by the
+country given at signup and fixed from then on. Today that is USD for
+most of the world and **JOD** for Jordan; adding a currency is an entry
+in ``CURRENCIES`` plus prices to go with it.
 
-That is why this is a module of constants and helpers rather than an
-environment variable. An env var would *imply* you can set
-``BILLING_CURRENCY=EUR`` and get a working system; you cannot, because
-nothing converts, and the seam that would do the converting does not
-exist yet. A constant is honest about being a single-currency build
-while still giving the future change exactly one place to start.
+This module was written as a single-currency build with one deliberate
+seam, and widening it was a change to this file and the call sites that
+name a currency — not an archaeology exercise hunting stray ``"USD"``
+literals and ``$`` signs. That was the whole point of routing every
+amount that reaches a user, a column definition or a calculation through
+here.
+
+**There is still no conversion, and that is deliberate.** A JOD company
+is billed, invoiced and posted to the ledger entirely in JOD; a USD
+company entirely in USD. Nothing converts between them, no exchange rate
+is stored, and the trial balance is reported per currency — because
+summing JOD and USD produces a number that means nothing. A company's
+currency is therefore fixed once it has been billed: re-denominating
+issued documents and ledger entries is never safe.
+
+The decimal places matter and differ. USD settles in cents, **JOD in
+fils — three places**. Rounding a JOD total to two would silently
+mis-bill every Jordanian invoice, which is why ``display_scale`` is a
+property of the currency rather than a constant.
 
 Framework-free — no SQLAlchemy, no FastAPI — like ``domain/rbac.py`` and
 ``domain/features.py``, so the pricing engine, the API schemas and the
@@ -27,6 +36,8 @@ cycle.
 from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, localcontext
+
+from blinkengage.domain.exceptions import DomainError
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,9 +52,49 @@ class Currency:
 
 USD = Currency(code="USD", symbol="$", display_scale=2)
 
-#: The billing currency for this build. The single seam multi-currency
-#: support would widen — everything else reads it from here.
-BILLING_CURRENCY: Currency = USD
+#: The Jordanian dinar settles in **fils: three decimal places**, not
+#: two. This is the reason ``display_scale`` lives on the currency: a JOD
+#: invoice rounded to cents is wrong on every line.
+JOD = Currency(code="JOD", symbol="JD", display_scale=3)
+
+#: Every currency this build can bill in, by ISO 4217 code.
+CURRENCIES: dict[str, Currency] = {currency.code: currency for currency in (USD, JOD)}
+
+#: What a company gets when its country does not name something else, and
+#: what every company created before currencies existed is on.
+DEFAULT_CURRENCY: Currency = USD
+
+#: Retained under its original name because 27 call sites read it and
+#: most of them genuinely mean "the default". A call site that bills a
+#: *specific* company should take that company's currency instead —
+#: reading this constant there is the bug to look for.
+BILLING_CURRENCY: Currency = DEFAULT_CURRENCY
+
+
+class UnknownCurrencyError(DomainError):
+    """A currency code this build cannot bill in.
+
+    Raised rather than defaulting. A stored amount whose currency is not
+    recognised is a data problem, and quietly presenting it as dollars
+    would turn that into a wrong number on an invoice.
+    """
+
+
+def currency_for(code: str | None) -> Currency:
+    """The currency for an ISO 4217 code.
+
+    ``None`` yields the default, which is what rows written before
+    currencies existed carry.
+    """
+    if not code:
+        return DEFAULT_CURRENCY
+    try:
+        return CURRENCIES[code.upper()]
+    except KeyError:
+        raise UnknownCurrencyError(
+            f"'{code}' is not a currency this installation can bill in "
+            f"(known: {', '.join(sorted(CURRENCIES))})."
+        ) from None
 
 
 # --- Precision -------------------------------------------------------
@@ -147,6 +198,11 @@ def format_amount(amount: Decimal, *, currency: Currency = BILLING_CURRENCY) -> 
 
 __all__ = [
     "BILLING_CURRENCY",
+    "CURRENCIES",
+    "DEFAULT_CURRENCY",
+    "JOD",
+    "UnknownCurrencyError",
+    "currency_for",
     "PRICE_PRECISION",
     "PRICE_SCALE",
     "STORAGE_QUANTUM",

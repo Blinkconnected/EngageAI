@@ -55,6 +55,70 @@ working system. It would not — nothing converts — and a setting that
 appears to work while silently mispricing is worse than a constant that
 is honest about the build being single-currency.
 
+## Currency
+
+Each company is billed in **its own currency**, decided by the country
+given at signup: **JOD** for Jordan, USD elsewhere. Adding a currency is
+an entry in `CURRENCIES` plus prices to go with it.
+
+This began as a single-currency build with one deliberate seam, and
+widening it was a change to `domain/money.py` and the call sites that name
+a currency — not an archaeology exercise hunting stray `"USD"` literals.
+That was the entire point of routing every amount through one module.
+
+### Decimal places are a property of the currency
+
+USD settles in cents; **JOD settles in fils — three places**. A JOD total
+rounded to two is wrong on every line, and 0.035 JOD rounded to 0.04 is a
+14% error per conversation. `display_scale` therefore lives on the
+`Currency`, and `to_billable_amount()` reads it. `PRICE_SCALE` (6) is
+unchanged — that is storage and calculation precision, which is a
+different question from how many places a *presented* amount has.
+
+### Nothing converts
+
+A JOD company is priced, invoiced and posted to the ledger entirely in
+JOD. No exchange rate is stored, no amount is converted, and the trial
+balance is **one set of books per currency** — summing dinars and dollars
+produces a number that means nothing, and there is nothing available to
+make it mean something.
+
+Because of that, a company's currency is **fixed once it has been
+billed**. An invoice states an amount in a currency; a document that
+silently changes currency is not a correction, it is a different document
+with the same number.
+
+### A rate is priced in a currency
+
+Pricing resolution only considers rates in the company's own currency.
+Without that, a Jordanian company would resolve the dollar global default
+and be invoiced 0.050 JOD for something priced at $0.050 — a silent
+mispricing nothing downstream could detect.
+
+A company with no rate in its currency is **unpriced**, which the usage
+engine already reports rather than guessing. That is the correct, visible
+failure: a new currency needs prices before anybody in it can be billed.
+The JOD global default is seeded at 0.035, set deliberately rather than
+converted — a price derived from an exchange rate drifts the moment the
+rate moves, while the invoice it produced claims to be exact.
+
+The overlap constraint on `pricing_rates` includes currency, because a
+dollar price and a dinar price for the same metric over the same window
+are not a conflict; they are how two currencies coexist. Both the
+PostgreSQL `EXCLUDE` constraint and the application-level check were
+widened together — the application refusing what the database allows is
+the more confusing of the two failures, because it names a conflict that
+is not one.
+
+### Countries
+
+`domain/countries.py` is a curated list, not all of ISO 3166: signup must
+not offer a country the billing engine has no prices for, because that
+produces a customer nobody discovers is unbillable until the month
+closes. A country also decides which **payment methods** are offered —
+Jordan has domestic schemes most of the world does not, and offering
+PayPal to somebody who cannot use it is worse than offering nothing.
+
 ## Precision and rounding
 
 Money is `NUMERIC(18, 6)`. Never a float, and never `NUMERIC(_, 2)`.
