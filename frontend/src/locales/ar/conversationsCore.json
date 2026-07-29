@@ -48,13 +48,6 @@
     "keyboardShortcutsHint": "j/k للتنقل، Enter للفتح",
     "keyboardShortcutsTooltip": "استخدم j أو k لتحريك التركيز بين المحادثات، وEnter لفتح المحادثة التي تم التركيز عليها."
   },
-  "ConversationListPanel": {
-    "ariaLabel": "المحادثات",
-    "loadingLabel": "جارٍ تحميل المحادثات…",
-    "loadingCustomerLabel": "جارٍ التحميل…",
-    "emptyTitle": "لا يوجد شيء هنا",
-    "emptyDescription": "لا توجد محادثات مطابقة لهذه الحالة الآن."
-  },
   "ConversationViewPage": {
     "loadingLabel": "جارٍ تحميل المحادثة…",
     "backButtonAriaLabel": "العودة إلى الوارد",
@@ -128,11 +121,5 @@
     "sendTooltip": "إرسال",
     "sendAriaLabel": "إرسال الرد",
     "messageQueuedOfflineLabel": "أنت غير متصل بالإنترنت — هذه الرسالة في قائمة الانتظار وسيتم إرسالها تلقائيًا بمجرد عودة الاتصال."
-  },
-  "ConversationFiltersPanel": {
-    "ariaLabel": "عوامل التصفية وقوائم الانتظار",
-    "statusHeading": "الحالة",
-    "queuesHeading": "قوائم الانتظار",
-    "allQueuesOption": "جميع قوائم الانتظار"
   }
 }

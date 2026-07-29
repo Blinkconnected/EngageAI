@@ -48,13 +48,6 @@
     "keyboardShortcutsHint": "j/k to move, Enter to open",
     "keyboardShortcutsTooltip": "Use j or k to move focus between conversations, and Enter to open the focused one."
   },
-  "ConversationListPanel": {
-    "ariaLabel": "Conversations",
-    "loadingLabel": "Loading conversations…",
-    "loadingCustomerLabel": "Loading…",
-    "emptyTitle": "Nothing here",
-    "emptyDescription": "No conversations match this status right now."
-  },
   "ConversationViewPage": {
     "loadingLabel": "Loading conversation…",
     "backButtonAriaLabel": "Back to inbox",
@@ -128,11 +121,5 @@
     "sendTooltip": "Send",
     "sendAriaLabel": "Send reply",
     "messageQueuedOfflineLabel": "You're offline — this message is queued and will send automatically once you're back online."
-  },
-  "ConversationFiltersPanel": {
-    "ariaLabel": "Filters and queues",
-    "statusHeading": "Status",
-    "queuesHeading": "Queues",
-    "allQueuesOption": "All queues"
   }
 }

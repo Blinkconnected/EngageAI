@@ -52,9 +52,9 @@ const SlaBuilderPage = lazy(() =>
 const InboxPage = lazy(() =>
   import('../features/conversations/InboxPage').then((m) => ({ default: m.InboxPage })),
 )
-const ConversationWorkspacePage = lazy(() =>
-  import('../features/conversations/ConversationWorkspacePage').then((m) => ({
-    default: m.ConversationWorkspacePage,
+const ConversationViewPage = lazy(() =>
+  import('../features/conversations/ConversationViewPage').then((m) => ({
+    default: m.ConversationViewPage,
   })),
 )
 const CustomersPage = lazy(() =>
@@ -172,7 +172,7 @@ export function AppRoutes() {
             path="conversations/:conversationId"
             element={
               <RequirePermission permission="conversations.read">
-                <ConversationWorkspacePage />
+                <ConversationViewPage />
               </RequirePermission>
             }
           />
