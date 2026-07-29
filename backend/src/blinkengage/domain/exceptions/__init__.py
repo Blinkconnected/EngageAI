@@ -29,6 +29,27 @@ class AuthenticationError(DomainError):
     """Raised on invalid credentials or invalid/expired tokens."""
 
 
+class CompanyNotActiveError(AuthenticationError):
+    """Raised when sign-in is refused because the company itself is
+    suspended or closed, rather than because the credentials are wrong.
+
+    Subclasses ``AuthenticationError`` so it keeps the same 401 mapping
+    and every existing handler keeps working, while carrying a distinct,
+    actionable message — "your credentials are fine, your workspace is
+    suspended" is a materially different thing to tell someone than
+    "wrong password", and conflating them sends people to reset a
+    password that was never the problem."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        message = (
+            "This workspace has been suspended. Please contact your administrator."
+            if reason == "suspended"
+            else "This workspace is no longer active."
+        )
+        super().__init__(message)
+
+
 class AuthorizationError(DomainError):
     """Raised when an authenticated principal lacks a required permission."""
 

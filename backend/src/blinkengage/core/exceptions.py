@@ -33,7 +33,15 @@ _STATUS_MAP: dict[type[Exception], int] = {
 
 
 async def domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    status_code = _STATUS_MAP.get(type(exc), status.HTTP_400_BAD_REQUEST)
+    # Walks the MRO rather than looking up `type(exc)` exactly, so a
+    # subclass inherits its parent's mapping. A specific error like
+    # `CompanyNotActiveError(AuthenticationError)` otherwise fell through
+    # to a generic 400 despite its parent mapping to 401 — the more
+    # precise the exception, the more wrong the status code became.
+    status_code = next(
+        (_STATUS_MAP[klass] for klass in type(exc).__mro__ if klass in _STATUS_MAP),
+        status.HTTP_400_BAD_REQUEST,
+    )
     return JSONResponse(status_code=status_code, content={"detail": str(exc)})
 
 

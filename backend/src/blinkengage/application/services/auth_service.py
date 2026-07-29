@@ -28,6 +28,7 @@ from blinkengage.domain.company_settings import min_password_length
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
     AuthenticationError,
+    CompanyNotActiveError,
     EntityAlreadyExistsError,
     WeakPasswordError,
 )
@@ -149,6 +150,8 @@ class AuthService:
         if not verify_password(password, user.hashed_password) or not user.is_active:
             raise AuthenticationError("Invalid email or password")
 
+        await self._assert_company_usable(user)
+
         user.last_login_at = datetime.now(UTC)
         await self._events.publish(
             DomainEvent(
@@ -162,13 +165,45 @@ class AuthService:
         )
         return user
 
+    async def _assert_company_usable(self, user: User) -> None:
+        """Blocks sign-in for a suspended or deleted company.
+
+        Enforced on both `authenticate` and `refresh` so a suspension
+        takes effect at the next token refresh at the latest (the same
+        ~15-minute bound `auth_context.py` documents for permission
+        changes); `deps.get_current_user` re-checks it per request, which
+        closes that window for anything going through the API.
+
+        A platform administrator has no company and is deliberately
+        exempt — suspending a tenant must never lock out the operator who
+        needs to un-suspend it.
+        """
+        if user.company_id is None:
+            return
+        company = await self._companies.get_by_id(user.company_id)
+        if company is None or company.deleted_at is not None:
+            # A soft-deleted company's users could previously keep
+            # signing in indefinitely — nothing read `deleted_at` on any
+            # auth path.
+            raise CompanyNotActiveError("closed")
+        if company.status is CompanyStatus.SUSPENDED:
+            raise CompanyNotActiveError("suspended")
+
     async def issue_tokens(self, user: User) -> IssuedTokens:
         permissions = sorted(effective_permissions(user))
+        # A platform administrator's token carries no `company_id` claim
+        # at all — that absence is precisely what `get_current_auth` uses
+        # to refuse it on tenant endpoints, and what `get_platform_auth`
+        # expects. It also carries no tenant permissions: platform
+        # authority is re-read from the database per request.
+        extra_claims: dict[str, object] = {"permissions": permissions}
+        if user.company_id is not None:
+            extra_claims["company_id"] = str(user.company_id)
         access_token, _ = create_token(
             subject=user.id,
             settings=self._settings,
             token_type=TokenType.ACCESS,
-            extra_claims={"company_id": str(user.company_id), "permissions": permissions},
+            extra_claims=extra_claims,
         )
         refresh_token, refresh_jti = create_token(
             subject=user.id, settings=self._settings, token_type=TokenType.REFRESH
@@ -197,6 +232,7 @@ class AuthService:
         user = await self._users.get_by_id(user_id)
         if user is None or not user.is_active:
             raise AuthenticationError("Account is no longer active")
+        await self._assert_company_usable(user)
 
         # Rotate: the presented refresh token is single-use.
         await self._refresh_tokens.revoke(user_id=user_id, jti=jti)
@@ -215,7 +251,14 @@ class AuthService:
         if not verify_password(current_password, user.hashed_password):
             raise AuthenticationError("Current password is incorrect")
 
-        company = await self._companies.get_by_id(user.company_id)
+        # A platform administrator belongs to no company, so there is no
+        # company-configured minimum to apply — the global default in
+        # `min_password_length` still governs via the `None` branch below.
+        company = (
+            await self._companies.get_by_id(user.company_id)
+            if user.company_id is not None
+            else None
+        )
         if company is not None:
             required_length = min_password_length(company.settings)
             if len(new_password) < required_length:

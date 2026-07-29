@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from blinkengage.api.deps import get_auth_service, get_current_user
 from blinkengage.api.schemas.auth import (
@@ -28,6 +28,18 @@ _auth_rate_limit = rate_limit_dependency(
 )
 
 
+def _company_ref(user: User) -> dict[str, object]:
+    if user.company is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "This is a platform administrator account, which has no company context. "
+                "Use the platform endpoints under /platform."
+            ),
+        )
+    return {"id": user.company.id, "name": user.company.name, "slug": user.company.slug}
+
+
 def _user_to_profile(user: User) -> UserProfileResponse:
     roles = sorted({user_role.role.name for user_role in user.user_roles})
     permissions = sorted(effective_permissions(user))
@@ -36,7 +48,12 @@ def _user_to_profile(user: User) -> UserProfileResponse:
         email=user.email,
         full_name=user.full_name,
         is_company_owner=user.is_company_owner,
-        company={"id": user.company.id, "name": user.company.name, "slug": user.company.slug},
+        # Unreachable for a platform administrator: `get_current_auth`
+        # rejects a company-less token before any route body runs, so
+        # every user arriving here has a company. Asserted rather than
+        # silently defaulted so a future route that forgets that gate
+        # fails loudly instead of emitting a fake company.
+        company=_company_ref(user),
         roles=roles,
         permissions=permissions,
     )

@@ -56,8 +56,12 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         ),
     )
 
-    company_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    #: NULL for a platform administrator, who belongs to no tenant. Every
+    #: other user belongs to exactly one company. Platform admins are the
+    #: single deliberate exception to "one identity, one company" — see
+    #: `is_platform_admin` and docs/architecture/platform-admin.md.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Normalized to lowercase at the application layer before persistence —
     # see the note on Company.slug for why this isn't a DB-level citext type.
@@ -69,9 +73,17 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_company_owner: Mapped[bool] = mapped_column(default=False, nullable=False)
+    #: A platform (super) administrator: operates the whole installation
+    #: rather than a tenant. Deliberately a column and not an RBAC role —
+    #: `Role.company_id` is NOT NULL, so a cross-tenant role cannot exist,
+    #: and keeping this out of the tenant permission catalog means no
+    #: tenant role can ever be edited into platform access. Platform
+    #: authority is checked by `require_platform_admin`, never by
+    #: `require_permission`.
+    is_platform_admin: Mapped[bool] = mapped_column(default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
-    company: Mapped["Company"] = relationship(back_populates="users")
+    company: Mapped["Company | None"] = relationship(back_populates="users")
     user_roles: Mapped[list["UserRole"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

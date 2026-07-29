@@ -38,6 +38,7 @@ from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
 )
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.platform_service import PlatformService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
 from blinkengage.application.services.reporting_service import ReportingService
@@ -49,7 +50,7 @@ from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
 from blinkengage.application.services.workflow_service import WorkflowService
-from blinkengage.core.auth_context import AuthContext
+from blinkengage.core.auth_context import AuthContext, PlatformContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
 from blinkengage.core.rate_limit import FixedWindowRateLimiter, enforce_rate_limit
@@ -62,6 +63,7 @@ from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
+from blinkengage.infrastructure.database.models.company import CompanyStatus
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
@@ -115,6 +117,7 @@ from blinkengage.infrastructure.repositories.notification_preference_repository 
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.platform_repository import PlatformRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.quick_reply_repository import QuickReplyRepository
 from blinkengage.infrastructure.repositories.reporting_repository import ReportingRepository
@@ -297,11 +300,101 @@ def get_current_auth(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
+    company_id_claim = payload.get("company_id")
+    if company_id_claim is None:
+        # A platform-administrator token. It carries no company, so it
+        # must never reach a tenant endpoint: every one of those reads
+        # `auth.company_id` straight into a repository filter, and there
+        # is no sane tenant to substitute. Rejected here, once, rather
+        # than relying on ~100 endpoints to notice.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "This is a platform administrator account, which has no company context. "
+                "Use the platform endpoints under /platform."
+            ),
+        )
+
     return AuthContext(
         user_id=UUID(payload["sub"]),
-        company_id=UUID(payload["company_id"]),
+        company_id=UUID(company_id_claim),
         permissions=frozenset(payload.get("permissions", [])),
     )
+
+
+async def get_platform_auth(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PlatformContext:
+    """Authenticates a platform (super) administrator for `/platform/*`.
+
+    Unlike `get_current_auth`, the flag is re-read from the database on
+    every request rather than trusted from the token. Platform authority
+    is the most privileged thing in the system, so revoking it must take
+    effect immediately — not after the access token's 15-minute window
+    (the tradeoff `auth_context.py` documents and accepts for ordinary
+    tenant permissions).
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        payload = decode_token(
+            credentials.credentials, settings=settings, expected_type=TokenType.ACCESS
+        )
+    except InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    user = await UserRepository(session).get_by_id(UUID(payload["sub"]))
+    if user is None or not user.is_active or not user.is_platform_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform administrator access is required.",
+        )
+    return PlatformContext(user_id=user.id)
+
+
+async def _assert_company_active(session: AsyncSession, company_id: UUID) -> None:
+    """Refuses a request whose company is suspended or gone.
+
+    Checked per request rather than only at sign-in: an access token
+    minted before a suspension stays cryptographically valid for its full
+    15-minute life, so a token-only check would let a just-suspended
+    company keep working. Suspension is an account-state decision a
+    platform operator expects to take effect immediately, unlike an
+    ordinary permission change (see `auth_context.py` on that tradeoff),
+    which is why this one accepts a per-request lookup — an indexed
+    primary-key read.
+    """
+    company = await CompanyRepository(session).get_by_id(company_id)
+    if company is None or company.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="This workspace is no longer active."
+        )
+    if company.status is CompanyStatus.SUSPENDED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This workspace has been suspended. Please contact your administrator.",
+        )
+
+
+async def get_active_auth(
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AuthContext:
+    """`get_current_auth` plus a company-state check. This is what
+    `require_permission` depends on, so every permission-gated route —
+    i.e. effectively the whole tenant API — enforces suspension."""
+    await _assert_company_active(session, auth.company_id)
+    return auth
 
 
 async def get_current_user(
@@ -313,6 +406,7 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is no longer active"
         )
+    await _assert_company_active(session, auth.company_id)
     return user
 
 
@@ -607,6 +701,17 @@ def get_autopilot_service(
     )
 
 
+def get_platform_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> PlatformService:
+    return PlatformService(
+        companies=CompanyRepository(session),
+        platform=PlatformRepository(session),
+        events=events,
+    )
+
+
 def get_tag_repository(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TagRepository:
@@ -719,7 +824,7 @@ def require_permission(
     if not is_known_permission(code):
         raise ValueError(f"Unknown permission code: {code!r}")
 
-    async def _check(auth: Annotated[AuthContext, Depends(get_current_auth)]) -> AuthContext:
+    async def _check(auth: Annotated[AuthContext, Depends(get_active_auth)]) -> AuthContext:
         if not auth.has_permission(code):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

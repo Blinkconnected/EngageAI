@@ -14,8 +14,26 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **Super administrator.** A platform operator account that manages the
+  whole installation: see every company with its user, agent and
+  conversation counts, search and filter them, and **suspend or
+  reactivate** any company. Suspending blocks that company's people from
+  signing in immediately — including anyone already signed in — with a
+  clear "this workspace has been suspended" message rather than a
+  misleading password error. Their customers' messages keep arriving
+  while suspended, so nothing is lost when the account is reactivated.
+  Super administrators deliberately **cannot read any company's
+  conversations, messages or customers**; they manage accounts, not
+  content. They are created from the server command line, never through
+  the app.
+
 ### Fixed
 
+- Closing a company now actually blocks its people from signing in.
+  Nothing checked whether a company had been closed, so its users could
+  keep signing in indefinitely.
 - **You can now take a conversation back from AI Autopilot.** When an
   agent handed a chat to AI (or AI stepped in on its own), there was no
   way to resume it — the conversation showed "AI is currently replying…
