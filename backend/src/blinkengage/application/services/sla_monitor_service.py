@@ -144,8 +144,10 @@ class SlaMonitorService:
         company = await session.get(Company, company_id)
         settings = company.settings if company is not None else {}
         holidays = (
-            await session.execute(select(Holiday).where(Holiday.company_id == company_id))
-        ).scalars().all()
+            (await session.execute(select(Holiday).where(Holiday.company_id == company_id)))
+            .scalars()
+            .all()
+        )
         fixed_dates: list[date] = [h.date for h in holidays if not h.recurs_annually]
         recurring: list[tuple[int, int]] = [
             (h.date.month, h.date.day) for h in holidays if h.recurs_annually
@@ -230,9 +232,7 @@ class SlaMonitorService:
         )
         if now >= deadline:
             conversation.sla_resolution_breached_at = now
-            await self._publish(
-                "conversation.sla_breached", conversation, breach_type="resolution"
-            )
+            await self._publish("conversation.sla_breached", conversation, breach_type="resolution")
             await self._run_escalations(
                 conversation,
                 effective,

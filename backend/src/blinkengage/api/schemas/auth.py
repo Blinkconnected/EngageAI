@@ -60,6 +60,13 @@ class UserProfileResponse(BaseModel):
     full_name: str
     is_company_owner: bool
     company: CompanySummary
+    #: Product features this company is entitled to (see
+    #: ``domain/features.py``). The frontend hides what isn't here, so
+    #: nobody is shown a page that will 402 when they open it. Carried on
+    #: the profile because it is already fetched on every app load —
+    #: a separate endpoint would be a second round trip for something
+    #: needed before the first screen renders.
+    features: list[str]
     roles: list[str]
     permissions: list[str]
 

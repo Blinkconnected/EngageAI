@@ -1,6 +1,6 @@
 import { Box, Button, Stack, Typography } from '@mui/material'
 import { useTranslation } from 'react-i18next'
-import { Outlet } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 import { useLogout } from '../auth/api'
 import { usePlatformMeQuery } from './api'
 
@@ -40,6 +40,14 @@ export function PlatformLayout() {
           </Typography>
         </Stack>
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+          <Stack component="nav" direction="row" spacing={1}>
+            <Button component={NavLink} to="/platform" end size="small">
+              {t('PlatformLayout.companies')}
+            </Button>
+            <Button component={NavLink} to="/platform/plans" size="small">
+              {t('PlatformLayout.plans')}
+            </Button>
+          </Stack>
           {profileQuery.data && (
             <Typography variant="body2" color="text.secondary">
               {profileQuery.data.email}

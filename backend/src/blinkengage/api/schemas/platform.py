@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from blinkengage.infrastructure.database.models.billing import SubscriptionStatus
 from blinkengage.infrastructure.database.models.company import CompanyStatus
 
 
@@ -21,6 +22,11 @@ class CompanyOverviewResponse(BaseModel):
     user_count: int
     agent_count: int
     conversation_count: int
+    #: Billing state, so the console can answer "who is actually paying?"
+    #: from the same request that lists the companies. Both None for a
+    #: company that has never subscribed.
+    plan_name: str | None = None
+    subscription_status: SubscriptionStatus | None = None
 
 
 class CompanyStatusUpdateRequest(BaseModel):

@@ -87,9 +87,7 @@ class CsatService:
         if conversation is None:
             raise EntityNotFoundError("Conversation", conversation_id)
 
-        already_responded = (
-            await self._responses.get_by_conversation(conversation_id) is not None
-        )
+        already_responded = await self._responses.get_by_conversation(conversation_id) is not None
         customer = await self._customers.get_by_id_any_company(customer_id=conversation.customer_id)
         needs_contact_info = customer is None or (not customer.email and not customer.phone)
         return CsatContext(
@@ -106,9 +104,7 @@ class CsatService:
         if conversation is None:
             raise EntityNotFoundError("Conversation", conversation_id)
 
-        customer = await self._customers.get_by_id_any_company(
-            customer_id=conversation.customer_id
-        )
+        customer = await self._customers.get_by_id_any_company(customer_id=conversation.customer_id)
         if customer is None:
             raise EntityNotFoundError("Customer", conversation.customer_id)
 

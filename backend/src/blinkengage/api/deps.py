@@ -9,7 +9,7 @@ from datetime import timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, WebSocket, status
+from fastapi import Depends, HTTPException, Query, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from minio import Minio
 from redis.asyncio import Redis
@@ -21,6 +21,7 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.autopilot_service import AutopilotService
+from blinkengage.application.services.billing_service import BillingService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
@@ -32,6 +33,7 @@ from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
+from blinkengage.application.services.feature_service import FeatureService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.notification_preference_service import (
@@ -58,8 +60,10 @@ from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.ai_provider import AiProvider
 from blinkengage.domain.company_settings import is_ai_enabled
 from blinkengage.domain.exceptions import AiNotConfiguredError
+from blinkengage.domain.features import FEATURES, is_known_feature
 from blinkengage.domain.rbac import is_known_permission
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
+from blinkengage.infrastructure.billing.paypal_client import PayPalClient
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -70,6 +74,12 @@ from blinkengage.infrastructure.events.realtime_publisher import RealtimePublish
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
+from blinkengage.infrastructure.repositories.billing_repository import (
+    BillingPlanRepository,
+    PaymentRepository,
+    SubscriptionRepository,
+    WebhookEventRepository,
+)
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -699,6 +709,122 @@ def get_autopilot_service(
         events=events,
         conversation_service=conversation_service,
     )
+
+
+def get_billing_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> BillingService:
+    """Builds the billing service, with a PayPal client only if this
+    installation is actually configured for it.
+
+    ``paypal=None`` is a first-class state, not an error: an installation
+    that does not sell subscriptions must still start, and every billing
+    endpoint must still answer. The service turns that into a clear
+    "billing is not configured" (503) or an ``is_configured: false`` in
+    the overview, rather than a crash at import time or a 500 at call
+    time.
+    """
+    paypal = (
+        PayPalClient(
+            client_id=settings.paypal_client_id,
+            client_secret=settings.paypal_client_secret,
+            environment=settings.paypal_environment,
+        )
+        if settings.paypal_client_id and settings.paypal_client_secret
+        else None
+    )
+    return BillingService(
+        plans=BillingPlanRepository(session),
+        subscriptions=SubscriptionRepository(session),
+        payments=PaymentRepository(session),
+        webhook_events=WebhookEventRepository(session),
+        companies=CompanyRepository(session),
+        events=events,
+        settings=settings,
+        paypal=paypal,
+    )
+
+
+#: Feature keys to their human names, so a 402 says "AI Engine is not
+#: included in this workspace's plan" rather than repeating a slug at
+#: somebody who never chose it.
+_FEATURE_NAMES: dict[str, str] = {feature.key: feature.name for feature in FEATURES}
+
+
+def get_feature_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> FeatureService:
+    return FeatureService(
+        companies=CompanyRepository(session),
+        subscriptions=SubscriptionRepository(session),
+        plans=BillingPlanRepository(session),
+        events=events,
+    )
+
+
+def require_feature(
+    key: str,
+) -> Callable[[AuthContext, FeatureService], Coroutine[Any, Any, AuthContext]]:
+    """Dependency factory: ``Depends(require_feature("ai"))``.
+
+    Distinct from ``require_permission`` and stacked *with* it, never
+    instead of it. They answer different questions: a permission asks
+    "may this user do it?", a feature asks "has this company bought it?"
+    — and the honest answer to a caller who has the permission but not
+    the entitlement is 402 Payment Required, not 403 Forbidden. Telling
+    an administrator they lack permission for something their own role
+    grants would send them to edit roles that were never the problem.
+
+    Fails fast at import time on an unknown key, like
+    ``require_permission``.
+    """
+    if not is_known_feature(key):
+        raise ValueError(f"Unknown feature key: {key!r}")
+
+    async def _check(
+        auth: Annotated[AuthContext, Depends(get_active_auth)],
+        features: Annotated[FeatureService, Depends(get_feature_service)],
+    ) -> AuthContext:
+        enabled = await features.enabled_features(auth.company_id)
+        if not enabled.get(key, True):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"{_FEATURE_NAMES.get(key, key)} is not included in this workspace's plan. "
+                    "Contact your provider to enable it."
+                ),
+            )
+        return auth
+
+    return _check
+
+
+async def require_export_feature(
+    auth: Annotated[AuthContext, Depends(get_active_auth)],
+    features: Annotated[FeatureService, Depends(get_feature_service)],
+    export: Annotated[str | None, Query()] = None,
+) -> None:
+    """Gates report *downloads* without gating reports themselves.
+
+    Applied to the whole reports router, but only bites when an `export`
+    query parameter is actually present — a plan that excludes exports
+    still gets to see its dashboards on screen, which is the difference
+    between a tiered product and a broken one.
+    """
+    if export is None:
+        return
+    enabled = await features.enabled_features(auth.company_id)
+    if not enabled.get("reports_export", True):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"{_FEATURE_NAMES['reports_export']} is not included in this workspace's plan. "
+                "Contact your provider to enable it."
+            ),
+        )
 
 
 def get_platform_service(

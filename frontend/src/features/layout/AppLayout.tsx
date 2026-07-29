@@ -49,7 +49,10 @@ import { Footer } from '../../shared/components/Footer'
 import { OfflineBanner } from '../../shared/components/OfflineBanner'
 import { SideNav } from './SideNav'
 
-const DRAWER_WIDTH = 260
+/** Width of the permanent sidebar. Exported because the conversation
+ * workspace sizes its five-column layout against it — duplicating the
+ * number there let the two drift apart when this one changed. */
+export const DRAWER_WIDTH = 200
 
 export function AppLayout() {
   const { t } = useTranslation('layout')

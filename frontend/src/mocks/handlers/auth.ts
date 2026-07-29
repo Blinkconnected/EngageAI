@@ -12,9 +12,14 @@ export const MOCK_USER: UserProfile = {
     name: 'Acme Corp',
     slug: 'acme-corp',
   },
+  // Every feature, which is what a company with no plan and no
+  // overrides actually resolves to — the default the backend guarantees.
+  features: ['ai', 'erp', 'knowledge_base', 'reports_export', 'sla', 'workflows'],
   roles: ['Owner'],
   permissions: [
     'company.manage',
+    'billing.read',
+    'billing.manage',
     'roles.manage',
     'sla_policies.read',
     'sla_policies.manage',

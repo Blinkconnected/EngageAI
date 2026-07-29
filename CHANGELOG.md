@@ -28,6 +28,31 @@ for more detail on how this page is put together.
   conversations, messages or customers**; they manage accounts, not
   content. They are created from the server command line, never through
   the app.
+- **Subscription billing through PayPal.** Companies can now be charged
+  a recurring monthly or yearly fee. A super administrator publishes
+  plans (which are created in PayPal automatically), and each company
+  sees them on a new **Billing** page where they can subscribe, see what
+  they're paying, and review every past payment. Subscribing hands off
+  to PayPal's own checkout; the subscription starts only once PayPal
+  confirms the customer approved it.
+- **Workspaces are suspended automatically when payment stops, and come
+  back on their own when it resumes.** A single failed payment does
+  *not* lock anyone out — PayPal retries on its own schedule first, and
+  only a genuinely lapsed subscription suspends the workspace. A
+  suspension caused by billing lifts itself as soon as a payment goes
+  through, but a suspension a person applied deliberately never does, so
+  nobody can pay their way back in. Customers' messages keep arriving
+  throughout.
+- **Cancelling keeps access until the end of the period already paid
+  for**, rather than ending it the moment the button is clicked.
+- **Super administrators can now control which features each company
+  gets.** Features (AI, ERP, Workflows, Knowledge Base, SLA, and report
+  downloads) can be attached to a plan, or turned on and off for one
+  individual company — useful for a pilot or a negotiated contract
+  without inventing a one-off plan. Anything a company isn't entitled to
+  disappears from their navigation instead of failing when opened.
+  **Nothing changes for existing companies:** with no plan and no
+  overrides, every feature stays on exactly as before.
 - **Platform console.** A super administrator signs in at the normal
   sign-in page and is taken straight to a console listing every company
   with its user, agent and conversation counts, where each can be

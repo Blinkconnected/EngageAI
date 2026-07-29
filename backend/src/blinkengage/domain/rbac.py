@@ -118,6 +118,14 @@ PERMISSIONS: tuple[Permission, ...] = (
     # conversations.*: no new access-control question behind viewing
     # data about a customer the agent can already see. ---
     Permission("erp.manage", "Configure the ERPNext connection and trigger manual sync/pull"),
+    # --- Billing (see docs/architecture/billing.md) — split read/manage
+    # because they are genuinely different acts: viewing the plan and
+    # past invoices is ordinary administration, while subscribing or
+    # cancelling commits the company to a recurring charge. Only Owner
+    # gets `billing.manage` by default, the one permission in this
+    # catalog that moves real money. ---
+    Permission("billing.read", "View the subscription, plan and payment history"),
+    Permission("billing.manage", "Subscribe to a plan, change it, or cancel the subscription"),
     # --- SLA Builder (see docs/architecture/sla.md) — a distinct
     # permission from queues.manage even though a policy is assigned to
     # queues, since SLA policies/holidays/escalation rules are a richer,
@@ -166,6 +174,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "quick_replies.manage",
             "ai.use",
             "erp.manage",
+            "billing.read",
             "sla_policies.read",
             "sla_policies.manage",
         }

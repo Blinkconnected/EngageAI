@@ -204,8 +204,10 @@ class EmailProvider(ChannelProvider):
         # information for the operator than "something's unreachable."
         origin = None
         if not healthy:
-            origin = "configuration" if "configuration" in (smtp_origin, imap_origin) else (
-                smtp_origin or imap_origin
+            origin = (
+                "configuration"
+                if "configuration" in (smtp_origin, imap_origin)
+                else (smtp_origin or imap_origin)
             )
         return HealthStatus(healthy=healthy, detail=detail, origin=origin)
 

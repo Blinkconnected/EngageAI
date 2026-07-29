@@ -4,6 +4,7 @@ import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { PlatformRoute } from '../features/platform/PlatformRoute'
 import { PlatformLayout } from '../features/platform/PlatformLayout'
 import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPage'
+import { PlatformPlansPage } from '../features/platform/PlatformPlansPage'
 import { AppLayout } from '../features/layout/AppLayout'
 import { RequirePermission } from '../features/layout/RequirePermission'
 import { RequireErpEnabled } from '../features/layout/RequireErpEnabled'
@@ -94,6 +95,9 @@ const ChangelogPage = lazy(() =>
 const FeedbackPage = lazy(() =>
   import('../features/feedback/FeedbackPage').then((m) => ({ default: m.FeedbackPage })),
 )
+const BillingPage = lazy(() =>
+  import('../features/billing/BillingPage').then((m) => ({ default: m.BillingPage })),
+)
 const ReportsPage = lazy(() =>
   import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -123,6 +127,7 @@ export function AppRoutes() {
           }
         >
           <Route index element={<PlatformCompaniesPage />} />
+          <Route path="plans" element={<PlatformPlansPage />} />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route
@@ -239,6 +244,14 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="sla_policies.read">
                 <SlaBuilderPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settings/billing"
+            element={
+              <RequirePermission permission="billing.read">
+                <BillingPage />
               </RequirePermission>
             }
           />

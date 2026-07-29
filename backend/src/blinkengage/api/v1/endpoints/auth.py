@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from blinkengage.api.deps import get_auth_service, get_current_user
+from blinkengage.api.deps import get_auth_service, get_current_user, get_feature_service
 from blinkengage.api.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -16,8 +16,10 @@ from blinkengage.api.schemas.auth import (
     UserProfileResponse,
 )
 from blinkengage.application.services.auth_service import AuthService, effective_permissions
+from blinkengage.application.services.feature_service import FeatureService
 from blinkengage.core.config import get_settings
 from blinkengage.core.rate_limit import rate_limit_dependency
+from blinkengage.domain.features import enabled_feature_keys
 from blinkengage.infrastructure.database.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -40,7 +42,7 @@ def _company_ref(user: User) -> dict[str, object]:
     return {"id": user.company.id, "name": user.company.name, "slug": user.company.slug}
 
 
-def _user_to_profile(user: User) -> UserProfileResponse:
+def _user_to_profile(user: User, features: list[str]) -> UserProfileResponse:
     roles = sorted({user_role.role.name for user_role in user.user_roles})
     permissions = sorted(effective_permissions(user))
     return UserProfileResponse(
@@ -54,6 +56,7 @@ def _user_to_profile(user: User) -> UserProfileResponse:
         # silently defaulted so a future route that forgets that gate
         # fails loudly instead of emitting a fake company.
         company=_company_ref(user),
+        features=features,
         roles=roles,
         permissions=permissions,
     )
@@ -79,7 +82,12 @@ async def register(
     )
     tokens = await auth_service.issue_tokens(account.user)
     return RegisterResponse(
-        user=_user_to_profile(account.user),
+        # A company that was created a moment ago has no subscription and
+        # no overrides, so its entitlements are exactly the catalog
+        # defaults — computed rather than re-queried.
+        user=_user_to_profile(
+            account.user, enabled_feature_keys(plan_features=None, overrides=None)
+        ),
         tokens=TokenResponse(access_token=tokens.access_token, refresh_token=tokens.refresh_token),
     )
 
@@ -124,8 +132,19 @@ async def logout(
 
 
 @router.get("/me", response_model=UserProfileResponse)
-async def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserProfileResponse:
-    return _user_to_profile(current_user)
+async def me(
+    current_user: Annotated[User, Depends(get_current_user)],
+    features: Annotated[FeatureService, Depends(get_feature_service)],
+) -> UserProfileResponse:
+    # `_company_ref` inside `_user_to_profile` turns a company-less
+    # (platform) user into a 403, but it runs after this line, so the
+    # same case is handled here first. `get_current_auth` already rejects
+    # those tokens, which makes this unreachable rather than unlikely.
+    company_id = current_user.company_id
+    if company_id is None:
+        return _user_to_profile(current_user, [])
+    enabled = await features.enabled_features(company_id)
+    return _user_to_profile(current_user, sorted(key for key, on in enabled.items() if on))
 
 
 @router.post(

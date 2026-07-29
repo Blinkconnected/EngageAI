@@ -1,8 +1,10 @@
 # Platform (Super) Administration
 
 The operator tier: managing the installation itself — which companies
-exist, their lifecycle state, and (from the next milestone) their
-subscriptions. Everything here acts *across* tenants, which is the one
+exist, their lifecycle state, their subscriptions, and which product
+features each one may use. Billing and entitlements have their own
+document, [`billing.md`](billing.md); this one covers the principal and
+the company lifecycle they act on. Everything here acts *across* tenants, which is the one
 place in this codebase that deliberately steps outside the isolation
 model `auth-rbac.md` describes.
 
@@ -61,6 +63,10 @@ platform access has to be immediate.
 
 ## Company lifecycle
 
+Suspension also happens **automatically** when a subscription lapses;
+`billing.md` covers how that interacts with everything below, including
+why a payment lifts a billing suspension but never an operator's.
+
 `CompanyStatus` (`trial` / `active` / `suspended`) existed since the
 first migration but was completely inert: nothing read it and no API
 could set it, so every company was permanently `trial`. It is now real.
@@ -117,6 +123,9 @@ All under `/api/v1/platform`, all gated by `get_platform_auth`:
 | `GET /companies` | Paginated list with user/agent/conversation counts; `search`, `status_filter` |
 | `GET /companies/{id}` | One company's overview |
 | `PATCH /companies/{id}/status` | Suspend / reactivate / return to trial, with an optional `reason` |
+| `GET/POST /plans`, `PATCH /plans/{id}/status` | The billing catalog — see [`billing.md`](billing.md) |
+| `GET /companies/{id}/subscription` | One company's billing state |
+| `GET /features`, `GET/PUT /companies/{id}/features` | Feature entitlements — see [`billing.md`](billing.md) |
 
 Every status change publishes `platform.company_status_changed`, which
 the audit-log consumer records automatically — a platform operator

@@ -2,7 +2,9 @@
   "PlatformLayout": {
     "title": "Platform Console",
     "subtitle": "Manage companies on this installation",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "companies": "Companies",
+    "plans": "Plans"
   },
   "PlatformCompaniesPage": {
     "title": "Companies",
@@ -32,6 +34,62 @@
     "confirmReactivateTitle": "Reactivate this company?",
     "confirmSuspendDescription": "{{companyName}} will be blocked from signing in immediately, including anyone already signed in. Their customers' messages keep arriving, so nothing is lost.",
     "confirmReactivateDescription": "{{companyName}} will be able to sign in again straight away.",
-    "statusErrorFallback": "Could not change this company's status."
+    "statusErrorFallback": "Could not change this company's status.",
+    "columnPlan": "Plan",
+    "noSubscription": "No subscription",
+    "featuresButton": "Features",
+    "subscriptionStatus": {
+      "approval_pending": "Awaiting approval",
+      "active": "Active",
+      "past_due": "Past due",
+      "suspended": "Suspended",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    }
+  },
+  "PlatformPlansPage": {
+    "title": "Plans",
+    "description": "The price list offered to every company. Creating a plan publishes it to PayPal.",
+    "newPlan": "New plan",
+    "nameLabel": "Plan name",
+    "descriptionLabel": "Description",
+    "amountLabel": "Price",
+    "currencyLabel": "Currency",
+    "intervalLabel": "Billed",
+    "interval": {
+      "month": "Monthly",
+      "year": "Yearly"
+    },
+    "priceIsFinal": "The price and billing period can't be changed after the plan is created, because PayPal charges against them. To change a price, create a new plan.",
+    "restrictFeatures": "Limit this plan to specific features",
+    "allFeatures": "All features",
+    "noFeatures": "No features",
+    "includes": "Includes: {{features}}",
+    "activeChip": "On sale",
+    "withdrawnChip": "Withdrawn",
+    "notPublishedChip": "Not published to PayPal",
+    "withdrawButton": "Withdraw",
+    "restoreButton": "Put on sale",
+    "create": "Create plan",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "loadError": "Could not load plans.",
+    "createError": "Could not create this plan.",
+    "emptyTitle": "No plans yet",
+    "emptyDescription": "Create a plan to start charging companies for their workspace."
+  },
+  "CompanyFeaturesDialog": {
+    "title": "Features for {{companyName}}",
+    "description": "Turn features on or off for this company. Anything you set here overrides their plan. Companies with no plan get everything.",
+    "source": {
+      "override": "Set here",
+      "plan": "From plan",
+      "default": "Default"
+    },
+    "followPlan": "Follow plan",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saveError": "Could not save these features.",
+    "loadError": "Could not load this company's features."
   }
 }

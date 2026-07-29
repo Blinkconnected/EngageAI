@@ -47,8 +47,8 @@ class SlaPolicyRepository:
         warning — the same reasoning as blocking role deletion while
         members still hold it."""
         result = await self._session.execute(
-            select(func.count()).select_from(Queue).where(
-                Queue.sla_policy_id == policy_id, Queue.deleted_at.is_(None)
-            )
+            select(func.count())
+            .select_from(Queue)
+            .where(Queue.sla_policy_id == policy_id, Queue.deleted_at.is_(None))
         )
         return int(result.scalar_one())

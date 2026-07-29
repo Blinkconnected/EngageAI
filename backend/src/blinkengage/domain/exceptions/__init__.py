@@ -154,6 +154,41 @@ class ErpNotConfiguredError(DomainError):
         super().__init__("ERPNext is not configured for this company")
 
 
+class BillingNotConfiguredError(DomainError):
+    """Raised when a billing action is requested but this installation
+    has no PayPal credentials (``PAYPAL_CLIENT_ID``/``_SECRET``) or no
+    ``PAYPAL_WEBHOOK_ID`` — a deployment/configuration state, not a
+    missing resource, so it maps to 503 like ``AiNotConfiguredError``.
+    See ``docs/architecture/billing.md``."""
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(detail or "Billing is not configured on this platform")
+
+
+class SubscriptionAlreadyActiveError(DomainError):
+    """Raised when a company that already holds a live subscription tries
+    to start another. Maps to 409, not 400: the request was well-formed
+    and would have been valid a moment ago. Subscribing twice would leave
+    the company paying two PayPal subscriptions for one workspace, with
+    no way to tell from the product which one is real."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This company already has an active subscription. "
+            "Cancel it before subscribing again."
+        )
+
+
+class PlanNotPurchasableError(DomainError):
+    """Raised when a plan exists locally but was never published to
+    PayPal (or has been withdrawn from sale), so nothing can be charged
+    against it. A client-input failure, so it falls through to the
+    generic 400 like ``InvalidChannelTypeError``."""
+
+    def __init__(self) -> None:
+        super().__init__("This plan is not available for purchase.")
+
+
 class ConversationNotInQueueError(DomainError):
     """Raised when ``ConversationService.pick()`` is called on a
     conversation with no ``queue_id`` — picking only makes sense for a

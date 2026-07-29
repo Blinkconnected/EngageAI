@@ -3,6 +3,7 @@ import { NavLink, matchPath, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAppSelector } from '../../app/hooks'
 import { usePermissions } from '../../shared/hooks/usePermissions'
+import { useFeatures } from '../../shared/hooks/useFeatures'
 import { useIsErpEnabled } from '../company/api'
 import logoLight from '../../assets/logo-light.png'
 import logoDark from '../../assets/logo-dark.png'
@@ -13,12 +14,14 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   const { hasPermission } = usePermissions()
   const location = useLocation()
   const isErpEnabled = useIsErpEnabled()
+  const { hasFeature } = useFeatures()
   const themeMode = useAppSelector((state) => state.ui.themeMode)
 
   const visibleItems = NAV_ITEMS.filter(
     (item) =>
       (!item.permission || hasPermission(item.permission)) &&
-      (!item.requiresErpEnabled || isErpEnabled),
+      (!item.requiresErpEnabled || isErpEnabled) &&
+      (!item.requiresFeature || hasFeature(item.requiresFeature)),
   )
 
   return (

@@ -82,9 +82,7 @@ async def list_conversations(
     )
     unread_counts = await service.unread_counts(conversation_ids=[item.id for item in items])
     return Page(
-        items=[
-            _to_conversation_response(item, unread_counts.get(item.id, 0)) for item in items
-        ],
+        items=[_to_conversation_response(item, unread_counts.get(item.id, 0)) for item in items],
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,

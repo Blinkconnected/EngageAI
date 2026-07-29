@@ -130,9 +130,7 @@ class RoleService:
                 actor_user_id=actor_user_id,
                 payload={
                     "name": role.name,
-                    "permission_codes": sorted(
-                        rp.permission_code for rp in role.role_permissions
-                    ),
+                    "permission_codes": sorted(rp.permission_code for rp in role.role_permissions),
                 },
             )
         )

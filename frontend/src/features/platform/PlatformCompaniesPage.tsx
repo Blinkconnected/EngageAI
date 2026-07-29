@@ -16,8 +16,9 @@ import { EmptyState } from '../../shared/components/EmptyState'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
+import { CompanyFeaturesDialog } from './CompanyFeaturesDialog'
 import { useCompaniesQuery, useSetCompanyStatusMutation } from './api'
-import type { CompanyOverview, CompanyStatus } from './types'
+import type { CompanyOverview, CompanyStatus, SubscriptionStatus } from './types'
 
 const STATUS_COLOR: Record<CompanyStatus, 'default' | 'success' | 'error'> = {
   trial: 'default',
@@ -26,6 +27,15 @@ const STATUS_COLOR: Record<CompanyStatus, 'default' | 'success' | 'error'> = {
 }
 
 const STATUS_OPTIONS: CompanyStatus[] = ['trial', 'active', 'suspended']
+
+const SUBSCRIPTION_COLOR: Record<SubscriptionStatus, 'default' | 'success' | 'warning' | 'error'> = {
+  approval_pending: 'warning',
+  active: 'success',
+  past_due: 'warning',
+  suspended: 'error',
+  cancelled: 'default',
+  expired: 'default',
+}
 
 /**
  * The platform operator's console: every company on the installation,
@@ -46,6 +56,7 @@ export function PlatformCompaniesPage() {
     null,
   )
   const [error, setError] = useState<string | null>(null)
+  const [featuresFor, setFeaturesFor] = useState<CompanyOverview | null>(null)
 
   const debouncedSearch = useDebouncedValue(search, 300)
   const companiesQuery = useCompaniesQuery({
@@ -87,6 +98,34 @@ export function PlatformCompaniesPage() {
       ),
     },
     {
+      field: 'plan_name',
+      headerName: t('PlatformCompaniesPage.columnPlan'),
+      flex: 1,
+      minWidth: 160,
+      sortable: false,
+      renderCell: (params) => {
+        const status = params.row.subscription_status
+        if (status === null) {
+          return (
+            <Typography variant="body2" color="text.secondary">
+              {t('PlatformCompaniesPage.noSubscription')}
+            </Typography>
+          )
+        }
+        return (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Typography variant="body2">{params.row.plan_name}</Typography>
+            <Chip
+              size="small"
+              variant="outlined"
+              color={SUBSCRIPTION_COLOR[status]}
+              label={t(`PlatformCompaniesPage.subscriptionStatus.${status}`)}
+            />
+          </Stack>
+        )
+      },
+    },
+    {
       field: 'user_count',
       headerName: t('PlatformCompaniesPage.columnUsers'),
       width: 100,
@@ -107,21 +146,28 @@ export function PlatformCompaniesPage() {
     {
       field: 'actions',
       headerName: t('PlatformCompaniesPage.columnActions'),
-      width: 150,
+      width: 220,
       sortable: false,
       renderCell: (params) => {
         const suspended = params.row.status === 'suspended'
         return (
-          <Button
-            size="small"
-            color={suspended ? 'success' : 'error'}
-            variant="outlined"
-            onClick={() => setPending({ company: params.row, next: suspended ? 'active' : 'suspended' })}
-          >
-            {suspended
-              ? t('PlatformCompaniesPage.reactivateButton')
-              : t('PlatformCompaniesPage.suspendButton')}
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button size="small" variant="outlined" onClick={() => setFeaturesFor(params.row)}>
+              {t('PlatformCompaniesPage.featuresButton')}
+            </Button>
+            <Button
+              size="small"
+              color={suspended ? 'success' : 'error'}
+              variant="outlined"
+              onClick={() =>
+                setPending({ company: params.row, next: suspended ? 'active' : 'suspended' })
+              }
+            >
+              {suspended
+                ? t('PlatformCompaniesPage.reactivateButton')
+                : t('PlatformCompaniesPage.suspendButton')}
+            </Button>
+          </Stack>
         )
       },
     },
@@ -227,6 +273,8 @@ export function PlatformCompaniesPage() {
         onConfirm={handleConfirm}
         onClose={() => setPending(null)}
       />
+
+      <CompanyFeaturesDialog company={featuresFor} onClose={() => setFeaturesFor(null)} />
     </>
   )
 }

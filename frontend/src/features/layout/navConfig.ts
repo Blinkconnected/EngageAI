@@ -11,6 +11,7 @@ import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
+import CreditCardOutlinedIcon from '@mui/icons-material/CreditCardOutlined'
 import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined'
 
 export interface NavItem {
@@ -25,6 +26,11 @@ export interface NavItem {
    * docs/architecture/company-onboarding.md) — completely hidden
    * otherwise, not just permission-gated. */
   requiresErpEnabled?: boolean
+  /** Product feature this item needs — hidden entirely when the
+   * company's plan doesn't include it (see docs/architecture/billing.md).
+   * Distinct from `permission`: that asks whether the *user* may, this
+   * asks whether the *company* bought it. */
+  requiresFeature?: string
   /** Section root used for sidebar active-highlighting, when it differs
    * from `path` itself — needed only for an item whose `path` embeds a
    * default tab (e.g. `/reports/executive`), so any OTHER tab under the
@@ -93,6 +99,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/sla',
     icon: RuleOutlinedIcon,
     permission: 'sla_policies.read',
+    requiresFeature: 'sla',
   },
   {
     label: 'SideNav.navReports',
@@ -107,6 +114,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: SyncOutlinedIcon,
     permission: 'erp.manage',
     requiresErpEnabled: true,
+    requiresFeature: 'erp',
+  },
+  {
+    label: 'SideNav.navBilling',
+    path: '/settings/billing',
+    icon: CreditCardOutlinedIcon,
+    permission: 'billing.read',
   },
   {
     label: 'SideNav.navSettings',

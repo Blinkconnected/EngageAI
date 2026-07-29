@@ -27,9 +27,7 @@ class QueueService:
         self._events = events
 
     async def _validate_sla_policy(self, *, company_id: UUID, sla_policy_id: UUID) -> None:
-        policy = await self._sla_policies.get_by_id(
-            company_id=company_id, policy_id=sla_policy_id
-        )
+        policy = await self._sla_policies.get_by_id(company_id=company_id, policy_id=sla_policy_id)
         if policy is None:
             raise EntityNotFoundError("SlaPolicy", sla_policy_id)
 

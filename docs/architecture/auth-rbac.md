@@ -395,3 +395,18 @@ left. Also confirmed visually via Playwright screenshots: the Roles
 page's table and permission-checklist edit dialog, and the Agents page's
 "Change role" dialog correctly pre-selecting the agent's actual current
 role.
+
+
+## Features are not permissions
+
+A permission asks "may this **user** do it?"; a feature entitlement asks
+"has this **company** bought it?" — see
+[`billing.md`](billing.md). They are stacked, never substituted: a user
+can hold every permission in this catalog and still be refused, with
+**402 Payment Required**, because their company's plan does not include
+the capability. Answering 403 there would send an administrator to edit
+roles that were never the problem.
+
+`billing.manage` is Owner-only by default, the one permission in the
+catalog that commits the company to a recurring charge. `billing.read`
+also goes to Admin.

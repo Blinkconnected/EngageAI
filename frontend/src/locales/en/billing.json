@@ -1,0 +1,39 @@
+{
+  "BillingPage": {
+    "title": "Billing",
+    "description": "Your subscription, what it costs, and everything you've paid so far.",
+    "notConfigured": "Billing isn't set up on this installation, so there's nothing to pay. Your workspace works exactly as it does now.",
+    "choosePlan": "Choose a plan",
+    "subscribeButton": "Subscribe",
+    "cancelButton": "Cancel subscription",
+    "needsOwner": "Only the account owner can change the subscription.",
+    "renewsOn": "Renews on {{date}}",
+    "awaitingApproval": "This subscription isn't active yet — it starts once you approve it with PayPal.",
+    "finishInPayPal": "Finish in PayPal",
+    "pastDue": "A payment didn't go through ({{count}} so far). PayPal will try again; if it keeps failing your workspace will be suspended.",
+    "suspended": "This workspace is suspended because the subscription lapsed. It comes back as soon as a payment goes through.",
+    "interval": { "month": "month", "year": "year" },
+    "subscriptionStatus": {
+      "approval_pending": "Awaiting approval",
+      "active": "Active",
+      "past_due": "Payment failed",
+      "suspended": "Suspended",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    },
+    "paymentHistory": "Payment history",
+    "paymentsTableAriaLabel": "Payment history",
+    "columnDate": "Date",
+    "columnAmount": "Amount",
+    "columnStatus": "Status",
+    "paymentStatus": { "completed": "Paid", "denied": "Declined", "refunded": "Refunded" },
+    "noPlansTitle": "No plans available",
+    "noPlansDescription": "There's nothing to subscribe to right now.",
+    "confirmCancelTitle": "Cancel this subscription?",
+    "confirmCancelDescription": "You keep full access until the end of the period you've already paid for. After that your workspace is suspended until you subscribe again.",
+    "retry": "Retry",
+    "loadError": "Could not load your billing details.",
+    "subscribeError": "Could not start this subscription.",
+    "cancelError": "Could not cancel this subscription."
+  }
+}

@@ -3,18 +3,26 @@ import { Box, useMediaQuery, useTheme } from '@mui/material'
 import { ConversationFiltersPanel, type ConversationFilters } from './ConversationFiltersPanel'
 import { ConversationListPanel } from './ConversationListPanel'
 import { ConversationViewPage } from './ConversationViewPage'
+import { DRAWER_WIDTH } from '../layout/AppLayout'
 import { CONVERSATION_STATUSES, type ConversationStatus } from './types'
 
 const FILTERS_PANE_WIDTH = 220
 const LIST_PANE_WIDTH = 320
-// AppLayout's nav (260) + this workspace's own filters (220) and list
-// (320) panes + ConversationSidebar's fixed customer panel (280) = 1080px
-// of chrome that never shrinks, before the message thread gets anything.
+const CUSTOMER_PANE_WIDTH = 280
+// AppLayout's nav + this workspace's own filters and list panes +
+// ConversationSidebar's fixed customer panel = the chrome that never
+// shrinks, before the message thread gets anything. `DRAWER_WIDTH` is
+// imported rather than repeated: it was hard-coded here as 260, so
+// narrowing the sidebar silently left this threshold wrong.
 // This is the actual minimum width the message column needs to stay
 // usable, not an arbitrary round number.
 const MESSAGE_COLUMN_MIN_WIDTH = 400
 const FIVE_COLUMN_MIN_WIDTH =
-  260 + FILTERS_PANE_WIDTH + LIST_PANE_WIDTH + 280 + MESSAGE_COLUMN_MIN_WIDTH
+  DRAWER_WIDTH +
+  FILTERS_PANE_WIDTH +
+  LIST_PANE_WIDTH +
+  CUSTOMER_PANE_WIDTH +
+  MESSAGE_COLUMN_MIN_WIDTH
 
 function isConversationStatus(value: string | null): value is ConversationStatus {
   return value !== null && (CONVERSATION_STATUSES as readonly string[]).includes(value)

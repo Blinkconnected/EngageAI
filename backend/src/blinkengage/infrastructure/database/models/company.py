@@ -60,6 +60,15 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     ai_config: Mapped[dict[str, Any] | None] = mapped_column(
         EncryptedJSON, nullable=True, default=None
     )
+    # A platform administrator's per-company feature entitlement
+    # overrides, ``{feature_key: bool}`` — see ``domain/features.py``.
+    # Its own column rather than a key inside ``settings`` above
+    # precisely because ``settings`` is tenant-editable via
+    # ``company.manage``: a company must never be able to grant itself a
+    # feature it has not bought. Only the platform API writes this.
+    feature_overrides: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
 
     users: Mapped[list["User"]] = relationship(back_populates="company")
     roles: Mapped[list["Role"]] = relationship(back_populates="company")

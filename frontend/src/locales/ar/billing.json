@@ -1,0 +1,39 @@
+{
+  "BillingPage": {
+    "title": "الفوترة",
+    "description": "اشتراكك وتكلفته وكل ما دفعته حتى الآن.",
+    "notConfigured": "الفوترة غير مُعدّة على هذا التثبيت، فلا شيء لتدفعه. مساحة عملك تعمل تماماً كما هي الآن.",
+    "choosePlan": "اختر خطة",
+    "subscribeButton": "اشترك",
+    "cancelButton": "إلغاء الاشتراك",
+    "needsOwner": "مالك الحساب وحده يمكنه تغيير الاشتراك.",
+    "renewsOn": "يتجدد في {{date}}",
+    "awaitingApproval": "هذا الاشتراك ليس نشطاً بعد — يبدأ بمجرد موافقتك عليه في باي بال.",
+    "finishInPayPal": "أكمل في باي بال",
+    "pastDue": "لم تنجح إحدى الدفعات ({{count}} حتى الآن). سيعيد باي بال المحاولة، وإذا استمر الإخفاق ستُوقف مساحة عملك.",
+    "suspended": "مساحة العمل هذه موقوفة لانقطاع الاشتراك. تعود فور نجاح أي دفعة.",
+    "interval": { "month": "شهر", "year": "سنة" },
+    "subscriptionStatus": {
+      "approval_pending": "بانتظار الموافقة",
+      "active": "نشط",
+      "past_due": "فشل الدفع",
+      "suspended": "موقوف",
+      "cancelled": "ملغى",
+      "expired": "منتهٍ"
+    },
+    "paymentHistory": "سجل المدفوعات",
+    "paymentsTableAriaLabel": "سجل المدفوعات",
+    "columnDate": "التاريخ",
+    "columnAmount": "المبلغ",
+    "columnStatus": "الحالة",
+    "paymentStatus": { "completed": "مدفوع", "denied": "مرفوض", "refunded": "مُسترد" },
+    "noPlansTitle": "لا توجد خطط متاحة",
+    "noPlansDescription": "لا يوجد ما يمكن الاشتراك فيه حالياً.",
+    "confirmCancelTitle": "إلغاء هذا الاشتراك؟",
+    "confirmCancelDescription": "تحتفظ بكامل الوصول حتى نهاية المدة التي دفعت ثمنها. بعدها تُوقف مساحة عملك حتى تشترك مجدداً.",
+    "retry": "إعادة المحاولة",
+    "loadError": "تعذّر تحميل تفاصيل الفوترة.",
+    "subscribeError": "تعذّر بدء هذا الاشتراك.",
+    "cancelError": "تعذّر إلغاء هذا الاشتراك."
+  }
+}

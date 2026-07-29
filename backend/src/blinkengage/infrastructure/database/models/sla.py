@@ -26,9 +26,7 @@ class SlaPolicy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ``Queue.first_response_target_minutes``'s docstring)."""
 
     __tablename__ = "sla_policies"
-    __table_args__ = (
-        UniqueConstraint("company_id", "name", name="uq_sla_policies_company_name"),
-    )
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_sla_policies_company_name"),)
 
     company_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True

@@ -63,9 +63,7 @@ async def _fetch_logo(company_service: CompanyService, company_id: UUID) -> Comp
     try:
         return await company_service.get_logo(company_id=company_id)
     except Exception:
-        logger.warning(
-            "report_export_logo_fetch_failed", company_id=str(company_id), exc_info=True
-        )
+        logger.warning("report_export_logo_fetch_failed", company_id=str(company_id), exc_info=True)
         return None
 
 
