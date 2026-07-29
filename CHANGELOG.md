@@ -50,6 +50,24 @@ for more detail on how this page is put together.
   entitled to disappears from their navigation instead of failing when
   opened. **Nothing changes for existing companies:** with no overrides
   set, every feature stays on exactly as before.
+- **Usage engine.** Conversations are now metered automatically as they
+  happen, and each company's usage accrues into a monthly billing
+  period. At the end of the month the period is closed and **frozen**:
+  the quantity, the price at the time, the subtotal and which price was
+  used are all recorded permanently. A later price change can never
+  alter a closed month — an invoice built from a closed period shows
+  exactly what was charged, however many times the price changes
+  afterwards.
+- **A conversation is never billed twice**, even when the system retries
+  delivering the same event, which it does routinely.
+- **Usage never moves between months.** It is counted against the month
+  it actually happened in, and usage arriving after a month has closed
+  is refused and flagged rather than quietly added to the current month.
+- Usage with no price set is still recorded and shown as unpriced,
+  rather than silently disappearing from the bill.
+- Billable metrics now carry a version, so if what a metric counts ever
+  changes, everything already measured and billed keeps the definition
+  that produced it.
 - **Pricing engine.** Super administrators can now set what companies
   pay per unit of usage, from a new **Pricing** page in the platform
   console. A price can be set globally, for a reusable tier (Startup,

@@ -69,6 +69,20 @@ class BillableMetric:
     unit: MeasurementUnit
     description: str
     availability: MetricAvailability
+    #: **Bump this whenever what the metric counts changes.**
+    #:
+    #: The code identifies *what* is billed; the version identifies *how
+    #: it was measured*. If ``CONVERSATION`` later starts counting a
+    #: reopened conversation as a second one, that is a different meaning
+    #: for the same code — and a bill reconstructed from historical usage
+    #: must reflect what was actually measured at the time, not today's
+    #: definition.
+    #:
+    #: Every usage record and every period snapshot stores the version in
+    #: force when it was recorded, so a definition change is invisible to
+    #: everything already billed. Changing behaviour *without* bumping
+    #: this is the one way to silently rewrite billing history.
+    version: int = 1
 
     @property
     def is_priceable(self) -> bool:

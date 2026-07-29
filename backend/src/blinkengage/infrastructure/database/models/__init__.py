@@ -82,6 +82,11 @@ from blinkengage.infrastructure.database.models.reporting import (
 )
 from blinkengage.infrastructure.database.models.sla import Holiday, SlaPolicy
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
+from blinkengage.infrastructure.database.models.usage import (
+    BillingPeriod,
+    UsagePeriodLine,
+    UsageRecord,
+)
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.database.models.workflow import (
     WorkflowDefinition,
@@ -98,6 +103,9 @@ __all__ = [
     "AiDailyStats",
     "AttachmentValidationStatus",
     "AuditLog",
+    "BillingPeriod",
+    "UsagePeriodLine",
+    "UsageRecord",
     "CompanyPricingProfileAssignment",
     "PricingAuditLog",
     "PricingProfile",

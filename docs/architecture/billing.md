@@ -394,13 +394,144 @@ Removing an override is a POST, not a DELETE: it *writes* an
 effective-dated boundary and an audit row, and a DELETE reads as "erase
 this", which is the one thing it must never do.
 
+## The usage engine
+
+Migration `3cca1f08ef5d`. Three tables, and the split between them is
+the design:
+
+| Table | Holds | Mutability |
+|---|---|---|
+| `usage_records` | One row per billable occurrence | Append-only |
+| `billing_periods` | One company's billing month | Created once, closed once |
+| `usage_period_lines` | **The snapshot** | Written once, at close |
+
+### Metering happens off the event bus
+
+`usage_metering_consumer` listens to events the product already
+publishes. Billing never sits in the path of the thing being measured —
+a customer's message must be delivered whether or not billing is
+available, and metering must never be able to slow or roll it back.
+
+| Event | Metric | Idempotency key |
+|---|---|---|
+| `conversation.created` | `CONVERSATION` | `CONVERSATION:<conversation_id>` |
+| `conversation.autopilot_replied` | `AI_AUTOPILOT` | `AI_AUTOPILOT:<message_id>` |
+
+The key is derived from the occurrence's own identifiers — never a
+timestamp, never a random value — and is unique in the database. The
+relay delivers at-least-once and retries for days, so the consumer *will*
+see the same conversation again; a redelivery finds the existing row and
+does nothing.
+
+`AI_ASSISTED_REPLY` is deliberately **not** metered yet. Its event fires
+for every message, and billing off a high-volume event needs its own
+look at cost and idempotency. It stays unpriced until its meter ships —
+the same rule the metric catalog enforces for `VOICE_MINUTE`.
+
+### Usage cannot move between months
+
+A record's period comes from when the usage **happened**
+(`event.occurred_at`), not from when the meter reported it. A redelivery
+three days later still lands in the right month.
+
+If that period has already closed, the record is **refused and counted**
+(`billing_periods.late_record_count`), never redirected into the open
+period. Silently folding it forward would move revenue between months
+and make a closed set of books disagree with the records behind it. A
+late meter is a visible problem, not a quiet distortion.
+
+Exactly one period may be `OPEN` per company, enforced by a partial
+unique index — two would split a month across two bills with nothing to
+say which is right. Ranges are half-open `[start, end)`, so a
+conversation at midnight on the 1st is billed once, not twice.
+
+### Closing freezes everything
+
+`close_period` resolves each metric's price **once**, computes the
+subtotals, writes them as frozen lines, and marks the period closed —
+all in one transaction.
+
+Every number an invoice needs is on the line:
+
+| Field | Why it is stored rather than derived |
+|---|---|
+| `quantity` | What was measured |
+| `unit_amount` | What it cost **at the time** |
+| `subtotal` | Recomputing at read time means a change to rounding silently alters a historical document |
+| `rate_id` | The audit chain from a charge back to the decision that set it |
+| `metric_version` | How the metric was defined when it was measured |
+
+**An invoice line is a copy of a snapshot line.** Invoice generation
+never re-aggregates `usage_records` and never re-resolves a price.
+Effective-dated pricing already makes re-resolution *correct*, but
+re-resolution still has to happen and every re-run is another chance to
+differ; a snapshot makes re-derivation unnecessary, so it cannot be
+wrong. A test asserts a closed period's lines are byte-identical after
+the price is later multiplied by ten.
+
+Closing is **idempotent**. The state transition is a guarded
+`UPDATE ... WHERE status = 'OPEN'`, so exactly one caller wins even if
+the job fires twice or two workers pick it up together; the loser
+returns the existing snapshot rather than writing a second set of lines.
+On PostgreSQL a trigger rejects `UPDATE` and `DELETE` on
+`usage_period_lines` outright, so the snapshot survives a `psql` session
+too.
+
+Prices are resolved at the **period end**, not at "now": closing a month
+late must not apply a rate that came into force afterwards. The Net-21
+due date is computed from `period_end` for the same reason — a delayed
+or retried job must not move a customer's payment deadline.
+
+Usage with no configured price still gets a line, flagged `unpriced`
+with the quantity intact. Dropping it would make the usage vanish from
+the bill entirely, which looks exactly like it never happened.
+
+### Metric versioning
+
+`BillableMetric.version` is stamped onto every usage record at
+measurement time and carried onto every snapshot line.
+
+The code says *what* is billed; the version says *how it was measured*.
+If `CONVERSATION` later starts counting a reopened conversation as a
+second one, that is a different meaning for the same code — and anything
+already measured still records the definition that produced it, so a
+behaviour change cannot reach backwards into a bill. Aggregation groups
+by code **and** version, so two halves of a period measured differently
+are never silently added together.
+
+Changing a metric's behaviour without bumping its version is the one way
+to rewrite billing history.
+
+### The close job
+
+`blinkengage.billing.close_due_periods`, hourly. Not a once-a-month
+cron: a monthly job that misses its window — a deploy, an outage, a
+clock change — leaves every company's month unclosed until somebody
+notices. An hourly sweep that finds nothing costs one indexed query and
+self-heals, and each close being idempotent makes running it often free.
+
+### API
+
+Under `/api/v1/platform/usage`, gated by `get_platform_auth`:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /companies/{id}/current` | The open period and what has accrued |
+| `GET /companies/{id}/periods` | Period history |
+| `GET /periods/{id}/snapshot` | The frozen lines |
+| `POST /periods/{id}/close` | Freeze a period (idempotent) |
+| `POST /records` | A manual correction, deduplicated by a caller-supplied key |
+
+`current` deliberately returns **quantities only, no money**. An
+estimate is a different thing from a charge, and a second
+subtly-different number beside the frozen ones is how a correct bill
+ends up disputed. Estimation belongs to whatever presents it, from the
+same resolver.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:
 
-- **Usage engine** — usage records, aggregation, and the meters that
-  emit them. The catalog names what *would* be measured; nothing
-  measures it yet.
 - **Invoices** — monthly billing periods, invoice generation, Net 21
   terms.
 - **Billing states** — Active / Payment Due / Payment Overdue / Payment

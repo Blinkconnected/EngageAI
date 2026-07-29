@@ -49,6 +49,7 @@ from blinkengage.application.services.routing_rule_service import RoutingRuleSer
 from blinkengage.application.services.search_service import SearchService
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
 from blinkengage.application.services.team_service import TeamService
+from blinkengage.application.services.usage_service import UsageService
 from blinkengage.application.services.web_chat_session_service import WebChatSessionService
 from blinkengage.application.services.webhook_ingest_service import WebhookIngestService
 from blinkengage.application.services.workflow_service import WorkflowService
@@ -139,6 +140,11 @@ from blinkengage.infrastructure.repositories.search_repository import SearchRepo
 from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
+from blinkengage.infrastructure.repositories.usage_repository import (
+    BillingPeriodRepository,
+    UsagePeriodLineRepository,
+    UsageRecordRepository,
+)
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
 from blinkengage.infrastructure.repositories.workflow_repository import (
     WorkflowDefinitionRepository,
@@ -796,6 +802,20 @@ def get_pricing_service(
         audit=PricingAuditRepository(session),
         companies=PricingCompanyLookup(session),
         users=UserRepository(session),
+        events=events,
+    )
+
+
+def get_usage_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    pricing: Annotated[PricingService, Depends(get_pricing_service)],
+) -> UsageService:
+    return UsageService(
+        periods=BillingPeriodRepository(session),
+        records=UsageRecordRepository(session),
+        lines=UsagePeriodLineRepository(session),
+        pricing=pricing,
         events=events,
     )
 

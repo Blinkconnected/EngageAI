@@ -22,6 +22,7 @@ celery_app = Celery(
         "blinkengage.core.tasks",
         "blinkengage.infrastructure.events.relay",
         "blinkengage.infrastructure.tasks.sla_sweep_task",
+        "blinkengage.infrastructure.tasks.billing_period_close_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
         "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
         "blinkengage.infrastructure.tasks.channel_health_check_task",
@@ -57,6 +58,17 @@ celery_app.conf.update(
         "check-sla-breaches": {
             "task": "blinkengage.queues.check_sla_breaches",
             "schedule": 60.0,
+        },
+        # Closes billing periods whose month has ended — see
+        # docs/architecture/billing.md. Hourly rather than a
+        # once-a-month cron: a monthly job that misses its window (a
+        # deploy, an outage, a clock change) leaves every company's month
+        # unclosed until somebody notices, while an hourly sweep that
+        # finds nothing costs one indexed query and self-heals. Each
+        # close is idempotent, so running it often is free.
+        "close-due-billing-periods": {
+            "task": "blinkengage.billing.close_due_periods",
+            "schedule": 3600.0,
         },
         # See docs/architecture/email-channel.md — polls every active
         # email ChannelConfig's IMAP mailbox for UNSEEN messages.

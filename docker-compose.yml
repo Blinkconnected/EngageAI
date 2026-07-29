@@ -354,6 +354,27 @@ services:
   # ai-autopilot-consumer because it binds different events: an SLA
   # warning/breach fires precisely because nobody replied, so there is no
   # inbound message for the message-driven consumer to react to.
+  usage-metering-consumer:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    command:
+      [
+        "python",
+        "-m",
+        "blinkengage.infrastructure.events.consumers.usage_metering_consumer",
+      ]
+    environment: *backend-env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [blinkengage]
+
   autopilot-sla-consumer:
     build:
       context: .
