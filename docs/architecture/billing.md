@@ -528,12 +528,134 @@ subtly-different number beside the frozen ones is how a correct bill
 ends up disputed. Estimation belongs to whatever presents it, from the
 same resolver.
 
+## The invoice engine
+
+Migration `21fac8ed2cd2`. Six tables: `invoices` / `invoice_lines`,
+`credit_notes` / `credit_note_lines`, `payments` /
+`payment_allocations`, plus `document_number_sequences`.
+
+### An invoice is a copy
+
+Generation reads a **closed** period's frozen snapshot and copies each
+line. Nothing is re-aggregated from usage records; nothing is re-priced.
+An open period cannot be invoiced at all — billing a month whose usage
+is still accruing would bill a number that is still moving.
+
+Generation is idempotent: a period that already has an invoice returns
+it, backed by a unique constraint on `billing_period_id`. The failure
+that guards against is charging a customer twice for one month.
+
+Rounding happens exactly **once**, on the invoice total. Lines stay at
+full precision, so the lines always sum to the total.
+
+### Numbers
+
+`INV-2026-000001`, year-scoped, from a counter table under a row lock.
+
+A counter table rather than a database sequence, deliberately:
+sequences are explicitly *not* transactional, so a rolled-back issue
+would consume a value and leave a hole. An invoice series with holes is
+something an auditor makes somebody explain.
+
+The number is assigned **at issuance**, never at creation — a draft that
+burned a number and was then discarded would leave the same hole. A
+cancelled invoice keeps its number consumed forever; reusing it would
+mean two documents shared a number, which is exactly what the series
+exists to prevent.
+
+Credit notes have their own series, `CN-2026-000001`.
+
+### The state machine
+
+```
+DRAFT ──▶ ISSUED ──▶ PAID
+  │         │  └───▶ OVERDUE ──▶ PAID
+  └────────▶└──────▶ CANCELLED
+```
+
+`domain/invoicing.py` holds the transition table, and it is the only
+authority — a state machine enforced only where somebody remembered to
+check is not one. Every transition is *also* applied with the current
+status in the WHERE clause, so two requests issuing the same draft, or
+the overdue sweep racing a payment, cannot both succeed.
+
+`OVERDUE` is a stored state rather than a date comparison at read time:
+it is what people filter and report on, and deriving it means the answer
+changes silently at midnight in whichever timezone the reader used.
+
+An overdue invoice that gets paid goes straight to `PAID` — it does not
+pass back through `ISSUED`, because "was late, then paid" is the true
+history.
+
+`PAID` and `CANCELLED` are terminal. An invoice with payments allocated
+to it **cannot** be cancelled: that would leave the payment attached to
+a withdrawn document. Use a credit note.
+
+### Immutability
+
+After issuance, an invoice's identity and money never change. Enforced
+in three places:
+
+1. **No endpoint exists** that edits an issued invoice or its lines. An
+   API offering both an edit and a credit note would make the rule
+   advisory.
+2. **The repositories have no update or delete** for lines.
+3. **PostgreSQL triggers** reject `UPDATE`/`DELETE` on `invoice_lines`
+   and `credit_note_lines` outright, and reject any change to a
+   non-draft invoice's number, amounts, customer, period or issue date.
+   Status, payment progress and cancellation fields still move — those
+   are the documented transitions.
+
+### Corrections are credit notes
+
+The only way to change what a customer owes after issuance. The invoice
+keeps saying exactly what it said; the credit note is a separate
+numbered document that says what was given back. Both exist for anybody
+reconciling them later — which is precisely what editing the invoice
+would destroy.
+
+A reason is **required**: a credit note nobody can explain is unusable
+to whoever finds it. Crediting more than the invoice total is refused,
+and a full credit settles the invoice — otherwise a fully-credited
+invoice would sit outstanding forever with nothing able to clear it.
+
+Drafts cannot be credited; they are simply changed.
+
+### Payments are independent
+
+A `payment` records money arriving from a company. `payment_allocations`
+say which invoices it settles.
+
+That separation is the whole point: one bank transfer can clear three
+invoices, an overpayment sits unallocated as a credit balance with no
+special case, and a second payment provider plugs into `provider` /
+`provider_reference` without touching the invoice tables. Those two
+columns are unique together, so a redelivered gateway webhook cannot
+record the same money twice.
+
+Allocation refuses to exceed either the payment received or the invoice
+outstanding — both would surface later as a balance nobody can explain.
+
+### API
+
+Under `/api/v1/platform/invoices`, gated by `get_platform_auth`:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /generate/{period_id}` | Draft from a closed period (idempotent) |
+| `GET /{id}`, `GET ?company_id=` | Read |
+| `POST /{id}/issue` | Assign the number, freeze |
+| `POST /{id}/cancel` | Withdraw (reason required) |
+| `POST /{id}/credit-notes` | Correct an issued invoice |
+| `POST /payments` | Record money received |
+| `POST /payments/{id}/allocate` | Apply it to an invoice |
+
+There is deliberately no update or delete for an invoice.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:
 
-- **Invoices** — monthly billing periods, invoice generation, Net 21
-  terms.
 - **Billing states** — Active / Payment Due / Payment Overdue / Payment
   Suspended, as an axis separate from compliance suspension.
 - **Payment gateway** — deliberately out of scope until the phases above

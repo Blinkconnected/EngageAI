@@ -19,6 +19,8 @@ from blinkengage.domain.exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,
     ErpNotConfiguredError,
+    InvoiceNotPayableError,
+    InvoiceStateError,
     MetricNotPriceableError,
     PricingConcurrentEditError,
     PricingNotConfiguredError,
@@ -26,6 +28,7 @@ from blinkengage.domain.exceptions import (
     RateAlreadyEffectiveError,
     SystemProfileNotPriceableError,
 )
+from blinkengage.domain.invoicing import InvalidInvoiceTransitionError
 
 _STATUS_MAP: dict[type[Exception], int] = {
     EntityNotFoundError: status.HTTP_404_NOT_FOUND,
@@ -37,6 +40,9 @@ _STATUS_MAP: dict[type[Exception], int] = {
     PricingNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
     AmbiguousPricingConfigurationError: status.HTTP_409_CONFLICT,
     MetricNotPriceableError: status.HTTP_409_CONFLICT,
+    InvoiceStateError: status.HTTP_409_CONFLICT,
+    InvalidInvoiceTransitionError: status.HTTP_409_CONFLICT,
+    InvoiceNotPayableError: status.HTTP_409_CONFLICT,
     PricingRangeOverlapError: status.HTTP_409_CONFLICT,
     PricingConcurrentEditError: status.HTTP_409_CONFLICT,
     RateAlreadyEffectiveError: status.HTTP_409_CONFLICT,

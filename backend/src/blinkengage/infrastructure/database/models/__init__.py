@@ -32,6 +32,15 @@ from blinkengage.infrastructure.database.models.erp import (
 )
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 from blinkengage.infrastructure.database.models.internal_note import InternalNote
+from blinkengage.infrastructure.database.models.invoicing import (
+    CreditNote,
+    CreditNoteLine,
+    DocumentNumberSequence,
+    Invoice,
+    InvoiceLine,
+    Payment,
+    PaymentAllocation,
+)
 from blinkengage.infrastructure.database.models.knowledge import (
     KnowledgeArticle,
     KnowledgeArticleTag,
@@ -104,6 +113,13 @@ __all__ = [
     "AttachmentValidationStatus",
     "AuditLog",
     "BillingPeriod",
+    "CreditNote",
+    "CreditNoteLine",
+    "DocumentNumberSequence",
+    "Invoice",
+    "InvoiceLine",
+    "Payment",
+    "PaymentAllocation",
     "UsagePeriodLine",
     "UsageRecord",
     "CompanyPricingProfileAssignment",

@@ -50,6 +50,23 @@ for more detail on how this page is put together.
   entitled to disappears from their navigation instead of failing when
   opened. **Nothing changes for existing companies:** with no overrides
   set, every feature stays on exactly as before.
+- **Invoice engine.** A closed billing month can now be turned into an
+  invoice, with a human-readable number (`INV-2026-000001`) assigned
+  when it is issued. Invoice lines are copied from the frozen usage
+  snapshot, so an invoice shows exactly what was measured and what it
+  cost at the time — changing a price afterwards never alters it.
+- **An issued invoice can never be edited.** Corrections are made by
+  issuing a **credit note** against it, so both the original document
+  and the correction exist for anyone reconciling them later. A reason
+  is always required, and a credit can never exceed the invoice.
+- **Payments are recorded independently of invoices**, then allocated,
+  so one bank transfer can settle several invoices and an overpayment
+  simply stays as a credit balance.
+- Invoices move through a strict lifecycle — Draft, Issued, Paid,
+  Overdue, Cancelled — and anything that lifecycle doesn't allow is
+  refused with a clear explanation rather than silently accepted. An
+  invoice with a payment against it can't be cancelled; it gets a credit
+  note instead.
 - **Usage engine.** Conversations are now metered automatically as they
   happen, and each company's usage accrues into a monthly billing
   period. At the end of the month the period is closed and **frozen**:

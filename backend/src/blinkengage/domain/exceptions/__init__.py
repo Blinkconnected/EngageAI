@@ -242,6 +242,25 @@ class RateAlreadyEffectiveError(DomainError):
         super().__init__(detail)
 
 
+class InvoiceStateError(DomainError):
+    """An operation the invoice's current state does not allow — issuing
+    something already issued, crediting a draft, cancelling an invoice
+    with money against it. Maps to 409: the request was well-formed and
+    would have been valid in a different state."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class InvoiceNotPayableError(DomainError):
+    """A payment cannot be applied as asked — the invoice is settled or
+    cancelled, the amounts do not fit, or the payment belongs to another
+    company. 409, for the same reason as ``InvoiceStateError``."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
 class ConversationNotInQueueError(DomainError):
     """Raised when ``ConversationService.pick()`` is called on a
     conversation with no ``queue_id`` — picking only makes sense for a

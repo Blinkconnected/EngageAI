@@ -22,6 +22,7 @@ from blinkengage.api.v1.endpoints import (
     knowledge,
     notifications,
     platform,
+    platform_invoicing,
     platform_pricing,
     platform_usage,
     queues,
@@ -50,6 +51,7 @@ api_router.include_router(auth.router)
 api_router.include_router(platform.router)
 api_router.include_router(platform_pricing.router)
 api_router.include_router(platform_usage.router)
+api_router.include_router(platform_invoicing.router)
 api_router.include_router(departments.router)
 api_router.include_router(teams.router)
 api_router.include_router(agents.router)

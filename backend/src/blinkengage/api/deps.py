@@ -34,6 +34,7 @@ from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.feature_service import FeatureService
 from blinkengage.application.services.internal_note_service import InternalNoteService
+from blinkengage.application.services.invoice_service import InvoiceService
 from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
@@ -106,6 +107,14 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
 from blinkengage.infrastructure.repositories.holiday_repository import HolidayRepository
 from blinkengage.infrastructure.repositories.internal_note_repository import (
     InternalNoteRepository,
+)
+from blinkengage.infrastructure.repositories.invoicing_repository import (
+    CreditNoteRepository,
+    DocumentNumberRepository,
+    InvoiceCompanyLookup,
+    InvoiceLineRepository,
+    InvoiceRepository,
+    PaymentRepository,
 )
 from blinkengage.infrastructure.repositories.knowledge_repository import (
     KnowledgeArticleRepository,
@@ -816,6 +825,23 @@ def get_usage_service(
         records=UsageRecordRepository(session),
         lines=UsagePeriodLineRepository(session),
         pricing=pricing,
+        events=events,
+    )
+
+
+def get_invoice_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> InvoiceService:
+    return InvoiceService(
+        invoices=InvoiceRepository(session),
+        lines=InvoiceLineRepository(session),
+        credit_notes=CreditNoteRepository(session),
+        payments=PaymentRepository(session),
+        numbers=DocumentNumberRepository(session),
+        periods=BillingPeriodRepository(session),
+        period_lines=UsagePeriodLineRepository(session),
+        companies=InvoiceCompanyLookup(session),
         events=events,
     )
 
