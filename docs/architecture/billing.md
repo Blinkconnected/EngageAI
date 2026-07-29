@@ -652,6 +652,94 @@ Under `/api/v1/platform/invoices`, gated by `get_platform_auth`:
 
 There is deliberately no update or delete for an invoice.
 
+## The financial audit trail
+
+Migration `c844f6c83199`. One append-only table,
+`financial_audit_events`, and it is **the single source of truth for
+financial investigations**.
+
+Every creation, state transition, payment allocation, credit note,
+cancellation and reversal writes a row:
+
+| Field | Notes |
+|---|---|
+| `event_type` | Past-tense fact (`invoice.issued`), not a command |
+| `entity_type`, `entity_id` | Which document |
+| `previous_state`, `new_state` | **Both**, always |
+| `actor_user_id`, `actor_email`, `actor_name` | Identity, by value |
+| `actor_is_system` | A sweep acted — distinct from "unknown" |
+| `occurred_at` | |
+| `correlation_id` | Ties one action's events together |
+| `reason` | Optional |
+| `amount`, `currency`, `details` | What moved, and the specifics |
+
+### Why both states
+
+"It became PAID" does not say whether it was issued or overdue
+beforehand, and that difference is exactly what a dispute turns on. The
+prior state is captured **before** the UPDATE — reading it afterwards
+returns the new one, which made early rows claim a document went from
+cancelled to cancelled. A test pins it.
+
+### Correlation
+
+Allocating a payment writes an allocation event *and* an invoice
+transition; issuing a credit note writes the note *and* settles the
+invoice. Matching those by timestamp stops working the moment two
+operators act in the same second, so they share a `correlation_id`.
+
+It comes from a `ContextVar` set per request by `CorrelationIdMiddleware`,
+honouring an inbound `X-Correlation-ID` (so a trace that began in a
+gateway stays joined) and echoing it on the response so a caller can
+quote it. Outside a request — a scheduled sweep, a consumer — one is
+generated per operation.
+
+Ambient rather than a parameter threaded through every signature: pass
+it by hand and every new code path silently defaults to "no correlation"
+the first time somebody forgets an argument.
+
+`GET /platform/invoices/audit/correlation/{id}` answers "what else
+changed when that happened", which is usually an investigator's second
+question and the hardest to reconstruct without it.
+
+### Why the actor is denormalized
+
+A `SET NULL` foreign key turns every action an ex-employee took into an
+anonymous one, and "who did this" is the second question every
+investigation asks. Email and name are stored as *values*.
+`actor_is_system` distinguishes "a scheduled job did this" from "we
+don't know who" — two answers a bare NULL would conflate.
+
+### Immutability
+
+Written on the **same session** as the change it describes, so they
+commit together or neither exists. An audit row written on a separate
+connection, or published through a broker, can disagree with the thing
+it records — and a trail that disagrees is worse than none, because it
+will be believed.
+
+The repository exposes `add` and reads only; there is no write endpoint;
+and a PostgreSQL trigger rejects `UPDATE` and `DELETE`. A trail that can
+be edited is not evidence.
+
+> **Route ordering.** The `/audit*` routes are registered *before*
+> `/{invoice_id}`. FastAPI matches in registration order, so with the
+> parameterised route first, "audit" is parsed as an invoice UUID and
+> every audit request 422s — the same class of bug the PayPal webhook
+> route hit earlier.
+
+### API
+
+| Endpoint | Answers |
+|---|---|
+| `GET /audit/entity/{type}/{id}` | This document's history, oldest first |
+| `GET /audit/correlation/{id}` | What else changed in that action |
+| `GET /audit?company_id=&entity_type=&event_type=` | Search |
+
+Pricing keeps its own dedicated trail (`pricing_audit_log`) — pricing is
+configuration rather than a financial document, and the two are read by
+different people asking different questions.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:

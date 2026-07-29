@@ -147,3 +147,33 @@ class AllocatePaymentRequest(BaseModel):
 
 
 InvoiceDetailResponse.model_rebuild()
+
+
+class FinancialAuditEventResponse(BaseModel):
+    """One entry in the financial audit trail.
+
+    Carries both states, because "it became PAID" does not say whether
+    it was issued or overdue beforehand — and that difference is what a
+    dispute turns on.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    event_type: str
+    entity_type: str
+    entity_id: uuid.UUID
+    company_id: uuid.UUID | None
+    previous_state: str | None
+    new_state: str | None
+    amount: Money | None
+    currency: str | None
+    actor_user_id: uuid.UUID | None
+    actor_email: str | None
+    actor_name: str | None
+    actor_is_system: bool
+    #: Ties together every event produced by one logical action.
+    correlation_id: str
+    reason: str | None
+    details: dict[str, object]
+    occurred_at: datetime

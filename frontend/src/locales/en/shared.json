@@ -8,7 +8,7 @@
     "retryButton": "Retry"
   },
   "Footer": {
-    "copyright": "© Blink Engage {{year}}"
+    "copyright": "© Blink Connected {{year}}"
   },
   "FormDialog": {
     "cancelButton": "Cancel",

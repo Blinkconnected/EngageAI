@@ -33,6 +33,7 @@ from blinkengage.application.services.department_service import DepartmentServic
 from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.feature_service import FeatureService
+from blinkengage.application.services.financial_audit_service import FinancialAuditRecorder
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.invoice_service import InvoiceService
 from blinkengage.application.services.knowledge_service import KnowledgeService
@@ -103,6 +104,9 @@ from blinkengage.infrastructure.repositories.erp_synced_record_repository import
 )
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
+)
+from blinkengage.infrastructure.repositories.financial_audit_repository import (
+    FinancialAuditRepository,
 )
 from blinkengage.infrastructure.repositories.holiday_repository import HolidayRepository
 from blinkengage.infrastructure.repositories.internal_note_repository import (
@@ -829,6 +833,12 @@ def get_usage_service(
     )
 
 
+def get_financial_audit_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> FinancialAuditRepository:
+    return FinancialAuditRepository(session)
+
+
 def get_invoice_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
@@ -843,6 +853,7 @@ def get_invoice_service(
         period_lines=UsagePeriodLineRepository(session),
         companies=InvoiceCompanyLookup(session),
         events=events,
+        audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
     )
 
 

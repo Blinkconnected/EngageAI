@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from blinkengage.api.correlation_middleware import CorrelationIdMiddleware
 from blinkengage.api.v1.router import api_router
 from blinkengage.core.changelog import ChangelogFormatError, current_release, load_releases
 from blinkengage.core.config import get_settings
@@ -86,6 +87,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+    # Outermost of the two, so every request — including one rejected by
+    # a later middleware — still carries an id that its audit events and
+    # log lines can be grouped by.
+    app.add_middleware(CorrelationIdMiddleware)
 
     register_exception_handlers(app)
 

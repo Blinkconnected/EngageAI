@@ -32,12 +32,17 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from blinkengage.application.services.financial_audit_service import (
+    AuditActor,
+    FinancialAuditRecorder,
+)
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
     EntityNotFoundError,
     InvoiceNotPayableError,
     InvoiceStateError,
 )
+from blinkengage.domain.financial_audit import FinancialEntityType, FinancialEventType
 from blinkengage.domain.invoicing import (
     CREDIT_NOTE_PREFIX,
     INVOICE_PREFIX,
@@ -99,6 +104,7 @@ class InvoiceService:
         period_lines: UsagePeriodLineRepository,
         companies: InvoiceCompanyLookup,
         events: DomainEventPublisher,
+        audit: FinancialAuditRecorder,
     ) -> None:
         self._invoices = invoices
         self._lines = lines
@@ -109,10 +115,13 @@ class InvoiceService:
         self._period_lines = period_lines
         self._companies = companies
         self._events = events
+        self._audit = audit
 
     # --- Generation -------------------------------------------------
 
-    async def generate_for_period(self, period_id: uuid.UUID) -> Invoice:
+    async def generate_for_period(
+        self, period_id: uuid.UUID, *, actor: AuditActor | None = None
+    ) -> Invoice:
         """Creates a **draft** invoice from a closed period's snapshot.
 
         Idempotent: a period that already has an invoice returns it
@@ -123,6 +132,7 @@ class InvoiceService:
         Only a *closed* period can be invoiced. Billing an open month
         would bill a number that is still moving.
         """
+        actor = actor or AuditActor.system_actor()
         period = await self._periods.get_by_id(period_id)
         if period is None:
             raise EntityNotFoundError("BillingPeriod", period_id)
@@ -183,12 +193,31 @@ class InvoiceService:
                 for line in snapshot
             ]
         )
+        await self._audit.record(
+            event_type=FinancialEventType.INVOICE_CREATED,
+            entity_type=FinancialEntityType.INVOICE,
+            entity_id=invoice.id,
+            company_id=invoice.company_id,
+            actor=actor,
+            previous_state=None,
+            new_state=InvoiceStatus.DRAFT.value,
+            amount=invoice.total_amount,
+            currency=invoice.currency,
+            details={
+                "billing_period_id": str(period_id),
+                "line_count": len(snapshot),
+            },
+        )
         return invoice
 
     # --- Lifecycle --------------------------------------------------
 
     async def issue(
-        self, *, invoice_id: uuid.UUID, actor_user_id: uuid.UUID | None = None
+        self,
+        *,
+        invoice_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None = None,
+        actor: AuditActor | None = None,
     ) -> Invoice:
         """Numbers the invoice and freezes it.
 
@@ -219,13 +248,30 @@ class InvoiceService:
                 "This invoice was issued by another request a moment ago. Reload it."
             )
 
+        await self._audit.record(
+            event_type=FinancialEventType.INVOICE_ISSUED,
+            entity_type=FinancialEntityType.INVOICE,
+            entity_id=invoice_id,
+            company_id=invoice.company_id,
+            actor=actor or AuditActor(user_id=actor_user_id),
+            previous_state=InvoiceStatus.DRAFT.value,
+            new_state=InvoiceStatus.ISSUED.value,
+            amount=invoice.total_amount,
+            currency=invoice.currency,
+            details={"invoice_number": number, "due_date": str(invoice.due_date)},
+        )
         await self._publish(
             invoice, "billing.invoice_issued", actor_user_id, {"invoice_number": number}
         )
         return await self._require(invoice_id)
 
     async def cancel(
-        self, *, invoice_id: uuid.UUID, reason: str, actor_user_id: uuid.UUID | None = None
+        self,
+        *,
+        invoice_id: uuid.UUID,
+        reason: str,
+        actor_user_id: uuid.UUID | None = None,
+        actor: AuditActor | None = None,
     ) -> Invoice:
         """Withdraws an invoice.
 
@@ -239,6 +285,10 @@ class InvoiceService:
         exists to prevent.
         """
         invoice = await self._require(invoice_id)
+        # Captured before the transition: reading `invoice.status` after
+        # the UPDATE returns the *new* state, and an audit row claiming a
+        # document went from cancelled to cancelled is worse than none.
+        previous_state = invoice.status.value
         assert_transition(invoice.status, InvoiceStatus.CANCELLED)
         if invoice.amount_paid > 0:
             raise InvoiceStateError(
@@ -256,6 +306,19 @@ class InvoiceService:
         )
         if not won:
             raise InvoiceStateError("This invoice changed state; reload it and try again.")
+        await self._audit.record(
+            event_type=FinancialEventType.INVOICE_CANCELLED,
+            entity_type=FinancialEntityType.INVOICE,
+            entity_id=invoice_id,
+            company_id=invoice.company_id,
+            actor=actor or AuditActor(user_id=actor_user_id),
+            previous_state=previous_state,
+            new_state=InvoiceStatus.CANCELLED.value,
+            amount=invoice.total_amount,
+            currency=invoice.currency,
+            reason=reason,
+            details={"invoice_number": invoice.invoice_number},
+        )
         await self._publish(invoice, "billing.invoice_cancelled", actor_user_id, {"reason": reason})
         return await self._require(invoice_id)
 
@@ -276,6 +339,23 @@ class InvoiceService:
                 target=InvoiceStatus.OVERDUE,
             ):
                 moved.append(invoice.id)
+                await self._audit.record(
+                    event_type=FinancialEventType.INVOICE_OVERDUE,
+                    entity_type=FinancialEntityType.INVOICE,
+                    entity_id=invoice.id,
+                    company_id=invoice.company_id,
+                    # Genuinely nobody: a scheduled sweep moved it. That
+                    # is a different answer from "we don't know who".
+                    actor=AuditActor.system_actor("Overdue sweep"),
+                    previous_state=InvoiceStatus.ISSUED.value,
+                    new_state=InvoiceStatus.OVERDUE.value,
+                    amount=invoice.total_amount,
+                    currency=invoice.currency,
+                    details={
+                        "invoice_number": invoice.invoice_number,
+                        "due_date": str(invoice.due_date),
+                    },
+                )
                 await self._publish(invoice, "billing.invoice_overdue", None, {})
         return moved
 
@@ -292,6 +372,7 @@ class InvoiceService:
         provider: str | None = None,
         provider_reference: str | None = None,
         actor_user_id: uuid.UUID | None = None,
+        actor: AuditActor | None = None,
     ) -> Payment:
         """Records money received. Not attached to an invoice.
 
@@ -323,6 +404,18 @@ class InvoiceService:
                 recorded_by_user_id=actor_user_id,
             )
         )
+        await self._audit.record(
+            event_type=FinancialEventType.PAYMENT_RECORDED,
+            entity_type=FinancialEntityType.PAYMENT,
+            entity_id=payment.id,
+            company_id=company_id,
+            actor=actor or AuditActor(user_id=actor_user_id),
+            previous_state=None,
+            new_state="recorded",
+            amount=payment.amount,
+            currency=payment.currency,
+            details={"provider": provider, "reference": reference},
+        )
         await self._events.publish(
             DomainEvent(
                 event_type="billing.payment_recorded",
@@ -342,6 +435,7 @@ class InvoiceService:
         invoice_id: uuid.UUID,
         amount: Decimal,
         actor_user_id: uuid.UUID | None = None,
+        actor: AuditActor | None = None,
     ) -> Invoice:
         """Applies part of a payment to an invoice.
 
@@ -377,12 +471,28 @@ class InvoiceService:
                 f"This invoice only has {outstanding} outstanding; cannot allocate {amount}."
             )
 
-        await self._payments.add_allocation(
+        allocation = await self._payments.add_allocation(
             PaymentAllocation(
                 payment_id=payment_id, invoice_id=invoice_id, amount=to_storage(amount)
             )
         )
         await self._invoices.apply_payment(invoice_id=invoice_id, amount=to_storage(amount))
+        await self._audit.record(
+            event_type=FinancialEventType.PAYMENT_ALLOCATED,
+            entity_type=FinancialEntityType.PAYMENT_ALLOCATION,
+            entity_id=allocation.id,
+            company_id=invoice.company_id,
+            actor=actor or AuditActor(user_id=actor_user_id),
+            previous_state=None,
+            new_state="allocated",
+            amount=to_storage(amount),
+            currency=invoice.currency,
+            details={
+                "payment_id": str(payment_id),
+                "invoice_id": str(invoice_id),
+                "invoice_number": invoice.invoice_number,
+            },
+        )
         await self._settle_if_covered(invoice_id, actor_user_id)
         return await self._require(invoice_id)
 
@@ -402,11 +512,29 @@ class InvoiceService:
         covered = invoice.amount_paid + invoice.amount_credited
         if covered < invoice.total_amount:
             return
+        # Same reason as in `cancel`: capture it before the UPDATE.
+        previous_state = invoice.status.value
         await self._invoices.transition(
             invoice_id=invoice_id,
             expected=invoice.status,
             target=InvoiceStatus.PAID,
             paid_at=datetime.now(UTC),
+        )
+        await self._audit.record(
+            event_type=FinancialEventType.INVOICE_PAID,
+            entity_type=FinancialEntityType.INVOICE,
+            entity_id=invoice_id,
+            company_id=invoice.company_id,
+            actor=AuditActor(user_id=actor_user_id),
+            previous_state=previous_state,
+            new_state=InvoiceStatus.PAID.value,
+            amount=invoice.total_amount,
+            currency=invoice.currency,
+            details={
+                "invoice_number": invoice.invoice_number,
+                "amount_paid": str(invoice.amount_paid),
+                "amount_credited": str(invoice.amount_credited),
+            },
         )
         await self._publish(invoice, "billing.invoice_paid", actor_user_id, {})
 
@@ -419,6 +547,7 @@ class InvoiceService:
         lines: list[CreditLineInput],
         reason: str,
         actor_user_id: uuid.UUID | None = None,
+        actor: AuditActor | None = None,
     ) -> CreditNote:
         """Corrects an issued invoice without touching it.
 
@@ -479,6 +608,23 @@ class InvoiceService:
             ],
         )
         await self._invoices.apply_credit(invoice_id=invoice_id, amount=note.total_amount)
+        await self._audit.record(
+            event_type=FinancialEventType.CREDIT_NOTE_ISSUED,
+            entity_type=FinancialEntityType.CREDIT_NOTE,
+            entity_id=note.id,
+            company_id=invoice.company_id,
+            actor=actor or AuditActor(user_id=actor_user_id),
+            previous_state=None,
+            new_state="issued",
+            amount=note.total_amount,
+            currency=note.currency,
+            reason=reason,
+            details={
+                "credit_note_number": note.credit_note_number,
+                "invoice_id": str(invoice_id),
+                "invoice_number": invoice.invoice_number,
+            },
+        )
         await self._settle_if_covered(invoice_id, actor_user_id)
         await self._events.publish(
             DomainEvent(

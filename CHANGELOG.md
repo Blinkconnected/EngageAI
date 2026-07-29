@@ -50,6 +50,18 @@ for more detail on how this page is put together.
   entitled to disappears from their navigation instead of failing when
   opened. **Nothing changes for existing companies:** with no overrides
   set, every feature stays on exactly as before.
+- **Financial audit trail.** Every invoice, credit note, payment and
+  allocation now records an immutable history: what happened, to which
+  document, what state it moved from and to, who did it, when, and why.
+  Actions taken automatically by the system are marked as such rather
+  than appearing to have no author. The record can't be edited or
+  deleted, and it's the single place to look when investigating a
+  charge.
+- **Related changes are linked together.** Everything that happens
+  because of one action — allocating a payment settles an invoice, for
+  example — shares a correlation ID, so "what else did that change?" is
+  one lookup instead of guesswork from timestamps. Callers can supply
+  their own ID and it's echoed back on every response.
 - **Invoice engine.** A closed billing month can now be turned into an
   invoice, with a human-readable number (`INV-2026-000001`) assigned
   when it is issued. Invoice lines are copied from the frozen usage

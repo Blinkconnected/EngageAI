@@ -31,6 +31,7 @@ from blinkengage.infrastructure.database.models.erp import (
     ErpSyncedRecord,
 )
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
+from blinkengage.infrastructure.database.models.financial_audit import FinancialAuditEvent
 from blinkengage.infrastructure.database.models.internal_note import InternalNote
 from blinkengage.infrastructure.database.models.invoicing import (
     CreditNote,
@@ -114,6 +115,7 @@ __all__ = [
     "AuditLog",
     "BillingPeriod",
     "CreditNote",
+    "FinancialAuditEvent",
     "CreditNoteLine",
     "DocumentNumberSequence",
     "Invoice",
