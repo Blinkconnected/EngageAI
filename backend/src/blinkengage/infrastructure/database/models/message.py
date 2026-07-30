@@ -15,6 +15,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     func,
@@ -156,6 +157,15 @@ class MessageAttachment(UUIDPrimaryKeyMixin, Base):
         nullable=False,
         default=AttachmentValidationStatus.PENDING,
     )
+    #: Pixel dimensions, read from the file at upload for images. Stored so
+    #: the conversation can reserve the right amount of space *before* the
+    #: image loads: without them a thread of photos jumps as each one
+    #: arrives, which on a long conversation means an agent loses their
+    #: place while reading. NULL for anything not measurable — video needs
+    #: a demuxer this deployment does not carry, so it reserves 16:9
+    #: instead.
+    width: Mapped[int | None] = mapped_column(Integer, default=None)
+    height: Mapped[int | None] = mapped_column(Integer, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

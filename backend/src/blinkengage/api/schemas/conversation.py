@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from blinkengage.domain.media import MediaKind
 from blinkengage.infrastructure.database.models.conversation import (
     ConversationPriority,
     ConversationStatus,
@@ -117,6 +118,27 @@ class AttachmentResponse(BaseModel):
     validation_status: AttachmentValidationStatus
     message_id: UUID | None
     created_at: datetime
+
+    #: What this is, for presentation. Decided server-side from the content
+    #: type so the console does not carry its own MIME table that drifts
+    #: from the one the upload path validates against.
+    kind: MediaKind
+    #: Whether the browser can show it in the conversation itself.
+    inline: bool
+    #: An image the browser may refuse to decode — HEIC from an iPhone,
+    #: TIFF. Flagged so the UI offers "open in a new tab" prominently
+    #: rather than showing a broken image and leaving an agent thinking the
+    #: customer sent a corrupt file.
+    needs_fallback: bool
+    #: Pixel dimensions where known. The console reserves this shape before
+    #: loading, so a thread of photos does not reflow as they arrive.
+    width: int | None
+    height: int | None
+    #: A short-lived, single-attachment URL the browser can put straight
+    #: into an `<img>` or `<video>`. Absent for anything not renderable
+    #: inline: handing out a media URL for a spreadsheet invites somebody
+    #: to try embedding it.
+    media_url: str | None = None
 
     model_config = {"from_attributes": True}
 

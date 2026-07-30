@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Query, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from minio import Minio
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.agent_service import AgentService
@@ -1252,6 +1253,34 @@ async def require_platform_write(
             ),
         )
     return platform
+
+
+async def get_media_company_id(
+    conversation_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> UUID:
+    """Which tenant a signed media request concerns.
+
+    Read from the conversation rather than taken from the URL. A signed
+    media link deliberately carries no identity — see
+    ``core/media_tokens.py`` — and putting a company id in the query string
+    would mean the signature was verified against a value the *caller*
+    supplied. Resolving it from the row instead means a token minted for one
+    tenant cannot verify against another's attachment even if the
+    attachment id were known.
+    """
+    from blinkengage.infrastructure.database.models.conversation import Conversation
+
+    company_id = (
+        await session.execute(
+            select(Conversation.company_id).where(Conversation.id == conversation_id)
+        )
+    ).scalar_one_or_none()
+    if company_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+        )
+    return company_id
 
 
 def get_platform_settings_service(

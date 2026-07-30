@@ -43,5 +43,23 @@
     "byYouSuffix": "بواسطتك",
     "notePreview": "\"{{note}}\"",
     "offlineChipLabel": "كان المستلم غير متصل"
+  },
+  "Media": {
+    "previewUnavailable": "المعاينة غير متاحة",
+    "formatUnsupported": "متصفحك لا يستطيع عرض صيغة هذه الصورة",
+    "videoUnsupported": "متصفحك لا يستطيع تشغيل هذا الفيديو",
+    "audioUnsupported": "متصفحك لا يستطيع تشغيل هذا الصوت",
+    "openImageAriaLabel": "عرض {{filename}} بملء الشاشة",
+    "openVideoAriaLabel": "عرض {{filename}} بملء الشاشة",
+    "audioAriaLabel": "صوت: {{filename}}",
+    "viewerAriaLabel": "عرض {{filename}}. استخدم مفتاحي السهم الأيمن والأيسر للتنقل بين المرفقات، وEscape للإغلاق.",
+    "expand": "عرض بملء الشاشة",
+    "openInNewTab": "فتح في تبويب جديد",
+    "download": "تنزيل",
+    "downloadAriaLabel": "تنزيل {{filename}}",
+    "close": "إغلاق",
+    "previous": "المرفق السابق",
+    "next": "المرفق التالي",
+    "position": "{{index}} من {{total}}"
   }
 }

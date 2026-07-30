@@ -43,5 +43,23 @@
     "byYouSuffix": "by you",
     "notePreview": "\"{{note}}\"",
     "offlineChipLabel": "Recipient was offline"
+  },
+  "Media": {
+    "previewUnavailable": "Preview unavailable",
+    "formatUnsupported": "Your browser can't display this image format",
+    "videoUnsupported": "Your browser can't play this video",
+    "audioUnsupported": "Your browser can't play this audio",
+    "openImageAriaLabel": "View {{filename}} full screen",
+    "openVideoAriaLabel": "View {{filename}} full screen",
+    "audioAriaLabel": "Audio: {{filename}}",
+    "viewerAriaLabel": "Viewing {{filename}}. Use the left and right arrow keys to move between attachments, Escape to close.",
+    "expand": "View full screen",
+    "openInNewTab": "Open in a new tab",
+    "download": "Download",
+    "downloadAriaLabel": "Download {{filename}}",
+    "close": "Close",
+    "previous": "Previous attachment",
+    "next": "Next attachment",
+    "position": "{{index}} of {{total}}"
   }
 }

@@ -1,7 +1,16 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 
 from blinkengage.api.deps import (
     get_ai_service,
@@ -9,8 +18,11 @@ from blinkengage.api.deps import (
     get_conversation_service,
     get_csat_service,
     get_internal_note_service,
+    get_media_company_id,
+    get_settings_dep,
     require_permission,
 )
+from blinkengage.api.range_requests import parse_range_header
 from blinkengage.api.schemas.conversation import (
     AttachmentResponse,
     ConversationResponse,
@@ -33,6 +45,13 @@ from blinkengage.application.services.conversation_service import ConversationSe
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.core.auth_context import AuthContext
+from blinkengage.core.config import Settings
+from blinkengage.core.media_tokens import MediaTokenError, sign, verify
+from blinkengage.domain.media import (
+    is_inline_renderable,
+    kind_for,
+    may_need_fallback,
+)
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationPriority,
@@ -40,13 +59,80 @@ from blinkengage.infrastructure.database.models.conversation import (
 )
 from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
 
+#: How long a browser may keep an attachment's bytes. An attachment is
+#: immutable once uploaded, so this is bounded only by the signed URL's
+#: own lifetime being shorter — the cache entry outlives the URL, which
+#: is what makes scrolling back up a conversation instant.
+MEDIA_CACHE_SECONDS = 60 * 60 * 24 * 7
+
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
-def _to_message_response(message: Message, attachments: list[MessageAttachment]) -> MessageResponse:
+def attachment_response(
+    attachment: MessageAttachment,
+    *,
+    conversation_id: UUID,
+    company_id: UUID,
+    settings: Settings,
+) -> AttachmentResponse:
+    """One attachment, with everything the console needs to render it.
+
+    The media URL is minted here rather than by a separate round trip per
+    attachment: a conversation with twenty photos would otherwise need
+    twenty extra requests before it could show anything, which is precisely
+    the stutter this work exists to remove.
+    """
+    kind = kind_for(attachment.content_type)
+    inline = is_inline_renderable(attachment.content_type)
+
+    media_url: str | None = None
+    if inline:
+        token = sign(
+            attachment_id=attachment.id, company_id=company_id, settings=settings
+        )
+        media_url = (
+            f"{settings.api_v1_prefix}/conversations/{conversation_id}"
+            f"/attachments/{attachment.id}/media"
+            f"?exp={token.expires_at}&sig={token.signature}"
+        )
+
+    return AttachmentResponse(
+        id=attachment.id,
+        filename=attachment.filename,
+        content_type=attachment.content_type,
+        size_bytes=attachment.size_bytes,
+        validation_status=attachment.validation_status,
+        message_id=attachment.message_id,
+        created_at=attachment.created_at,
+        kind=kind,
+        inline=inline,
+        needs_fallback=may_need_fallback(attachment.content_type),
+        width=attachment.width,
+        height=attachment.height,
+        media_url=media_url,
+    )
+
+
+def _to_message_response(
+    message: Message,
+    attachments: list[MessageAttachment],
+    *,
+    company_id: UUID,
+    settings: Settings,
+) -> MessageResponse:
     response = MessageResponse.model_validate(message)
     return response.model_copy(
-        update={"attachments": [AttachmentResponse.model_validate(a) for a in attachments]}
+        update={
+            "attachments": [
+                attachment_response(
+                    a,
+                    conversation_id=message.conversation_id,
+                    company_id=company_id,
+                    settings=settings,
+                )
+                for a in attachments
+            ]
+        }
     )
 
 
@@ -296,6 +382,7 @@ async def list_messages(
     auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
     service: Annotated[ConversationService, Depends(get_conversation_service)],
     page_params: Annotated[PageParams, Depends()],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> Page[MessageResponse]:
     items, total = await service.list_messages(
         company_id=auth.company_id,
@@ -310,7 +397,13 @@ async def list_messages(
     )
     return Page(
         items=[
-            _to_message_response(item, attachments_by_message.get(item.id, [])) for item in items
+            _to_message_response(
+                item,
+                attachments_by_message.get(item.id, []),
+                company_id=auth.company_id,
+                settings=settings,
+            )
+            for item in items
         ],
         total=total,
         page=page_params.page,
@@ -328,6 +421,7 @@ async def send_message(
     payload: SendMessageRequest,
     auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
     service: Annotated[ConversationService, Depends(get_conversation_service)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> MessageResponse:
     message = await service.send_reply(
         company_id=auth.company_id,
@@ -342,7 +436,12 @@ async def send_message(
         conversation_id=conversation_id,
         message_ids=[message.id],
     )
-    return _to_message_response(message, attachments_by_message.get(message.id, []))
+    return _to_message_response(
+        message,
+        attachments_by_message.get(message.id, []),
+        company_id=auth.company_id,
+        settings=settings,
+    )
 
 
 @router.post(
@@ -355,6 +454,7 @@ async def upload_attachment(
     auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
     service: Annotated[ConversationService, Depends(get_conversation_service)],
     file: Annotated[UploadFile, File()],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> AttachmentResponse:
     data = await file.read()
     attachment = await service.upload_attachment(
@@ -364,7 +464,15 @@ async def upload_attachment(
         content_type=file.content_type or "application/octet-stream",
         data=data,
     )
-    return AttachmentResponse.model_validate(attachment)
+    # Through the same builder as the message path, so an attachment gets
+    # its kind, dimensions and media URL the moment it is uploaded — the
+    # composer can then show a real preview before the reply is even sent.
+    return attachment_response(
+        attachment,
+        conversation_id=conversation_id,
+        company_id=auth.company_id,
+        settings=settings,
+    )
 
 
 @router.get("/{conversation_id}/attachments/{attachment_id}/download")
@@ -381,6 +489,104 @@ async def download_attachment(
         content=data,
         media_type=attachment.content_type,
         headers={"Content-Disposition": f'attachment; filename="{attachment.filename}"'},
+    )
+
+
+@router.get("/{conversation_id}/attachments/{attachment_id}/media")
+async def stream_attachment_media(
+    conversation_id: UUID,
+    attachment_id: UUID,
+    request: Request,
+    exp: int,
+    sig: str,
+    company: Annotated[UUID, Depends(get_media_company_id)],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> Response:
+    """Serves an attachment's bytes for **inline display**.
+
+    Authenticated by a short-lived signature in the query string rather
+    than a bearer token, because an ``<img src>`` cannot send a header and
+    a ``<video>`` needs range requests against a plain URL to let somebody
+    drag the scrubber. See ``core/media_tokens.py`` for why this is a bare
+    HMAC and not a second kind of session token.
+
+    Tenant ownership is re-checked against the database on every request,
+    not merely trusted from the signature: a leaked URL should be a leak of
+    one file for a few minutes, never a way to read another company's
+    conversation.
+
+    Supports ``Range``, which is what makes seeking work. Without it a
+    browser must download an entire video before playing any of it, and
+    seeking backwards downloads it again.
+
+    ``Content-Disposition: inline`` — the point of this endpoint. The
+    download endpoint next to it sends ``attachment`` instead, which is the
+    only difference an agent clicking "Download" should experience.
+    """
+    try:
+        verify(
+            attachment_id=attachment_id,
+            company_id=company,
+            expires_at=exp,
+            signature=sig,
+            settings=settings,
+        )
+    except MediaTokenError as exc:
+        # 403 rather than 401: there is no credential to re-present, and a
+        # browser prompting for a password over an expired image URL would
+        # be nonsense. The console re-fetches the message to get a fresh
+        # URL instead.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    attachment = await service.get_attachment(
+        company_id=company, conversation_id=conversation_id, attachment_id=attachment_id
+    )
+    if not is_inline_renderable(attachment.content_type):
+        # A signature is only ever minted for renderable kinds, so reaching
+        # here means somebody reused a URL against a different attachment
+        # id — which the signature would already have refused. Belt and
+        # braces, and it keeps "inline" meaning one thing.
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="This attachment is not displayed inline; download it instead.",
+        )
+
+    total = await service.attachment_size(
+        company_id=company, conversation_id=conversation_id, attachment_id=attachment_id
+    )
+    requested = parse_range_header(request.headers.get("range"), total_size=total)
+
+    # Immutable: an attachment's bytes never change once uploaded, so the
+    # browser may keep them for as long as it likes. `private` because the
+    # URL is per-tenant and must not be held by a shared proxy.
+    common = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": f"private, max-age={MEDIA_CACHE_SECONDS}, immutable",
+        "Content-Disposition": f'inline; filename="{attachment.filename}"',
+    }
+
+    if requested is None:
+        data = await service.read_attachment_bytes(
+            company_id=company,
+            conversation_id=conversation_id,
+            attachment_id=attachment_id,
+        )
+        return Response(content=data, media_type=attachment.content_type, headers=common)
+
+    start, end = requested
+    data = await service.read_attachment_bytes(
+        company_id=company,
+        conversation_id=conversation_id,
+        attachment_id=attachment_id,
+        offset=start,
+        length=end - start + 1,
+    )
+    return Response(
+        content=data,
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
+        media_type=attachment.content_type,
+        headers={**common, "Content-Range": f"bytes {start}-{end}/{total}"},
     )
 
 

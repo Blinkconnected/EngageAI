@@ -8,6 +8,117 @@ imports a `ChannelProvider` — the only place that happens is the
 outbound-reply path, and even there it goes through
 `ChannelProviderFactory`, never a concrete provider class.
 
+## Inbox media
+
+An agent handling a conversation needs to *see* what a customer sent. A
+screenshot of an error, a photo of a damaged delivery, a voice note
+describing a fault — each is the substance of the conversation, and a row
+of grey download chips makes an agent open six files to find the one that
+matters.
+
+### Signed media URLs
+
+An `<img src>` cannot send an `Authorization` header, and a `<video>` needs
+HTTP range requests against a plain URL to let somebody drag the scrubber.
+So inline media cannot go through the bearer-token download endpoint. Two
+obvious alternatives are both worse:
+
+- **Fetch to a blob URL** (what this used to do). Works for images, but the
+  browser must download the *entire* file before showing anything — no
+  native progressive rendering, and seeking a 50 MB video is impossible
+  without downloading all of it first.
+- **Presigned object-storage URLs.** Correct in principle, but they point a
+  browser directly at storage, which here is not reachable from outside
+  Docker — and the bucket's access policy would become part of the tenant
+  isolation story.
+
+Instead, `core/media_tokens.py` mints a signature over
+`(attachment_id, company_id, expiry)`, valid for 15 minutes, carried in the
+query string of our own endpoint. Deliberately **not a JWT**: a JWT here
+would be a second kind of session credential whose leak surface is a URL
+that ends up in browser history, logs and referrer headers. A bare HMAC
+carries no identity and grants nothing beyond reading those bytes.
+
+The endpoint re-checks tenant ownership against the database on every
+request regardless, and resolves the company from the *conversation row*
+rather than the URL — so a token minted for one tenant cannot verify
+against another's attachment. A leaked URL is a leak of one file for a few
+minutes, never an authorization bypass.
+
+### Range requests
+
+`GET …/attachments/{id}/media` supports `Range`, which is what makes
+seeking work. The suffix form (`bytes=-500`) matters more than it looks:
+browsers use it to read the metadata at the *end* of an MP4 that was not
+written for streaming, and refusing it makes those files silently
+unplayable.
+
+Responses are `Cache-Control: private, immutable` — an attachment's bytes
+never change once uploaded, which is what makes scrolling back up a long
+conversation instant. `private` because the URL is per-tenant.
+
+`Content-Disposition: inline` is the only difference from the download
+endpoint next to it, which sends `attachment`. That is exactly the
+difference an agent clicking "Download" should experience.
+
+### Reserving space before loading
+
+`message_attachments.width/height` are read from the file header at upload
+with Pillow — lazily, so it costs microseconds and never decompresses the
+image. The console reserves that aspect ratio *before* the bytes arrive.
+
+Without it a thread of photos reflows as each one lands, and on a long
+conversation that means an agent loses their place mid-sentence. It is the
+most noticeable performance defect a chat UI can have, and no amount of
+loading-spinner polish disguises it.
+
+Video dimensions need a demuxer this deployment does not carry, so video
+reserves 16:9 — right for what phones record, and honest about being an
+assumption. Reading it would mean adding ffmpeg.
+
+### Loading behaviour
+
+Nothing downloads until it is within roughly a screen and a half of the
+viewport (`useNearViewport`). Previously every image fetched as soon as it
+rendered, so opening a conversation with thirty photos meant thirty
+simultaneous authenticated downloads.
+
+Video and audio use `preload="metadata"`: `auto` would download every clip
+in the thread, and `none` would leave no duration, so an agent could not
+tell a 4-second clip from a 4-minute one.
+
+Once loaded, media stays loaded — unloading what scrolled away would mean
+re-downloading it on the way back.
+
+### The viewer
+
+Full-screen, with arrow keys moving between every image and video in the
+conversation and Escape closing. MUI's `Dialog` supplies the focus trap and
+focus restoration, so an agent who opened it with the keyboard lands back
+on the thumbnail they came from.
+
+The gallery list is **derived from the messages**, not registered by each
+child as it mounts: registration orders by render order, which is not
+conversation order once messages stream in — and → would land on whichever
+item happened to mount last.
+
+Documents are deliberately excluded from it. There is nothing to look at,
+and → landing on a spreadsheet in the middle of a set of photos is
+nonsense.
+
+### What is not shown inline
+
+`domain/media.py` decides, and is deliberately conservative. **SVG is
+classified as a file, not an image**: it is an image by MIME type and an
+executable document in practice, so rendering a customer-supplied one
+inline would be a script-injection surface.
+
+HEIC and TIFF are classified as images but flagged `needs_fallback` — they
+only decode natively on some platforms, so the UI offers "open in a new
+tab" rather than showing a broken image and leaving an agent thinking the
+customer sent a corrupt file.
+
+
 ## Data model
 
 Built exactly to the schema `docs/architecture/channels.md` (M11) already

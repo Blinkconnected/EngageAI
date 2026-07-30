@@ -7,6 +7,8 @@ import { EmptyState } from '../../shared/components/EmptyState'
 import { formatRelativeTime } from '../../shared/utils/formatRelativeTime'
 import { useRealtime } from '../realtime/context'
 import { AttachmentList } from './AttachmentList'
+import { MediaGalleryProvider } from './media/mediaGallery'
+import { MediaLightbox } from './media/MediaLightbox'
 import { useMessagesQuery } from './api'
 import type { Message } from './types'
 
@@ -176,27 +178,34 @@ export function MessageThread({ conversationId }: { conversationId: string }) {
   }
 
   return (
-    <Stack
-      ref={scrollContainerRef}
-      onScroll={handleScroll}
-      spacing={1.5}
-      sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 2 }}
-    >
-      {hasMore && (
-        <Button
-          size="small"
-          onClick={() => setVisibleCount((count) => Math.min(count + PAGE_STEP, MAX_VISIBLE))}
-          sx={{ alignSelf: 'center' }}
-        >
-          {t('MessageThread.loadOlderButton')}
-        </Button>
-      )}
-      {orderedMessages.map((message) => (
-        <MessageBubble key={message.id} message={message} conversationId={conversationId} />
-      ))}
-      {customerTyping && <TypingIndicator />}
-      <div ref={bottomRef} />
-    </Stack>
+    // The gallery wraps the thread so the lightbox can move between every
+    // image and video in the conversation with the arrow keys. Built from
+    // `orderedMessages`, so → follows conversation order rather than
+    // whatever order things happened to mount in.
+    <MediaGalleryProvider messages={orderedMessages}>
+      <Stack
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        spacing={1.5}
+        sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', p: 2 }}
+      >
+        {hasMore && (
+          <Button
+            size="small"
+            onClick={() => setVisibleCount((count) => Math.min(count + PAGE_STEP, MAX_VISIBLE))}
+            sx={{ alignSelf: 'center' }}
+          >
+            {t('MessageThread.loadOlderButton')}
+          </Button>
+        )}
+        {orderedMessages.map((message) => (
+          <MessageBubble key={message.id} message={message} conversationId={conversationId} />
+        ))}
+        {customerTyping && <TypingIndicator />}
+        <div ref={bottomRef} />
+      </Stack>
+      <MediaLightbox conversationId={conversationId} />
+    </MediaGalleryProvider>
   )
 }
 

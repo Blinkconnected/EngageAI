@@ -52,6 +52,18 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Images, video and audio now play inside the conversation.** A photo a
+  customer sends appears in the thread rather than as a file to download;
+  video and voice notes play in place. Clicking any of them opens a
+  full-screen viewer where the arrow keys move between everything in the
+  conversation, Escape closes, and Download and Open-in-new-tab are always
+  one click away. Media loads only as you scroll near it, so opening a
+  conversation with dozens of photos no longer downloads all of them at
+  once — and each one reserves its exact shape beforehand, so the thread
+  never jumps under your cursor as pictures arrive. Formats your browser
+  can't display say so and offer to open them in a new tab, instead of
+  showing a broken image that looks like the customer sent a corrupt file.
+
 - **Two data-reset scripts for development installations.**
   `scripts/purge_companies.sql` removes every company except one, and
   `scripts/purge_stale_cache.sh` clears the sessions and tokens left
@@ -301,6 +313,14 @@ for more detail on how this page is put together.
   each company gets is unaffected.
 
 ### Fixed
+
+- **Voice notes from customers were being silently thrown away.** Audio and
+  video weren't on the list of accepted file types, and inbound messages
+  are checked against that same list — so when a WhatsApp customer sent a
+  voice note, the agent simply never saw the message. Audio and video are
+  now accepted, including the exact formats WhatsApp and iPhones send.
+  Note that the 25 MB attachment limit still applies, and phone video
+  often exceeds it.
 
 - **The pricing history showed the wrong currency.** A change to a
   Jordanian company's price was recorded as US dollars — the amount was

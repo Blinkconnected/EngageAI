@@ -57,6 +57,7 @@ from blinkengage.infrastructure.database.models.message import (
     MessageStatus,
     MessageType,
 )
+from blinkengage.infrastructure.media.dimensions import measure
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.channel_config_repository import (
@@ -734,6 +735,10 @@ class ConversationService:
 
         storage_key = f"{conversation_id}/{uuid4()}/{filename}"
         await self._attachment_store.upload(key=storage_key, data=data, content_type=content_type)
+        # Read from the header, never raises — see infrastructure/media.
+        # Stored so the conversation reserves the right space before the
+        # image loads instead of reflowing as it arrives.
+        width, height = measure(content_type=content_type, data=data)
         return await self._attachments.add(
             MessageAttachment(
                 conversation_id=conversation_id,
@@ -742,7 +747,70 @@ class ConversationService:
                 content_type=content_type,
                 size_bytes=len(data),
                 validation_status=AttachmentValidationStatus.APPROVED,
+                width=width,
+                height=height,
             )
+        )
+
+    async def get_attachment(
+        self, *, company_id: UUID, conversation_id: UUID, attachment_id: UUID
+    ) -> MessageAttachment:
+        """One attachment's row, tenant-checked.
+
+        The tenant check is the point: the media endpoint authenticates with
+        a signature that carries no identity, so ownership has to be proved
+        against the database on every request rather than inferred from a
+        URL somebody supplied.
+        """
+        await self.get(company_id=company_id, conversation_id=conversation_id)
+        attachment = await self._attachments.get_by_id(
+            conversation_id=conversation_id, attachment_id=attachment_id
+        )
+        if attachment is None:
+            raise EntityNotFoundError("Attachment", attachment_id)
+        return attachment
+
+    async def attachment_size(
+        self, *, company_id: UUID, conversation_id: UUID, attachment_id: UUID
+    ) -> int:
+        """How large the stored object is.
+
+        Taken from the row rather than from storage: ``size_bytes`` was
+        recorded at upload and a range response has to state the total size,
+        so asking storage would be a network round trip for a number already
+        held locally.
+        """
+        attachment = await self.get_attachment(
+            company_id=company_id,
+            conversation_id=conversation_id,
+            attachment_id=attachment_id,
+        )
+        return attachment.size_bytes
+
+    async def read_attachment_bytes(
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        attachment_id: UUID,
+        offset: int | None = None,
+        length: int | None = None,
+    ) -> bytes:
+        """Bytes for inline display, whole or a range.
+
+        A range read is what lets somebody drag a video's scrubber: without
+        it the browser downloads the entire file before playing any of it,
+        and seeking backwards downloads it again.
+        """
+        attachment = await self.get_attachment(
+            company_id=company_id,
+            conversation_id=conversation_id,
+            attachment_id=attachment_id,
+        )
+        if offset is None:
+            return await self._attachment_store.download(key=attachment.storage_key)
+        return await self._attachment_store.download_range(
+            key=attachment.storage_key, offset=offset, length=length
         )
 
     async def download_attachment(

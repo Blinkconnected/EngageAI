@@ -110,6 +110,12 @@ export interface SendMessageRequest {
 export type AttachmentValidationStatus = 'pending' | 'approved' | 'rejected'
 
 /** Matches the backend's `AttachmentResponse`. */
+/** What an attachment is, for presentation. Decided server-side from the
+ * content type — the console deliberately carries no MIME table of its
+ * own, because a second one drifts from the one the upload path validates
+ * against. */
+export type MediaKind = 'image' | 'video' | 'audio' | 'document' | 'file'
+
 export interface Attachment {
   id: string
   filename: string
@@ -118,6 +124,20 @@ export interface Attachment {
   validation_status: AttachmentValidationStatus
   message_id: string | null
   created_at: string
+  kind: MediaKind
+  /** Whether the browser can show it in the conversation itself. */
+  inline: boolean
+  /** An image the browser may refuse to decode — HEIC from an iPhone,
+   * TIFF. Offer "open in a new tab" prominently rather than rendering a
+   * broken image and leaving an agent thinking the file is corrupt. */
+  needs_fallback: boolean
+  /** Known for images. Used to reserve the right space *before* loading,
+   * so a thread of photos does not reflow as each arrives. */
+  width: number | null
+  height: number | null
+  /** A short-lived URL usable directly in `<img>`/`<video>`. Null for
+   * anything not renderable inline. */
+  media_url: string | null
 }
 
 /** Matches the backend's `InternalNoteResponse`. */

@@ -65,6 +65,19 @@ class FakeAttachmentStore:
     async def download(self, *, key: str) -> bytes:
         return self._objects[key]
 
+    async def download_range(self, *, key: str, offset: int, length: int | None) -> bytes:
+        """Slices like MinIO does, so range behaviour is actually covered.
+
+        A fake that ignored the offsets and returned the whole object would
+        make every range test pass while the real endpoint served wrong
+        bytes — the worst kind of green test.
+        """
+        data = self._objects[key]
+        return data[offset : offset + length] if length else data[offset:]
+
+    async def size(self, *, key: str) -> int:
+        return len(self._objects[key])
+
     async def health_check(self) -> bool:
         return True
 

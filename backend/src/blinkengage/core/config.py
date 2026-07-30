@@ -102,6 +102,28 @@ class Settings(BaseSettings):
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            # --- Audio ---
+            # Voice notes are among the most common things a customer sends
+            # on WhatsApp, and every one of them was being **silently
+            # dropped**: the ingest consumer validates against this same
+            # list, so an unlisted type meant the agent simply never saw the
+            # message. `audio/ogg` with an opus codec is exactly what
+            # WhatsApp sends.
+            "audio/mpeg",
+            "audio/mp4",
+            "audio/aac",
+            "audio/ogg",
+            "audio/opus",
+            "audio/wav",
+            "audio/x-wav",
+            "audio/webm",
+            # --- Video ---
+            # `video/quicktime` is what an iPhone sends. Note the 25 MiB
+            # ceiling above still applies, and phone video routinely exceeds
+            # it — see docs/architecture/conversations.md.
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
         ]
     )
 

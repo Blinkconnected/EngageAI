@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { apiClient } from '../../shared/api/client'
+import { API_BASE_URL, apiClient } from '../../shared/api/client'
 import type { Page, PageParams } from '../../shared/api/pagination'
 import type {
   Attachment,
@@ -122,6 +122,15 @@ export async function fetchAttachmentBlobUrl(
     { responseType: 'blob' },
   )
   return URL.createObjectURL(response.data)
+}
+
+/** The authenticated download URL, for an `<a href>`.
+ *
+ * Only usable where the browser will send credentials — which it will not
+ * for a cross-origin request without cookies. Kept for the PDF "open"
+ * affordance, where the same-origin proxy makes it work. */
+export function attachmentDownloadHref(conversationId: string, attachmentId: string): string {
+  return `${API_BASE_URL}/conversations/${conversationId}/attachments/${attachmentId}/download`
 }
 
 export async function downloadAttachment(
