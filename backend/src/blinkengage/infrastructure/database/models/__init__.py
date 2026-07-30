@@ -7,6 +7,9 @@ the same side effect.
 
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
+from blinkengage.infrastructure.database.models.billing_summary import (
+    BillingDailySummary,
+)
 from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
 from blinkengage.infrastructure.database.models.channel_connection_log import (
     ChannelConnectionLog,
@@ -125,6 +128,7 @@ __all__ = [
     "AiDailyStats",
     "AttachmentValidationStatus",
     "AuditLog",
+    "BillingDailySummary",
     "BillingPeriod",
     "CreditNote",
     "FinancialAuditEvent",

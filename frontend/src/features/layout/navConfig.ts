@@ -8,6 +8,7 @@ import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
 import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
@@ -106,6 +107,12 @@ export const NAV_ITEMS: NavItem[] = [
     matchPath: '/reports',
     icon: AssessmentOutlinedIcon,
     permission: 'reports.read',
+  },
+  {
+    label: 'SideNav.navBilling',
+    path: '/billing',
+    icon: ReceiptLongOutlinedIcon,
+    permission: 'billing.read',
   },
   {
     label: 'SideNav.navErpNext',

@@ -20,6 +20,7 @@ finds nothing costs one indexed query and self-heals.
 """
 
 import asyncio
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -50,6 +51,9 @@ from blinkengage.infrastructure.repositories.usage_repository import (
     UsageRecordRepository,
 )
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+from blinkengage.infrastructure.tasks.billing_summary_sweep_task import (
+    build_billing_summary_service,
+)
 
 logger = get_logger(__name__)
 
@@ -88,7 +92,24 @@ async def _close_due_periods_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
     async with session_scope(session_factory) as session:
-        outcomes = await build_usage_service(session).close_due_periods()
+        summaries = build_billing_summary_service(session)
+
+        # Price the period's final day *before* closing it. Afterwards the
+        # period is settled and its aggregates are deliberately frozen, so a
+        # last day that was never aggregated would stay missing from the chart
+        # of a month that has already been invoiced.
+        now = datetime.now(UTC)
+        for period in await BillingPeriodRepository(session).due_for_close(now=now):
+            await summaries.refresh_period(period_id=period.id, now=now)
+
+        outcomes = await build_usage_service(session).close_due_periods(now=now)
+
+        # Freeze every day of what just closed. `finalize_days_before` leaves
+        # the current day open, which is right while a period is running and
+        # wrong the moment its invoice exists.
+        for outcome in outcomes:
+            if not outcome.already_closed:
+                await summaries.finalize_closed_period(period_id=outcome.period_id, now=now)
     for outcome in outcomes:
         if outcome.already_closed:
             continue

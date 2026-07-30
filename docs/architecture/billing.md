@@ -1243,6 +1243,201 @@ Writes are refused at the API with `require_platform_write`, not merely
 disabled in the console: a disabled button is a courtesy, not a
 permission.
 
+## The billing dashboard
+
+Every phase above is the operator's view of billing. This one is the
+customer's, and it exists for one product goal: **nobody should be
+surprised by their invoice.** Within about ten seconds a customer should
+know what they spent today, what they have spent this period, what is
+driving it, what they are likely to pay, and whether they need to act.
+
+`GET /billing/dashboard` returns all of it in one response;
+`GET /billing/estimate` returns only the figures that move, and is polled.
+Both are scoped to the caller's own company from the auth context —
+there is deliberately no `company_id` parameter anywhere under
+`/billing/*`, because the surest way to prevent one tenant reading
+another's spend is to give the caller no way to name a company.
+`billing.read` gates them, which is what that permission was created for.
+
+### Estimates are never invoices
+
+The one confusion this feature cannot afford is a customer reading an
+estimate as a bill. So the two are kept apart in the API (`estimated_*`
+fields, an `estimate` object) and on screen (a divider, its own heading,
+its own words). Draft invoices are not shown at all — a draft is the
+operator's working copy, and putting its number in front of a customer
+would present as a bill something nobody has yet stood behind. An issued
+invoice remains the only legal statement of what is owed.
+
+### Immutable daily aggregates
+
+`billing_daily_summary` holds one row per company, per metric, per day. It
+is the source for the daily cost chart, the daily usage chart, cost
+analytics and any future forecasting.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade delete |
+| billing_period_id | UUID | FK → `billing_periods.id`, **RESTRICT** — like invoices: this is the evidence of what a customer was shown, and deleting a period must not quietly destroy it |
+| usage_date | date | The day the usage *happened*, UTC — not the day it was aggregated |
+| metric_code / metric_version | varchar(60) / int | |
+| metric_display_name | varchar(120), nullable | Snapshotted, like an invoice line's: a metric renamed later must not relabel a historical chart |
+| quantity | numeric(18,6) | |
+| unit_amount | numeric(18,6), nullable | What the Pricing Resolver returned **for that day**. Null where no price was configured — a gap, not a free metric |
+| estimated_cost | numeric(18,6) | quantity × unit price, unrounded. An estimate; the invoice is the billing document |
+| currency | char(3) | |
+| projected_cost_snapshot | numeric(18,6), nullable | What the period was projected to total, as of this day |
+| projection_strategy | varchar(30), nullable | Which method produced that snapshot |
+| finalized_at | timestamptz, nullable | Null while the day is open. Once set, a trigger refuses UPDATE |
+| created_at / updated_at | timestamptz | |
+
+Unique on `(company_id, usage_date, metric_code)` — the upsert key, and
+what stops a re-run doubling a chart. A partial index on open days serves
+the refresh sweep; `(company_id, usage_date)` serves the chart query. Two
+triggers enforce the rules the application also enforces:
+`trg_billing_daily_summary_immutable` refuses an UPDATE to a finalized
+row, and `trg_billing_daily_summary_no_delete` refuses DELETE.
+
+Charts are **not** computed from `usage_records`. Charting thirty days
+would scan every event a company generated, on every page load, for
+numbers that cannot change.
+
+**A closed day is immutable.** Today's row is recomputed as usage
+arrives; once the day is over it is finalized and refused thereafter — by
+the repository (`refresh_open_day` is a guarded UPDATE), by the service,
+and by a PostgreSQL trigger so it also holds in a `psql` session. That
+matters because these rows are what a customer *was shown* during the
+month, and the promise is that the invoice matches what they saw. A
+historical row that silently recalculates — because a price changed, or
+an aggregation improved — breaks that promise in the least visible way
+possible.
+
+Each day is priced **at the price that applied on that day**, resolved at
+the last second of it, so a rate change on the 15th leaves the 1st–14th
+alone exactly as the invoice will. Nothing here prices anything itself:
+the Pricing Resolver rates every day, in one batch call per refresh, and
+a second pricing implementation behind a dashboard would eventually
+disagree with the bill.
+
+`projected_cost_snapshot` records what the period was projected to total
+as of each day. Frozen with the row at finalization, it answers "what did
+you tell me on the 12th?" — the first question after a surprising
+invoice, and the only way to find out whether the projections are any
+good.
+
+There is deliberately **no backfill**. The table starts empty and fills
+from the day it ships; `earliest_day` is surfaced so a chart can say
+"data starts here" rather than drawing a flat line at zero and implying
+no usage.
+
+### The allowance is applied on read
+
+The daily rows hold what a day's usage **cost**; the free monthly allowance is
+netted off when the dashboard is read.
+
+It has to work that way. The allowance is a *monthly* rule — the first 100
+conversations of the month are free — and a single day's row cannot know how
+much of it was left when that day began. Storing a netted figure per day would
+also mean rewriting yesterday's row the moment a backdated record changed the
+answer, and a closed day is immutable.
+
+So `_net_of_allowance` walks the rows in date order, spends the allowance
+against the earliest usage (which is what happens in reality), and reports
+each day's billable cost. Every figure a customer compares against a bill —
+today, month-to-date, each metric, the chart, the projection — is net.
+Quantities stay gross, with the free portion shown beside them, because a
+customer with a surprisingly small bill needs to see why and one whose
+allowance has run out needs to see that too.
+
+This reconciles with the invoice, which applies the same allowance to the
+period aggregate at close (`build_snapshot_line`): at a steady price both come
+to `allowance x price`.
+
+The chart reads from the **first of the month** containing the window's start,
+not from the start itself — otherwise narrowing the window to 7 days would
+hand out a second allowance at its left edge.
+
+**One known divergence.** The invoice prices a whole period at the rate in
+force when it closes; the daily aggregates price each day at that day's rate.
+The two differ only if a rate changes mid-period, and they differ because each
+is right about a different thing: an immutable daily row must not be re-priced
+by a later change, and an invoice must not be assembled from several rates
+without saying so. In that case the estimate is the better description of what
+happened and the invoice remains the document. Worth closing later by pricing
+invoice lines per rate period; not worth silently reconciling by making
+history mutable.
+
+### The projection engine
+
+`domain/projection.py` is framework-free arithmetic over daily totals,
+with three named strategies:
+
+- **`rolling_7_day`** — the mean of the last 7 complete days. The
+  default: recent enough to follow a change in usage, long enough to
+  absorb the weekly rhythm most businesses have. A three-day average
+  taken on a Monday would project the month from its quietest days.
+- **`daily_average`** — the mean of every complete day so far.
+- **`linear_pace`** — spend so far divided by the fraction of the period
+  elapsed, today included. The most responsive and the most volatile,
+  which is why it is offered rather than defaulted to.
+
+Three rules are non-negotiable.
+
+**Today is excluded from the averages.** A day that is two hours old is
+not a day; averaging it in makes the projection climb through every
+afternoon and reset at midnight. Today is instead treated as an average
+day when extrapolating.
+
+**Every projection states its method**, and it is the method that
+*actually ran*. Below 7 complete days `rolling_7_day` has nothing to roll
+over, so it falls back to `daily_average` and reports
+`effective_strategy` and `fell_back` — telling a customer "Rolling 7-Day
+Average" when three days were available is a small lie that costs a great
+deal of trust when noticed.
+
+**Insufficient data is an answer, not a zero.** `NoProjection` carries an
+explicit reason (no complete days, too early, no usage, period closed)
+and the UI shows the sentence for it. Returning 0, or a wild number from
+dividing by a fraction of a day, is worse than saying so.
+
+Absent days count as zero-cost days, not as missing data: a quiet Sunday
+happened and cost nothing, and averaging only the days that had usage
+would project a month of busy days from a week containing a weekend.
+
+A future phase lets a platform administrator choose the global default;
+the strategy is already a stored, named value rather than a hardcoded
+formula, so that is a setting rather than a migration.
+
+### Live refresh without a global sweep
+
+Estimated charges must update every 30–60 seconds while the page is open.
+The obvious implementation — a sweep every 30 seconds — re-prices every
+company on the installation whether or not anybody is looking.
+
+Instead a dashboard read refreshes **that company's** aggregates when
+they are more than `STALE_AFTER` (30s) old. However many people have the
+page open and however fast they poll, today's row is recomputed at most
+twice a minute, and the work happens only for companies being looked at.
+The refresh is idempotent, so a concurrent one is harmless.
+
+`blinkengage.billing.refresh_daily_summaries` still runs hourly, for what
+reads cannot cover: closing yesterday and recording the projection
+snapshot for the companies nobody visited. The period-close job refreshes
+a period one last time *before* closing it and finalizes every day
+*after*, so a month that has been invoiced has no open rows left.
+
+### Payment methods are configuration
+
+The country decides which methods are *offered*; the provider registry
+decides which are *configured*; the API intersects the two. Nothing is
+hardcoded — a method with no credentials behind it is reported
+unavailable rather than rendered as a button that cannot work, and a
+Jordanian customer is not offered PayPal merely because the code knows
+the word. Methods that need an operator (`bill_reference`, `manual`) are
+marked as such, so nobody waits for a receipt no automated process is
+going to send.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:

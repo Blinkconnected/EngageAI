@@ -10,6 +10,7 @@ from blinkengage.api.v1.endpoints import (
     ai,
     audit_logs,
     auth,
+    billing,
     channel_configs,
     company,
     conversations,
@@ -60,6 +61,9 @@ api_router.include_router(platform_ledger.router)
 api_router.include_router(platform_payments.router)
 api_router.include_router(platform_settings.router)
 api_router.include_router(payment_webhooks.router)
+# The tenant's own billing. Not feature-gated: every company is billed, and
+# a customer must always be able to see what they are being charged.
+api_router.include_router(billing.router)
 api_router.include_router(departments.router)
 api_router.include_router(teams.router)
 api_router.include_router(agents.router)

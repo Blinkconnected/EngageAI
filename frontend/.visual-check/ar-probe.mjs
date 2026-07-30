@@ -1,0 +1,23 @@
+import { chromium } from '@playwright/test'
+const [, , base, email, password] = process.argv
+const b = await chromium.launch()
+const p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage()
+await p.goto(base + '/login', { waitUntil: 'networkidle' })
+await p.locator('input').first().fill(email)
+await p.locator('input[type="password"]').first().fill(password)
+await p.getByRole('button', { name: /sign in/i }).click()
+await p.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 20000 })
+await p.evaluate(() => {
+  localStorage.setItem('blinkengage.language', 'ar')
+  localStorage.setItem('blinkengage.direction', 'rtl')
+  localStorage.setItem('blinkengage.themeMode', 'dark')
+})
+await p.goto(base + '/billing', { waitUntil: 'networkidle' })
+await p.waitForTimeout(3000)
+console.log('lang attr:', await p.evaluate(() => document.documentElement.lang))
+console.log('stored:', await p.evaluate(() => localStorage.getItem('blinkengage.language')))
+console.log('dir:', await p.evaluate(() => getComputedStyle(document.documentElement).direction))
+const t = await p.locator('body').innerText()
+console.log('first 400:', JSON.stringify(t.slice(0, 400)))
+await p.screenshot({ path: '.visual-check/billing-dashboard-rtl.png', fullPage: true })
+await b.close()

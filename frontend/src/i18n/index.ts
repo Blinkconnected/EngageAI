@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next'
 
 import enAgents from '../locales/en/agents.json'
 import enAuth from '../locales/en/auth.json'
+import enBilling from '../locales/en/billing.json'
 import enChangelog from '../locales/en/changelog.json'
 import enChannelsCore from '../locales/en/channelsCore.json'
 import enChannelsFields from '../locales/en/channelsFields.json'
@@ -32,6 +33,7 @@ import enShared from '../locales/en/shared.json'
 
 import arAgents from '../locales/ar/agents.json'
 import arAuth from '../locales/ar/auth.json'
+import arBilling from '../locales/ar/billing.json'
 import arChangelog from '../locales/ar/changelog.json'
 import arChannelsCore from '../locales/ar/channelsCore.json'
 import arChannelsFields from '../locales/ar/channelsFields.json'
@@ -69,6 +71,7 @@ import arShared from '../locales/ar/shared.json'
 export const NAMESPACES = [
   'agents',
   'auth',
+  'billing',
   'changelog',
   'channelsCore',
   'channelsFields',
@@ -129,6 +132,7 @@ void i18n.use(initReactI18next).init({
     en: {
       agents: enAgents,
       auth: enAuth,
+      billing: enBilling,
       changelog: enChangelog,
       channelsCore: enChannelsCore,
       channelsFields: enChannelsFields,
@@ -159,6 +163,7 @@ void i18n.use(initReactI18next).init({
     ar: {
       agents: arAgents,
       auth: arAuth,
+      billing: arBilling,
       changelog: arChangelog,
       channelsCore: arChannelsCore,
       channelsFields: arChannelsFields,

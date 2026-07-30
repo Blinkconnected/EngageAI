@@ -1,0 +1,204 @@
+{
+  "page": {
+    "title": "Billing",
+    "subtitle": "What you have spent, what it is being spent on, and what your invoice is expected to be. Estimated charges update automatically.",
+    "loading": "Loading your billing position…",
+    "liveChip": "Updated {{time}} · refreshes automatically",
+    "noOpenPeriod": "No billing period is open at the moment. Your next period opens as soon as there is usage to record."
+  },
+  "status": {
+    "active": "Up to date",
+    "payment_due": "Payment due",
+    "payment_overdue": "Payment overdue",
+    "payment_suspended": "Service suspended",
+    "currencyChip": "Billed in {{currency}}"
+  },
+  "overview": {
+    "today": "Spent today",
+    "monthToDate": "This billing period",
+    "projected": "Projected invoice",
+    "outstanding": "Outstanding balance",
+    "estimated": "Estimated, updates through the day",
+    "periodRange": "{{start}} – {{end}}",
+    "projectionMethod": "Method: {{method}}",
+    "notYetAvailable": "Not yet available",
+    "outstandingCaption": "On issued invoices · next due {{date}}",
+    "creditChip": "{{amount}} in credit",
+    "estimatedLabel": "Estimate"
+  },
+  "usage": {
+    "todayTitle": "Today's usage",
+    "todaySubtitle": "Estimated charges for usage recorded so far today.",
+    "todayEmpty": "No usage recorded today yet.",
+    "periodTitle": "This billing period",
+    "periodSubtitle": "Day {{elapsed}} of {{total}}. Estimated charges, not an invoice.",
+    "periodEmpty": "No usage recorded in this period yet.",
+    "metric": "What you used",
+    "quantity": "Used",
+    "included": "Included free",
+    "billable": "Chargeable",
+    "unitPrice": "Your rate",
+    "estimatedCost": "Estimated cost",
+    "share": "Share of cost",
+    "shareAriaLabel": "Share of estimated cost from {{metric}}",
+    "unpriced": "No rate set",
+    "todayTableAriaLabel": "Today's estimated charges by metric",
+    "periodTableAriaLabel": "This period's estimated charges by metric"
+  },
+  "projection": {
+    "title": "Projected invoice",
+    "methodLabel": "Projection method",
+    "methodChip": "Method: {{method}}",
+    "defaultSuffix": "default",
+    "daysMeasured": "Based on {{measured}} complete day(s) · day {{elapsed}} of {{total}}",
+    "actualToDate": "Recorded so far: {{actual}} · average per day: {{average}}",
+    "alternativesTitle": "Other methods, for comparison",
+    "notAvailableShort": "Not available",
+    "unavailable": "A projection is not available yet.",
+    "fellBackChip": "Fallback method",
+    "fellBackDetail": "{{requested}} needs 7 complete days in this period. Until then the projection uses {{used}}.",
+    "estimateDisclaimer": "A projection is an estimate based on your usage so far. Your invoice is calculated from actual usage when the period closes.",
+    "strategy": {
+      "rolling_7_day": "Rolling 7-Day Average",
+      "daily_average": "Current Daily Average",
+      "linear_pace": "Linear Projection (current pace)"
+    },
+    "explanation": {
+      "rolling_7_day": "The average of the last 7 complete days, applied to the days remaining. Recent enough to follow a change in your usage, long enough to absorb quieter weekends. Today is excluded because it is not finished.",
+      "daily_average": "The average of every complete day in this period so far, applied to the days remaining. Today is excluded because it is not finished.",
+      "linear_pace": "Your spend so far divided by how much of the period has elapsed, including today, scaled to the whole period."
+    },
+    "unavailableReason": {
+      "no_complete_days": "This billing period has no complete day yet. A projection will appear tomorrow.",
+      "too_early": "It is too early in the period for a projection to mean anything.",
+      "no_usage": "No chargeable usage has been recorded in this period yet.",
+      "period_closed": "This period has closed. Your invoice is the final figure."
+    }
+  },
+  "chart": {
+    "title": "Daily cost",
+    "subtitle": "{{total}} estimated · {{start}} – {{end}}",
+    "windowAriaLabel": "Chart period",
+    "finalSeries": "Closed days",
+    "openSeries": "Today (still accruing)",
+    "empty": "No costs recorded in this period.",
+    "dataStartsOn": "Daily data available from {{date}}.",
+    "window": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "period": "This period"
+    }
+  },
+  "timeline": {
+    "title": "What happens next",
+    "empty": "Nothing scheduled — no billing period is open.",
+    "event": {
+      "period_started": "Billing period started",
+      "accruing": "Usage accruing",
+      "period_closes": "Billing period closes",
+      "invoice_due": "Payment due",
+      "suspension_risk": "Service suspended if unpaid"
+    },
+    "detail": {
+      "period_started": "Usage began accumulating.",
+      "accruing": "Charges shown are estimates until the period closes.",
+      "period_closes": "Usage is frozen and the invoice is generated.",
+      "invoice_due": "{{terms}} days after the period closes.",
+      "suspension_risk": "{{suspendAfter}} days after the due date. Reminders are sent before this."
+    }
+  },
+  "payment": {
+    "title": "How you can pay",
+    "selfServe": "Pay online",
+    "byArrangement": "By arrangement",
+    "unavailable": "Unavailable",
+    "selfServeHint": "Available on your issued invoices.",
+    "arrangementHint": "Contact us for payment details and we will record your payment.",
+    "empty": "No payment methods are configured for your country yet.",
+    "method": {
+      "paypal": "PayPal",
+      "bill_reference": "Bank transfer / CliQ (bill reference)",
+      "manual": "Bank transfer"
+    }
+  },
+  "official": {
+    "title": "Issued invoices",
+    "subtitle": "Everything above is an estimate from your recorded usage. The invoices below are the official documents and the only statement of what is owed."
+  },
+  "invoices": {
+    "title": "Invoice history",
+    "subtitle": "Issued invoices only. An invoice is a copy of the usage it bills and never changes after it is issued.",
+    "empty": "No invoices have been issued yet. Your first one arrives when this billing period closes.",
+    "number": "Invoice",
+    "period": "Period",
+    "status": "Status",
+    "issued": "Issued",
+    "due": "Due",
+    "total": "Total",
+    "outstanding": "Outstanding",
+    "daysOverdue": "{{days}} day(s) overdue",
+    "tableAriaLabel": "Issued invoices",
+    "toggleLines": "Show what invoice {{number}} charges for",
+    "linesAriaLabel": "Invoice lines",
+    "loadingLines": "Loading invoice lines…",
+    "linesError": "Those invoice lines could not be loaded. Try again in a moment.",
+    "lineDescription": "Charge",
+    "lineSubtotal": "Amount",
+    "statusLabel": {
+      "draft": "Draft",
+      "issued": "Issued",
+      "paid": "Paid",
+      "overdue": "Overdue",
+      "cancelled": "Cancelled"
+    }
+  },
+  "prices": {
+    "title": "Your rates",
+    "subtitle": "The prices behind every figure on this page, resolved by the same pricing engine that produces your invoice.",
+    "tableAriaLabel": "Unit prices by metric",
+    "perUnit": "per {{unit}}",
+    "allowance": "Included free each month",
+    "source": "Rate",
+    "effectiveFrom": "In effect since",
+    "notPriced": "No rate set",
+    "sourceLabel": {
+      "company": "Negotiated for you",
+      "profile": "Plan rate",
+      "global": "Standard rate"
+    }
+  },
+  "configuration": {
+    "title": "How you are billed",
+    "model": "Billing model",
+    "cadence": "Invoices",
+    "terms": "Payment terms",
+    "termsValue": "{{days}} days from the end of the period",
+    "currency": "Currency",
+    "country": "Country",
+    "countryUnknown": "Not recorded",
+    "autoSuspend": "Non-payment",
+    "autoSuspendValue": "Service is suspended {{days}} days after the due date, with reminders before",
+    "autoSuspendDisabled": "Service is never suspended automatically",
+    "allowanceTitle": "Included free every month",
+    "allowanceValue": "{{quantity}} per month",
+    "allowanceHint": "Unused allowance does not carry over to the next month.",
+    "modelValue": "Usage-based, billed monthly in arrears",
+    "cadenceValue": "Monthly"
+  },
+  "metric": {
+    "CONVERSATION": "Conversations",
+    "AI_REPLY": "AI-assisted replies",
+    "AI_AUTOPILOT": "AI Autopilot replies",
+    "VOICE_MINUTE": "Voice minutes",
+    "STORAGE_GB_MONTH": "Storage"
+  },
+  "statusDetail": {
+    "nothing_due": "No outstanding balance. Nothing to do.",
+    "invoice_due_on": "An invoice is due on {{date}}.",
+    "invoice_awaiting": "An invoice is awaiting payment.",
+    "overdue": "A payment is overdue.",
+    "overdue_document": "{{document}} is {{days}} day(s) overdue.",
+    "overdue_with_suspension": "Payment is {{days}} day(s) overdue. Service will be suspended on {{date}} if it remains unpaid.",
+    "suspended": "Service is suspended for non-payment. Settle the outstanding invoices to restore access."
+  }
+}

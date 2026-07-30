@@ -227,14 +227,25 @@ export const conversationsHandlers = [
   http.post(`${API_BASE_URL}/conversations/:conversationId/attachments`, async ({ request }) => {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
+    const contentType = file?.type || 'image/png'
+    const isImage = contentType.startsWith('image/')
     const created: Attachment = {
       id: `att-${nextAttachmentId}`,
       filename: file?.name ?? 'file.png',
-      content_type: file?.type || 'image/png',
+      content_type: contentType,
       size_bytes: file?.size ?? 123,
       validation_status: 'approved',
       message_id: null,
       created_at: '2026-01-01T00:00:00Z',
+      // The media fields the API returns. Mirrored here rather than left
+      // off, so a component that renders an upload the way it renders a
+      // received file is exercised against the same shape.
+      kind: isImage ? 'image' : 'file',
+      inline: isImage,
+      needs_fallback: false,
+      width: isImage ? 800 : null,
+      height: isImage ? 600 : null,
+      media_url: isImage ? `/media/att-${nextAttachmentId}` : null,
     }
     nextAttachmentId += 1
     attachments = [...attachments, created]

@@ -8,7 +8,7 @@ PostgreSQL by a trigger, so it also survives a ``psql`` session.
 
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select, update
@@ -64,6 +64,19 @@ class BillingPeriodRepository:
             select(BillingPeriod)
             .where(BillingPeriod.company_id == company_id)
             .order_by(BillingPeriod.period_start.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def open_periods(self, *, limit: int = 1000) -> list[BillingPeriod]:
+        """Every company's current period — what the daily-aggregate sweep
+        walks. Ordered by start so a truncated run covers the oldest
+        periods first, which are the ones with days waiting to be
+        finalized."""
+        result = await self._session.execute(
+            select(BillingPeriod)
+            .where(BillingPeriod.status == BillingPeriodStatus.OPEN)
+            .order_by(BillingPeriod.period_start)
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -140,6 +153,45 @@ class UsageRecordRepository:
             select(UsageRecord).where(UsageRecord.idempotency_key == key)
         )
         return result.scalar_one_or_none()
+
+    async def aggregate_by_day(
+        self, *, period_id: uuid.UUID
+    ) -> list[tuple[date, str, int, Decimal, int]]:
+        """``(day, metric_code, metric_version, quantity, record_count)``.
+
+        Grouped by the **day the usage occurred**, in UTC, not the day it was
+        aggregated — a sweep that runs late must still attribute usage to
+        when it happened, or a cost chart moves spend between days.
+
+        Grouped by version as well as code, for the same reason
+        ``aggregate_for_period`` is: if a metric's definition changed
+        mid-period the two halves were measured differently and must not be
+        silently added together.
+        """
+        day = func.date(UsageRecord.occurred_at).label("day")
+        result = await self._session.execute(
+            select(
+                day,
+                UsageRecord.metric_code,
+                UsageRecord.metric_version,
+                func.sum(UsageRecord.quantity),
+                func.count(),
+            )
+            .where(UsageRecord.billing_period_id == period_id)
+            .group_by(day, UsageRecord.metric_code, UsageRecord.metric_version)
+            .order_by(day)
+        )
+        return [
+            (
+                # SQLite hands back a string where PostgreSQL gives a date.
+                row[0] if isinstance(row[0], date) else date.fromisoformat(str(row[0])),
+                str(row[1]),
+                int(row[2]),
+                Decimal(str(row[3])),
+                int(row[4]),
+            )
+            for row in result.all()
+        ]
 
     async def aggregate_for_period(
         self, period_id: uuid.UUID

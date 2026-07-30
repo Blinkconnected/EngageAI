@@ -100,6 +100,9 @@ const ChangelogPage = lazy(() =>
 const FeedbackPage = lazy(() =>
   import('../features/feedback/FeedbackPage').then((m) => ({ default: m.FeedbackPage })),
 )
+const BillingPage = lazy(() =>
+  import('../features/billing/BillingPage').then((m) => ({ default: m.BillingPage })),
+)
 const ReportsPage = lazy(() =>
   import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -203,6 +206,16 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="customers.read">
                 <CustomerProfilePage />
+              </RequirePermission>
+            }
+          />
+          {/* A customer's own billing. `billing.read` is on Owner and
+              Admin; what a company spends is not every agent's business. */}
+          <Route
+            path="billing"
+            element={
+              <RequirePermission permission="billing.read">
+                <BillingPage />
               </RequirePermission>
             }
           />

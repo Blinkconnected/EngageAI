@@ -22,6 +22,10 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.autopilot_service import AutopilotService
+from blinkengage.application.services.billing_dashboard_service import (
+    BillingDashboardService,
+)
+from blinkengage.application.services.billing_summary_service import BillingSummaryService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.collections_service import CollectionsService
 from blinkengage.application.services.company_service import CompanyService
@@ -89,6 +93,9 @@ from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
+from blinkengage.infrastructure.repositories.billing_summary_repository import (
+    BillingSummaryRepository,
+)
 from blinkengage.infrastructure.repositories.channel_config_repository import (
     ChannelConfigRepository,
 )
@@ -933,6 +940,44 @@ def get_payment_service(
         audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
         ledger=build_ledger_service(session),
         settings=settings,
+    )
+
+
+def get_billing_summary_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    pricing: Annotated[PricingService, Depends(get_pricing_service)],
+) -> BillingSummaryService:
+    return BillingSummaryService(
+        summaries=BillingSummaryRepository(session),
+        periods=BillingPeriodRepository(session),
+        records=UsageRecordRepository(session),
+        pricing=pricing,
+        session=session,
+    )
+
+
+def get_billing_dashboard_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    summary_service: Annotated[BillingSummaryService, Depends(get_billing_summary_service)],
+    invoice_service: Annotated[InvoiceService, Depends(get_invoice_service)],
+    pricing: Annotated[PricingService, Depends(get_pricing_service)],
+    providers: Annotated[PaymentProviderRegistry, Depends(get_payment_providers)],
+) -> BillingDashboardService:
+    """The tenant's billing dashboard.
+
+    Takes the payment provider registry so the payment methods it offers are
+    the ones this deployment has actually configured — a dashboard with a
+    hardcoded list eventually shows a button that cannot work.
+    """
+    return BillingDashboardService(
+        summaries=BillingSummaryRepository(session),
+        summary_service=summary_service,
+        periods=BillingPeriodRepository(session),
+        companies=CompanyRepository(session),
+        invoices=invoice_service,
+        ledger=build_ledger_service(session),
+        pricing=pricing,
+        providers=providers,
     )
 
 

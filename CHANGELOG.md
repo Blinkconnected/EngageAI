@@ -52,6 +52,76 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A billing dashboard for every company**, so an invoice at the end of
+  the month is never a surprise. Within a few seconds it answers what you
+  spent today, what you have spent this period, what is driving the cost,
+  what your invoice is expected to be, and whether you need to do
+  anything. Estimated charges refresh by themselves every 45 seconds while
+  the page is open — no reloading to find out whether a number moved.
+
+  The projected invoice is **never shown without saying how it was
+  calculated**. Three methods are available — a rolling 7-day average
+  (the default), the current daily average, and the current pace including
+  today — and you can switch between them and see what each one predicts.
+  When a period is too young for the rolling average to mean anything,
+  the projection falls back to the daily average and says so rather than
+  claiming a method it did not use. Early in a period, when there is
+  genuinely nothing to extrapolate from, it says that too instead of
+  showing a misleading zero.
+
+  Daily cost and usage charts (7 days, 30 days, or the current period)
+  read from a new immutable daily summary rather than being recomputed
+  from raw events on every page load. **A day that has closed never
+  changes again**: today's figures update as usage arrives, and once the
+  day is over its row is frozen — so a price change tomorrow cannot
+  silently rewrite what you were shown last Tuesday. Each day is priced at
+  the price that applied *on that day*, exactly as the invoice will show
+  it. Every day's projection is recorded as it stood, so "what was I told
+  on the 12th?" has an answer.
+
+  Estimates are net of your **free monthly allowance**, so what you watch
+  all month is what you will be charged — the first 100 conversations
+  each month show up as used but cost nothing, with the free and
+  chargeable amounts side by side so a small bill is explainable rather
+  than merely surprising.
+
+  Estimated charges and issued invoices are kept visibly apart. Everything
+  derived from usage is labelled an estimate; below a clear divider,
+  issued invoices remain the only official statement of what is owed, with
+  their frozen lines available on demand. Draft invoices are not shown at
+  all. The page also shows your rates and where each comes from (a
+  negotiated rate, your plan, or the standard rate), your free monthly
+  allowance and how much of it is left, the payment methods actually
+  available to you, the terms you are billed under, and a timeline through
+  to the date service would be suspended if an invoice went unpaid —
+  the one date that is hardest to work out and worst to discover by
+  surprise. Available to owners and administrators.
+
+- **We can now tell how long each request actually took, and which
+  database queries are responsible.** Until now the access log recorded
+  that a request happened but not how slow it was, and the database kept
+  no per-query statistics — so "the application feels slow" could only be
+  answered by guesswork. Every request is now logged with two timings: the
+  total time the user waited, and the time the backend alone spent. Those
+  two numbers separate a slow application from a slow connection, which a
+  single number cannot. Alongside them, PostgreSQL now keeps per-query
+  execution statistics, so the slowest queries can be listed directly
+  instead of inferred. This is measurement only — no behaviour changes,
+  and nothing about how requests are served is affected.
+
+- **Facebook Messenger and Instagram conversations now show the person's
+  name instead of a long number.** These two channels are unlike WhatsApp:
+  Meta's webhook tells us only an internal sender id, never a name, so
+  every new contact arrived in the inbox labelled with a seventeen-digit
+  number and stayed that way. Their name is now looked up and used for the
+  customer record. Where the name genuinely can't be read — Meta refuses
+  it for people whose profile the app has no access to, and for nearly
+  everyone while an app is still in development mode — the conversation
+  still arrives exactly as before, just labelled with the id; a missing
+  name is never allowed to cost a customer's message. Existing
+  conversations keep whatever name they were created with; this applies to
+  contacts seen from now on.
+
 - **Images, video and audio now play inside the conversation.** A photo a
   customer sends appears in the thread rather than as a file to download;
   video and voice notes play in place. Clicking any of them opens a
@@ -77,6 +147,15 @@ for more detail on how this page is put together.
   single transaction, it restores the database's immutability protections
   before committing, and it refuses to finish — changing nothing — if it
   finds it has touched a row belonging to any other company.
+
+- **A script that puts real names on Messenger and Instagram contacts
+  saved before names were looked up.**
+  `scripts/backfill_meta_customer_names.py` finds every contact on those
+  channels still labelled with the raw sender id and replaces it with the
+  person's name. It only touches a record whose name is still *exactly*
+  that id, so a name an agent corrected by hand is never overwritten, and
+  it reports what it would do until run with `--apply`. Contacts whose
+  profile Meta won't disclose are listed and left as they are.
 
 - **Two data-reset scripts for development installations.**
   `scripts/purge_companies.sql` removes every company except one, and
@@ -327,6 +406,15 @@ for more detail on how this page is put together.
   each company gets is unaffected.
 
 ### Fixed
+
+- **The Inbox now names the channel a conversation came in on**, instead
+  of showing only a coloured icon. The icon told you it was WhatsApp; it
+  didn't tell you *which* WhatsApp — and a company running a support
+  number and a sales number, or two Telegram bots, couldn't tell the two
+  apart without opening the conversation. The Channel column now shows
+  the channel's own name next to its icon, the same name it's given on
+  the Channels page. If a channel has since been deleted, its past
+  conversations say "Unknown channel" rather than showing a bare icon.
 
 - **Voice notes from customers were being silently thrown away.** Audio and
   video weren't on the list of accepted file types, and inbound messages

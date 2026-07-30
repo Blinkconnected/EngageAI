@@ -23,6 +23,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.events.relay",
         "blinkengage.infrastructure.tasks.sla_sweep_task",
         "blinkengage.infrastructure.tasks.billing_period_close_task",
+        "blinkengage.infrastructure.tasks.billing_summary_sweep_task",
         "blinkengage.infrastructure.tasks.collections_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
         "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
@@ -69,6 +70,17 @@ celery_app.conf.update(
         # close is idempotent, so running it often is free.
         "close-due-billing-periods": {
             "task": "blinkengage.billing.close_due_periods",
+            "schedule": 3600.0,
+        },
+        # Rebuilds the daily billing aggregates and finalizes days that
+        # have passed — see docs/architecture/billing.md. The dashboard
+        # refreshes a company's own aggregates when somebody reads them,
+        # so this is not what keeps the live figures current; it is what
+        # closes yesterday and records the projection snapshot for the
+        # companies nobody happened to look at. Hourly for the same
+        # reason as the period close, and idempotent for the same reason.
+        "refresh-billing-daily-summaries": {
+            "task": "blinkengage.billing.refresh_daily_summaries",
             "schedule": 3600.0,
         },
         # Reconciles pending gateway payments, then runs the dunning

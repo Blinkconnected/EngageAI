@@ -8,10 +8,11 @@ import { renderAuthenticated } from '../../test/renderAuthenticated'
 import { server } from '../../mocks/server'
 import { API_BASE_URL } from '../../mocks/apiBaseUrl'
 import { PlatformCompanyBillingPage } from './PlatformCompanyBillingPage'
+import type { EffectivePrice } from './types'
 
 const COMPANY_ID = '11111111-1111-1111-1111-111111111111'
 
-const GLOBAL_PRICED = {
+const GLOBAL_PRICED: EffectivePrice = {
   metric_code: 'CONVERSATION',
   display_name: 'Conversation',
   unit: 'conversation' as const,
@@ -24,7 +25,7 @@ const GLOBAL_PRICED = {
   shadowed: [],
 }
 
-const OVERRIDDEN = {
+const OVERRIDDEN: EffectivePrice = {
   ...GLOBAL_PRICED,
   unit_amount: '0.028000',
   scope: 'company' as const,
@@ -36,7 +37,7 @@ const OVERRIDDEN = {
   ],
 }
 
-const UNPRICED = {
+const UNPRICED: EffectivePrice = {
   metric_code: 'AI_AUTOPILOT',
   display_name: 'AI Autopilot reply',
   unit: 'reply' as const,
