@@ -48,7 +48,12 @@ from blinkengage.domain.exceptions import (
     RateAlreadyEffectiveError,
     SystemProfileNotPriceableError,
 )
-from blinkengage.domain.money import DEFAULT_CURRENCY, currency_for, to_storage
+from blinkengage.domain.money import (
+    BILLING_CURRENCY,
+    DEFAULT_CURRENCY,
+    currency_for,
+    to_storage,
+)
 from blinkengage.domain.pricing import (
     PRICING_EPOCH,
     AmbiguousPricingError,
@@ -291,6 +296,7 @@ class PricingService:
         at: datetime,
         company_id: uuid.UUID | None = None,
         profile_id: uuid.UUID | None = None,
+        currency: str = BILLING_CURRENCY.code,
     ) -> list[EffectivePricingItem]:
         """Every priceable metric for one target, for the console.
 
@@ -300,7 +306,14 @@ class PricingService:
         billing is a different question, and that one still fails loudly.
 
         With neither ``company_id`` nor ``profile_id`` this returns the
-        global price list.
+        global price list **in one currency**. That parameter is not
+        decoration: nothing converts, so a metric legitimately has one
+        global rate per currency, all of them open-ended and all covering
+        now. Without the filter every installation billing in more than one
+        currency reads as ambiguous and the price list refuses to render —
+        which is exactly what happened the day a second currency was seeded.
+        A company target ignores it and uses the company's own currency,
+        because that is the only one that can charge them.
         """
         metrics = priceable_metrics()
 
@@ -344,15 +357,19 @@ class PricingService:
                 covering = [
                     rate
                     for rate in rates
-                    if rate.effective_from <= at
+                    if rate.currency == currency
+                    and rate.effective_from <= at
                     and (rate.effective_until is None or rate.effective_until > at)
                 ]
                 if not covering:
                     continue
                 if len(covering) > 1:
+                    # Two rates in the *same* currency covering one instant is
+                    # still ambiguous, and still refused. That is the real
+                    # invariant; a second currency never was one.
                     raise AmbiguousPricingConfigurationError(
-                        f"{len(covering)} {scope.value}-scope prices for {metric.code} "
-                        f"cover {at.isoformat()}."
+                        f"{len(covering)} {scope.value}-scope {currency} prices for "
+                        f"{metric.code} cover {at.isoformat()}."
                     )
                 if winner is None:
                     winner = covering[0]
@@ -404,6 +421,11 @@ class PricingService:
         gap now.
         """
         now = datetime.now(UTC)
+        # Every currency a live company actually bills in — not the whole
+        # currency table. A metric priced in dollars is not covered once one
+        # customer bills in dinars, and an installation with no Jordanian
+        # customers should not be told a dinar rate is missing.
+        needed = await self._companies.currencies_in_use() or {BILLING_CURRENCY.code}
         report: list[MetricCoverage] = []
         for metric in priceable_metrics():
             rates = await self._rates.rates_for_target(
@@ -415,6 +437,7 @@ class PricingService:
                 if rate.effective_from <= now
                 and (rate.effective_until is None or rate.effective_until > now)
             ]
+            missing = sorted(needed - {rate.currency for rate in open_now})
             if not rates:
                 report.append(
                     MetricCoverage(metric.code, metric.display_name, False, "no_global_rate")
@@ -422,6 +445,15 @@ class PricingService:
             elif not open_now:
                 report.append(
                     MetricCoverage(metric.code, metric.display_name, False, "gap_in_coverage")
+                )
+            elif missing:
+                report.append(
+                    MetricCoverage(
+                        metric.code,
+                        metric.display_name,
+                        False,
+                        f"no_rate_in_{'_'.join(missing).lower()}",
+                    )
                 )
             else:
                 report.append(MetricCoverage(metric.code, metric.display_name, True, None))
@@ -477,7 +509,7 @@ class PricingService:
         if not is_priceable(metric_code):
             raise MetricNotPriceableError(metric_code)
 
-    def _validate_terms(
+    def validated_terms(
         self,
         *,
         pricing_model: PricingModel,
@@ -489,6 +521,11 @@ class PricingService:
         model_params: dict[str, object] | None,
     ) -> PricingTerms:
         """Refuses terms that cannot be charged, before anything is written.
+
+        Public because the quote endpoint normalises through it too. A preview
+        that validated differently from a write would be worth less than no
+        preview: an operator would approve a number and then be refused, or —
+        worse — approve "250" and store "250.000000".
 
         Two gates, and they are different questions. ``ENABLED_PRICING_MODELS``
         is a *product* decision — which models this release offers — while
@@ -646,7 +683,7 @@ class PricingService:
         A half-applied price change is not a state this system can be in.
         """
         self._validate_metric(metric_code)
-        terms = self._validate_terms(
+        terms = self.validated_terms(
             pricing_model=pricing_model,
             unit_amount=unit_amount,
             currency=currency_for(currency).code,
@@ -670,8 +707,15 @@ class PricingService:
         ):
             raise EntityNotFoundError("Company", company_id)
 
+        # Per currency: a dollar price and a dinar price for the same metric
+        # are two price lists, not a conflict, and closing one must not touch
+        # the other.
         current = await self._rates.open_rate_for(
-            scope=scope, metric_code=metric_code, company_id=company_id, profile_id=profile_id
+            scope=scope,
+            metric_code=metric_code,
+            currency=terms.currency,
+            company_id=company_id,
+            profile_id=profile_id,
         )
         self._assert_expectation(current, expected_current_rate_id, expect_no_current_rate)
 
@@ -825,8 +869,14 @@ class PricingService:
         it was.
         """
         self._validate_effective_from(effective_from, allow_backdating=False, reason=reason)
+        # The company's own currency: an override can only ever have been
+        # written in the one they are billed in.
+        currencies = await self._companies.billing_currencies([company_id])
         current = await self._rates.open_rate_for(
-            scope=PricingScope.COMPANY, metric_code=metric_code, company_id=company_id
+            scope=PricingScope.COMPANY,
+            metric_code=metric_code,
+            currency=currencies.get(company_id, BILLING_CURRENCY.code),
+            company_id=company_id,
         )
         if current is None:
             raise EntityNotFoundError("PricingRate", f"{company_id}/{metric_code}")

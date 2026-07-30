@@ -32,11 +32,8 @@ import {
   useResolvePriceMutation,
   useSetCompanyRateMutation,
 } from './api'
-import type {
-  EffectivePrice,
-  PricingScope,
-  ResolveUsagePriceResponse,
-} from './types'
+import type { EffectivePrice, PricingScope, ResolveUsagePriceResponse } from './types'
+import { metricName } from './metricName'
 
 /** Where a price came from. Rendered from the resolver's own `scope`
  * field — the console never works out precedence for itself, because a
@@ -155,9 +152,7 @@ export function PlatformCompanyBillingPage() {
         </Typography>
       </Box>
 
-      {readOnly && (
-        <Alert severity="info">{t('PlatformCompanyBillingPage.readOnlyNotice')}</Alert>
-      )}
+      {readOnly && <Alert severity="info">{t('PlatformCompanyBillingPage.readOnlyNotice')}</Alert>}
 
       {/* --- Pricing profile ------------------------------------------ */}
       <Card variant="outlined">
@@ -204,9 +199,7 @@ export function PlatformCompanyBillingPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell>{t('PlatformCompanyBillingPage.colMetric')}</TableCell>
-                    <TableCell align="right">
-                      {t('PlatformCompanyBillingPage.colPrice')}
-                    </TableCell>
+                    <TableCell align="right">{t('PlatformCompanyBillingPage.colPrice')}</TableCell>
                     <TableCell>{t('PlatformCompanyBillingPage.colSource')}</TableCell>
                     <TableCell>{t('PlatformCompanyBillingPage.colFrom')}</TableCell>
                     <TableCell>{t('PlatformCompanyBillingPage.colUntil')}</TableCell>
@@ -217,7 +210,7 @@ export function PlatformCompanyBillingPage() {
                   {data.items.map((item) => (
                     <TableRow key={item.metric_code} hover>
                       <TableCell>
-                        <Typography variant="body2">{item.display_name}</Typography>
+                        <Typography variant="body2">{metricName(t, item)}</Typography>
                         <Typography variant="caption" color="text.secondary">
                           {t('PlatformCompanyBillingPage.perUnit', { unit: item.unit })}
                         </Typography>
@@ -235,9 +228,7 @@ export function PlatformCompanyBillingPage() {
                             <Button
                               size="small"
                               onClick={() =>
-                                setExpanded(
-                                  expanded === item.metric_code ? null : item.metric_code,
-                                )
+                                setExpanded(expanded === item.metric_code ? null : item.metric_code)
                               }
                             >
                               {t('PlatformCompanyBillingPage.shadowedToggle', {
@@ -270,11 +261,7 @@ export function PlatformCompanyBillingPage() {
                           : t('PlatformCompanyBillingPage.openEnded')}
                       </TableCell>
                       <TableCell align="right">
-                        <Button
-                          size="small"
-                          disabled={readOnly}
-                          onClick={() => setEditing(item)}
-                        >
+                        <Button size="small" disabled={readOnly} onClick={() => setEditing(item)}>
                           {t('PlatformCompanyBillingPage.overrideButton')}
                         </Button>
                       </TableCell>
@@ -309,7 +296,7 @@ export function PlatformCompanyBillingPage() {
               >
                 {data.items.map((item) => (
                   <MenuItem key={item.metric_code} value={item.metric_code}>
-                    {item.display_name}
+                    {metricName(t, item)}
                   </MenuItem>
                 ))}
               </TextField>
@@ -343,9 +330,7 @@ export function PlatformCompanyBillingPage() {
                     amount: preview.priced[0].unit_amount,
                     currency: preview.priced[0].currency,
                     unit: unitFor(data.items, preview.priced[0].metric_code),
-                    source: t(
-                      `PlatformCompanyBillingPage.source.${preview.priced[0].scope}`,
-                    ),
+                    source: t(`PlatformCompanyBillingPage.source.${preview.priced[0].scope}`),
                   })}
                 </Typography>
               </Alert>
@@ -388,9 +373,7 @@ export function PlatformCompanyBillingPage() {
                       <TableCell>{t('PlatformCompanyBillingPage.colWhen')}</TableCell>
                       <TableCell>{t('PlatformCompanyBillingPage.colChange')}</TableCell>
                       <TableCell>{t('PlatformCompanyBillingPage.colMetric')}</TableCell>
-                      <TableCell align="right">
-                        {t('PlatformCompanyBillingPage.colWas')}
-                      </TableCell>
+                      <TableCell align="right">{t('PlatformCompanyBillingPage.colWas')}</TableCell>
                       <TableCell align="right">
                         {t('PlatformCompanyBillingPage.colBecame')}
                       </TableCell>
@@ -413,8 +396,7 @@ export function PlatformCompanyBillingPage() {
                         </TableCell>
                         <TableCell>{formatDate(entry.effective_from)}</TableCell>
                         <TableCell>
-                          {entry.changed_by_email ??
-                            t('PlatformCompanyBillingPage.systemActor')}
+                          {entry.changed_by_email ?? t('PlatformCompanyBillingPage.systemActor')}
                         </TableCell>
                         <TableCell>{entry.reason ?? '—'}</TableCell>
                       </TableRow>
@@ -572,7 +554,7 @@ function OverrideDialog({
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>
-        {t('PlatformCompanyBillingPage.overrideTitle', { metric: item.display_name })}
+        {t('PlatformCompanyBillingPage.overrideTitle', { metric: metricName(t, item) })}
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>

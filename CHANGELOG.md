@@ -14,7 +14,97 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **A separate Billing Console.** Pricing has moved out of the Platform
+  Console into its own area at `/platform/billing`. Running the
+  installation and running the revenue system need the same authority
+  but are not the same job, and each now has its own screen and its own
+  navigation instead of sharing one crowded bar. A link in each header
+  crosses to the other. A company's billing page moved with it; the
+  **Billing** button on the company list goes to the new address.
+
+  Invoices and collections will land here as they get screens — the
+  engine behind them already exists.
+
+- **Prices are now edited in the console.** The pricing screen has a
+  Usage Metric Pricing Editor: pick a metric, choose how it charges,
+  build its tier table, set what is included free and any minimum, and
+  see what a sample month would cost before saving. Changing a rate no
+  longer needs a database migration.
+
+  The editor is generic — it takes the metric as a parameter and builds
+  every field from what the server says. The day a token or a
+  phone-minute meter ships, it prices there with no change. Models that
+  are built but not yet offered are shown greyed out with a "coming"
+  label, so an operator can see what is arriving without configuring a
+  price that would never charge.
+
+  Two rules are enforced by the shape of the form rather than by an error
+  after the fact: the top tier step has no upper bound and cannot be
+  deleted, so no customer can ever exceed the table and find no price;
+  and switching a metric from flat to tiered carries its current rate
+  into the first step, so changing how a price is *structured* never
+  silently changes what it *charges*.
+
+  **The preview is calculated by the billing engine, not the browser** —
+  the same calculation that produces the invoice. A second
+  implementation in the console is how a preview ends up disagreeing with
+  a bill.
+
+  Metric names and pricing model names are now translated, so the Arabic
+  console reads as Arabic rather than showing English names in a
+  right-to-left page.
+
+- **Pricing simulation.** A new endpoint prices terms that were never
+  saved, writing nothing. It answers both "what would this rate charge?"
+  — which is what the editor's preview asks — and "what would last month
+  have cost under this table?", given a closed month's own recorded
+  usage. Comparing pricing scenarios no longer means changing a price to
+  find out.
+
+### Fixed
+
+- **Prices could not be set in a second currency, and the pricing screen
+  broke once one existed.** Blink Engage bills in dollars and dinars, and
+  a price in each is normal — nothing converts between them. But the
+  system treated a metric as having one price rather than one per
+  currency, so setting a dinar price was refused because a dollar price
+  existed, and the pricing screen refused to load at all, reporting the
+  two as a contradiction.
+
+  Prices are now set, read and checked per currency throughout. The
+  pricing screen has a currency selector, and a company's own page always
+  shows the currency they are actually billed in.
+
+- **A metric priced in only one currency was reported as fully priced.**
+  The coverage check called a metric covered when it had any price at
+  all, so a metric priced only in dollars looked healthy while a
+  Jordanian customer could not be billed for it — a gap that would have
+  surfaced as an unpriced month. It now checks each currency that a real
+  company bills in, and stays quiet about currencies nobody uses.
+
 ### Changed
+
+- **Metering and pricing are now formally separate.** Measuring what
+  happened and deciding what it costs are different jobs, and they no
+  longer share anything. A usage record holds the company, the metric,
+  how much, when, and what it refers to — and no amount, no currency and
+  no rate. The meter is built without a pricing engine at all: billing
+  could be re-priced from scratch and every measurement would still
+  stand.
+
+  This is what makes it possible to re-price history without touching a
+  single record, to try out a rate before committing to it, and to give
+  one customer negotiated terms later without rewriting what was already
+  measured.
+
+  **Measurements are now immutable in the database itself**, not only in
+  the code. Usage records join billable events in refusing to be edited
+  or deleted at all. A correction is a new, attributed entry — never a
+  quiet change to what was recorded. And a month that has been closed
+  records the exact instant its prices were resolved, so re-running it
+  years later reaches the same numbers.
 
 - **Pricing is now generic across usage metrics.** Blink Engage will bill
   more than messages — AI tokens, generated images, transcription and

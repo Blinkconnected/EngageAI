@@ -38,6 +38,8 @@ from blinkengage.domain.pricing_scope import PricingScope
 MoneyOut = Annotated[Decimal, PlainSerializer(str, return_type=str)]
 MoneyIn = Annotated[Decimal, Field(max_digits=18, decimal_places=6, ge=0)]
 
+_FROM_ATTRIBUTES = ConfigDict(from_attributes=True)
+
 
 class BillableMetricResponse(BaseModel):
     """One usage metric in the catalog.
@@ -105,7 +107,12 @@ class EffectivePricingResponse(BaseModel):
     company_id: uuid.UUID | None
     profile_id: uuid.UUID | None
     profile_name: str | None
+    #: Which price list this is. One rate per currency is in force at once and
+    #: nothing converts, so the list only means something once you know which.
     currency: str
+    #: The other lists that could be asked for, so a console can offer them
+    #: without keeping its own copy of the currency table.
+    available_currencies: list[str]
     items: list[EffectivePriceResponse]
 
 
@@ -141,6 +148,53 @@ class PricingModelInfoResponse(BaseModel):
     enabled: bool
     implemented: bool
     requires_tiers: bool
+
+
+class QuoteRequest(BaseModel):
+    """What would these terms charge for this much usage?
+
+    Nothing is stored and nothing is resolved: the terms come from the caller,
+    so this answers a hypothetical. It exists because a console must never do
+    the arithmetic itself — a tier table applied in TypeScript would
+    eventually disagree with the invoice, and the preview is exactly where an
+    operator decides a price is right.
+
+    It is also the simulation primitive: the same call answers "what would
+    last month have cost under this table?" when given last month's quantity.
+    """
+
+    metric_code: str
+    currency: str = Field(default=DEFAULT_CURRENCY.code, min_length=3, max_length=3)
+    quantity: MoneyIn
+    pricing_model: PricingModel = PricingModel.FLAT
+    unit_amount: MoneyIn
+    tiers: list[TierInput] | None = None
+    included_quantity: MoneyIn | None = None
+    minimum_charge: MoneyIn | None = None
+    #: Same field a write carries, so a model whose terms live here rather
+    #: than in a tier table (a fixed monthly fee, say) previews too.
+    model_params: dict[str, Any] = Field(default_factory=dict)
+
+
+class QuoteResponse(BaseModel):
+    """What the pricing engine says those terms cost.
+
+    The same ``charge()`` the period close uses, asked a question rather than
+    told to write something down.
+    """
+
+    model_config = _FROM_ATTRIBUTES
+
+    model: PricingModel
+    quantity: MoneyOut
+    included_quantity: MoneyOut
+    billable_quantity: MoneyOut
+    unit_amount: MoneyOut
+    tier_up_to: MoneyOut | None
+    tier_index: int
+    subtotal: MoneyOut
+    currency: str
+    minimum_applied: bool
 
 
 class _RateWriteRequest(BaseModel):

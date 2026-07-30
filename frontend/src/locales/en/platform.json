@@ -4,8 +4,14 @@
     "subtitle": "Manage companies on this installation",
     "signOut": "Sign out",
     "companies": "Companies",
+    "mail": "Email",
+    "billingConsole": "Billing Console"
+  },
+  "BillingConsole": {
+    "title": "Billing Console",
+    "subtitle": "What things cost, and who owes what",
     "pricing": "Pricing",
-    "mail": "Email"
+    "platformConsole": "Platform Console"
   },
   "PlatformCompaniesPage": {
     "title": "Companies",
@@ -57,6 +63,8 @@
     "title": "Pricing",
     "description": "What companies pay per unit of usage. Company overrides beat pricing profiles, which beat the global default.",
     "scopeLabel": "Showing prices for",
+    "currencyLabel": "Currency",
+    "currencyHint": "Rates never convert.",
     "globalDefault": "Global default",
     "profileHint": "Prices set here apply to every company assigned to {{name}}, unless that company has its own override.",
     "columnMetric": "Metric",
@@ -69,10 +77,22 @@
     "columnReason": "Reason",
     "perUnit": "per {{unit}}",
     "unit": {
+      "message": "message",
       "conversation": "conversation",
       "reply": "reply",
+      "token": "token",
+      "image": "image",
+      "character": "character",
       "minute": "minute",
-      "gigabyte_month": "GB-month"
+      "gigabyte": "GB",
+      "gigabyte_month": "GB-month",
+      "request": "request",
+      "event": "event",
+      "email": "email",
+      "notification": "notification",
+      "agent_month": "agent/month",
+      "bot_month": "bot/month",
+      "unit": "unit"
     },
     "scope": {
       "company": "Company override",
@@ -97,7 +117,10 @@
     "historyTitle": "Pricing history",
     "historyDescription": "Every pricing change ever made, newest first. This record is never deleted.",
     "historyAriaLabel": "Pricing history",
-    "historyEmpty": "No pricing changes yet."
+    "historyEmpty": "No pricing changes yet.",
+    "declaredTitle": "Declared, not yet metered",
+    "declaredDescription": "Dimensions the billing engine is designed for. Each needs its meter before a price can be set on it — a rate on an unmetered metric would charge nobody.",
+    "declaredChip": "{{name}} · per {{unit}}"
   },
   "PlatformMailPage": {
     "title": "Email delivery",
@@ -198,5 +221,89 @@
     "colReason": "Reason",
     "systemActor": "System",
     "previewFailed": "The pricing engine could not be reached. Try again shortly."
+  },
+  "PricingEditor": {
+    "title": "Pricing for {{metric}}",
+    "subtitle": "Per {{unit}}, in {{currency}}. Saving writes a new rate — the current one is closed, never overwritten.",
+    "modelLabel": "Pricing model",
+    "notYetAvailable": "Not yet available",
+    "unitAmountLabel": "Rate per {{unit}}",
+    "tiersTitle": "Tier table",
+    "tiersAriaLabel": "Tier table",
+    "tierUpTo": "Up to",
+    "tierRate": "Rate per unit",
+    "tierUpToLabel": "{{unit}}s",
+    "tierRateLabel": "Rate",
+    "tierAndAbove": "…and above",
+    "addTier": "Add a step",
+    "removeTier": "Remove step {{position}}",
+    "tierHint": "The last step has no upper bound, so every volume has a price.",
+    "includedLabel": "Included free",
+    "includedHint": "Units that cost nothing each period. Leave blank for the metric's default; 0 means none.",
+    "minimumLabel": "Minimum charge",
+    "minimumHint": "A floor under the period's total for this metric.",
+    "previewTitle": "At {{quantity}} {{unit}}s this period",
+    "previewBreakdown": "{{included}} included, {{billable}} chargeable at {{rate}}",
+    "previewMinimumApplied": "The minimum charge applied.",
+    "previewEmpty": "Enter a rate to see what it charges.",
+    "previewError": "These terms cannot be priced.",
+    "reasonLabel": "Reason",
+    "reasonHint": "Recorded in the pricing history. Somebody will ask about this change in six months.",
+    "cancel": "Cancel",
+    "save": "Save price",
+    "historyNote": "Anything already billed keeps the price it had — changing a price never re-rates past usage.",
+    "saveError": "That price could not be saved."
+  },
+  "PricingModels": {
+    "flat": {
+      "name": "Flat rate",
+      "description": "One rate for every unit, however much is used."
+    },
+    "volume_tier": {
+      "name": "Volume tiers",
+      "description": "The period's total picks one rate, and every chargeable unit is charged at it. A busier period makes every unit cheaper."
+    },
+    "graduated_tier": {
+      "name": "Graduated tiers",
+      "description": "Each bracket keeps its own rate and the units are split across them — the first N at one price, the next M at another."
+    },
+    "package": {
+      "name": "Packages",
+      "description": "Sold in blocks: a fixed amount buys a fixed quantity, part-blocks rounded up."
+    },
+    "fixed_fee": {
+      "name": "Fixed fee",
+      "description": "A flat amount per period regardless of usage — a seat or a plan fee."
+    },
+    "committed": {
+      "name": "Committed usage",
+      "description": "A quantity paid for whether or not it is used, with a separate rate beyond it."
+    },
+    "subscription": {
+      "name": "Subscription plan",
+      "description": "A plan fee with entitlements across several metrics."
+    }
+  },
+  "BillableMetrics": {
+    "ACTIVE_AGENT": "Active agent",
+    "ACTIVE_BOT": "Active bot",
+    "AI_ASSISTED_REPLY": "AI-assisted reply",
+    "AI_AUDIO_SYNTHESIS": "AI speech synthesis",
+    "AI_AUDIO_TRANSCRIPTION": "AI audio transcription",
+    "AI_AUTOPILOT": "AI Autopilot reply",
+    "AI_IMAGE_GENERATION": "AI image generation",
+    "AI_TOKEN_INPUT": "AI input tokens",
+    "AI_TOKEN_OUTPUT": "AI output tokens",
+    "API_REQUEST": "API request",
+    "BILLABLE_MESSAGE": "Billable message",
+    "CONVERSATION": "Conversation",
+    "CUSTOM_METRIC": "Custom metric",
+    "EMAIL_SENT": "Email sent",
+    "FILE_BANDWIDTH_GB": "File bandwidth",
+    "PHONE_MINUTE": "Phone minute",
+    "PUSH_NOTIFICATION": "Push notification",
+    "SMS_MESSAGE": "SMS message",
+    "STORAGE_GB_MONTH": "Storage",
+    "WEBHOOK_EVENT": "Webhook event"
   }
 }

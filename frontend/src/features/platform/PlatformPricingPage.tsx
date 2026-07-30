@@ -5,10 +5,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   MenuItem,
   Stack,
   Table,
@@ -23,15 +19,17 @@ import {
 } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { formatUnitPrice } from '../../shared/money'
-import { extractErrorMessage } from '../../shared/api/errors'
 import {
+  useBillableMetricsQuery,
   useEffectivePricingQuery,
   usePricingHealthQuery,
   usePricingHistoryQuery,
+  usePricingModelsQuery,
   usePricingProfilesQuery,
-  useSetPriceMutation,
 } from './api'
+import { UsageMetricPricingEditor } from './UsageMetricPricingEditor'
 import type { EffectivePrice, PricingScope } from './types'
+import { metricName } from './metricName'
 
 const SCOPE_COLOR: Record<PricingScope, 'primary' | 'info' | 'default'> = {
   company: 'primary',
@@ -50,53 +48,29 @@ const SCOPE_COLOR: Record<PricingScope, 'primary' | 'info' | 'default'> = {
 export function PlatformPricingPage() {
   const { t } = useTranslation('platform')
   const [profileId, setProfileId] = useState<string>('')
-  const pricing = useEffectivePricingQuery(profileId ? { profileId } : {})
+  // Which price list is being read. Nothing converts, so a metric has one rate
+  // per currency and every one of them is in force at once — "the global
+  // price" is not a question that has an answer until a currency is named.
+  const [currency, setCurrency] = useState<string>('')
+  const pricing = useEffectivePricingQuery({
+    ...(profileId ? { profileId } : {}),
+    ...(currency ? { currency } : {}),
+  })
   const profiles = usePricingProfilesQuery()
   const health = usePricingHealthQuery()
   const history = usePricingHistoryQuery()
-  const setPrice = useSetPriceMutation()
+  const models = usePricingModelsQuery()
+  const metrics = useBillableMetricsQuery()
 
   const [editing, setEditing] = useState<EffectivePrice | null>(null)
-  const [amount, setAmount] = useState('')
-  const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const selectedProfile = profiles.data?.find((profile) => profile.id === profileId)
-
-  function openEditor(item: EffectivePrice) {
-    setEditing(item)
-    setAmount(item.unit_amount ?? '')
-    setReason('')
-    setError(null)
-  }
-
-  function handleSave() {
-    if (!editing) return
-    setError(null)
-    setPrice.mutate(
-      {
-        metricCode: editing.metric_code,
-        unitAmount: amount,
-        // Applied immediately. The server accepts a small grace window
-        // around "now", so an operator clicking Save is never refused
-        // for having built the request a second ago.
-        effectiveFrom: new Date().toISOString(),
-        reason: reason || undefined,
-        profileId: profileId || undefined,
-        // Optimistic concurrency: send whichever the current state is,
-        // so a second operator's concurrent edit is refused rather than
-        // silently overwritten.
-        ...(editing.rate_id
-          ? { expectedCurrentRateId: editing.rate_id }
-          : { expectNoCurrentRate: true }),
-      },
-      {
-        onSuccess: () => setEditing(null),
-        onError: (mutationError) =>
-          setError(extractErrorMessage(mutationError, t('PlatformPricingPage.saveError'))),
-      },
-    )
-  }
+  const metricsByCode = new Map((metrics.data ?? []).map((metric) => [metric.code, metric]))
+  //: Declared but unmetered dimensions. Shown, because an operator asking
+  //: "can I charge for tokens yet?" deserves the answer on the screen rather
+  //: than by trying and being refused.
+  const declared = (metrics.data ?? []).filter((metric) => metric.availability === 'planned')
 
   return (
     <>
@@ -112,7 +86,7 @@ export function PlatformPricingPage() {
           {t('PlatformPricingPage.uncoveredWarning', {
             metrics: health.data.metrics
               .filter((metric) => !metric.covered)
-              .map((metric) => metric.display_name)
+              .map((metric) => metricName(t, metric))
               .join(', '),
           })}
         </Alert>
@@ -124,23 +98,46 @@ export function PlatformPricingPage() {
         </Alert>
       )}
 
-      <TextField
-        select
-        size="small"
-        label={t('PlatformPricingPage.scopeLabel')}
-        value={profileId}
-        onChange={(event) => setProfileId(event.target.value)}
-        sx={{ minWidth: 260, mb: 2 }}
-      >
-        <MenuItem value="">{t('PlatformPricingPage.globalDefault')}</MenuItem>
-        {(profiles.data ?? [])
-          .filter((profile) => !profile.is_system)
-          .map((profile) => (
-            <MenuItem key={profile.id} value={profile.id}>
-              {profile.name}
-            </MenuItem>
-          ))}
-      </TextField>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+        <TextField
+          select
+          size="small"
+          label={t('PlatformPricingPage.scopeLabel')}
+          value={profileId}
+          onChange={(event) => setProfileId(event.target.value)}
+          sx={{ minWidth: 260 }}
+        >
+          <MenuItem value="">{t('PlatformPricingPage.globalDefault')}</MenuItem>
+          {(profiles.data ?? [])
+            .filter((profile) => !profile.is_system)
+            .map((profile) => (
+              <MenuItem key={profile.id} value={profile.id}>
+                {profile.name}
+              </MenuItem>
+            ))}
+        </TextField>
+
+        {/* The currency options come from the server, so the console never
+            keeps its own copy of the currency table. Rendered only once
+            there is a choice to make. */}
+        {(pricing.data?.available_currencies?.length ?? 0) > 1 && (
+          <TextField
+            select
+            size="small"
+            label={t('PlatformPricingPage.currencyLabel')}
+            value={currency || (pricing.data?.currency ?? '')}
+            onChange={(event) => setCurrency(event.target.value)}
+            sx={{ minWidth: 140 }}
+            helperText={t('PlatformPricingPage.currencyHint')}
+          >
+            {(pricing.data?.available_currencies ?? []).map((code) => (
+              <MenuItem key={code} value={code}>
+                {code}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+      </Stack>
 
       {selectedProfile && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -177,7 +174,7 @@ export function PlatformPricingPage() {
               {pricing.data.items.map((item) => (
                 <TableRow key={item.metric_code}>
                   <TableCell>
-                    <Typography variant="body2">{item.display_name}</Typography>
+                    <Typography variant="body2">{metricName(t, item)}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {t('PlatformPricingPage.perUnit', {
                         unit: t(`PlatformPricingPage.unit.${item.unit}`),
@@ -219,7 +216,7 @@ export function PlatformPricingPage() {
                     )}
                   </TableCell>
                   <TableCell align="right">
-                    <Button size="small" onClick={() => openEditor(item)}>
+                    <Button size="small" onClick={() => setEditing(item)}>
                       {t('PlatformPricingPage.editButton')}
                     </Button>
                   </TableCell>
@@ -270,41 +267,44 @@ export function PlatformPricingPage() {
         </Typography>
       )}
 
-      <Dialog open={editing !== null} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {t('PlatformPricingPage.editTitle', { metric: editing?.display_name ?? '' })}
-        </DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label={t('PlatformPricingPage.amountLabel')}
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              helperText={t('PlatformPricingPage.amountHelp')}
-              required
-              fullWidth
-            />
-            <TextField
-              label={t('PlatformPricingPage.reasonLabel')}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              helperText={t('PlatformPricingPage.reasonHelp')}
-              fullWidth
-            />
-            <Alert severity="info">{t('PlatformPricingPage.historyNote')}</Alert>
+      {/* Declared dimensions with no meter. Listed rather than hidden: an
+          operator asking "can I charge for tokens yet?" gets the answer here
+          instead of by trying and being refused. */}
+      {declared.length > 0 && (
+        <>
+          <Typography variant="h6" component="h2" sx={{ mt: 4, mb: 1 }}>
+            {t('PlatformPricingPage.declaredTitle')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {t('PlatformPricingPage.declaredDescription')}
+          </Typography>
+          <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
+            {declared.map((metric) => (
+              <Tooltip key={metric.code} title={metric.description}>
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={t('PlatformPricingPage.declaredChip', {
+                    name: metricName(t, metric),
+                    unit: t(`PlatformPricingPage.unit.${metric.unit}`, metric.unit),
+                  })}
+                />
+              </Tooltip>
+            ))}
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditing(null)}>{t('PlatformPricingPage.cancel')}</Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={setPrice.isPending || !amount}
-          >
-            {t('PlatformPricingPage.save')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </>
+      )}
+
+      {editing !== null && (
+        <UsageMetricPricingEditor
+          price={editing}
+          metric={metricsByCode.get(editing.metric_code)}
+          models={models.data ?? []}
+          currency={pricing.data?.currency ?? ''}
+          profileId={profileId || undefined}
+          onClose={() => setEditing(null)}
+        />
+      )}
       <Box sx={{ height: 24 }} />
     </>
   )

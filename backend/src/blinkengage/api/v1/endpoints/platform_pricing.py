@@ -37,6 +37,8 @@ from blinkengage.api.schemas.pricing import (
     PricingModelInfoResponse,
     PricingProfileResponse,
     PricingRateResponse,
+    QuoteRequest,
+    QuoteResponse,
     ResolvedPriceResponse,
     ResolvedUsagePriceResponse,
     ResolveUsagePriceRequest,
@@ -52,13 +54,15 @@ from blinkengage.application.services.pricing_service import (
     PricingService,
 )
 from blinkengage.core.auth_context import PlatformContext
+from blinkengage.domain.allowances import allowance_for
 from blinkengage.domain.billable_metrics import METRICS
-from blinkengage.domain.money import BILLING_CURRENCY
+from blinkengage.domain.money import BILLING_CURRENCY, CURRENCIES, currency_for
 from blinkengage.domain.pricing import PriceRequest, ResolvedPrice
 from blinkengage.domain.pricing_models import (
     ENABLED_PRICING_MODELS,
     IMPLEMENTED_PRICING_MODELS,
     PricingModel,
+    charge,
 )
 from blinkengage.domain.pricing_scope import PricingScope
 from blinkengage.domain.tiers import Tier
@@ -134,8 +138,7 @@ _MODEL_COPY: dict[PricingModel, tuple[str, str]] = {
     ),
     PricingModel.PACKAGE: (
         "Packages",
-        "Sold in blocks: a fixed amount buys a fixed quantity, part-blocks "
-        "rounded up.",
+        "Sold in blocks: a fixed amount buys a fixed quantity, part-blocks " "rounded up.",
     ),
     PricingModel.FIXED_FEE: (
         "Fixed fee",
@@ -143,8 +146,7 @@ _MODEL_COPY: dict[PricingModel, tuple[str, str]] = {
     ),
     PricingModel.COMMITTED: (
         "Committed usage",
-        "A quantity paid for whether or not it is used, with a separate rate "
-        "beyond it.",
+        "A quantity paid for whether or not it is used, with a separate rate " "beyond it.",
     ),
     PricingModel.SUBSCRIPTION: (
         "Subscription plan",
@@ -169,11 +171,55 @@ async def list_pricing_models() -> list[PricingModelInfoResponse]:
             description=_MODEL_COPY[model][1],
             enabled=model in ENABLED_PRICING_MODELS,
             implemented=model in IMPLEMENTED_PRICING_MODELS,
-            requires_tiers=model
-            in (PricingModel.VOLUME_TIER, PricingModel.GRADUATED_TIER),
+            requires_tiers=model in (PricingModel.VOLUME_TIER, PricingModel.GRADUATED_TIER),
         )
         for model in PricingModel
     ]
+
+
+@router.post("/quote", response_model=QuoteResponse)
+async def quote_pricing(
+    payload: QuoteRequest,
+    service: Annotated[PricingService, Depends(get_pricing_service)],
+) -> QuoteResponse:
+    """What a set of terms would charge for a quantity. Writes nothing.
+
+    Two things use this. The pricing editor previews a rate before it is
+    saved — the console must never apply a tier table itself, because a second
+    implementation in the browser would eventually disagree with the invoice.
+    And it is the simulation primitive: given a past period's quantity it
+    answers "what would that month have cost under this table?", without
+    touching a usage record.
+
+    Terms come from the caller rather than from a stored rate, so this is a
+    hypothetical by construction — but they are normalised and validated by
+    the *write* path's own method, not a second copy of it. A tiered model
+    with no table, a table whose bounds do not ascend, or a model this release
+    does not offer is refused here exactly as it would be on save, and the
+    amounts are quantized to the same scale the column stores. That is what
+    makes the preview a genuine check rather than an optimistic one.
+    """
+    terms = service.validated_terms(
+        pricing_model=payload.pricing_model,
+        unit_amount=payload.unit_amount,
+        currency=currency_for(payload.currency).code,
+        tiers=[
+            Tier(up_to=tier.up_to, unit_amount=tier.unit_amount) for tier in payload.tiers or ()
+        ],
+        included_quantity=payload.included_quantity,
+        minimum_charge=payload.minimum_charge,
+        model_params=payload.model_params,
+    )
+
+    result = charge(
+        terms,
+        quantity=payload.quantity,
+        # The metric's own allowance applies when the terms name none, exactly
+        # as it would at close — otherwise the preview would quote a price the
+        # invoice does not.
+        default_included=allowance_for(payload.metric_code),
+    )
+    return QuoteResponse.model_validate(result)
 
 
 @router.get("/metrics", response_model=list[BillableMetricResponse])
@@ -241,6 +287,7 @@ async def get_effective_pricing(
     company_id: uuid.UUID | None = None,
     profile_id: uuid.UUID | None = None,
     at: datetime | None = Query(default=None),
+    currency: str | None = Query(default=None, min_length=3, max_length=3),
 ) -> EffectivePricingResponse:
     """What a target actually pays, per metric, with the hierarchy shown.
 
@@ -248,30 +295,41 @@ async def get_effective_pricing(
     where it does, justified because this is a human-facing view whose
     response echoes the instant it used, so the answer is reproducible.
     Billing never defaults it.
+
+    ``currency`` picks *which* global or profile price list to read. Nothing
+    converts, so a metric has one rate per currency and they all cover now;
+    asking for the list without naming one would be asking an ambiguous
+    question. Ignored for a company, whose own currency is the only one that
+    can charge them.
     """
     resolved_at = at or datetime.now(UTC)
-    items = await service.effective_pricing(
-        at=resolved_at, company_id=company_id, profile_id=profile_id
-    )
-    profile_name: str | None = None
-    if profile_id is not None:
-        profile_name = (await service.get_profile(profile_id)).name
 
     # The **company's** currency, not the installation default. A
     # Jordanian company's pricing screen reporting USD would put the wrong
     # symbol and the wrong number of decimal places on every figure — and
     # the console formats from this field rather than deciding for itself.
-    currency = BILLING_CURRENCY.code
+    resolved_currency = currency_for(currency or BILLING_CURRENCY.code).code
     if company_id is not None:
         currencies = await service.company_currencies([company_id])
-        currency = currencies.get(company_id, BILLING_CURRENCY.code)
+        resolved_currency = currencies.get(company_id, BILLING_CURRENCY.code)
+
+    items = await service.effective_pricing(
+        at=resolved_at,
+        company_id=company_id,
+        profile_id=profile_id,
+        currency=resolved_currency,
+    )
+    profile_name: str | None = None
+    if profile_id is not None:
+        profile_name = (await service.get_profile(profile_id)).name
 
     return EffectivePricingResponse(
         resolved_at=resolved_at,
         company_id=company_id,
         profile_id=profile_id,
         profile_name=profile_name,
-        currency=currency,
+        currency=resolved_currency,
+        available_currencies=sorted(CURRENCIES),
         items=[_item_response(item) for item in items],
     )
 

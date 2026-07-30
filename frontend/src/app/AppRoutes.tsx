@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { PlatformRoute } from '../features/platform/PlatformRoute'
 import { PlatformLayout } from '../features/platform/PlatformLayout'
+import { BillingConsoleLayout } from '../features/platform/BillingConsoleLayout'
 import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPage'
 import { PlatformCompanyBillingPage } from '../features/platform/PlatformCompanyBillingPage'
 import { PlatformMailPage } from '../features/platform/PlatformMailPage'
@@ -135,11 +136,27 @@ export function AppRoutes() {
           }
         >
           <Route index element={<PlatformCompaniesPage />} />
-          <Route path="pricing" element={<PlatformPricingPage />} />
           <Route path="mail" element={<PlatformMailPage />} />
+        </Route>
+
+        {/* The billing console. A separate surface from the platform
+            console — running the revenue system and running the
+            installation are different jobs — but nested under `/platform`
+            so it inherits `PlatformRoute`. A new top-level route would be
+            a new chance to forget the guard, and `/billing` belongs to the
+            tenant's own billing page. */}
+        <Route
+          path="/platform/billing"
+          element={
+            <PlatformRoute>
+              <BillingConsoleLayout />
+            </PlatformRoute>
+          }
+        >
+          <Route index element={<PlatformPricingPage />} />
           {/* Per-company billing: pricing source, overrides, profile,
               resolver preview and the audit trail. */}
-          <Route path="companies/:companyId/billing" element={<PlatformCompanyBillingPage />} />
+          <Route path="companies/:companyId" element={<PlatformCompanyBillingPage />} />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route

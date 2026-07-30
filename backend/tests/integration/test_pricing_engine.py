@@ -618,6 +618,114 @@ class TestResolveForBilling:
         assert '"unit_amount":"0.050000"' in raw.replace(" ", "")
 
 
+class TestOneCurrencyPerPriceList:
+    """A metric has one rate *per currency*, and all of them are in force at
+    once. "What is the global price?" is not a question with an answer until
+    a currency is named — and treating the second one as an ambiguity is what
+    took the whole pricing screen down the day a dinar rate was seeded.
+    """
+
+    async def test_two_currencies_are_two_price_lists_not_an_ambiguity(
+        self, client: AsyncClient, app: Any
+    ) -> None:
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        await client.put(
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
+            json={
+                "unit_amount": "0.035000",
+                "currency": "JOD",
+                "effective_from": iso(datetime.now(UTC)),
+                "expect_no_current_rate": True,
+                "reason": "Jordanian price list",
+            },
+            headers=headers,
+        )
+
+        usd = await client.get("/api/v1/platform/pricing/effective", headers=headers)
+        jod = await client.get(
+            "/api/v1/platform/pricing/effective?currency=JOD", headers=headers
+        )
+
+        assert usd.status_code == 200, usd.text
+        assert jod.status_code == 200, jod.text
+        assert usd.json()["items"][0]["unit_amount"] == "0.050000"
+        assert usd.json()["items"][0]["currency"] == "USD"
+        assert jod.json()["items"][0]["unit_amount"] == "0.035000"
+        assert jod.json()["items"][0]["currency"] == "JOD"
+
+    async def test_the_response_offers_the_other_lists(
+        self, client: AsyncClient, app: Any
+    ) -> None:
+        """So a console can show the choice without keeping its own copy of
+        the currency table."""
+        headers = await platform_headers(client, app)
+
+        body = (
+            await client.get("/api/v1/platform/pricing/effective", headers=headers)
+        ).json()
+
+        assert body["currency"] == "USD"
+        assert body["available_currencies"] == ["JOD", "USD"]
+
+    async def test_two_rates_in_the_same_currency_are_still_refused(
+        self, client: AsyncClient, app: Any
+    ) -> None:
+        """The real invariant, kept. Overlap within one currency means two
+        answers to one question, and a price list that silently picked one
+        would be worse than one that refuses."""
+        from datetime import timedelta
+
+        from sqlalchemy import select
+
+        from blinkengage.infrastructure.database.models.pricing import PricingRate
+
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+
+        # Written directly: every API path that sets a rate closes the one it
+        # replaces, which is precisely why this state needs forcing to test.
+        session_factory = app.state.container.session_factory()
+        async with session_factory() as session:
+            existing = (await session.execute(select(PricingRate))).scalars().first()
+            assert existing is not None
+            session.add(
+                PricingRate(
+                    scope=existing.scope,
+                    metric_code=existing.metric_code,
+                    unit_amount=Decimal("0.070000"),
+                    currency=existing.currency,
+                    effective_from=existing.effective_from - timedelta(days=1),
+                    effective_until=None,
+                    pricing_model=existing.pricing_model,
+                )
+            )
+            await session.commit()
+
+        response = await client.get("/api/v1/platform/pricing/effective", headers=headers)
+
+        assert response.status_code == 409
+        assert "USD" in response.json()["detail"]
+
+    async def test_a_company_gets_its_own_currency_whatever_is_asked_for(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A company can only be charged in the currency they bill in, so the
+        parameter is ignored rather than honoured into a wrong answer."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+
+        body = (
+            await client.get(
+                f"/api/v1/platform/pricing/effective?company_id={company_id}&currency=JOD",
+                headers=headers,
+            )
+        ).json()
+
+        assert body["currency"] == "USD"
+
+
 class TestPlatformBoundary:
     async def test_a_tenant_cannot_read_pricing_administration(
         self, client: AsyncClient, owner_headers: dict
@@ -679,6 +787,51 @@ class TestCoverage:
         }
         assert body["ok"] is True
 
+    async def test_a_dollar_rate_does_not_cover_a_company_billing_in_dinars(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """Nothing converts. A metric priced only in USD cannot bill a
+        Jordanian customer, and reporting it "covered" would hide that until
+        the month closed unpriced."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        await _register_company(client, "amman-care", country_code="JO")
+
+        body = (await client.get("/api/v1/platform/pricing/health", headers=headers)).json()
+
+        entry = {m["metric_code"]: m for m in body["metrics"]}[BILLABLE_MESSAGE]
+        assert entry["covered"] is False
+        assert entry["reason"] == "no_rate_in_jod"
+        assert body["ok"] is False
+
+        # Price it in dinars too and the gap closes.
+        await client.put(
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
+            json={
+                "unit_amount": "0.035000",
+                "currency": "JOD",
+                "effective_from": iso(datetime.now(UTC)),
+                "expect_no_current_rate": True,
+                "reason": "Jordanian price list",
+            },
+            headers=headers,
+        )
+        body = (await client.get("/api/v1/platform/pricing/health", headers=headers)).json()
+        assert body["ok"] is True
+
+    async def test_a_currency_nobody_bills_in_is_not_reported_missing(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """The other half. An installation with no Jordanian customers needs
+        no dinar rate, and a warning about one would teach operators to ignore
+        the check."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+
+        body = (await client.get("/api/v1/platform/pricing/health", headers=headers)).json()
+
+        assert body["ok"] is True
+
     async def test_neither_planned_nor_retired_metrics_count_as_gaps(
         self, client: AsyncClient, app: Any
     ) -> None:
@@ -721,7 +874,9 @@ async def _seed_profiles(app: Any) -> None:
         await session.commit()
 
 
-async def _register_company(client: AsyncClient, slug: str) -> str:
+async def _register_company(
+    client: AsyncClient, slug: str, *, country_code: str | None = None
+) -> str:
     response = await client.post(
         "/api/v1/auth/register",
         json={
@@ -729,6 +884,7 @@ async def _register_company(client: AsyncClient, slug: str) -> str:
             "owner_full_name": "Second Owner",
             "owner_email": f"owner@{slug}.example",
             "owner_password": _PASSWORD,
+            **({"country_code": country_code} if country_code else {}),
         },
     )
     assert response.status_code == 201, response.text

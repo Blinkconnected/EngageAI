@@ -44,7 +44,57 @@ export interface FeatureState {
  * global — the precedence lives in the backend, never re-derived here. */
 export type PricingScope = 'company' | 'profile' | 'global'
 
-export type MeasurementUnit = 'conversation' | 'reply' | 'minute' | 'gigabyte_month'
+export type MeasurementUnit =
+  | 'message'
+  | 'conversation'
+  | 'reply'
+  | 'token'
+  | 'image'
+  | 'character'
+  | 'minute'
+  | 'gigabyte'
+  | 'gigabyte_month'
+  | 'request'
+  | 'event'
+  | 'email'
+  | 'notification'
+  | 'agent_month'
+  | 'bot_month'
+  | 'unit'
+
+/** How a period's usage is derived from what was measured. Not a label — it
+ * decides the arithmetic, and a seat totalled like a message bills thirty
+ * times the seats. */
+export type MetricKind = 'counter' | 'continuous' | 'sampled' | 'seat'
+
+/** Whether a meter exists today. Only `measured` may be priced. */
+export type MetricAvailability = 'measured' | 'planned' | 'retired'
+
+/** How a rate turns usage into money. */
+export type PricingModel =
+  'flat' | 'volume_tier' | 'graduated_tier' | 'package' | 'fixed_fee' | 'committed' | 'subscription'
+
+/** One step of a tier table. `up_to` is inclusive; `null` is the open-ended
+ * top step, and every table needs exactly one. */
+export interface Tier {
+  up_to: string | null
+  unit_amount: string
+}
+
+/** Matches `PricingModelInfoResponse`.
+ *
+ * `enabled` is the product decision — what may be written today. `implemented`
+ * says the arithmetic exists. Both are sent so a console can show what is
+ * coming without offering it, and so this screen needs no change the day one
+ * is turned on. */
+export interface PricingModelInfo {
+  model: PricingModel
+  display_name: string
+  description: string
+  enabled: boolean
+  implemented: boolean
+  requires_tiers: boolean
+}
 
 /** Matches `BillableMetricResponse`. Read-only: metrics are code, not
  * configuration — `is_priceable` is false for a metric nothing measures
@@ -54,6 +104,8 @@ export interface BillableMetric {
   display_name: string
   unit: MeasurementUnit
   description: string
+  kind: MetricKind
+  availability: MetricAvailability
   is_priceable: boolean
 }
 
@@ -95,7 +147,13 @@ export interface EffectivePricing {
   company_id: string | null
   profile_id: string | null
   profile_name: string | null
+  /** Which price list this is. Nothing converts, so a metric has one rate per
+   * currency and all of them are in force at once — the list only means
+   * something once you know which one you are reading. */
   currency: string
+  /** The other lists that can be asked for. Sent by the server so the console
+   * never keeps its own copy of the currency table. */
+  available_currencies: string[]
   items: EffectivePrice[]
 }
 
@@ -220,13 +278,36 @@ export interface SetCompanyRateInput {
   allow_backdating?: boolean
 }
 
+/** What a rate's terms cost at a given quantity — computed **server-side**.
+ *
+ * The console never multiplies a rate by a quantity itself: a tier table has
+ * to be applied the same way the invoice applies it, and a second
+ * implementation in TypeScript is how a preview ends up disagreeing with a
+ * bill. See `useQuotePricingMutation`. */
+export interface PricingQuote {
+  model: PricingModel
+  quantity: string
+  included_quantity: string
+  billable_quantity: string
+  unit_amount: string
+  tier_up_to: string | null
+  tier_index: number
+  subtotal: string
+  currency: string
+  minimum_applied: boolean
+}
+
 export interface PricingRate {
   id: string
   scope: PricingScope
   metric_code: string
   company_id: string | null
   profile_id: string | null
+  pricing_model: string
   unit_amount: string
+  included_quantity: string | null
+  minimum_charge: string | null
+  tiers: Tier[]
   currency: string
   effective_from: string
   effective_until: string | null

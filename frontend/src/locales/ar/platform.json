@@ -4,8 +4,14 @@
     "subtitle": "إدارة الشركات على هذا التثبيت",
     "signOut": "تسجيل الخروج",
     "companies": "الشركات",
+    "mail": "البريد",
+    "billingConsole": "وحدة تحكم الفوترة"
+  },
+  "BillingConsole": {
+    "title": "وحدة تحكم الفوترة",
+    "subtitle": "تكلفة الخدمات، وما هو مستحق على كل شركة",
     "pricing": "التسعير",
-    "mail": "البريد"
+    "platformConsole": "وحدة تحكم المنصة"
   },
   "PlatformCompaniesPage": {
     "title": "الشركات",
@@ -57,6 +63,8 @@
     "title": "التسعير",
     "description": "ما تدفعه الشركات لكل وحدة استخدام. تجاوزات الشركة تتقدّم على ملفات التسعير، والتي بدورها تتقدّم على السعر الافتراضي العام.",
     "scopeLabel": "عرض أسعار",
+    "currencyLabel": "العملة",
+    "currencyHint": "الأسعار لا تُحوَّل بين العملات.",
     "globalDefault": "الافتراضي العام",
     "profileHint": "الأسعار المضبوطة هنا تسري على كل شركة معيّنة على {{name}}، ما لم يكن لها تجاوز خاص بها.",
     "columnMetric": "المقياس",
@@ -69,10 +77,22 @@
     "columnReason": "السبب",
     "perUnit": "لكل {{unit}}",
     "unit": {
+      "message": "رسالة",
       "conversation": "محادثة",
       "reply": "رد",
+      "token": "وحدة نصية",
+      "image": "صورة",
+      "character": "حرف",
       "minute": "دقيقة",
-      "gigabyte_month": "غيغابايت/شهر"
+      "gigabyte": "غيغابايت",
+      "gigabyte_month": "غيغابايت/شهر",
+      "request": "طلب",
+      "event": "حدث",
+      "email": "بريد",
+      "notification": "إشعار",
+      "agent_month": "وكيل/شهر",
+      "bot_month": "بوت/شهر",
+      "unit": "وحدة"
     },
     "scope": {
       "company": "تجاوز الشركة",
@@ -97,7 +117,10 @@
     "historyTitle": "سجل التسعير",
     "historyDescription": "كل تغييرات التسعير، الأحدث أولاً. هذا السجل لا يُحذف أبداً.",
     "historyAriaLabel": "سجل التسعير",
-    "historyEmpty": "لا توجد تغييرات تسعير بعد."
+    "historyEmpty": "لا توجد تغييرات تسعير بعد.",
+    "declaredTitle": "مُعلَنة، ولم تُقَس بعد",
+    "declaredDescription": "أبعاد صُمِّم محرّك الفوترة لأجلها. يحتاج كل منها إلى أداة قياس قبل أن يُحدَّد له سعر — فالسعر على مقياس لا يُقاس لن يُحتسب على أحد.",
+    "declaredChip": "{{name}} · لكل {{unit}}"
   },
   "PlatformMailPage": {
     "title": "إرسال البريد الإلكتروني",
@@ -198,5 +221,89 @@
     "colReason": "السبب",
     "systemActor": "النظام",
     "previewFailed": "تعذر الوصول إلى محرّك الأسعار. حاول مرة أخرى بعد قليل."
+  },
+  "PricingEditor": {
+    "title": "تسعير {{metric}}",
+    "subtitle": "لكل {{unit}}، بعملة {{currency}}. الحفظ يُنشئ سعراً جديداً — ويُغلق السعر الحالي دون أن يستبدله.",
+    "modelLabel": "نموذج التسعير",
+    "notYetAvailable": "غير متاح بعد",
+    "unitAmountLabel": "السعر لكل {{unit}}",
+    "tiersTitle": "جدول الشرائح",
+    "tiersAriaLabel": "جدول الشرائح",
+    "tierUpTo": "حتى",
+    "tierRate": "السعر للوحدة",
+    "tierUpToLabel": "{{unit}}",
+    "tierRateLabel": "السعر",
+    "tierAndAbove": "…وما فوق",
+    "addTier": "إضافة شريحة",
+    "removeTier": "حذف الشريحة {{position}}",
+    "tierHint": "الشريحة الأخيرة بلا حدّ أعلى، حتى يكون لكل حجم استخدام سعر.",
+    "includedLabel": "المجاني المشمول",
+    "includedHint": "وحدات لا تُحتسب في كل فترة. اتركه فارغاً لاستخدام الافتراضي، و0 تعني لا شيء.",
+    "minimumLabel": "الحد الأدنى للرسوم",
+    "minimumHint": "حدّ أدنى لإجمالي هذا المقياس في الفترة.",
+    "previewTitle": "عند {{quantity}} {{unit}} في هذه الفترة",
+    "previewBreakdown": "{{included}} مشمولة، و{{billable}} قابلة للفوترة بسعر {{rate}}",
+    "previewMinimumApplied": "طُبِّق الحد الأدنى للرسوم.",
+    "previewEmpty": "أدخل سعراً لعرض ما يُحتسب.",
+    "previewError": "لا يمكن تسعير هذه الشروط.",
+    "reasonLabel": "السبب",
+    "reasonHint": "يُسجَّل في سجلّ التسعير. سيسأل أحدهم عن هذا التغيير بعد ستة أشهر.",
+    "cancel": "إلغاء",
+    "save": "حفظ السعر",
+    "historyNote": "كل ما تمت فوترته يحتفظ بالسعر الذي كان ساريًا؛ تغيير السعر لا يعيد تسعير الاستهلاك السابق أبدًا.",
+    "saveError": "تعذّر حفظ هذا السعر."
+  },
+  "PricingModels": {
+    "flat": {
+      "name": "سعر ثابت",
+      "description": "سعر واحد لكل وحدة، مهما بلغ الاستهلاك."
+    },
+    "volume_tier": {
+      "name": "شرائح حجمية",
+      "description": "إجمالي الفترة يحدّد سعراً واحداً، وتُحتسب به كل وحدة قابلة للفوترة. كلما زاد الاستهلاك رخصت كل وحدة."
+    },
+    "graduated_tier": {
+      "name": "شرائح تدرّجية",
+      "description": "لكل شريحة سعرها الخاص وتُوزَّع الوحدات عليها — الأولى بسعر، والتالية بسعر آخر."
+    },
+    "package": {
+      "name": "باقات",
+      "description": "تُباع على شكل حزم: مبلغ ثابت يشتري كمية ثابتة، وتُقرَّب الحزمة الجزئية إلى أعلى."
+    },
+    "fixed_fee": {
+      "name": "رسم ثابت",
+      "description": "مبلغ ثابت لكل فترة بغضّ النظر عن الاستهلاك — كرسم المقعد أو الخطة."
+    },
+    "committed": {
+      "name": "استهلاك ملتزَم به",
+      "description": "كمية تُدفع سواء استُهلكت أم لا، مع سعر منفصل لما يتجاوزها."
+    },
+    "subscription": {
+      "name": "خطة اشتراك",
+      "description": "رسم خطة يشمل استحقاقات عبر عدة مقاييس."
+    }
+  },
+  "BillableMetrics": {
+    "ACTIVE_AGENT": "موظف نشط",
+    "ACTIVE_BOT": "بوت نشط",
+    "AI_ASSISTED_REPLY": "رد بمساعدة الذكاء الاصطناعي",
+    "AI_AUDIO_SYNTHESIS": "تحويل النص إلى كلام",
+    "AI_AUDIO_TRANSCRIPTION": "تفريغ الصوت",
+    "AI_AUTOPILOT": "رد الطيار الآلي",
+    "AI_IMAGE_GENERATION": "توليد الصور",
+    "AI_TOKEN_INPUT": "وحدات الإدخال النصية",
+    "AI_TOKEN_OUTPUT": "وحدات الإخراج النصية",
+    "API_REQUEST": "طلب واجهة برمجية",
+    "BILLABLE_MESSAGE": "رسالة قابلة للفوترة",
+    "CONVERSATION": "محادثة",
+    "CUSTOM_METRIC": "مقياس مخصص",
+    "EMAIL_SENT": "بريد مُرسَل",
+    "FILE_BANDWIDTH_GB": "نقل الملفات",
+    "PHONE_MINUTE": "دقيقة هاتفية",
+    "PUSH_NOTIFICATION": "إشعار فوري",
+    "SMS_MESSAGE": "رسالة نصية SMS",
+    "STORAGE_GB_MONTH": "التخزين",
+    "WEBHOOK_EVENT": "حدث Webhook"
   }
 }

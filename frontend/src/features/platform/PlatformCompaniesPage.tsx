@@ -1,15 +1,6 @@
 import { useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material'
+import { Alert, Box, Button, Chip, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import { useTranslation } from 'react-i18next'
 import { DataTable } from '../../shared/components/DataTable'
@@ -67,7 +58,9 @@ export function PlatformCompaniesPage() {
       {
         onSuccess: () => setPending(null),
         onError: (mutationError) => {
-          setError(extractErrorMessage(mutationError, t('PlatformCompaniesPage.statusErrorFallback')))
+          setError(
+            extractErrorMessage(mutationError, t('PlatformCompaniesPage.statusErrorFallback')),
+          )
           setPending(null)
         },
       },
@@ -123,7 +116,7 @@ export function PlatformCompaniesPage() {
               size="small"
               variant="outlined"
               component={RouterLink}
-              to={`/platform/companies/${params.row.id}/billing`}
+              to={`/platform/billing/companies/${params.row.id}`}
             >
               {t('PlatformCompaniesPage.billingButton')}
             </Button>

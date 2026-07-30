@@ -218,14 +218,23 @@ class PricingRateRepository:
         *,
         scope: PricingScope,
         metric_code: str,
+        currency: str,
         company_id: uuid.UUID | None = None,
         profile_id: uuid.UUID | None = None,
     ) -> PricingRate | None:
         """The currently-open (``effective_until IS NULL``) rate for one
-        target, which "editing a price" closes."""
+        target **in one currency**, which "editing a price" closes.
+
+        Currency is part of the target, not a detail of the rate. Nothing
+        converts, so a metric legitimately has one open rate per currency —
+        and without this filter setting a dinar price was refused because a
+        dollar one existed, which made a second currency unreachable through
+        the API entirely.
+        """
         stmt = select(PricingRate).where(
             PricingRate.scope == scope,
             PricingRate.metric_code == metric_code,
+            PricingRate.currency == currency,
             PricingRate.effective_until.is_(None),
             PricingRate.voided_at.is_(None),
         )
@@ -462,6 +471,23 @@ class PricingCompanyLookup:
             )
         )
         return {row[0]: row[1] for row in result.all()}
+
+    async def currencies_in_use(self) -> set[str]:
+        """Every billing currency some live company is actually on.
+
+        The coverage check needs this rather than the full ``CURRENCIES``
+        table: an installation with no Jordanian customers does not need a
+        dinar rate, and reporting one missing would be a false alarm that
+        teaches operators to ignore the check. Equally, a metric priced only
+        in dollars is *not* covered once one company bills in dinars — which
+        is the failure this exists to catch.
+        """
+        result = await self._session.execute(
+            select(Company.billing_currency)
+            .where(Company.deleted_at.is_(None))
+            .distinct()
+        )
+        return {row for row in result.scalars().all() if row}
 
     async def existing_ids(self, company_ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
         if not company_ids:

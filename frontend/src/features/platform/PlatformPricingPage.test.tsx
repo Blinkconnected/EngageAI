@@ -51,16 +51,42 @@ function mockPricing(items = [CONVERSATION, AUTOPILOT], overrides: Record<string
     ),
     http.get(`${API_BASE_URL}/platform/pricing/profiles`, () =>
       HttpResponse.json([
-        { id: 'p-default', key: 'default', name: 'Default', description: null, is_system: true, is_active: true, sort_order: 0 },
-        { id: 'p-ent', key: 'enterprise', name: 'Enterprise', description: null, is_system: false, is_active: true, sort_order: 30 },
+        {
+          id: 'p-default',
+          key: 'default',
+          name: 'Default',
+          description: null,
+          is_system: true,
+          is_active: true,
+          sort_order: 0,
+        },
+        {
+          id: 'p-ent',
+          key: 'enterprise',
+          name: 'Enterprise',
+          description: null,
+          is_system: false,
+          is_active: true,
+          sort_order: 30,
+        },
       ]),
     ),
     http.get(`${API_BASE_URL}/platform/pricing/health`, () =>
       HttpResponse.json({
         ok: false,
         metrics: [
-          { metric_code: 'CONVERSATION', display_name: 'Conversation', covered: true, reason: null },
-          { metric_code: 'AI_AUTOPILOT', display_name: 'AI Autopilot reply', covered: false, reason: 'no_global_rate' },
+          {
+            metric_code: 'CONVERSATION',
+            display_name: 'Conversation',
+            covered: true,
+            reason: null,
+          },
+          {
+            metric_code: 'AI_AUTOPILOT',
+            display_name: 'AI Autopilot reply',
+            covered: false,
+            reason: 'no_global_rate',
+          },
         ],
       }),
     ),
@@ -131,7 +157,7 @@ describe('PlatformPricingPage', () => {
 
     await user.click(within(row).getByRole('button', { name: /edit/i }))
     const dialog = await screen.findByRole('dialog')
-    const amount = within(dialog).getByLabelText(/price per unit/i)
+    const amount = within(dialog).getByLabelText(/rate per conversation/i)
     await user.clear(amount)
     await user.type(amount, '0.055')
     await user.click(within(dialog).getByRole('button', { name: /save price/i }))
@@ -155,7 +181,7 @@ describe('PlatformPricingPage', () => {
 
     await user.click(within(row).getByRole('button', { name: /edit/i }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText(/price per unit/i), '0.01')
+    await user.type(within(dialog).getByLabelText(/rate per reply/i), '0.01')
     await user.click(within(dialog).getByRole('button', { name: /save price/i }))
 
     await waitFor(() => expect(body.expect_no_current_rate).toBe(true))
@@ -190,7 +216,7 @@ describe('PlatformPricingPage', () => {
 
     await user.click(within(row).getByRole('button', { name: /edit/i }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText(/price per unit/i), '5')
+    await user.type(within(dialog).getByLabelText(/rate per conversation/i), '5')
     await user.click(within(dialog).getByRole('button', { name: /save price/i }))
 
     expect(await screen.findByText(/changed since you loaded it/i)).toBeInTheDocument()

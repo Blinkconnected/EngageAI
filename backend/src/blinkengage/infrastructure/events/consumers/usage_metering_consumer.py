@@ -51,7 +51,6 @@ from aio_pika.abc import AbstractIncomingMessage
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from blinkengage.application.services.billable_event_service import BillableEventService
-from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.application.services.usage_service import UsageService
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
@@ -73,19 +72,11 @@ from blinkengage.infrastructure.repositories.billable_event_repository import (
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
-from blinkengage.infrastructure.repositories.pricing_repository import (
-    CompanyPricingAssignmentRepository,
-    PricingAuditRepository,
-    PricingCompanyLookup,
-    PricingProfileRepository,
-    PricingRateRepository,
-)
 from blinkengage.infrastructure.repositories.usage_repository import (
     BillingPeriodRepository,
     UsagePeriodLineRepository,
     UsageRecordRepository,
 )
-from blinkengage.infrastructure.repositories.user_repository import UserRepository
 
 logger = get_logger(__name__)
 
@@ -112,19 +103,20 @@ def build_billable_event_service(session: AsyncSession) -> BillableEventService:
 
 
 def build_usage_service(session: AsyncSession) -> UsageService:
+    """A metering-only usage service — **no pricing engine**.
+
+    The meter records what happened; it never asks what anything costs, so it
+    is built without the pricing stack rather than with one it happens not to
+    call. That is the separation stated as code: delete the pricing package
+    and this consumer still records usage.
+
+    The period-close job builds its own, *with* pricing, because closing is
+    where the two meet — see ``billing_period_close_task``.
+    """
     return UsageService(
         periods=BillingPeriodRepository(session),
         records=UsageRecordRepository(session),
         lines=UsagePeriodLineRepository(session),
-        pricing=PricingService(
-            rates=PricingRateRepository(session),
-            assignments=CompanyPricingAssignmentRepository(session),
-            profiles=PricingProfileRepository(session),
-            audit=PricingAuditRepository(session),
-            companies=PricingCompanyLookup(session),
-            users=UserRepository(session),
-            events=OutboxEventPublisher(EventOutboxRepository(session)),
-        ),
         events=OutboxEventPublisher(EventOutboxRepository(session)),
     )
 

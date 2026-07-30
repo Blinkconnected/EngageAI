@@ -99,11 +99,11 @@ function render() {
   return renderAuthenticated(
     <Routes>
       <Route
-        path="/platform/companies/:companyId/billing"
+        path="/platform/billing/companies/:companyId"
         element={<PlatformCompanyBillingPage />}
       />
     </Routes>,
-    [`/platform/companies/${COMPANY_ID}/billing`],
+    [`/platform/billing/companies/${COMPANY_ID}`],
   )
 }
 

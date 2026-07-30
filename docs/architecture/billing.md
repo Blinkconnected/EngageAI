@@ -110,6 +110,30 @@ widened together — the application refusing what the database allows is
 the more confusing of the two failures, because it names a conflict that
 is not one.
 
+**Currency is part of the target, not a detail of the rate.** That sentence
+was true of the overlap check from the start and false of everything else
+until it was found live, so it is worth stating flatly: every query that asks
+"the rate for this metric at this scope" must also say *which currency*, or it
+is asking a question with more than one answer. Four places asked it wrong:
+
+| Where | What went wrong |
+|---|---|
+| `open_rate_for` | Setting a dinar price was refused because a dollar one was open, so a second currency could not be written through the API at all — the seeded JOD rates existed only because a migration wrote them directly |
+| `effective_pricing` | Two currencies read as an ambiguity and the whole pricing screen returned 409 |
+| `coverage` | A metric priced only in dollars reported "covered" while a Jordanian company could not be billed at all |
+| `end_company_rate` | Looked for an open override without saying which currency's |
+
+All four now take a currency. `GET /platform/pricing/effective` gained a
+`currency` parameter (defaulting to the installation default) and echoes
+`available_currencies` so the console offers the choice without keeping its
+own copy of the currency table; a `company_id` overrides it with the
+company's own, since that is the only currency that can charge them.
+
+`coverage` compares against the currencies **live companies actually bill
+in**, not the whole `CURRENCIES` table — an installation with no Jordanian
+customers needs no dinar rate, and a false alarm is how a health check gets
+ignored.
+
 ### Countries
 
 `domain/countries.py` is a curated list, not all of ISO 3166: signup must
@@ -1730,6 +1754,157 @@ zero means zero, which is a different thing from unset.
 is this the amount?" is answered by the model as much as by the rate, and both
 may have changed by the time somebody asks.
 
+### The Usage Metric Pricing Editor
+
+Reached from the **billing console** (`/platform/billing`), which is a separate
+surface from the platform console — see `docs/architecture/platform-admin.md`.
+Setting rates and suspending a company need the same authority but are not the
+same job.
+
+`frontend/src/features/platform/UsageMetricPricingEditor.tsx`. The metric is a
+**parameter**, and every field on the screen comes from what the server says
+the metric and the models are — nothing in the component knows that messages
+exist, so the day a token or a phone-minute meter ships it prices there with
+no change.
+
+What the screen enforces by *shape* rather than by a message after the fact:
+
+- The last tier step has no upper bound. Its cell is not an input; it reads
+  "and above", and it has no delete button. A table whose top step ends
+  somewhere leaves a customer past it with no price.
+- Switching to a tiered model seeds a one-step table carrying the rate the
+  metric already had, so changing the shape never silently changes the price.
+- Models that are implemented but not enabled are shown **disabled** with a
+  "coming" chip — an operator can see what is arriving without configuring a
+  price that would never charge.
+- Amounts are strings from input to API. Never parsed to a number: `0.0005`
+  and `0.05` are a hundredfold apart, and a float round trip is how the two
+  stop being distinguishable.
+
+Bounds ascending is deliberately *not* enforced per keystroke — an operator
+typing a table top-down passes through invalid states constantly. The
+preview's refusal, in the server's own words, is the feedback that helps.
+
+**Names are translated from codes, not from the server's prose.** The API
+sends `display_name` and `description` as English, alongside a stable code
+(`metric_code`, `model`). The console translates from the code and falls back
+to the server's words, so an Arabic operator reads Arabic and a metric
+declared before anyone translated it still reads as English rather than as a
+missing-key placeholder. `metricName()` is its own module for the same reason:
+the pricing table, the editor title, the company page and the coverage warning
+must call a metric the same thing.
+
+Still English in a non-English console: **domain validation messages** —
+"Tier bounds must ascend: 500 follows 900" and its siblings. They interpolate
+values into prose in the domain layer, which deliberately has no i18n
+coupling, so translating them means converting the pricing error hierarchy to
+codes and parameters. Worth doing, not done here.
+
+**The preview is computed by the pricing engine, never in the browser.** It
+debounces and calls `POST /platform/pricing/quote` (below). The preview is
+exactly where an operator decides a price is right, so it must be the same
+arithmetic the invoice will use.
+
+## Metering and pricing are separate systems
+
+**Metering records what happened. Pricing decides what it costs. Neither
+knows about the other.**
+
+This is the constraint everything above rests on, so it is worth stating as a
+rule rather than leaving it implicit in the call graph.
+
+| | Metering | Pricing |
+|---|---|---|
+| Answers | *What happened?* | *What does it cost?* |
+| Owns | `usage_records`, `billable_events` | `pricing_rates`, `pricing_rate_tiers`, `pricing_profiles` |
+| Writes | Append-only, at the moment of the event | Never writes usage; freezes lines at close |
+| Knows | Company, metric, quantity, when, context | Rates, tiers, allowances, effective dates, currency |
+
+### What a metering row is allowed to contain
+
+Company, metric code, metric version, quantity, `occurred_at`, source,
+idempotency key, and a context reference. **No amount, no currency, no rate
+id, no "priced" flag.** A price frozen at measurement time is a pricing
+decision that can never be revisited — and re-pricing a period is exactly what
+this separation exists to allow.
+
+The event row alongside it (`billable_events`) carries channel, origin and
+direction. Those are **analytics dimensions**; the pricing engine reads none
+of them, which is what makes billing channel-agnostic in fact rather than by
+convention.
+
+`test_metering_separation.py` asserts this against the model columns, so
+adding a price column to either table fails with the reason.
+
+### The meter does not construct the pricing engine
+
+`UsageService` takes `pricing` as **optional**. The metering consumer's
+`build_usage_service` passes none at all, and the module imports nothing from
+the pricing package — delete `application/services/pricing_service.py` and the
+meter still records usage. Asking a metering-only service to close a period
+raises rather than quietly pricing nothing at zero.
+
+The period-close job builds its own service *with* pricing, because closing is
+the one place the two meet.
+
+### Metering rows are immutable, and the database says so
+
+| Table | Trigger |
+|---|---|
+| `billable_events` | `trg_billable_events_immutable` |
+| `usage_records` | `trg_usage_records_immutable` (migration `b7d4e21a9c56`) |
+
+Both refuse `UPDATE` and `DELETE` at the row level. The repositories expose
+`add` and reads and no mutator, but a rule enforced only in the application is
+a rule somebody eventually goes around with one statement in a psql session.
+
+A correction is a **new record** — `UsageRecordSource.MANUAL`, with a note and
+an operator — never an edit. `scripts/reset_company_billing.sql` disables both
+triggers explicitly and re-enables them; that is a named development tool, and
+its explicitness is the point.
+
+### Pricing is reproducible from stored state
+
+A close resolves rates at one instant, captured once:
+
+```python
+closing_at = datetime.now(UTC)
+priced_at = min(period.period_end, closing_at)   # an early close prices at "now"
+period.mark_closed(closed_at=closing_at)
+```
+
+One `now()` per close, not two. Both halves are on the period row, so the
+instant a historical close priced at is `min(period_end, closed_at)` —
+derivable from the row alone, with nothing to guess. Combined with rates that
+are never rewritten (see *History is never rewritten*), any past period can be
+re-priced and reach the same numbers.
+
+### Simulation: `POST /platform/pricing/quote`
+
+The other thing the separation buys. Terms come from the caller rather than
+from a stored rate, and nothing is written:
+
+```json
+{ "metric_code": "BILLABLE_MESSAGE", "quantity": "150", "currency": "USD",
+  "pricing_model": "volume_tier", "unit_amount": "0.001",
+  "tiers": [{"up_to": "200", "unit_amount": "0.0005"}, {"up_to": null, "unit_amount": "0.001"}],
+  "included_quantity": "100" }
+```
+
+It answers two questions with one call:
+
+- *What will these terms charge?* — the pricing editor's preview, so the
+  console never applies a tier table itself.
+- *What would last month have cost under this table?* — given a closed
+  period's own snapshot quantity.
+
+Terms are normalised and validated through `PricingService.validated_terms`,
+the **same method a write uses**. A tiered model with no table, a table whose
+bounds do not ascend, or a model this release does not offer is refused here
+exactly as on save, and amounts come back quantized to the column's scale. A
+preview that validated differently would be worth less than none: an operator
+would approve `250` and store `250.000000`.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:
@@ -1740,10 +1915,5 @@ Stated explicitly so nobody looks for them:
 - **A customer-facing payment page** — checkout is started through the
   platform API, so today an operator sends the approval link. The intent
   and return/cancel URLs are already modelled for a self-service page.
-- **A console editor for tier tables.** The tiers ship seeded and resolve
-  correctly everywhere; changing them today means a migration or SQL rather
-  than the pricing screen. The schema, the domain validation
-  (`domain/tiers.validate_tiers`) and the repository writes are in place for
-  it.
 - **Contracts, taxes and discounts** — later phases.
 - **Partial-payment plans and write-offs.**

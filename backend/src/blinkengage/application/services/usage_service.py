@@ -83,20 +83,53 @@ class CloseOutcome:
 
 
 class UsageService:
+    """Metering, and the period close that consumes it.
+
+    Two responsibilities, one seam, and the seam is which of them needs
+    pricing: **metering never does.** ``record()`` and everything around
+    periods decide what happened; only ``close_period`` asks what it costs.
+
+    ``pricing`` is therefore optional. A meter constructs this service without
+    one — see ``usage_metering_consumer`` — and gets a service that can record
+    usage and cannot price it, which is the guarantee stated as code rather
+    than as a comment. Calling ``close_period`` without one raises rather than
+    silently pricing at nothing.
+
+    The alternative, splitting this into two classes, would separate period
+    creation from period closing, and both halves need it. This keeps one
+    owner of the period lifecycle while making the dependency honest.
+    """
+
     def __init__(
         self,
         *,
         periods: BillingPeriodRepository,
         records: UsageRecordRepository,
         lines: UsagePeriodLineRepository,
-        pricing: PricingService,
         events: DomainEventPublisher,
+        pricing: PricingService | None = None,
     ) -> None:
         self._periods = periods
         self._records = records
         self._lines = lines
         self._pricing = pricing
         self._events = events
+
+    @property
+    def _prices(self) -> PricingService:
+        """The pricing engine, for the closing half only.
+
+        Raises rather than returning ``None``: a close that quietly priced
+        nothing would produce a zero invoice that looks like a real one, and
+        that is far worse than a job that stops and says why.
+        """
+        if self._pricing is None:
+            raise RuntimeError(
+                "This UsageService was built for metering and has no pricing engine. "
+                "Closing a period needs one — see build_usage_service in "
+                "billing_period_close_task."
+            )
+        return self._pricing
 
     # --- Periods ----------------------------------------------------
 
@@ -264,14 +297,20 @@ class UsageService:
         # The company's own currency. Read once and used for every line
         # this close writes, so a period cannot end up with lines in two
         # currencies — which would make its total meaningless.
-        currencies = await self._pricing.company_currencies([period.company_id])
+        currencies = await self._prices.company_currencies([period.company_id])
         company_currency = currencies.get(period.company_id, DEFAULT_CURRENCY.code)
 
         # Price at the end of the period, not at "now": closing a month
         # late must not apply a rate that came into force afterwards.
         # `period_end` is exclusive, so the last billable instant is just
         # inside it.
-        priced_at = min(period.period_end, datetime.now(UTC))
+        # One instant for the whole close, and the *same* instant recorded as
+        # ``closed_at`` below. Two calls to ``now()`` would differ by
+        # microseconds, and then re-pricing this period from its own recorded
+        # state would resolve at an instant that was never used — which is
+        # exactly the reproducibility this separation is supposed to buy.
+        closing_at = datetime.now(UTC)
+        priced_at = min(period.period_end, closing_at)
         lines: list[UsagePeriodLine] = []
         subtotals: list[Decimal] = []
         unpriced: list[str] = []
@@ -282,7 +321,7 @@ class UsageService:
             unit = metric.unit.value if metric else "unit"
 
             resolved = None
-            batch = await self._pricing.resolve_many(
+            batch = await self._prices.resolve_many(
                 [
                     PriceRequest(
                         company_id=period.company_id,
@@ -364,7 +403,7 @@ class UsageService:
         # only that caller writes lines.
         won = await self._periods.mark_closed(
             period_id=period_id,
-            closed_at=datetime.now(UTC),
+            closed_at=closing_at,
             closed_by_user_id=actor_user_id,
             total_amount=period_total,
             currency=company_currency,

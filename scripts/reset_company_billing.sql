@@ -118,6 +118,10 @@ ALTER TABLE invoice_lines DISABLE TRIGGER trg_invoice_lines_immutable;
 ALTER TABLE credit_note_lines DISABLE TRIGGER trg_credit_note_lines_immutable;
 ALTER TABLE usage_period_lines DISABLE TRIGGER trg_usage_period_lines_immutable;
 ALTER TABLE billing_daily_summary DISABLE TRIGGER trg_billing_daily_summary_no_delete;
+-- The metering tables. Append-only in production precisely so nothing can do
+-- what this script does; disabled here in the open, and re-enabled below.
+ALTER TABLE usage_records DISABLE TRIGGER trg_usage_records_immutable;
+ALTER TABLE billable_events DISABLE TRIGGER trg_billable_events_immutable;
 
 -- --- The records, in dependency order -------------------------------
 --
@@ -159,6 +163,7 @@ DELETE FROM billing_daily_summary WHERE company_id = (SELECT id FROM target);
 DELETE FROM usage_period_lines upl
 USING billing_periods bp
 WHERE upl.billing_period_id = bp.id AND bp.company_id = (SELECT id FROM target);
+DELETE FROM billable_events WHERE company_id = (SELECT id FROM target);
 DELETE FROM usage_records WHERE company_id = (SELECT id FROM target);
 DELETE FROM billing_periods WHERE company_id = (SELECT id FROM target);
 
@@ -181,6 +186,8 @@ ALTER TABLE invoice_lines ENABLE TRIGGER trg_invoice_lines_immutable;
 ALTER TABLE credit_note_lines ENABLE TRIGGER trg_credit_note_lines_immutable;
 ALTER TABLE usage_period_lines ENABLE TRIGGER trg_usage_period_lines_immutable;
 ALTER TABLE billing_daily_summary ENABLE TRIGGER trg_billing_daily_summary_no_delete;
+ALTER TABLE usage_records ENABLE TRIGGER trg_usage_records_immutable;
+ALTER TABLE billable_events ENABLE TRIGGER trg_billable_events_immutable;
 
 -- --- Prove it before committing -------------------------------------
 --

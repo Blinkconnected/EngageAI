@@ -131,9 +131,29 @@ Every status change publishes `platform.company_status_changed`, which
 the audit-log consumer records automatically — a platform operator
 changing a customer's account state must be reconstructable later.
 
-## The console
+## The consoles
 
-`/platform` — outside `ProtectedRoute` and `AppLayout` on purpose. The
+Two of them, on one shared shell (`ConsoleShell`):
+
+| Console | Path | Job |
+|---|---|---|
+| **Platform** | `/platform` | Running the installation — companies, feature entitlements, the mail transport |
+| **Billing** | `/platform/billing` | Running the revenue system — pricing, profiles, per-company terms |
+
+They share authority and nothing else. A platform operator holds both, but
+suspending a company and setting a rate are different tasks done on different
+days, so each console shows its own navigation rather than one bar with
+everything on it. A link in each header crosses to the other, styled apart
+from the sections because it leaves the console rather than moving within it.
+
+**Billing is nested under `/platform` rather than mounted at `/billing`**, for
+two reasons. `/billing` is the *tenant's* own billing page and stays theirs.
+And nesting inherits `PlatformRoute`, so a section added to the billing
+console cannot be reached without platform authority even if whoever adds it
+forgets to guard it — the same principle `api/v1/router.py` uses for its gated
+routers. `consoles.test.tsx` asserts the inherited guard directly.
+
+Both sit outside `ProtectedRoute` and `AppLayout` on purpose. The
 tenant shell's navigation is the product itself (Inbox, Customers,
 Reports…), none of which a platform operator can open; rendering it
 would offer a dozen links that all 403.

@@ -13,9 +13,13 @@ import type {
   PricingProfile,
 } from './types'
 import type {
+  PricingModel,
+  PricingModelInfo,
+  PricingQuote,
   PricingRate,
   ResolveUsagePriceResponse,
   SetCompanyRateInput,
+  Tier,
   MailSettings,
   MailSettingsInput,
   TestMailResult,
@@ -87,7 +91,6 @@ export function useSetCompanyStatusMutation() {
   })
 }
 
-
 // --- Feature entitlements -------------------------------------------
 
 async function fetchFeatureCatalog(): Promise<FeatureState[]> {
@@ -100,9 +103,7 @@ export function useFeatureCatalogQuery() {
 }
 
 async function fetchCompanyFeatures(companyId: string): Promise<FeatureState[]> {
-  const { data } = await apiClient.get<FeatureState[]>(
-    `/platform/companies/${companyId}/features`,
-  )
+  const { data } = await apiClient.get<FeatureState[]>(`/platform/companies/${companyId}/features`)
   return data
 }
 
@@ -138,7 +139,6 @@ export function useSetCompanyFeaturesMutation() {
   })
 }
 
-
 // --- Pricing engine ---------------------------------------------------
 
 const PRICING_KEY = ['platform', 'pricing']
@@ -148,10 +148,17 @@ async function fetchMetrics(): Promise<BillableMetric[]> {
   return data
 }
 
-/** The catalog never changes at runtime — metrics are code — so this is
- * cached for the session rather than refetched. */
+/** The usage-metric catalogue, including the dimensions nothing measures yet
+ * — an operator can see what is coming and why it cannot be priced.
+ *
+ * Never changes at runtime, because metrics are code, so it is cached for the
+ * session rather than refetched. */
 export function useBillableMetricsQuery() {
-  return useQuery({ queryKey: [...PRICING_KEY, 'metrics'], queryFn: fetchMetrics, staleTime: Infinity })
+  return useQuery({
+    queryKey: [...PRICING_KEY, 'metrics'],
+    queryFn: fetchMetrics,
+    staleTime: Infinity,
+  })
 }
 
 async function fetchPricingProfiles(): Promise<PricingProfile[]> {
@@ -163,17 +170,29 @@ export function usePricingProfilesQuery() {
   return useQuery({ queryKey: [...PRICING_KEY, 'profiles'], queryFn: fetchPricingProfiles })
 }
 
+/** `currency` picks which global or profile price list to read. Nothing
+ * converts, so a metric has one rate per currency and all of them are in
+ * force at once — asking without naming one is an ambiguous question. A
+ * company target ignores it: their own currency is the only one that can
+ * charge them. */
 async function fetchEffectivePricing(params: {
   companyId?: string
   profileId?: string
+  currency?: string
 }): Promise<EffectivePricing> {
   const { data } = await apiClient.get<EffectivePricing>('/platform/pricing/effective', {
-    params: { company_id: params.companyId, profile_id: params.profileId },
+    params: {
+      company_id: params.companyId,
+      profile_id: params.profileId,
+      currency: params.currency,
+    },
   })
   return data
 }
 
-export function useEffectivePricingQuery(params: { companyId?: string; profileId?: string } = {}) {
+export function useEffectivePricingQuery(
+  params: { companyId?: string; profileId?: string; currency?: string } = {},
+) {
   return useQuery({
     queryKey: [...PRICING_KEY, 'effective', params],
     queryFn: () => fetchEffectivePricing(params),
@@ -214,6 +233,16 @@ export interface SetPriceInput {
   unitAmount: string
   effectiveFrom: string
   reason?: string
+  /** How the rate charges. Omitted means a flat rate, which is what every
+   * rate written before pricing models was. */
+  pricingModel?: PricingModel
+  /** Required for a tiered model, refused for the others. */
+  tiers?: Tier[]
+  /** Units that cost nothing per period. Omitted leaves the metric's own
+   * default in force; an explicit "0" means none, which is a different
+   * thing. */
+  includedQuantity?: string | null
+  minimumCharge?: string | null
   /** Optimistic concurrency — without one of these two, a second
    * operator's edit silently overwrites the first. */
   expectedCurrentRateId?: string
@@ -230,6 +259,12 @@ async function setPrice(input: SetPriceInput) {
     unit_amount: input.unitAmount,
     effective_from: input.effectiveFrom,
     reason: input.reason ?? null,
+    ...(input.pricingModel ? { pricing_model: input.pricingModel } : {}),
+    ...(input.tiers ? { tiers: input.tiers } : {}),
+    // Sent only when set: omitting means "leave the metric's default", and
+    // sending null would be indistinguishable from a deliberate zero.
+    ...(input.includedQuantity != null ? { included_quantity: input.includedQuantity } : {}),
+    ...(input.minimumCharge != null ? { minimum_charge: input.minimumCharge } : {}),
     ...(input.expectedCurrentRateId
       ? { expected_current_rate_id: input.expectedCurrentRateId }
       : { expect_no_current_rate: input.expectNoCurrentRate ?? false }),
@@ -245,6 +280,55 @@ export function useSetPriceMutation() {
       void queryClient.invalidateQueries({ queryKey: PRICING_KEY })
     },
   })
+}
+
+async function fetchPricingModels(): Promise<PricingModelInfo[]> {
+  const { data } = await apiClient.get<PricingModelInfo[]>('/platform/pricing/models')
+  return data
+}
+
+/** Which pricing models this build supports, and which may be used today.
+ *
+ * Fetched rather than hardcoded so the editor gains a model the day the
+ * server enables one, with no frontend release. */
+export function usePricingModelsQuery() {
+  return useQuery({ queryKey: [...PRICING_KEY, 'models'], queryFn: fetchPricingModels })
+}
+
+export interface QuoteInput {
+  metricCode: string
+  currency: string
+  quantity: string
+  pricingModel: PricingModel
+  unitAmount: string
+  tiers?: Tier[]
+  includedQuantity?: string | null
+  minimumCharge?: string | null
+}
+
+async function quotePricing(input: QuoteInput): Promise<PricingQuote> {
+  const { data } = await apiClient.post<PricingQuote>('/platform/pricing/quote', {
+    metric_code: input.metricCode,
+    currency: input.currency,
+    quantity: input.quantity,
+    pricing_model: input.pricingModel,
+    unit_amount: input.unitAmount,
+    ...(input.tiers ? { tiers: input.tiers } : {}),
+    ...(input.includedQuantity != null ? { included_quantity: input.includedQuantity } : {}),
+    ...(input.minimumCharge != null ? { minimum_charge: input.minimumCharge } : {}),
+  })
+  return data
+}
+
+/** What a set of terms would charge, computed by the pricing engine.
+ *
+ * Nothing is saved: this is the same `charge()` the invoice uses, asked a
+ * hypothetical question. It exists because the console must never do the
+ * arithmetic itself — a tier table applied in TypeScript would eventually
+ * disagree with the bill, and the preview is exactly where an operator
+ * decides the price is right. */
+export function useQuotePricingMutation() {
+  return useMutation({ mutationFn: quotePricing })
 }
 
 async function assignPricingProfile(input: {
