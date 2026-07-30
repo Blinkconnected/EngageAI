@@ -64,6 +64,20 @@ for more detail on how this page is put together.
   can't display say so and offer to open them in a new tab, instead of
   showing a broken image that looks like the customer sent a corrupt file.
 
+- **A data-reset script for a single company's billing records.**
+  `scripts/reset_company_billing.sql` clears one company's invoices, credit
+  notes, payments, ledger entries, usage snapshot and billing periods while
+  keeping the company itself, its people and its conversations — a narrower
+  tool than the company purge below it. It exists because a company's
+  billing currency is fixed once it has been billed: correcting a
+  development tenant that was set up in the wrong currency means removing
+  the documents in the old currency first, so that nothing is ever
+  re-denominated. Like the purge it is deliberately a separate, named
+  script rather than anything reachable from the product, it runs as a
+  single transaction, it restores the database's immutability protections
+  before committing, and it refuses to finish — changing nothing — if it
+  finds it has touched a row belonging to any other company.
+
 - **Two data-reset scripts for development installations.**
   `scripts/purge_companies.sql` removes every company except one, and
   `scripts/purge_stale_cache.sh` clears the sessions and tokens left
