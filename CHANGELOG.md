@@ -52,6 +52,17 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Two data-reset scripts for development installations.**
+  `scripts/purge_companies.sql` removes every company except one, and
+  `scripts/purge_stale_cache.sh` clears the sessions and tokens left
+  behind pointing at things that no longer exist. Both are deliberately
+  separate, named scripts rather than anything reachable from the product:
+  the first genuinely deletes invoices and ledger entries, which the
+  database is otherwise built to refuse. The purge runs as a single
+  transaction and verifies itself before committing, so it either
+  completes cleanly or changes nothing, and it refuses to run at all if
+  the company you asked to keep doesn't exist.
+
 - **A Billing screen for each company** in the platform console, reached
   from the Companies list. It shows what the company is charged, **where
   each price comes from** — global default, pricing profile, or a
