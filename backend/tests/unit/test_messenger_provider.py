@@ -137,8 +137,27 @@ class TestSendMessage:
         assert result.external_message_id == "mid.attachment"
 
 
+def _profile_only_handler(
+    profile: dict[str, Any] | None = None, *, status: int = 200
+) -> Any:
+    """Handler for a receive test whose only Graph call is the sender-name
+    lookup. Defaults to a successful two-part name; pass ``status=400`` to
+    exercise the degrade-to-``None`` path."""
+    body = profile if profile is not None else {"first_name": "Ada", "last_name": "Lovelace"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if status != 200:
+            return httpx.Response(status, json={"error": {"message": "no access"}})
+        return httpx.Response(200, json=body)
+
+    return handler
+
+
 class TestReceiveMessage:
-    async def test_parses_text_message(self, provider: MessengerProvider) -> None:
+    async def test_parses_text_message(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_client(monkeypatch, _profile_only_handler())
         raw = orjson.dumps(
             {
                 "object": "page",
@@ -166,7 +185,7 @@ class TestReceiveMessage:
         assert message.external_message_id == "mid.in1"
         assert message.external_thread_id == "psid-1"
         assert message.external_customer_id == "psid-1"
-        assert message.external_customer_name is None
+        assert message.external_customer_name == "Ada Lovelace"
         assert message.body == "Hi there"
         assert message.sent_at is not None
 
@@ -190,7 +209,10 @@ class TestReceiveMessage:
 
         assert messages == []
 
-    async def test_sets_reply_to_from_message(self, provider: MessengerProvider) -> None:
+    async def test_sets_reply_to_from_message(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_client(monkeypatch, _profile_only_handler())
         raw = orjson.dumps(
             {
                 "entry": [
@@ -222,8 +244,14 @@ class TestReceiveMessage:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
-            assert str(request.url) == "https://cdn.example/photo.jpg"
-            return httpx.Response(200, content=b"jpg-bytes", headers={"content-type": "image/jpeg"})
+            # Two calls now happen for an attachment message: the sender
+            # profile lookup, then the CDN download.
+            if request.url.host == "cdn.example":
+                return httpx.Response(
+                    200, content=b"jpg-bytes", headers={"content-type": "image/jpeg"}
+                )
+            assert request.url.path.endswith("/psid-1")
+            return httpx.Response(200, json={"first_name": "Ada", "last_name": "Lovelace"})
 
         _mock_client(monkeypatch, handler)
 
@@ -257,6 +285,105 @@ class TestReceiveMessage:
         assert ref.content_type == "image/jpeg"
         stored_data, _ = attachments.uploaded[ref.external_id]
         assert stored_data == b"jpg-bytes"
+
+
+def _text_message_payload(*senders: str) -> bytes:
+    """One webhook batch carrying a plain text message from each sender id
+    given, in order (repeat an id to test that its name is fetched once)."""
+    return orjson.dumps(
+        {
+            "entry": [
+                {
+                    "messaging": [
+                        {
+                            "sender": {"id": sender},
+                            "timestamp": 1700000000000,
+                            "message": {"mid": f"mid.{index}", "text": "hello"},
+                        }
+                        for index, sender in enumerate(senders)
+                    ]
+                }
+            ]
+        }
+    )
+
+
+class TestSenderName:
+    """The Graph User Profile lookup that turns a bare sender id into a
+    display name — see docs/architecture/messenger-instagram.md."""
+
+    async def test_looks_up_name_against_the_sender_node(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        requests = _mock_client(monkeypatch, _profile_only_handler())
+
+        messages = await provider.receive_message(_text_message_payload("psid-1"))
+
+        assert messages[0].external_customer_name == "Ada Lovelace"
+        # Addresses the *sender's* node, not the page's, and asks only for
+        # the two name fields.
+        assert requests[0].url.path.endswith("/psid-1")
+        assert requests[0].url.params["fields"] == "first_name,last_name"
+        assert requests[0].url.params["access_token"] == "page-token"
+
+    async def test_falls_back_to_none_when_profile_is_unreadable(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Meta refuses the profile of a sender the app has no access to —
+        # routine while an app is in development mode. The message must
+        # still arrive; only the name is lost.
+        _mock_client(monkeypatch, _profile_only_handler(status=400))
+
+        messages = await provider.receive_message(_text_message_payload("psid-1"))
+
+        assert len(messages) == 1
+        assert messages[0].external_customer_name is None
+        assert messages[0].body == "hello"
+
+    async def test_survives_a_transport_error(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("graph unreachable")
+
+        _mock_client(monkeypatch, handler)
+
+        messages = await provider.receive_message(_text_message_payload("psid-1"))
+
+        assert messages[0].external_customer_name is None
+
+    async def test_looks_the_same_sender_up_once_per_batch(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        requests = _mock_client(monkeypatch, _profile_only_handler())
+
+        messages = await provider.receive_message(
+            _text_message_payload("psid-1", "psid-1", "psid-2")
+        )
+
+        assert [m.external_customer_name for m in messages] == ["Ada Lovelace"] * 3
+        looked_up = [str(request.url.path).rsplit("/", 1)[-1] for request in requests]
+        assert looked_up == ["psid-1", "psid-2"]
+
+    async def test_uses_first_name_alone_when_last_name_is_absent(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _mock_client(monkeypatch, _profile_only_handler({"first_name": "Ada"}))
+
+        messages = await provider.receive_message(_text_message_payload("psid-1"))
+
+        assert messages[0].external_customer_name == "Ada"
+
+    async def test_treats_an_empty_profile_as_no_name(
+        self, provider: MessengerProvider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A blank name would otherwise become a blank customer record —
+        # worse than falling back to the id.
+        _mock_client(monkeypatch, _profile_only_handler({"first_name": "", "last_name": "  "}))
+
+        messages = await provider.receive_message(_text_message_payload("psid-1"))
+
+        assert messages[0].external_customer_name is None
 
 
 class TestVerifySignatureAndWebhook:

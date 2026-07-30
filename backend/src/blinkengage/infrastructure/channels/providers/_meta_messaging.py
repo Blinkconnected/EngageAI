@@ -59,11 +59,18 @@ class MetaMessagingProvider(ChannelProvider):
     _recipient_credential_key: str
 
     @property
-    def _api_base(self) -> str:
+    def _graph_root(self) -> str:
+        """Versioned Graph API root with *no* node id — the profile lookup
+        in ``_fetch_sender_name`` addresses a sender's node, not this
+        channel's own, so it can't build on ``_api_base``."""
         base = self._credentials.get("graph_api_base_url", _DEFAULT_API_BASE_URL)
         version = self._credentials.get("api_version", _DEFAULT_API_VERSION)
+        return f"{base}/{version}"
+
+    @property
+    def _api_base(self) -> str:
         node_id = self._credentials.get(self._recipient_credential_key, "")
-        return f"{base}/{version}/{node_id}"
+        return f"{self._graph_root}/{node_id}"
 
     @property
     def _auth_params(self) -> dict[str, str]:
@@ -152,19 +159,63 @@ class MetaMessagingProvider(ChannelProvider):
     async def receive_message(self, raw_payload: bytes) -> list[InboundMessage]:
         payload = orjson.loads(raw_payload)
         messages: list[InboundMessage] = []
+        # Sender-name lookups are memoised for the lifetime of this one
+        # webhook batch: a batch routinely carries several messages from the
+        # same sender, and each lookup is a separate Graph API round-trip.
+        # Deliberately not cached on the instance — a provider is built per
+        # request, so a longer-lived cache would need invalidation rules for
+        # a name that is only ever read when a customer is first created.
+        sender_names: dict[str, str | None] = {}
         async with httpx.AsyncClient() as client:
             for entry in payload.get("entry", []):
                 for item in entry.get("messaging", []):
                     message = item.get("message")
                     if message is None:
                         continue  # a delivery/read/postback event, not inbound content
-                    messages.append(await self._parse_messaging_item(client, item, message))
+                    messages.append(
+                        await self._parse_messaging_item(client, item, message, sender_names)
+                    )
         return messages
 
+    async def _fetch_sender_name(self, client: httpx.AsyncClient, sender_id: str) -> str | None:
+        """The sender's display name, or ``None`` if it can't be read.
+
+        Messenger/Instagram webhooks carry only a sender id, so the name
+        costs this extra call (Meta's User Profile API). It legitimately
+        fails for some senders — a person whose profile the app has no
+        access to, or any sender at all while the app is still in
+        development mode — and a name is an enrichment, not something the
+        conversation needs to exist. So *every* failure degrades to
+        ``None``, letting identity resolution fall back to the id exactly
+        as it did before this lookup existed, rather than failing the
+        webhook and making Meta retry a delivery that would never succeed.
+        """
+        try:
+            response = await client.get(
+                f"{self._graph_root}/{sender_id}",
+                params={**self._auth_params, "fields": "first_name,last_name"},
+            )
+            response.raise_for_status()
+            profile = response.json()
+        except (httpx.HTTPError, orjson.JSONDecodeError, ValueError):
+            return None
+        name = " ".join(
+            str(part)
+            for part in (profile.get("first_name"), profile.get("last_name"))
+            if part is not None and str(part).strip()
+        ).strip()
+        return name or None
+
     async def _parse_messaging_item(
-        self, client: httpx.AsyncClient, item: dict[str, Any], message: dict[str, Any]
+        self,
+        client: httpx.AsyncClient,
+        item: dict[str, Any],
+        message: dict[str, Any],
+        sender_names: dict[str, str | None],
     ) -> InboundMessage:
         sender_id = item["sender"]["id"]
+        if sender_id not in sender_names:
+            sender_names[sender_id] = await self._fetch_sender_name(client, sender_id)
         attachments: list[AttachmentRef] = []
         for raw_attachment in message.get("attachments", []):
             url = raw_attachment.get("payload", {}).get("url")
@@ -184,12 +235,13 @@ class MetaMessagingProvider(ChannelProvider):
             sent_at=datetime.fromtimestamp(timestamp / 1000, tz=UTC) if timestamp else None,
             raw_metadata={},
             # Unlike WhatsApp's webhook (which inlines a contact profile
-            # name), Messenger/Instagram webhooks carry no display name —
-            # fetching one costs an extra Graph API call per new contact
-            # and isn't built here; the generic identity-resolution path
-            # (see docs/architecture/whatsapp-telegram.md) already handles
-            # a missing name by falling back to the external id.
-            external_customer_name=None,
+            # name), Messenger/Instagram webhooks carry only a sender id, so
+            # this is resolved by a separate profile call above. Stays
+            # None when that call can't read the profile, and the generic
+            # identity-resolution path (see
+            # docs/architecture/whatsapp-telegram.md) then falls back to the
+            # external id as before.
+            external_customer_name=sender_names[sender_id],
         )
 
     async def _download_attachment_from_url(
