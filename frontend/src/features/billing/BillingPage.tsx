@@ -20,6 +20,7 @@ import { CostTransparencyCard } from './CostTransparencyCard'
 import { DailyCostChart } from './DailyCostChart'
 import { InvoiceHistoryPanel } from './InvoiceHistoryPanel'
 import { InvoiceTimeline } from './InvoiceTimeline'
+import { MessageMixCard } from './MessageMixCard'
 import { MetricCostTable } from './MetricCostTable'
 import { OverviewCards } from './OverviewCards'
 import { PaymentMethodsCard } from './PaymentMethodsCard'
@@ -186,6 +187,12 @@ export function BillingPage() {
       </Box>
 
       <Grid container spacing={2} sx={{ mt: 2 }}>
+        {/* Where the messages came from. Counts, never money — billing is
+            channel-agnostic, so a per-channel cost would be a number the
+            invoice does not contain. */}
+        <Grid size={{ xs: 12, md: 5 }}>
+          <MessageMixCard breakdowns={data.breakdowns} />
+        </Grid>
         <Grid size={{ xs: 12, md: 7 }}>
           <InvoiceTimeline
             events={data.timeline}
@@ -193,6 +200,9 @@ export function BillingPage() {
             suspendAfterDays={data.configuration.suspend_after_days}
           />
         </Grid>
+      </Grid>
+
+      <Grid container spacing={2} sx={{ mt: 2 }}>
         <Grid size={{ xs: 12, md: 5 }}>
           <PaymentMethodsCard methods={data.payment_methods} />
         </Grid>

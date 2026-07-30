@@ -39,6 +39,7 @@ class MeasurementUnit(StrEnum):
     reads this, rather than every caller hardcoding a suffix.
     """
 
+    MESSAGE = "message"
     CONVERSATION = "conversation"
     REPLY = "reply"
     MINUTE = "minute"
@@ -60,6 +61,13 @@ class MetricAvailability(StrEnum):
     MEASURED = "measured"
     #: Declared, no meter yet. Visible to operators, **not** priceable.
     PLANNED = "planned"
+    #: Was measured, and is not any more. **Not** priceable — no new rate may
+    #: be set — but everything already recorded stays exactly as it is:
+    #: existing rates still resolve, closed periods still price, and old
+    #: invoices still reprint. A retired metric is never deleted from this
+    #: catalog, because its code appears on documents that must stay
+    #: readable years later.
+    RETIRED = "retired"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,26 +101,63 @@ class BillableMetric:
 #: they appear in pricing rows, usage records and invoices, so renaming
 #: one silently reprices history. Add metrics; do not rename them.
 METRICS: tuple[BillableMetric, ...] = (
+    # --- The billing model -------------------------------------------
+    BillableMetric(
+        code="BILLABLE_MESSAGE",
+        display_name="Billable message",
+        unit=MeasurementUnit.MESSAGE,
+        description=(
+            "A customer-facing message on any channel — inbound or outbound, "
+            "written by a person, the AI or an automation, in any medium. "
+            "Internal notes, system messages and receipts are excluded."
+        ),
+        availability=MetricAvailability.MEASURED,
+    ),
+    # --- Retired ------------------------------------------------------
+    #
+    # Kept, never deleted: these codes appear on issued invoices, closed
+    # period snapshots, ledger references and pricing history, all of which
+    # must stay readable and must keep pricing exactly the way they were
+    # billed. They are simply no longer metered, and no new rate may be set
+    # for them.
+    #
+    # Retired together because they were one billing model: a per-conversation
+    # charge with per-AI-feature surcharges on top. The product now charges
+    # per customer-facing message, and an AI reply is one of those — the AI's
+    # involvement is recorded as an analytics dimension on the billable event
+    # rather than as a second charge for the same message.
     BillableMetric(
         code="CONVERSATION",
         display_name="Conversation",
         unit=MeasurementUnit.CONVERSATION,
-        description="A conversation handled on any channel.",
-        availability=MetricAvailability.MEASURED,
+        description=(
+            "A conversation handled on any channel. Retired — billing counts "
+            "individual messages, so historical charges remain but nothing new "
+            "is metered."
+        ),
+        availability=MetricAvailability.RETIRED,
     ),
     BillableMetric(
         code="AI_ASSISTED_REPLY",
         display_name="AI-assisted reply",
         unit=MeasurementUnit.REPLY,
-        description="A reply an agent sent with help from the AI Engine.",
-        availability=MetricAvailability.MEASURED,
+        description=(
+            "A reply an agent sent with help from the AI Engine. Retired — it "
+            "is one billable message, and the AI assistance is an analytics "
+            "dimension rather than a surcharge."
+        ),
+        availability=MetricAvailability.RETIRED,
     ),
     BillableMetric(
         code="AI_AUTOPILOT",
         display_name="AI Autopilot reply",
         unit=MeasurementUnit.REPLY,
-        description="A reply AI Autopilot sent on its own, without an agent.",
-        availability=MetricAvailability.MEASURED,
+        description=(
+            "A reply AI Autopilot sent on its own, without an agent. Retired — "
+            "it is one billable message, and Autopilot's involvement is an "
+            "analytics dimension rather than a surcharge."
+        ),
+        availability=MetricAvailability.RETIRED,
     ),
     # --- Declared, not yet measurable ------------------------------
     # Both are real roadmap metrics with no meter in this codebase:
@@ -151,11 +196,16 @@ def is_known_metric(code: str) -> bool:
 
 
 def is_priceable(code: str) -> bool:
-    """Whether a price may be configured for this metric.
+    """Whether a **new** price may be configured for this metric.
 
-    False for both an unknown code and a ``PLANNED`` one. The pricing
-    API checks this rather than merely checking existence, so a rate
-    can never be attached to something nothing measures.
+    False for an unknown code, a ``PLANNED`` one and a ``RETIRED`` one. The
+    pricing API checks this rather than merely checking existence, so a rate
+    can never be attached to something nothing measures — and so nobody sets
+    a rate on a retired metric that would never charge anything.
+
+    Deliberately *not* consulted on read: a retired metric's existing rates
+    must keep resolving, or a closed period would fail to reprice and an
+    invoice would fail to reprint.
     """
     metric = _BY_CODE.get(code)
     return metric is not None and metric.is_priceable
@@ -163,6 +213,20 @@ def is_priceable(code: str) -> bool:
 
 def priceable_metrics() -> tuple[BillableMetric, ...]:
     return tuple(metric for metric in METRICS if metric.is_priceable)
+
+
+def retired_metrics() -> tuple[BillableMetric, ...]:
+    """Metrics that were once metered. Surfaced so a console can show a
+    company's historical charges with a label rather than an unexplained
+    code."""
+    return tuple(
+        metric for metric in METRICS if metric.availability is MetricAvailability.RETIRED
+    )
+
+
+def is_retired(code: str) -> bool:
+    metric = get_metric(code)
+    return metric is not None and metric.availability is MetricAvailability.RETIRED
 
 
 __all__ = [
@@ -174,5 +238,7 @@ __all__ = [
     "get_metric",
     "is_known_metric",
     "is_priceable",
+    "is_retired",
     "priceable_metrics",
+    "retired_metrics",
 ]

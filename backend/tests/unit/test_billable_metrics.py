@@ -13,17 +13,25 @@ from blinkengage.domain.billable_metrics import (
     get_metric,
     is_known_metric,
     is_priceable,
+    is_retired,
     priceable_metrics,
+    retired_metrics,
 )
 
 
 class TestCatalogShape:
-    def test_conversation_is_the_first_metric(self) -> None:
-        conversation = get_metric("CONVERSATION")
+    def test_the_billable_message_is_the_metric_that_bills(self) -> None:
+        metric = get_metric("BILLABLE_MESSAGE")
 
-        assert conversation is not None
-        assert conversation.unit is MeasurementUnit.CONVERSATION
-        assert conversation.is_priceable
+        assert metric is not None
+        assert metric.unit is MeasurementUnit.MESSAGE
+        assert metric.is_priceable
+
+    def test_it_is_the_only_priceable_metric(self) -> None:
+        """One charge per customer-facing message, and nothing else metered.
+        A second priceable metric would mean a surcharge, which is exactly
+        what this model replaced."""
+        assert [metric.code for metric in priceable_metrics()] == ["BILLABLE_MESSAGE"]
 
     def test_every_metric_exposes_the_metadata_the_admin_ui_needs(self) -> None:
         for metric in METRICS:
@@ -41,6 +49,10 @@ class TestCatalogShape:
         a style check — if it fails, something was renamed rather than
         added."""
         assert {metric.code for metric in METRICS} == {
+            "BILLABLE_MESSAGE",
+            # Retired, and still here. These codes are on issued invoices,
+            # closed period snapshots and pricing history; deleting one would
+            # make a historical document unreadable.
             "CONVERSATION",
             "AI_ASSISTED_REPLY",
             "AI_AUTOPILOT",
@@ -72,8 +84,26 @@ class TestMeasurabilityGate:
         assert not is_priceable("STORAGE_GB")
 
     def test_measured_metrics_are_priceable(self) -> None:
+        assert is_priceable("BILLABLE_MESSAGE")
+
+    def test_a_retired_metric_is_known_but_not_priceable(self) -> None:
+        """The point of retirement: no new rate may be set, and everything
+        already recorded still reads. A closed period priced per conversation
+        must keep pricing that way — deleting the metric would make its
+        invoice unreprintable."""
         for code in ("CONVERSATION", "AI_ASSISTED_REPLY", "AI_AUTOPILOT"):
-            assert is_priceable(code), code
+            assert is_known_metric(code), code
+            assert is_retired(code), code
+            assert not is_priceable(code), code
+
+    def test_retired_metrics_are_listed_for_a_console(self) -> None:
+        """So a company's historical charges show a label rather than a bare
+        code somebody has to look up."""
+        assert {metric.code for metric in retired_metrics()} == {
+            "CONVERSATION",
+            "AI_ASSISTED_REPLY",
+            "AI_AUTOPILOT",
+        }
 
     def test_priceable_metrics_excludes_planned_ones(self) -> None:
         assert all(m.availability is MetricAvailability.MEASURED for m in priceable_metrics())

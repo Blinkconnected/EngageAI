@@ -117,7 +117,7 @@ class TestBillingInDinars:
         company_id = account["user"]["company"]["id"]
         # Seed a dinar global price, since a fresh test database has none.
         seeded = await client.put(
-            "/api/v1/platform/pricing/global/metrics/CONVERSATION",
+            "/api/v1/platform/pricing/global/metrics/BILLABLE_MESSAGE",
             headers=headers,
             json={
                 "unit_amount": "0.035000",
@@ -158,7 +158,7 @@ class TestBillingInDinars:
         account = await register(client, app)
         company_id = account["user"]["company"]["id"]
         await client.put(
-            "/api/v1/platform/pricing/global/metrics/CONVERSATION",
+            "/api/v1/platform/pricing/global/metrics/BILLABLE_MESSAGE",
             headers=headers,
             json={
                 "unit_amount": "0.035000",
@@ -177,7 +177,7 @@ class TestBillingInDinars:
             headers=headers,
             json={
                 "company_id": company_id,
-                "metric_code": "CONVERSATION",
+                "metric_code": "BILLABLE_MESSAGE",
                 "quantity": "150",
                 "occurred_at": datetime.now(UTC).isoformat(),
                 "idempotency_key": f"jod-{company_id}",

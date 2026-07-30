@@ -121,6 +121,22 @@ export interface BillingConfiguration {
   projection_strategy_default: ProjectionStrategy
 }
 
+export interface Tier {
+  /** Inclusive upper bound; `null` is the open-ended top step. */
+  up_to: string | null
+  unit_amount: string
+}
+
+export interface MessageBreakdown {
+  /** `channel`, `origin` or `direction`. */
+  dimension: string
+  /** `[label, message count]`, busiest first. Counts, never money: billing is
+   * channel-agnostic, so a per-channel cost would be a number the invoice
+   * does not contain. */
+  rows: [string, number][]
+  total: number
+}
+
 export interface UnitPrice {
   metric_code: string
   display_name: string
@@ -130,6 +146,9 @@ export interface UnitPrice {
   source: 'company' | 'profile' | 'global' | null
   effective_from: string | null
   free_allowance: string
+  /** The volume table behind `unit_amount` — empty for a flat rate. A rate
+   * that changes with volume is only checkable if the table is visible. */
+  tiers: Tier[]
 }
 
 export type StatusDetailCode =
@@ -187,6 +206,7 @@ export interface BillingDashboard {
   payment_methods: PaymentMethod[]
   configuration: BillingConfiguration
   unit_prices: UnitPrice[]
+  breakdowns: MessageBreakdown[]
   projection_alternatives: Projection[]
 }
 

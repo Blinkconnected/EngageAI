@@ -41,6 +41,7 @@ from uuid import UUID
 from blinkengage.domain.billable_metrics import MeasurementUnit
 from blinkengage.domain.money import multiply
 from blinkengage.domain.pricing_scope import SCOPES_BY_PRECEDENCE, PricingScope
+from blinkengage.domain.tiers import Tier, flat
 
 #: The lower bound of the seeded global rate. Deliberately the Unix epoch
 #: rather than the migration's own timestamp: a backfill or a
@@ -93,6 +94,9 @@ class RateCandidate:
     currency: str
     effective_from: datetime
     effective_until: datetime | None
+    #: Volume tiers, in order. Empty for a flat rate — which is what every
+    #: rate was before tiers existed, and what most still are.
+    tiers: tuple[Tier, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +151,13 @@ class ResolvedPrice:
     effective_until: datetime | None
     profile_id: UUID | None
     shadowed: tuple[ShadowedPrice, ...]
+    #: The volume tiers this rate carries, in order. Empty for a flat rate.
+    #:
+    #: ``unit_amount`` above is then the rate of the **top** tier, so a caller
+    #: that ignores tiers still gets a real price rather than nothing — but any
+    #: caller charging a period must go through ``tier_table()`` and
+    #: ``domain/tiers.charge()``, because the rate depends on the volume.
+    tiers: tuple[Tier, ...] = ()
 
     def extend(self, quantity: Decimal) -> Decimal:
         """quantity x unit price, **unrounded**.
@@ -155,8 +166,21 @@ class ResolvedPrice:
         when an invoice line is built — rounding per conversation and
         then summing forty thousand of them is how a bill drifts by
         dollars. See ``domain/money.py``.
+
+        **Flat-rate arithmetic.** For a tiered rate this multiplies by the top
+        tier's amount, which is only the answer for a high-volume period —
+        charge through ``domain/tiers.charge()`` instead, which selects by
+        volume and applies the allowance.
         """
         return multiply(quantity, self.unit_amount)
+
+    def tier_table(self) -> tuple[Tier, ...]:
+        """The tiers to charge with — a one-step table for a flat rate.
+
+        One charging path for both shapes, rather than a tiered branch and a
+        flat branch that eventually disagree.
+        """
+        return self.tiers if self.tiers else flat(self.unit_amount)
 
 
 def _require_aware(value: datetime, *, field: str) -> None:
@@ -302,6 +326,7 @@ def select_price(
         effective_until=winner.effective_until,
         profile_id=profile_id,
         shadowed=tuple(shadowed),
+        tiers=winner.tiers,
     )
 
 

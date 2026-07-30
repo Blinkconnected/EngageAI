@@ -26,7 +26,7 @@ from blinkengage.infrastructure.database.models.usage import (
     UsageRecord,
 )
 from tests.integration.test_pricing_engine import (
-    CONVERSATION,
+    BILLABLE_MESSAGE,
     company_id_of,
     iso,
     platform_headers,
@@ -47,15 +47,73 @@ async def meter(app: Any, event: dict[str, Any]) -> str:
     return outcome
 
 
-def conversation_created(company_id: str, conversation_id: str, at: datetime) -> dict[str, Any]:
+def inbound_message(
+    company_id: str,
+    message_id: str,
+    at: datetime,
+    *,
+    conversation_id: str | None = None,
+    channel_type: str = "whatsapp",
+    message_type: str = "text",
+) -> dict[str, Any]:
+    """A ``message.persisted`` event — an inbound customer message.
+
+    The shape the ingest consumer publishes. Billing keys on the **message**,
+    so every helper here takes a message id: that is what makes a redelivery
+    a no-op and what stops two events about the same message charging twice.
+    """
     return {
-        "event_type": "conversation.created",
+        "event_type": "message.persisted",
         "company_id": company_id,
-        "aggregate_type": "conversation",
-        "aggregate_id": conversation_id,
+        "aggregate_type": "message",
+        "aggregate_id": message_id,
         "occurred_at": iso(at),
-        "payload": {"conversation_id": conversation_id},
+        "payload": {
+            "message_id": message_id,
+            "conversation_id": conversation_id or str(uuid4()),
+            "customer_id": str(uuid4()),
+            "channel_type": channel_type,
+            "message_type": message_type,
+            "direction": "inbound",
+            "customer_visible": True,
+        },
     }
+
+
+def outbound_message(
+    company_id: str,
+    message_id: str,
+    at: datetime,
+    *,
+    conversation_id: str | None = None,
+    channel_type: str = "whatsapp",
+    is_ai_generated: bool = False,
+    is_ai_assisted: bool = False,
+) -> dict[str, Any]:
+    """A ``message.sent`` event — an agent, AI or automation reply."""
+    return {
+        "event_type": "message.sent",
+        "company_id": company_id,
+        "aggregate_type": "message",
+        "aggregate_id": message_id,
+        "occurred_at": iso(at),
+        "payload": {
+            "message_id": message_id,
+            "conversation_id": conversation_id or str(uuid4()),
+            "channel_type": channel_type,
+            "message_type": "text",
+            "is_ai_generated": is_ai_generated,
+            "is_ai_assisted": is_ai_assisted,
+            "customer_visible": True,
+        },
+    }
+
+
+#: Kept under its old name so the many suites that only need "one billable
+#: thing happened" read unchanged. It is a message now, because that is what
+#: billing counts.
+def conversation_created(company_id: str, message_id: str, at: datetime) -> dict[str, Any]:
+    return inbound_message(company_id, message_id, at)
 
 
 class TestMetering:
@@ -73,7 +131,7 @@ class TestMetering:
         assert response.status_code == 200, response.text
         lines = response.json()["lines"]
         assert [(line["metric_code"], line["quantity"]) for line in lines] == [
-            (CONVERSATION, "1.000000")
+            (BILLABLE_MESSAGE, "1.000000")
         ]
 
     async def test_a_redelivered_event_is_not_billed_again(
@@ -150,7 +208,7 @@ class TestMetricVersioning:
         async with session_factory() as session:
             record = (await session.execute(select(UsageRecord))).scalars().one()
 
-        metric = get_metric(CONVERSATION)
+        metric = get_metric(BILLABLE_MESSAGE)
         assert metric is not None
         assert record.metric_version == metric.version
 
@@ -184,11 +242,11 @@ class TestMetricVersioning:
                 UsageRecord(
                     company_id=period.company_id,
                     billing_period_id=period.id,
-                    metric_code=CONVERSATION,
+                    metric_code=BILLABLE_MESSAGE,
                     metric_version=2,
                     quantity=Decimal("5"),
                     occurred_at=datetime.now(UTC),
-                    idempotency_key="CONVERSATION:v2-probe",
+                    idempotency_key="BILLABLE_MESSAGE:v2-probe",
                     source_reference="v2-probe",
                 )
             )
@@ -212,8 +270,8 @@ async def _consume_allowance(client: AsyncClient, headers: dict, company_id: str
         headers=headers,
         json={
             "company_id": company_id,
-            "metric_code": "CONVERSATION",
-            "quantity": str(FREE_MONTHLY_ALLOWANCE["CONVERSATION"]),
+            "metric_code": "BILLABLE_MESSAGE",
+            "quantity": str(FREE_MONTHLY_ALLOWANCE["BILLABLE_MESSAGE"]),
             "occurred_at": iso(datetime.now(UTC)),
             "idempotency_key": f"allowance-{company_id}",
             "note": "Test fixture: consumes the free monthly allowance.",
@@ -262,7 +320,7 @@ class TestImmutableSnapshot:
         before = (await _snapshot(client, headers, period_id))["lines"][0]
 
         doubled = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={"unit_amount": "0.500000", "effective_from": iso(datetime.now(UTC))},
             headers=headers,
         )
@@ -396,7 +454,7 @@ class TestManualCorrection:
             "/api/v1/platform/usage/records",
             json={
                 "company_id": company_id,
-                "metric_code": CONVERSATION,
+                "metric_code": BILLABLE_MESSAGE,
                 "quantity": "3",
                 "occurred_at": iso(datetime.now(UTC)),
                 "idempotency_key": "manual-correction-1",
@@ -415,7 +473,7 @@ class TestManualCorrection:
         company_id = await company_id_of(client, owner_headers)
         body = {
             "company_id": company_id,
-            "metric_code": CONVERSATION,
+            "metric_code": BILLABLE_MESSAGE,
             "quantity": "3",
             "occurred_at": iso(datetime.now(UTC)),
             "idempotency_key": "manual-correction-1",
@@ -450,7 +508,7 @@ async def test_quantities_survive_the_round_trip(
         "/api/v1/platform/usage/records",
         json={
             "company_id": company_id,
-            "metric_code": CONVERSATION,
+            "metric_code": BILLABLE_MESSAGE,
             "quantity": quantity,
             "occurred_at": iso(datetime.now(UTC)),
             "idempotency_key": f"qty-{quantity}",

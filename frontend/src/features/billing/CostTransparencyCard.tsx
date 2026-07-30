@@ -63,7 +63,9 @@ export function CostTransparencyCard({
                         {t(`metric.${price.metric_code}`, { defaultValue: price.display_name })}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {t('prices.perUnit', { unit: price.unit })}
+                        {t('prices.perUnit', {
+                          unit: t(`unit.${price.unit}`, { defaultValue: price.unit }),
+                        })}
                       </Typography>
                     </Stack>
                   </TableCell>
@@ -101,6 +103,42 @@ export function CostTransparencyCard({
                     {price.effective_from
                       ? formatDay(price.effective_from.slice(0, 10), i18n.language)
                       : '—'}
+                    {price.tiers.length > 0 ? (
+                      // The table behind a volume rate. Without it, "why am I
+                      // paying 0.002?" has no answer on the page.
+                      <Stack sx={{ mt: 0.5 }}>
+                        {price.tiers.map((tier) => (
+                          <Typography
+                            key={tier.up_to ?? 'above'}
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {tier.up_to === null
+                              ? t('prices.tierAbove', {
+                                  amount: formatUnitPrice(
+                                    tier.unit_amount,
+                                    {
+                                      currency: price.currency || format.currency,
+                                      decimals: format.decimals,
+                                    },
+                                    i18n.language,
+                                  ),
+                                })
+                              : t('prices.tierUpTo', {
+                                  quantity: formatQuantity(tier.up_to, i18n.language),
+                                  amount: formatUnitPrice(
+                                    tier.unit_amount,
+                                    {
+                                      currency: price.currency || format.currency,
+                                      decimals: format.decimals,
+                                    },
+                                    i18n.language,
+                                  ),
+                                })}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

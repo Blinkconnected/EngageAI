@@ -72,7 +72,7 @@ class TestReadsStayOpen:
                 "items": [
                     {
                         "company_id": company_id,
-                        "metric_code": "CONVERSATION",
+                        "metric_code": "BILLABLE_MESSAGE",
                         "occurred_at": datetime.now(UTC).isoformat(),
                     }
                 ],
@@ -105,7 +105,7 @@ class TestWritesClose:
         await make_read_only(app)
 
         response = await client.put(
-            f"{PRICING}/companies/{company_id}/metrics/CONVERSATION",
+            f"{PRICING}/companies/{company_id}/metrics/BILLABLE_MESSAGE",
             headers=headers,
             json={
                 "unit_amount": "0.010000",
@@ -125,7 +125,7 @@ class TestWritesClose:
         await make_read_only(app)
 
         response = await client.put(
-            f"{PRICING}/global/metrics/CONVERSATION",
+            f"{PRICING}/global/metrics/BILLABLE_MESSAGE",
             headers=headers,
             json={
                 "unit_amount": "0.010000",
@@ -164,7 +164,7 @@ class TestWritesClose:
         company_id = await company_id_of(client, owner_headers)
 
         response = await client.put(
-            f"{PRICING}/companies/{company_id}/metrics/CONVERSATION",
+            f"{PRICING}/companies/{company_id}/metrics/BILLABLE_MESSAGE",
             headers=headers,
             json={
                 "unit_amount": "0.010000",
@@ -186,7 +186,7 @@ class TestAuditCurrency:
         headers = await platform_headers(client, app)
         company_id = await company_id_of(client, owner_headers)
         await client.put(
-            f"{PRICING}/companies/{company_id}/metrics/CONVERSATION",
+            f"{PRICING}/companies/{company_id}/metrics/BILLABLE_MESSAGE",
             headers=headers,
             json={
                 "unit_amount": "0.035000",

@@ -991,11 +991,20 @@ class ConversationService:
                 actor_user_id=actor_user_id,
                 payload={
                     "conversation_id": str(conversation.id),
+                    "message_id": str(message.id),
                     "channel_type": config.channel_type,
                     "external_message_id": result.external_message_id,
                     "body": body,
                     "is_ai_generated": is_ai_generated,
                     "is_ai_assisted": is_ai_assisted,
+                    # Billing reads these three. ``message_id`` is also the
+                    # aggregate id, but a meter should not have to know that a
+                    # message event's aggregate happens to be the message;
+                    # ``message_type`` and ``customer_visible`` are what let it
+                    # exclude a non-customer-facing kind without reading the
+                    # row back. See domain/billable_events.py.
+                    "message_type": message.message_type.value,
+                    "customer_visible": True,
                 },
             )
         )

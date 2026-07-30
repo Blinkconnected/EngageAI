@@ -66,6 +66,11 @@ class RecordOutcome:
     recorded: bool
     reason: str
     record_id: uuid.UUID | None = None
+    #: The period the occurrence was attributed to, whatever the outcome —
+    #: including a closed one, where nothing was billed. A caller writing
+    #: evidence alongside the record (see ``BillableEventService``) needs the
+    #: period even when the record itself was refused.
+    period_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +175,12 @@ class UsageService:
 
         existing = await self._records.get_by_idempotency_key(idempotency_key)
         if existing is not None:
-            return RecordOutcome(recorded=False, reason="duplicate", record_id=existing.id)
+            return RecordOutcome(
+                recorded=False,
+                reason="duplicate",
+                record_id=existing.id,
+                period_id=existing.billing_period_id,
+            )
 
         period = await self._periods.period_covering(company_id=company_id, moment=occurred_at)
         if period is None:
@@ -194,7 +204,9 @@ class UsageService:
                     },
                 )
             )
-            return RecordOutcome(recorded=False, reason="period_closed")
+            return RecordOutcome(
+                recorded=False, reason="period_closed", period_id=period.id
+            )
 
         record = await self._records.add(
             UsageRecord(
@@ -214,7 +226,9 @@ class UsageService:
                 recorded_by_user_id=recorded_by_user_id,
             )
         )
-        return RecordOutcome(recorded=True, reason="recorded", record_id=record.id)
+        return RecordOutcome(
+            recorded=True, reason="recorded", record_id=record.id, period_id=period.id
+        )
 
     # --- Closing ----------------------------------------------------
 
@@ -314,6 +328,11 @@ class UsageService:
                 unit_amount=resolved.unit_amount,
                 currency=resolved.currency,
                 rate_id=resolved.rate_id,
+                # Volume tiers, where the rate carries them. The table is
+                # applied to the **period aggregate**, which is what "volume"
+                # means: one rate for the month, chosen by the month's own
+                # total. See domain/tiers.py.
+                tiers=resolved.tier_table(),
             )
             subtotals.append(snapshot.subtotal)
             lines.append(
@@ -327,6 +346,7 @@ class UsageService:
                     included_quantity=snapshot.included_quantity,
                     billable_quantity=snapshot.billable_quantity,
                     unit_amount=snapshot.unit_amount,
+                    tier_up_to=snapshot.tier_up_to,
                     currency=snapshot.currency,
                     subtotal=snapshot.subtotal,
                     rate_id=snapshot.rate_id,

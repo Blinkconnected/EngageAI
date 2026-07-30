@@ -24,6 +24,7 @@ re-derivation unnecessary, so it cannot be wrong.
 Framework-free, like the rest of ``domain/``.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -31,7 +32,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from blinkengage.domain.allowances import split_quantity
-from blinkengage.domain.money import multiply, to_storage
+from blinkengage.domain.tiers import Tier, charge, flat
 
 
 class BillingPeriodStatus(StrEnum):
@@ -149,6 +150,11 @@ class SnapshotLine:
     #: The exact pricing row that produced ``unit_amount``. The audit
     #: chain from a charge back to the decision that set it.
     rate_id: UUID | None
+    #: The bound of the volume tier that selected ``unit_amount``; ``None`` for
+    #: a flat rate or for the open-ended top tier. Frozen here so an invoice
+    #: can state *why* that rate applied years later, without re-deriving it
+    #: from a table that may since have changed.
+    tier_up_to: Decimal | None = None
 
 
 def build_snapshot_line(
@@ -159,8 +165,9 @@ def build_snapshot_line(
     unit_amount: Decimal,
     currency: str,
     rate_id: UUID | None,
+    tiers: Sequence[Tier] | None = None,
 ) -> SnapshotLine:
-    """Freezes one line, applying the free monthly allowance.
+    """Freezes one line, applying the free monthly allowance and the tiers.
 
     The allowance is applied **here**, at close time, rather than at
     invoice generation. The snapshot is the immutable record of what the
@@ -168,22 +175,37 @@ def build_snapshot_line(
     closed period produced different invoices depending on when it was
     billed.
 
+    ``tiers`` decides the rate from the period's own volume — see
+    ``domain/tiers.py``. Passing none, or a one-step table, is a flat rate and
+    behaves exactly as this always has; ``unit_amount`` is then what is
+    charged. There is one charging path either way, because a tiered branch
+    and a flat branch eventually disagree.
+
     The subtotal is computed **unrounded** (``money.multiply``) and
     stored at full storage precision. Rounding to the currency happens
     once, later, on the invoice total — rounding each line first and
     summing is how a bill stops matching its own lines.
     """
-    included, billable = split_quantity(metric_code, quantity)
+    included, _ = split_quantity(metric_code, quantity)
+    charged = charge(
+        tiers if tiers else flat(unit_amount),
+        quantity=quantity,
+        included_quantity=included,
+    )
     return SnapshotLine(
         metric_code=metric_code,
         metric_version=metric_version,
-        quantity=to_storage(quantity),
-        included_quantity=to_storage(included),
-        billable_quantity=to_storage(billable),
-        unit_amount=to_storage(unit_amount),
+        quantity=charged.quantity,
+        included_quantity=charged.included_quantity,
+        billable_quantity=charged.billable_quantity,
+        # The rate the tier selected, not the rate that was passed in. What a
+        # customer was charged per unit has to be on the line, or an invoice
+        # cannot be checked against its own total.
+        unit_amount=charged.unit_amount,
         currency=currency,
-        subtotal=to_storage(multiply(billable, unit_amount)),
+        subtotal=charged.subtotal,
         rate_id=rate_id,
+        tier_up_to=charged.tier_up_to,
     )
 
 

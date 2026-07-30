@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 from httpx import AsyncClient
 from PIL import Image
 
-CONVERSATIONS = "/api/v1/conversations"
+BILLABLE_MESSAGES = "/api/v1/conversations"
 
 
 def png_bytes(width: int, height: int) -> bytes:
@@ -43,7 +43,7 @@ async def upload(
     data: bytes,
 ) -> dict:
     response = await client.post(
-        f"{CONVERSATIONS}/{conversation_id}/attachments",
+        f"{BILLABLE_MESSAGES}/{conversation_id}/attachments",
         headers=headers,
         files={"file": (filename, data, content_type)},
     )
@@ -142,13 +142,13 @@ class TestMessageAttachments:
             data=png_bytes(400, 300),
         )
         await client.post(
-            f"{CONVERSATIONS}/{conversation_id}/messages",
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages",
             headers=owner_headers,
             json={"body": "Here it is", "attachment_ids": [uploaded["id"]]},
         )
 
         listed = await client.get(
-            f"{CONVERSATIONS}/{conversation_id}/messages", headers=owner_headers
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=owner_headers
         )
 
         attachment = next(
@@ -179,13 +179,13 @@ class TestMessageAttachments:
             data=b"a,b\n1,2\n",
         )
         await client.post(
-            f"{CONVERSATIONS}/{conversation_id}/messages",
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages",
             headers=owner_headers,
             json={"body": "csv", "attachment_ids": [uploaded["id"]]},
         )
 
         listed = await client.get(
-            f"{CONVERSATIONS}/{conversation_id}/messages", headers=owner_headers
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=owner_headers
         )
         attachment = next(a for m in listed.json()["items"] for a in m["attachments"])
 
@@ -215,12 +215,12 @@ class TestStreaming:
             data=data,
         )
         await client.post(
-            f"{CONVERSATIONS}/{conversation_id}/messages",
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages",
             headers=owner_headers,
             json={"body": "x", "attachment_ids": [uploaded["id"]]},
         )
         listed = await client.get(
-            f"{CONVERSATIONS}/{conversation_id}/messages", headers=owner_headers
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=owner_headers
         )
         media_url = next(
             a["media_url"] for m in listed.json()["items"] for a in m["attachments"]
@@ -316,12 +316,12 @@ class TestStreaming:
             data=data,
         )
         await client.post(
-            f"{CONVERSATIONS}/{conversation_id}/messages",
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages",
             headers=headers,
             json={"body": "x", "attachment_ids": [uploaded["id"]]},
         )
         listed = await client.get(
-            f"{CONVERSATIONS}/{conversation_id}/messages", headers=headers
+            f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=headers
         )
         return str(
             next(a["media_url"] for m in listed.json()["items"] for a in m["attachments"])

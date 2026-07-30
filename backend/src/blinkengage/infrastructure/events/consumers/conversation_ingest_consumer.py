@@ -368,6 +368,13 @@ async def handle_message_received(
                 "channel_type": channel_type,
                 "body": message.body,
                 "direction": "inbound",
+                # Billing reads these two: the metric is one charge per
+                # customer-facing message, and the meter must be able to
+                # exclude a non-customer-facing kind from the event alone
+                # rather than reading the message back. See
+                # domain/billable_events.py.
+                "message_type": message.message_type.value,
+                "customer_visible": True,
             },
         )
     )

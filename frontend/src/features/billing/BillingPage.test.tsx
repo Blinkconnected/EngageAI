@@ -228,14 +228,20 @@ const DASHBOARD: BillingDashboard = {
   },
   unit_prices: [
     {
-      metric_code: 'CONVERSATION',
-      display_name: 'Conversation',
-      unit: 'conversation',
-      unit_amount: '0.050000',
+      metric_code: 'BILLABLE_MESSAGE',
+      display_name: 'Billable message',
+      unit: 'message',
+      unit_amount: '0.002000',
       currency: 'USD',
       source: 'company',
       effective_from: '2026-01-01T00:00:00Z',
       free_allowance: '100.000000',
+      // A volume table: the rate above is the one this month's usage selects.
+      tiers: [
+        { up_to: '200.000000', unit_amount: '0.002000' },
+        { up_to: '500.000000', unit_amount: '0.001500' },
+        { up_to: null, unit_amount: '0.001000' },
+      ],
     },
     {
       metric_code: 'AI_AUTOPILOT',
@@ -246,6 +252,25 @@ const DASHBOARD: BillingDashboard = {
       source: null,
       effective_from: null,
       free_allowance: '0.000000',
+      tiers: [],
+    },
+  ],
+  breakdowns: [
+    {
+      dimension: 'channel',
+      rows: [
+        ['whatsapp', 180],
+        ['web_chat', 60],
+      ],
+      total: 240,
+    },
+    {
+      dimension: 'origin',
+      rows: [
+        ['customer', 140],
+        ['agent', 100],
+      ],
+      total: 240,
     },
   ],
   projection_alternatives: [DAILY_AVERAGE, LINEAR],
@@ -575,6 +600,42 @@ describe('BillingPage', () => {
     expect(await screen.findByTestId('billing-status')).toHaveTextContent(
       'Something new the API started saying.',
     )
+  })
+
+  it('shows where the messages came from, without pricing the channels', async () => {
+    // Billing is channel-agnostic: a breakdown is volume, and a per-channel
+    // cost would be a number the invoice does not contain.
+    mock()
+    renderAuthenticated(<BillingPage />)
+
+    const mix = within(await screen.findByTestId('message-mix'))
+    expect(mix.getByText('WhatsApp')).toBeVisible()
+    expect(mix.getByText('180')).toBeVisible()
+    expect(mix.getByText(/240 billable messages/)).toBeVisible()
+    // No money anywhere in the card.
+    expect(screen.getByTestId('message-mix').textContent).not.toMatch(/\$/)
+  })
+
+  it('lets a customer switch to who sent the messages', async () => {
+    mock()
+    renderAuthenticated(<BillingPage />)
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: 'By sender' }))
+
+    const mix = within(screen.getByTestId('message-mix'))
+    expect(mix.getByText('Customers')).toBeVisible()
+    expect(mix.getByText('Agents')).toBeVisible()
+  })
+
+  it('shows the volume table behind a tiered rate', async () => {
+    // "Why am I paying 0.002?" is answered by the table, not by the number.
+    mock()
+    renderAuthenticated(<BillingPage />)
+
+    const table = within(await screen.findByRole('table', { name: /Unit prices/i }))
+    expect(table.getByText(/Up to 200/)).toBeVisible()
+    expect(table.getByText(/Above that/)).toBeVisible()
   })
 
   it('shows an empty state rather than zeros when no period is open', async () => {

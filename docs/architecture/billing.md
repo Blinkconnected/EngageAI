@@ -1438,6 +1438,186 @@ the word. Methods that need an operator (`bill_reference`, `manual`) are
 marked as such, so nobody waits for a receipt no automated process is
 going to send.
 
+## The billing model: billable messages
+
+**One charge per customer-facing message, on any channel.** Not per
+conversation, not per channel, not per AI feature.
+
+The reasoning is that a message a customer can see is the unit of value the
+product delivers. A conversation is an arbitrary container around it — two
+companies with identical traffic can have wildly different conversation counts
+depending on how their customers happen to open threads — and per-feature
+surcharges charged twice for one delivered message.
+
+### What counts
+
+`domain/billable_events.py` owns the rule, as a pure predicate, so it can be
+read in one place and tested without a database. The meter asks; it does not
+decide.
+
+*Included* — inbound customer messages, outbound agent replies, AI Autopilot
+replies, automation replies, and every medium: text, image, audio, video, file.
+**A photo is one message.** Not two, and not one per attachment.
+
+*Excluded* — internal notes, system messages, assignment changes, tags, read
+and delivery receipts, typing indicators, and anything else a customer never
+sees. None of them deliver anything to a customer, and billing for them would
+mean an agent tidying their own queue costs the customer money.
+
+### Channel is a dimension, never a price
+
+Every billable event records its channel, and **nothing that prices reads that
+field.** A per-channel rate would make the same product cost different amounts
+for reasons a customer cannot control, and would push the platform's own
+carrier costs onto their bill line by line.
+
+Analytics keeps the dimensions: the dashboard breaks a period's messages down
+by channel, by origin (customer / agent / AI Autopilot / AI-assisted /
+automation) and by direction. Those breakdowns are **counts, not money** — a
+per-channel cost would be a number the invoice does not contain.
+
+### One immutable event per message
+
+| `billable_events` | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| company_id | UUID | FK → `companies.id`, cascade |
+| billing_period_id | UUID | FK → `billing_periods.id`, **RESTRICT** — evidence behind a charge |
+| message_id | UUID | **Unique.** No FK: a retention policy may delete the conversation, and an invoiced month's evidence must survive it |
+| conversation_id | UUID | Reference, not a dependency, for the same reason |
+| customer_id | UUID, nullable | Known for inbound; outbound replies do not carry it |
+| direction | varchar(10) | `inbound` / `outbound` |
+| origin | varchar(20) | `customer` / `agent` / `ai_autopilot` / `ai_assisted` / `automation` — analytics |
+| channel_type | varchar(40) | Analytics. Snapshotted as a string; the channel config may be gone |
+| message_type | varchar(20) | `text` / `media`, at the time |
+| occurred_at | timestamptz | When the message happened, from the event — never "now" |
+| usage_record_id | UUID, nullable | Null when the period had closed: evidence, deliberately not a charge |
+| created_at | timestamptz | |
+
+`trg_billable_events_immutable` refuses UPDATE and DELETE.
+
+| `pricing_rate_tiers` | Type | Notes |
+|--------|------|-------|
+| id | UUID | PK |
+| pricing_rate_id | UUID | FK → `pricing_rates.id`, cascade |
+| up_to | numeric(18,6), nullable | **Inclusive** upper bound; NULL is the open-ended top step |
+| unit_amount | numeric(18,6) | The rate this step charges |
+| sort_order | int | 1-based; unique per rate, and the bounds must ascend with it |
+
+`billable_events` is the evidence layer under the bill. A usage record says a
+billable message happened; a billable event says *which* message, on which
+channel, in which conversation, from whom.
+
+`message_id` is unique, so the guarantee that a message is charged once belongs
+to the database rather than to a consumer. That matters more than it looks:
+an Autopilot reply publishes `message.sent` **and**
+`conversation.autopilot_replied`, and the relay delivers at-least-once. Binding
+only the two message events, and keying both on the message, makes double
+counting structurally impossible rather than merely unlikely.
+
+The table is append-only, enforced by trigger. A correction is a new
+adjustment, never an edit.
+
+**An event is written even when nothing is billed.** A message that arrives for
+a period that has already closed is recorded as evidence with no usage record
+attached: the arrival is a fact, the late count on the period surfaces it, and
+silently billing it into the open period would move revenue between months.
+
+### The meter
+
+Two events, one metric:
+
+| Event | What it is |
+|---|---|
+| `message.persisted` | an inbound customer message |
+| `message.sent` | an outbound reply — agent, AI or automation |
+
+Both produce one `BILLABLE_MESSAGE`, keyed `BILLABLE_MESSAGE:<message_id>`.
+Both payloads carry `message_type` and `customer_visible` so the meter can
+apply the rule from the event alone, without reading the message back.
+
+The binding is complete **by construction**, not by inspection: each event has
+exactly one publisher. `message.persisted` comes only from the ingest
+consumer, and `message.sent` only from `ConversationService.send_reply` —
+which every outbound path funnels through, including Autopilot, the workflow
+engine, the AI service and CSAT dispatch. A new way to send a message
+therefore bills automatically; there is no list of call sites to keep in step.
+
+### Retired, not deleted
+
+`CONVERSATION`, `AI_ASSISTED_REPLY` and `AI_AUTOPILOT` are `RETIRED`. No new
+rate may be set for them and nothing meters them — but their existing rates
+still resolve, their closed periods still price, and their invoices still
+reprint. Their codes appear on issued documents, and a document that cannot be
+reprinted is a document that cannot be defended.
+
+The free allowance keeps its `CONVERSATION` entry for exactly the same reason:
+re-rating a closed period must reproduce the total that was actually sent.
+
+## Volume tiers
+
+The rate is a function of the period's own volume. The shipped table:
+
+| Billable messages in the month | First 100 | Rate for the rest |
+|---|---|---|
+| up to 200 | free | 0.002 |
+| up to 500 | free | 0.0015 |
+| above 500 | free | 0.001 |
+
+(JOD at the same 0.7 ratio the existing rates use: 0.0014 / 0.00105 / 0.0007.)
+
+### Volume, not graduated
+
+The total selects **one** rate, and every chargeable unit is charged at it. 600
+messages means all 500 chargeable ones at the 600-message rate — not the first
+200 at one rate and the rest at others. It is the simpler thing to put on an
+invoice: one quantity, one rate, one subtotal.
+
+**It has a cliff, and that is understood.** A 500-message month costs
+400 × 0.0015 = 0.60; a 501-message month costs 401 × 0.001 = 0.401. The bill
+*falls* as usage crosses a boundary. That is inherent to volume pricing — it is
+why graduated pricing exists — and it is worth stating rather than discovering:
+nobody is ever charged more for using less, so the surprise is always in the
+customer's favour. `tests/unit/test_tiers.py` asserts both the cliff and the
+monotonicity within a tier, so anybody changing the table sees that the
+behaviour is known.
+
+### The allowance does not move anybody between tiers
+
+The tier is chosen by what a company **used**, not by what it was billed for. A
+company that sent 250 messages is in the second tier even though only 150 are
+chargeable. Selecting on the billable quantity would push a company just over a
+boundary back under it by way of its own free units, and quote a rate nobody
+communicated.
+
+### Where tiers are stored and applied
+
+`pricing_rate_tiers` are child rows of a `pricing_rates` row — not JSON, so the
+ordering and the bounds are constrained by the database and readable by the
+audit trail. A rate with **no** tier rows is a flat price and behaves exactly
+as it always has; `ResolvedPrice.tier_table()` returns a one-step table for it,
+so there is one charging path rather than a tiered one and a flat one that
+eventually disagree.
+
+The parent rate's `unit_amount` stays meaningful: it holds the **top** tier's
+rate, so anything reading a rate without its tiers still gets a real price.
+
+Applied in two places, and they must agree:
+
+- **The period close** charges the period aggregate through the table and
+  freezes the selected rate *and* the tier bound (`usage_period_lines.
+  tier_up_to`) onto the snapshot line. The invoice copies that verbatim, so it
+  can state why the rate applied years later.
+- **The dashboard** writes the same tier-selected rate onto each open day of
+  `billing_daily_summary`, chosen by the period-to-date volume. That is what
+  keeps the estimate and the invoice equal to the last decimal — a dashboard
+  quoting the top-tier rate while the bill charges the first-tier one is
+  exactly the surprise this feature exists to prevent.
+
+A closed day keeps the rate it was finalized with, whatever the volume has
+since become. The immutability rule wins: those rows are what the customer was
+shown.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:
@@ -1448,5 +1628,10 @@ Stated explicitly so nobody looks for them:
 - **A customer-facing payment page** — checkout is started through the
   platform API, so today an operator sends the approval link. The intent
   and return/cancel URLs are already modelled for a self-service page.
-- **Contracts, taxes, discounts, tiered pricing** — later phases.
+- **A console editor for tier tables.** The tiers ship seeded and resolve
+  correctly everywhere; changing them today means a migration or SQL rather
+  than the pricing screen. The schema, the domain validation
+  (`domain/tiers.validate_tiers`) and the repository writes are in place for
+  it.
+- **Contracts, taxes and discounts** — later phases.
 - **Partial-payment plans and write-offs.**

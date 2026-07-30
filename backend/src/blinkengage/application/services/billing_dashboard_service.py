@@ -36,6 +36,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
+from blinkengage.application.services.billable_event_service import BillableEventService
 from blinkengage.application.services.billing_summary_service import BillingSummaryService
 from blinkengage.application.services.invoice_service import InvoiceService
 from blinkengage.application.services.ledger_service import LedgerService
@@ -69,6 +70,7 @@ from blinkengage.domain.projection import (
     ProjectionUnavailable,
     project,
 )
+from blinkengage.domain.tiers import Tier, charge
 from blinkengage.domain.usage import BillingPeriodStatus, due_date
 from blinkengage.infrastructure.database.models.billing_summary import BillingDailySummary
 from blinkengage.infrastructure.database.models.invoicing import Invoice, InvoiceLine
@@ -352,6 +354,19 @@ class BillingConfiguration:
 
 
 @dataclass(frozen=True, slots=True)
+class TierView:
+    """One step of a volume table, for display.
+
+    Shown because a rate that changes with volume is only checkable if the
+    table is visible — "why am I paying 0.0014?" is answered by the table, not
+    by the number.
+    """
+
+    up_to: Decimal | None
+    unit_amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class UnitPriceView:
     """What one metric costs, and where that price came from."""
 
@@ -364,6 +379,24 @@ class UnitPriceView:
     source: str | None
     effective_from: datetime | None
     free_allowance: Decimal
+    #: The volume table behind ``unit_amount``. Empty for a flat rate.
+    tiers: tuple[TierView, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class MessageBreakdown:
+    """Billable messages split by a dimension — channel, origin, direction.
+
+    **Counts, not money.** Billing is channel-agnostic: a message costs the
+    same wherever it came from, so a per-channel *cost* would be inventing a
+    number the invoice does not contain. Volumes are what a company actually
+    wants here anyway ("where is our traffic?"), and the tier rate on the
+    dashboard already says what each of them costs.
+    """
+
+    dimension: str
+    rows: tuple[tuple[str, int], ...]
+    total: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -430,6 +463,9 @@ class BillingDashboard:
     payment_methods: tuple[PaymentMethodOption, ...]
     configuration: BillingConfiguration
     unit_prices: tuple[UnitPriceView, ...]
+    #: Channel, origin and direction splits of this period's billable
+    #: messages. Analytics dimensions; see ``MessageBreakdown``.
+    breakdowns: tuple[MessageBreakdown, ...]
     #: Alternative projections, so a customer can see that the number is a
     #: model rather than a promise — and which model produced it.
     projection_alternatives: tuple[ProjectionView, ...] = field(default_factory=tuple)
@@ -450,6 +486,7 @@ class BillingDashboardService:
         ledger: LedgerService,
         pricing: PricingService,
         providers: PaymentProviderRegistry,
+        billable: BillableEventService | None = None,
     ) -> None:
         self._summaries = summaries
         self._summary_service = summary_service
@@ -459,6 +496,10 @@ class BillingDashboardService:
         self._ledger = ledger
         self._pricing = pricing
         self._providers = providers
+        #: Optional so the dashboard keeps working for a deployment mid-upgrade
+        #: whose billable events have not started accruing yet: the breakdowns
+        #: are simply absent rather than the page failing.
+        self._billable = billable
 
     # --- Freshness --------------------------------------------------
 
@@ -546,7 +587,14 @@ class BillingDashboardService:
                 currency=currency,
                 never_auto_suspend=company.billing_never_auto_suspend,
             ),
-            unit_prices=await self._unit_prices(company_id, at=moment),
+            unit_prices=await self._unit_prices(
+                company_id,
+                at=moment,
+                # The volume decides the tier, so the rate shown has to be the
+                # one this period's own usage selects.
+                volume={line.metric_code: line.quantity for line in estimate.month_to_date},
+            ),
+            breakdowns=await self._breakdowns(company_id, period=period, now=moment),
             projection_alternatives=self._alternatives(
                 rows=rows,
                 period=period,
@@ -686,6 +734,48 @@ class BillingDashboardService:
             raise EntityNotFoundError("Invoice", invoice_id)
         lines = await self._invoices.lines_for(invoice_id)
         return _invoice_summary(invoice, today=(now or datetime.now(UTC)).date()), lines
+
+    async def _breakdowns(
+        self, company_id: uuid.UUID, *, period: BillingPeriod | None, now: datetime
+    ) -> tuple[MessageBreakdown, ...]:
+        """Where this period's messages came from.
+
+        Read from ``billable_events`` rather than from the daily aggregates:
+        the aggregates are deliberately dimensionless — they exist to be
+        summed into money — and the dimensions live on the evidence rows.
+        """
+        if self._billable is None or period is None:
+            return ()
+        start = period.period_start
+        end = min(period.period_end, now)
+        return tuple(
+            MessageBreakdown(
+                dimension=dimension,
+                rows=tuple(rows),
+                total=sum(count for _, count in rows),
+            )
+            for dimension, rows in (
+                (
+                    "channel",
+                    await self._billable.by_channel(
+                        company_id=company_id, start=start, end=end
+                    ),
+                ),
+                (
+                    "origin",
+                    await self._billable.by_origin(
+                        company_id=company_id, start=start, end=end
+                    ),
+                ),
+                (
+                    "direction",
+                    await self._billable.by_direction(
+                        company_id=company_id, start=start, end=end
+                    ),
+                ),
+            )
+            if rows
+        )
 
     # --- Section builders -------------------------------------------
 
@@ -1073,7 +1163,11 @@ class BillingDashboardService:
         )
 
     async def _unit_prices(
-        self, company_id: uuid.UUID, *, at: datetime
+        self,
+        company_id: uuid.UUID,
+        *,
+        at: datetime,
+        volume: dict[str, Decimal] | None = None,
     ) -> tuple[UnitPriceView, ...]:
         """Every metric's current price, from the Pricing Resolver.
 
@@ -1081,21 +1175,39 @@ class BillingDashboardService:
         they are on before it appears on a bill. Resolved, never restated —
         the resolver is the only thing that knows whether this company has an
         override, sits on a profile, or takes the global rate.
+
+        For a **tiered** rate this shows the rate their *current volume*
+        selects, not the rate stored on the parent row. The parent holds the
+        top tier's amount, so showing it verbatim would tell a small customer
+        they are on 0.0007 while their charge line says 0.0014 — a page
+        contradicting itself in the one place a customer goes to check.
         """
         items = await self._pricing.effective_pricing(at=at, company_id=company_id)
         views: list[UnitPriceView] = []
         for item in items:
             resolved = item.resolved
+            applicable = None
+            tiers: tuple[Tier, ...] = ()
+            if resolved is not None:
+                tiers = resolved.tiers
+                applicable = charge(
+                    resolved.tier_table(),
+                    quantity=(volume or {}).get(item.metric_code, zero()),
+                ).unit_amount
             views.append(
                 UnitPriceView(
                     metric_code=item.metric_code,
                     display_name=item.display_name,
                     unit=item.unit.value,
-                    unit_amount=resolved.unit_amount if resolved else None,
+                    unit_amount=applicable,
                     currency=resolved.currency if resolved else "",
                     source=resolved.scope.value if resolved else None,
                     effective_from=resolved.effective_from if resolved else None,
                     free_allowance=allowance_for(item.metric_code),
+                    tiers=tuple(
+                        TierView(up_to=tier.up_to, unit_amount=tier.unit_amount)
+                        for tier in tiers
+                    ),
                 )
             )
         return tuple(views)
@@ -1338,9 +1450,11 @@ __all__ = [
     "DayCost",
     "EstimateSnapshot",
     "InvoiceSummary",
+    "MessageBreakdown",
     "MetricCost",
     "PaymentMethodOption",
     "ProjectionView",
+    "TierView",
     "TimelineEvent",
     "UnitPriceView",
 ]

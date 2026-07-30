@@ -7,6 +7,7 @@ the same side effect.
 
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
+from blinkengage.infrastructure.database.models.billable_event import BillableEvent
 from blinkengage.infrastructure.database.models.billing_summary import (
     BillingDailySummary,
 )
@@ -128,6 +129,7 @@ __all__ = [
     "AiDailyStats",
     "AttachmentValidationStatus",
     "AuditLog",
+    "BillableEvent",
     "BillingDailySummary",
     "BillingPeriod",
     "CreditNote",

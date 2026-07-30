@@ -196,6 +196,51 @@ class PricingRate(UUIDPrimaryKeyMixin, Base):
     )
 
 
+class PricingRateTier(UUIDPrimaryKeyMixin, Base):
+    """One step of a volume tier table, under a ``PricingRate``.
+
+    A rate with **no** tier rows is a flat price and behaves exactly as it
+    always has. A rate **with** tiers charges every chargeable unit at the rate
+    its total volume selects — volume pricing, not graduated; see
+    ``domain/tiers.py`` for why that distinction is the whole design.
+
+    Child rows rather than a JSON column on the rate: the ordering and the
+    bounds are then constrained by the database, the audit trail can name a
+    single step that changed, and a console can render the table without
+    parsing anything.
+
+    No ``TimestampMixin``, for the same reason as ``PricingRate``: rates are
+    append-only, so a tier is written once with its rate and never edited. A
+    new table means a new rate.
+    """
+
+    __tablename__ = "pricing_rate_tiers"
+    __table_args__ = (
+        CheckConstraint("unit_amount >= 0", name="ck_pricing_rate_tiers_amount"),
+        # A step covering "up to 0 units" could never apply to anything.
+        CheckConstraint("up_to IS NULL OR up_to > 0", name="ck_pricing_rate_tiers_bound"),
+        # One step per position. Two rows claiming the same position would make
+        # the table's order — and therefore the rate — depend on row order.
+        UniqueConstraint("pricing_rate_id", "sort_order", name="uq_pricing_rate_tiers_order"),
+        Index("ix_pricing_rate_tiers_rate", "pricing_rate_id"),
+    )
+
+    pricing_rate_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("pricing_rates.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Inclusive upper bound — "up to 200 messages" includes 200. ``None`` is
+    #: the open-ended top step: genuinely open-ended rather than a very large
+    #: number, because a very large number is one somebody eventually exceeds.
+    up_to: Mapped[Decimal | None] = mapped_column(_AMOUNT, default=None)
+    unit_amount: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)
+    #: 1-based position. Read in this order; the bounds must ascend with it.
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=func.now(), nullable=False
+    )
+
+
 class CompanyPricingProfileAssignment(UUIDPrimaryKeyMixin, Base):
     """Which profile a company was on, and when.
 

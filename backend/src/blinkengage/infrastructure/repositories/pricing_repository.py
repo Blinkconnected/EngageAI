@@ -29,16 +29,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.domain.pricing import AssignmentWindow, RateCandidate
 from blinkengage.domain.pricing_scope import PricingScope
+from blinkengage.domain.tiers import Tier
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.pricing import (
     CompanyPricingProfileAssignment,
     PricingAuditLog,
     PricingProfile,
     PricingRate,
+    PricingRateTier,
 )
 
 
-def _to_candidate(rate: PricingRate) -> RateCandidate:
+def _to_candidate(
+    rate: PricingRate, tiers: Sequence[PricingRateTier] = ()
+) -> RateCandidate:
     return RateCandidate(
         rate_id=rate.id,
         scope=rate.scope,
@@ -49,6 +53,10 @@ def _to_candidate(rate: PricingRate) -> RateCandidate:
         currency=rate.currency,
         effective_from=rate.effective_from,
         effective_until=rate.effective_until,
+        tiers=tuple(
+            Tier(up_to=tier.up_to, unit_amount=tier.unit_amount)
+            for tier in sorted(tiers, key=lambda row: row.sort_order)
+        ),
     )
 
 
@@ -151,7 +159,54 @@ class PricingRateRepository:
                 targets,
             )
         )
-        return [_to_candidate(rate) for rate in result.scalars().all()]
+        rates = list(result.scalars().all())
+        # Tiers in one extra query for the whole batch, not one per rate: the
+        # resolver is a batch API precisely because rating a period is a batch
+        # job, and a lazy load per candidate would undo that.
+        tiers = await self._tiers_for([rate.id for rate in rates])
+        return [_to_candidate(rate, tiers.get(rate.id, ())) for rate in rates]
+
+    async def _tiers_for(
+        self, rate_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[PricingRateTier]]:
+        if not rate_ids:
+            return {}
+        result = await self._session.execute(
+            select(PricingRateTier)
+            .where(PricingRateTier.pricing_rate_id.in_(list(rate_ids)))
+            .order_by(PricingRateTier.pricing_rate_id, PricingRateTier.sort_order)
+        )
+        grouped: dict[uuid.UUID, list[PricingRateTier]] = {}
+        for tier in result.scalars().all():
+            grouped.setdefault(tier.pricing_rate_id, []).append(tier)
+        return grouped
+
+    async def tiers_for_rate(self, rate_id: uuid.UUID) -> list[PricingRateTier]:
+        """One rate's tiers, in order. For a console showing a table, and for
+        copying a table onto a new rate when a price is edited."""
+        return (await self._tiers_for([rate_id])).get(rate_id, [])
+
+    async def add_tiers(
+        self, *, rate_id: uuid.UUID, tiers: Sequence[Tier]
+    ) -> list[PricingRateTier]:
+        """Writes a tier table under a rate.
+
+        Validated by ``domain/tiers.validate_tiers`` before it gets here — the
+        service is where a bad table becomes a refused request, so this stays a
+        plain write.
+        """
+        rows = [
+            PricingRateTier(
+                pricing_rate_id=rate_id,
+                up_to=tier.up_to,
+                unit_amount=tier.unit_amount,
+                sort_order=order,
+            )
+            for order, tier in enumerate(tiers, start=1)
+        ]
+        self._session.add_all(rows)
+        await self._session.flush()
+        return rows
 
     async def open_rate_for(
         self,

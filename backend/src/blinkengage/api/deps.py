@@ -22,6 +22,7 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.audit_log_service import AuditLogService
 from blinkengage.application.services.auth_service import AuthService
 from blinkengage.application.services.autopilot_service import AutopilotService
+from blinkengage.application.services.billable_event_service import BillableEventService
 from blinkengage.application.services.billing_dashboard_service import (
     BillingDashboardService,
 )
@@ -93,6 +94,9 @@ from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
+from blinkengage.infrastructure.repositories.billable_event_repository import (
+    BillableEventRepository,
+)
 from blinkengage.infrastructure.repositories.billing_summary_repository import (
     BillingSummaryRepository,
 )
@@ -960,6 +964,7 @@ def get_billing_dashboard_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     summary_service: Annotated[BillingSummaryService, Depends(get_billing_summary_service)],
     invoice_service: Annotated[InvoiceService, Depends(get_invoice_service)],
+    usage_service: Annotated[UsageService, Depends(get_usage_service)],
     pricing: Annotated[PricingService, Depends(get_pricing_service)],
     providers: Annotated[PaymentProviderRegistry, Depends(get_payment_providers)],
 ) -> BillingDashboardService:
@@ -970,6 +975,9 @@ def get_billing_dashboard_service(
     hardcoded list eventually shows a button that cannot work.
     """
     return BillingDashboardService(
+        billable=BillableEventService(
+            events=BillableEventRepository(session), usage=usage_service
+        ),
         summaries=BillingSummaryRepository(session),
         summary_service=summary_service,
         periods=BillingPeriodRepository(session),

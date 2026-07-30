@@ -81,7 +81,7 @@ export function MetricCostTable({
                     {t(`metric.${row.metric_code}`, { defaultValue: row.display_name })}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {row.unit}
+                    {t(`unit.${row.unit}`, { defaultValue: row.unit })}
                   </Typography>
                 </Stack>
               </TableCell>

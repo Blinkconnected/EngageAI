@@ -23,7 +23,7 @@ from sqlalchemy import select
 from blinkengage.domain.allowances import FREE_MONTHLY_ALLOWANCE
 from blinkengage.infrastructure.database.models.invoicing import Invoice, InvoiceLine
 from tests.integration.test_pricing_engine import (
-    CONVERSATION,
+    BILLABLE_MESSAGE,
     company_id_of,
     iso,
     platform_headers,
@@ -71,8 +71,8 @@ async def consume_allowance(client: AsyncClient, headers: dict, company_id: str)
         headers=headers,
         json={
             "company_id": company_id,
-            "metric_code": CONVERSATION,
-            "quantity": str(FREE_MONTHLY_ALLOWANCE[CONVERSATION]),
+            "metric_code": BILLABLE_MESSAGE,
+            "quantity": str(FREE_MONTHLY_ALLOWANCE[BILLABLE_MESSAGE]),
             "occurred_at": iso(datetime.now(UTC)),
             "idempotency_key": f"allowance-{company_id}",
             "note": "Test fixture: consumes the free monthly allowance.",
@@ -113,7 +113,7 @@ class TestGeneration:
         detail = await draft_invoice(client, headers, period_id)
 
         line = next(
-            line for line in detail["lines"] if line["metric_code"] == CONVERSATION
+            line for line in detail["lines"] if line["metric_code"] == BILLABLE_MESSAGE
         )
         # 100 consumed by the fixture's allowance entry, 4 metered on
         # top. The line shows all three numbers, and the charge is on
@@ -685,7 +685,7 @@ async def test_invoice_lines_never_change_after_generation(
     before = detail["lines"]
 
     await client.put(
-        f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+        f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
         json={"unit_amount": "9.000000", "effective_from": iso(datetime.now(UTC))},
         headers=headers,
     )

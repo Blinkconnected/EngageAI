@@ -227,6 +227,13 @@ class UsagePeriodLine(UUIDPrimaryKeyMixin, Base):
     #: price (recorded, charged nothing, and visibly flagged) — never
     #: because the link is optional when a price existed.
     rate_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
+    #: The volume tier that selected ``unit_amount``, by its upper bound.
+    #: ``None`` for a flat rate or the open-ended top tier. Frozen here so an
+    #: invoice can say *why* that rate applied without re-deriving it from a
+    #: table that may since have changed. Nullable: every line written before
+    #: tiers existed was priced flat, and a backfilled value would be a fact
+    #: nobody measured.
+    tier_up_to: Mapped[Decimal | None] = mapped_column(_AMOUNT, default=None)
     #: True when the metric had no configured price at close. The
     #: quantity is still recorded and the line still exists, so the gap
     #: is visible rather than the usage silently vanishing from the bill.

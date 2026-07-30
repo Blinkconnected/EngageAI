@@ -22,6 +22,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -45,7 +46,7 @@ from blinkengage.infrastructure.repositories.usage_repository import (
     UsageRecordRepository,
 )
 from tests.integration.test_pricing_engine import (
-    CONVERSATION,
+    BILLABLE_MESSAGE,
     company_id_of,
     iso,
     platform_headers,
@@ -59,18 +60,25 @@ PERIOD_START = datetime(2026, 4, 1, tzinfo=UTC)
 PERIOD_END = datetime(2026, 5, 1, tzinfo=UTC)
 
 
-#: A priceable metric with **no** free allowance. The projection tests use it
-#: so their arithmetic is about projection and nothing else: with
-#: CONVERSATION's 100 free units per month, a fixture of a few conversations a
-#: day is entirely inside the allowance and correctly projects to nothing.
-UNALLOWANCED = "AI_AUTOPILOT"
+#: The projection tests suspend the free allowance, so their arithmetic is
+#: about projection and nothing else. With 100 free messages a month, a fixture
+#: of a few messages a day is entirely inside the allowance and correctly
+#: projects to nothing — a true answer to a different question.
+#:
+#: Suspended rather than sidestepped with a second metric: there is only one
+#: priceable metric now, which is the point of the model.
+@pytest.fixture
+def no_allowance(monkeypatch: pytest.MonkeyPatch) -> None:
+    from blinkengage.domain import allowances
+
+    monkeypatch.setitem(allowances.FREE_MONTHLY_ALLOWANCE, BILLABLE_MESSAGE, Decimal(0))
 
 
 async def seed_price_before_the_period(
     client: AsyncClient,
     headers: dict,
     amount: str = "0.050000",
-    metric: str = CONVERSATION,
+    metric: str = BILLABLE_MESSAGE,
 ) -> None:
     """A global price effective before the fixed period starts.
 
@@ -224,7 +232,7 @@ async def seed_usage(
     period_id: uuid.UUID,
     day: datetime,
     quantity: int = 1,
-    metric: str = CONVERSATION,
+    metric: str = BILLABLE_MESSAGE,
 ) -> None:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
@@ -311,7 +319,7 @@ class TestDailyAggregates:
 
         # Ten times the price, effective before that day. Nothing may move.
         response = await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.500000",
                 "effective_from": iso(PERIOD_START),
@@ -391,7 +399,7 @@ class TestDailyAggregates:
 
         change_on = PERIOD_START + timedelta(days=10)
         response = await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.200000",
                 "effective_from": iso(change_on),
@@ -441,13 +449,13 @@ class TestDailyAggregates:
 
 class TestProjection:
     async def test_it_falls_back_below_seven_days_and_says_so(
-        self, client: AsyncClient, owner_headers: dict, app: Any
+        self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         """The requirement is explicit: fewer than 7 complete days means
         Current Daily Average, and the customer is told which method ran."""
         headers = await platform_headers(client, app)
         await seed_price_before_the_period(
-            client, headers, amount="1.000000", metric=UNALLOWANCED
+            client, headers, amount="1.000000"
         )
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
@@ -459,7 +467,6 @@ class TestProjection:
                 period_id=period_id,
                 day=PERIOD_START + timedelta(days=offset, hours=9),
                 quantity=2,
-                metric=UNALLOWANCED,
             )
         now = PERIOD_START + timedelta(days=3, hours=12)
         await refresh(app, period_id, now=now)
@@ -482,11 +489,11 @@ class TestProjection:
         assert projection.days_measured == 3
 
     async def test_seven_complete_days_uses_the_rolling_window(
-        self, client: AsyncClient, owner_headers: dict, app: Any
+        self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         headers = await platform_headers(client, app)
         await seed_price_before_the_period(
-            client, headers, amount="1.000000", metric=UNALLOWANCED
+            client, headers, amount="1.000000"
         )
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
@@ -498,7 +505,6 @@ class TestProjection:
                 period_id=period_id,
                 day=PERIOD_START + timedelta(days=offset, hours=9),
                 quantity=1,
-                metric=UNALLOWANCED,
             )
         now = PERIOD_START + timedelta(days=8, hours=12)
         await refresh(app, period_id, now=now)
@@ -515,14 +521,14 @@ class TestProjection:
         assert result.projection.days_measured == 7
 
     async def test_it_is_recorded_on_the_day_it_was_made(
-        self, client: AsyncClient, owner_headers: dict, app: Any
+        self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         """``projected_cost_snapshot`` is what the customer was told that
         day. Frozen with the row, it answers "what did you tell me on the
         12th?" after the invoice arrives."""
         headers = await platform_headers(client, app)
         await seed_price_before_the_period(
-            client, headers, amount="1.000000", metric=UNALLOWANCED
+            client, headers, amount="1.000000"
         )
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
@@ -533,7 +539,6 @@ class TestProjection:
                 company_id=company_id,
                 period_id=period_id,
                 day=PERIOD_START + timedelta(days=offset, hours=9),
-                metric=UNALLOWANCED,
             )
         await refresh(app, period_id, now=PERIOD_START + timedelta(days=2, hours=20))
 
@@ -543,11 +548,11 @@ class TestProjection:
         assert third.projection_strategy == ProjectionStrategy.DAILY_AVERAGE.value
 
     async def test_no_complete_days_is_an_answer_not_a_zero(
-        self, client: AsyncClient, owner_headers: dict, app: Any
+        self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         headers = await platform_headers(client, app)
         await seed_price_before_the_period(
-            client, headers, amount="1.000000", metric=UNALLOWANCED
+            client, headers, amount="1.000000"
         )
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
@@ -556,7 +561,6 @@ class TestProjection:
             company_id=company_id,
             period_id=period_id,
             day=PERIOD_START + timedelta(hours=2),
-            metric=UNALLOWANCED,
         )
         now = PERIOD_START + timedelta(hours=4)
         await refresh(app, period_id, now=now)
@@ -595,16 +599,17 @@ class TestDashboardApi:
             "payment_methods",
             "configuration",
             "unit_prices",
+            "breakdowns",
             "projection_alternatives",
         }
         # Money crosses the wire as strings, everywhere, always.
         assert isinstance(body["overview"]["estimated_month_to_date"], str)
         assert body["overview"]["currency"] == "USD"
         assert body["configuration"]["payment_terms_days"] == 21
-        assert body["configuration"]["free_monthly_allowance"]["CONVERSATION"] == "100"
+        assert body["configuration"]["free_monthly_allowance"]["BILLABLE_MESSAGE"] == "100"
         prices = {item["metric_code"]: item for item in body["unit_prices"]}
-        assert prices[CONVERSATION]["unit_amount"] == "0.050000"
-        assert prices[CONVERSATION]["source"] == "global"
+        assert prices[BILLABLE_MESSAGE]["unit_amount"] == "0.050000"
+        assert prices[BILLABLE_MESSAGE]["source"] == "global"
 
     async def test_every_projection_states_its_method(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -698,7 +703,7 @@ class TestDashboardApi:
 
         body = (await client.get("/api/v1/billing/estimate", headers=owner_headers)).json()
 
-        assert body["today"][0]["metric_code"] == CONVERSATION
+        assert body["today"][0]["metric_code"] == BILLABLE_MESSAGE
         assert body["today"][0]["quantity"] == "1.000000"
         # Inside the free allowance, so it is measured but costs nothing —
         # and the estimate says so rather than charging for it.
@@ -863,7 +868,7 @@ class TestEstimatesAreNotInvoices:
             f"/api/v1/billing/invoices/{invoice_id}", headers=owner_headers
         )
         assert detail.status_code == 200, detail.text
-        assert detail.json()["lines"][0]["metric_code"] == CONVERSATION
+        assert detail.json()["lines"][0]["metric_code"] == BILLABLE_MESSAGE
 
 
 class TestAccess:
@@ -1009,11 +1014,11 @@ class TestConcurrentRefreshes:
     The loser must find that harmless — not 500."""
 
     async def test_losing_the_race_to_insert_a_day_is_not_an_error(
-        self, client: AsyncClient, owner_headers: dict, app: Any
+        self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         headers = await platform_headers(client, app)
         await seed_price_before_the_period(
-            client, headers, amount="1.000000", metric=UNALLOWANCED
+            client, headers, amount="1.000000"
         )
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
@@ -1023,7 +1028,6 @@ class TestConcurrentRefreshes:
             company_id=company_id,
             period_id=period_id,
             day=now - timedelta(hours=1),
-            metric=UNALLOWANCED,
         )
         # The row exists…
         await refresh(app, period_id, now=now)

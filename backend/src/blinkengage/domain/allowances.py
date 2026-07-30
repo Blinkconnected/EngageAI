@@ -28,6 +28,11 @@ from typing import Final
 #: one by accident is a revenue leak nobody notices.
 FREE_MONTHLY_ALLOWANCE: Final[dict[str, Decimal]] = {
     # The metric code, matching ``METRICS`` in billable_metrics.py.
+    "BILLABLE_MESSAGE": Decimal(100),
+    # Retired, and kept here on purpose. A closed period is re-rated from its
+    # own recorded usage — a reprint, a reconciliation, a dispute — and the
+    # allowance that applied then must still apply, or a historical invoice
+    # would reproduce a different total than the one that was sent.
     "CONVERSATION": Decimal(100),
 }
 

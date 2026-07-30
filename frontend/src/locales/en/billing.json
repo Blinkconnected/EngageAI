@@ -165,7 +165,9 @@
       "company": "Negotiated for you",
       "profile": "Plan rate",
       "global": "Standard rate"
-    }
+    },
+    "tierUpTo": "Up to {{quantity}}: {{amount}}",
+    "tierAbove": "Above that: {{amount}}"
   },
   "configuration": {
     "title": "How you are billed",
@@ -190,7 +192,8 @@
     "AI_REPLY": "AI-assisted replies",
     "AI_AUTOPILOT": "AI Autopilot replies",
     "VOICE_MINUTE": "Voice minutes",
-    "STORAGE_GB_MONTH": "Storage"
+    "STORAGE_GB_MONTH": "Storage",
+    "BILLABLE_MESSAGE": "Billable messages"
   },
   "statusDetail": {
     "nothing_due": "No outstanding balance. Nothing to do.",
@@ -200,5 +203,41 @@
     "overdue_document": "{{document}} is {{days}} day(s) overdue.",
     "overdue_with_suspension": "Payment is {{days}} day(s) overdue. Service will be suspended on {{date}} if it remains unpaid.",
     "suspended": "Service is suspended for non-payment. Settle the outstanding invoices to restore access."
+  },
+  "mix": {
+    "title": "Where your messages came from",
+    "subtitle": "Message counts for this billing period. Every message costs the same whatever channel it used.",
+    "tabsAriaLabel": "Message breakdown dimension",
+    "total": "{{count}} billable messages this period",
+    "shareAriaLabel": "Share of messages from {{label}}",
+    "dimension": {
+      "channel": "By channel",
+      "origin": "By sender",
+      "direction": "By direction"
+    },
+    "label": {
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "web_chat": "Web chat",
+      "email": "Email",
+      "sms": "SMS",
+      "instagram": "Instagram",
+      "messenger": "Messenger",
+      "unknown": "Unlabelled",
+      "customer": "Customers",
+      "agent": "Agents",
+      "ai_autopilot": "AI Autopilot",
+      "ai_assisted": "AI-assisted agents",
+      "automation": "Automations",
+      "inbound": "Received",
+      "outbound": "Sent"
+    }
+  },
+  "unit": {
+    "message": "message",
+    "conversation": "conversation",
+    "reply": "reply",
+    "minute": "minute",
+    "gigabyte_month": "GB-month"
   }
 }

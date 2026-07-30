@@ -22,7 +22,10 @@ from blinkengage.infrastructure.database.models.user import User
 _PLATFORM_EMAIL = "pricing.ops@blinkengage.example"
 _PASSWORD = "correct-horse-battery-9"
 
-CONVERSATION = "CONVERSATION"
+#: The metric under test throughout the billing suites. One place, so
+#: retiring or introducing a metric is a one-line change here rather than a
+#: sweep through six files.
+BILLABLE_MESSAGE = "BILLABLE_MESSAGE"
 
 
 def iso(moment: datetime) -> str:
@@ -63,7 +66,7 @@ async def seed_global(client: AsyncClient, headers: dict, amount: str = "0.05000
     """The migration seeds this in production; tests build their schema
     with `create_all`, which runs no migrations, so it is created here."""
     response = await client.put(
-        f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+        f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
         json={
             "unit_amount": amount,
             "effective_from": iso(datetime.now(UTC)),
@@ -95,8 +98,8 @@ class TestCatalog:
 
         assert response.status_code == 200
         by_code = {m["code"]: m for m in response.json()}
-        assert by_code[CONVERSATION]["unit"] == "conversation"
-        assert by_code[CONVERSATION]["is_priceable"] is True
+        assert by_code[BILLABLE_MESSAGE]["unit"] == "message"
+        assert by_code[BILLABLE_MESSAGE]["is_priceable"] is True
         # Declared, but nothing measures it — so it must not be priceable.
         assert by_code["VOICE_MINUTE"]["is_priceable"] is False
 
@@ -156,7 +159,7 @@ class TestHierarchy:
         await seed_global(client, headers)
         company_id = await company_id_of(client, owner_headers)
 
-        item = (await effective_for(client, headers, company_id))[CONVERSATION]
+        item = (await effective_for(client, headers, company_id))[BILLABLE_MESSAGE]
 
         assert item["unit_amount"] == "0.050000"
         # The API exposes the enum's value (lowercase), consistently with
@@ -172,7 +175,7 @@ class TestHierarchy:
         company_id = await company_id_of(client, owner_headers)
 
         created = await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.040000",
                 "effective_from": iso(datetime.now(UTC)),
@@ -183,7 +186,7 @@ class TestHierarchy:
         )
         assert created.status_code == 201, created.text
 
-        item = (await effective_for(client, headers, company_id))[CONVERSATION]
+        item = (await effective_for(client, headers, company_id))[BILLABLE_MESSAGE]
         assert item["unit_amount"] == "0.040000"
         assert item["scope"] == "company"
         # The explainability payload — an operator seeing 0.040 can see
@@ -199,7 +202,7 @@ class TestHierarchy:
         await seed_global(client, headers)
         company_id = await company_id_of(client, owner_headers)
         await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.040000",
                 "effective_from": iso(datetime.now(UTC)),
@@ -209,7 +212,7 @@ class TestHierarchy:
         )
 
         ended = await client.post(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}/end",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}/end",
             json={"effective_from": iso(datetime.now(UTC)), "reason": "Contract ended"},
             headers=headers,
         )
@@ -228,7 +231,7 @@ class TestHierarchy:
 
         for company_id, amount in ((company_a, "0.040000"), (company_b, "0.060000")):
             await client.put(
-                f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+                f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
                 json={
                     "unit_amount": amount,
                     "effective_from": iso(datetime.now(UTC)),
@@ -237,8 +240,8 @@ class TestHierarchy:
                 headers=headers,
             )
 
-        a = (await effective_for(client, headers, company_a))[CONVERSATION]
-        b = (await effective_for(client, headers, company_b))[CONVERSATION]
+        a = (await effective_for(client, headers, company_a))[BILLABLE_MESSAGE]
+        b = (await effective_for(client, headers, company_b))[BILLABLE_MESSAGE]
         assert (a["unit_amount"], b["unit_amount"]) == ("0.040000", "0.060000")
 
 
@@ -254,7 +257,7 @@ class TestHistoryIsNeverRewritten:
         change_at = soon(days=30)
 
         second = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.055000",
                 "effective_from": iso(change_at),
@@ -284,7 +287,7 @@ class TestHistoryIsNeverRewritten:
         company_id = await company_id_of(client, owner_headers)
         change_at = soon(days=30)
         await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={"unit_amount": "0.090000", "effective_from": iso(change_at)},
             headers=headers,
         )
@@ -295,13 +298,13 @@ class TestHistoryIsNeverRewritten:
                 "items": [
                     {
                         "company_id": company_id,
-                        "metric_code": CONVERSATION,
+                        "metric_code": BILLABLE_MESSAGE,
                         "occurred_at": iso(soon(days=1)),
                         "quantity": "100",
                     },
                     {
                         "company_id": company_id,
-                        "metric_code": CONVERSATION,
+                        "metric_code": BILLABLE_MESSAGE,
                         "occurred_at": iso(soon(days=60)),
                         "quantity": "100",
                     },
@@ -329,7 +332,7 @@ class TestHistoryIsNeverRewritten:
         await seed_global(client, headers)
 
         response = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={"unit_amount": "0.070000", "effective_from": iso(soon(days=-10))},
             headers=headers,
         )
@@ -345,7 +348,7 @@ class TestAudit:
         headers = await platform_headers(client, app)
         await seed_global(client, headers)
         await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.055000",
                 "effective_from": iso(soon(days=30)),
@@ -355,7 +358,7 @@ class TestAudit:
         )
 
         response = await client.get(
-            f"/api/v1/platform/pricing/history?metric_code={CONVERSATION}", headers=headers
+            f"/api/v1/platform/pricing/history?metric_code={BILLABLE_MESSAGE}", headers=headers
         )
 
         assert response.status_code == 200
@@ -401,7 +404,7 @@ class TestAudit:
         await seed_global(client, headers)
         company_id = await company_id_of(client, owner_headers)
         await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.040000",
                 "effective_from": iso(datetime.now(UTC)),
@@ -431,7 +434,7 @@ class TestConcurrencyAndIntegrity:
         stale_id = "11111111-1111-1111-1111-111111111111"
 
         response = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.070000",
                 "effective_from": iso(soon(days=30)),
@@ -450,7 +453,7 @@ class TestConcurrencyAndIntegrity:
         await seed_global(client, headers)
 
         response = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.070000",
                 "effective_from": iso(soon(days=30)),
@@ -467,7 +470,7 @@ class TestConcurrencyAndIntegrity:
         headers = await platform_headers(client, app)
 
         response = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.070000",
                 "effective_from": iso(soon(days=1)),
@@ -488,7 +491,7 @@ class TestConcurrencyAndIntegrity:
         headers = await platform_headers(client, app)
 
         response = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={"unit_amount": "0.070000", "effective_from": "2026-08-01T00:00:00"},
             headers=headers,
         )
@@ -499,7 +502,7 @@ class TestConcurrencyAndIntegrity:
         headers = await platform_headers(client, app)
 
         response = await client.put(
-            f"/api/v1/platform/pricing/global/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/global/metrics/{BILLABLE_MESSAGE}",
             json={"unit_amount": "-0.01", "effective_from": iso(soon(days=1))},
             headers=headers,
         )
@@ -548,7 +551,7 @@ class TestResolveForBilling:
                 "items": [
                     {
                         "company_id": company_id,
-                        "metric_code": CONVERSATION,
+                        "metric_code": BILLABLE_MESSAGE,
                         "occurred_at": iso(soon(days=1)),
                         "quantity": "10",
                     },
@@ -582,7 +585,7 @@ class TestResolveForBilling:
                 "items": [
                     {
                         "company_id": company_id,
-                        "metric_code": CONVERSATION,
+                        "metric_code": BILLABLE_MESSAGE,
                         "occurred_at": iso(soon(days=1)),
                         "quantity": "10000",
                     }
@@ -635,7 +638,7 @@ class TestPlatformBoundary:
         company_id = await company_id_of(client, owner_headers)
 
         response = await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={"unit_amount": "0.000001", "effective_from": iso(soon(days=1))},
             headers=owner_headers,
         )
@@ -652,24 +655,47 @@ class TestCoverage:
     async def test_health_reports_measured_metrics_without_a_price(
         self, client: AsyncClient, app: Any
     ) -> None:
-        """A metric with no price is harmless while nothing meters
-        anything and becomes an outage the moment metering ships, so the
-        gap is surfaced now rather than discovered then."""
+        """A measured metric with no global rate is an outage waiting to
+        happen — usage accrues and closes unpriced — so the gap is surfaced
+        before it costs anybody a month's revenue."""
         headers = await platform_headers(client, app)
-        await seed_global(client, headers)
 
         response = await client.get("/api/v1/platform/pricing/health", headers=headers)
 
         assert response.status_code == 200
         body = response.json()
         by_code = {m["metric_code"]: m for m in body["metrics"]}
-        assert by_code[CONVERSATION]["covered"] is True
-        assert by_code["AI_AUTOPILOT"]["covered"] is False
-        assert by_code["AI_AUTOPILOT"]["reason"] == "no_global_rate"
+        assert by_code[BILLABLE_MESSAGE]["covered"] is False
+        assert by_code[BILLABLE_MESSAGE]["reason"] == "no_global_rate"
         assert body["ok"] is False
-        # Planned metrics are not in scope for coverage — they cannot be
-        # priced at all, so a missing price is not a gap.
-        assert "VOICE_MINUTE" not in by_code
+
+        await seed_global(client, headers)
+
+        body = (
+            await client.get("/api/v1/platform/pricing/health", headers=headers)
+        ).json()
+        assert {m["metric_code"]: m["covered"] for m in body["metrics"]} == {
+            BILLABLE_MESSAGE: True
+        }
+        assert body["ok"] is True
+
+    async def test_neither_planned_nor_retired_metrics_count_as_gaps(
+        self, client: AsyncClient, app: Any
+    ) -> None:
+        """Coverage is about metrics that *are* being measured. A planned one
+        cannot be priced at all, and a retired one is no longer metered — a
+        missing price on either is a fact, not a gap to fix."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+
+        body = (
+            await client.get("/api/v1/platform/pricing/health", headers=headers)
+        ).json()
+
+        codes = {m["metric_code"] for m in body["metrics"]}
+        assert "VOICE_MINUTE" not in codes, "planned"
+        assert "CONVERSATION" not in codes, "retired"
+        assert "AI_AUTOPILOT" not in codes, "retired"
 
 
 async def _seed_profiles(app: Any) -> None:
@@ -718,7 +744,7 @@ async def test_rates_endpoint_returns_the_full_timeline(
     company_id = await company_id_of(client, owner_headers)
     if scope == "company":
         await client.put(
-            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{CONVERSATION}",
+            f"/api/v1/platform/pricing/companies/{company_id}/metrics/{BILLABLE_MESSAGE}",
             json={
                 "unit_amount": "0.040000",
                 "effective_from": iso(datetime.now(UTC)),
@@ -727,7 +753,7 @@ async def test_rates_endpoint_returns_the_full_timeline(
             headers=headers,
         )
 
-    query = f"scope={scope}&metric_code={CONVERSATION}"
+    query = f"scope={scope}&metric_code={BILLABLE_MESSAGE}"
     if scope == "company":
         query += f"&company_id={company_id}"
     response = await client.get(f"/api/v1/platform/pricing/rates?{query}", headers=headers)

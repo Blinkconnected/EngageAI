@@ -39,6 +39,7 @@ from blinkengage.domain.projection import (
     ProjectionStrategy,
     project,
 )
+from blinkengage.domain.tiers import charge
 from blinkengage.domain.usage import BillingPeriodStatus
 from blinkengage.infrastructure.database.models.billing_summary import BillingDailySummary
 from blinkengage.infrastructure.repositories.billing_summary_repository import (
@@ -157,6 +158,18 @@ class BillingSummaryService:
         currencies = await self._pricing.company_currencies([period.company_id])
         fallback_currency = currencies.get(period.company_id, DEFAULT_CURRENCY.code)
 
+        # Volume tiers are selected by the **period's** total usage, not by a
+        # day's. That is what "volume" means, and it is how the invoice will
+        # charge — so the rate written onto a day has to be the one the month's
+        # own volume selects, or the dashboard would quote a rate the bill then
+        # contradicts. Totals per metric first, therefore, before any day is
+        # priced. Closed days are excluded from nothing here: they keep the
+        # rate they were finalized with, whatever the volume has since become.
+        volume: dict[str, Decimal] = {}
+        for day, metric_code, _version, quantity, _count in aggregated:
+            del day
+            volume[metric_code] = volume.get(metric_code, zero()) + quantity
+
         # Every day's cost in the period, finalized rows included — the input
         # to the projection below. Built from what was just computed rather
         # than re-read afterwards, so it cannot depend on whether the
@@ -172,7 +185,19 @@ class BillingSummaryService:
             resolved = batch.prices.get((period.company_id, metric_code, _priced_at(day)))
             if resolved is None:
                 outcome.unpriced_metrics.add(metric_code)
-            unit_amount = resolved.unit_amount if resolved is not None else None
+            # ``charge`` on the period volume picks the tier; the *rate* it
+            # picked is what goes on the day. The day's own cost is then that
+            # rate times the day's quantity, so the days still sum to the
+            # period — and a flat rate goes through the same call, because a
+            # tiered branch and a flat branch eventually disagree.
+            unit_amount = (
+                charge(
+                    resolved.tier_table(),
+                    quantity=volume.get(metric_code, quantity),
+                ).unit_amount
+                if resolved is not None
+                else None
+            )
             cost = to_storage(
                 multiply(quantity, unit_amount) if unit_amount is not None else zero()
             )

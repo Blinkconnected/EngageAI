@@ -151,6 +151,16 @@ class BillingConfigurationResponse(BaseModel):
     projection_strategy_default: ProjectionStrategy
 
 
+class TierResponse(BaseModel):
+    """One step of a volume table. ``up_to`` is inclusive; null is the
+    open-ended top step."""
+
+    model_config = _FROM_ATTRIBUTES
+
+    up_to: Money | None
+    unit_amount: Money
+
+
 class UnitPriceResponse(BaseModel):
     model_config = _FROM_ATTRIBUTES
 
@@ -164,6 +174,10 @@ class UnitPriceResponse(BaseModel):
     source: str | None
     effective_from: datetime | None
     free_allowance: Money
+    #: The volume table behind ``unit_amount`` — empty for a flat rate. Shown
+    #: because a rate that changes with volume is only checkable if the table
+    #: is visible.
+    tiers: list[TierResponse]
 
 
 class BillingOverviewResponse(BaseModel):
@@ -210,6 +224,20 @@ class EstimateResponse(BaseModel):
     data_as_of: datetime | None
 
 
+class MessageBreakdownResponse(BaseModel):
+    """Billable messages by channel, origin or direction.
+
+    Counts, not money: billing is channel-agnostic, so a per-channel cost
+    would be a number the invoice does not contain.
+    """
+
+    model_config = _FROM_ATTRIBUTES
+
+    dimension: str
+    rows: list[tuple[str, int]]
+    total: int
+
+
 class BillingDashboardResponse(BaseModel):
     model_config = _FROM_ATTRIBUTES
 
@@ -221,6 +249,7 @@ class BillingDashboardResponse(BaseModel):
     payment_methods: list[PaymentMethodResponse]
     configuration: BillingConfigurationResponse
     unit_prices: list[UnitPriceResponse]
+    breakdowns: list[MessageBreakdownResponse]
     projection_alternatives: list[ProjectionResponse]
 
 
@@ -257,9 +286,11 @@ __all__ = [
     "InvoiceDetailResponse",
     "InvoiceLineResponse",
     "InvoiceSummaryResponse",
+    "MessageBreakdownResponse",
     "MetricCostResponse",
     "PaymentMethodResponse",
     "ProjectionResponse",
+    "TierResponse",
     "TimelineEventResponse",
     "UnitPriceResponse",
 ]

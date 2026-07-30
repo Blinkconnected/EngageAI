@@ -165,7 +165,9 @@
       "company": "سعر خاص بك",
       "profile": "سعر الخطة",
       "global": "السعر القياسي"
-    }
+    },
+    "tierUpTo": "حتى {{quantity}}: {{amount}}",
+    "tierAbove": "وما فوق ذلك: {{amount}}"
   },
   "configuration": {
     "title": "كيف تُحتسب فاتورتك",
@@ -190,7 +192,8 @@
     "AI_REPLY": "ردود بمساعدة الذكاء الاصطناعي",
     "AI_AUTOPILOT": "ردود القيادة الآلية",
     "VOICE_MINUTE": "دقائق صوتية",
-    "STORAGE_GB_MONTH": "التخزين"
+    "STORAGE_GB_MONTH": "التخزين",
+    "BILLABLE_MESSAGE": "الرسائل القابلة للفوترة"
   },
   "statusDetail": {
     "nothing_due": "لا توجد مبالغ مستحقّة. لا حاجة لأي إجراء.",
@@ -200,5 +203,41 @@
     "overdue_document": "{{document}} متأخّرة {{days}} يوم.",
     "overdue_with_suspension": "الدفعة متأخّرة {{days}} يوم. ستُوقف الخدمة في {{date}} إذا لم يتم السداد.",
     "suspended": "الخدمة موقوفة لعدم السداد. يُرجى سداد الفواتير المستحقّة لاستعادة الوصول."
+  },
+  "mix": {
+    "title": "من أين وردت رسائلك",
+    "subtitle": "أعداد الرسائل في فترة الفوترة الحالية. تتساوى تكلفة كل رسالة أياً كانت القناة.",
+    "tabsAriaLabel": "بُعد توزيع الرسائل",
+    "total": "{{count}} رسالة قابلة للفوترة في هذه الفترة",
+    "shareAriaLabel": "نسبة الرسائل من {{label}}",
+    "dimension": {
+      "channel": "حسب القناة",
+      "origin": "حسب المُرسل",
+      "direction": "حسب الاتجاه"
+    },
+    "label": {
+      "whatsapp": "واتساب",
+      "telegram": "تيليجرام",
+      "web_chat": "المحادثة على الويب",
+      "email": "البريد الإلكتروني",
+      "sms": "الرسائل النصية",
+      "instagram": "إنستغرام",
+      "messenger": "ماسنجر",
+      "unknown": "غير محدّدة",
+      "customer": "العملاء",
+      "agent": "الوكلاء",
+      "ai_autopilot": "القيادة الآلية",
+      "ai_assisted": "وكلاء بمساعدة الذكاء الاصطناعي",
+      "automation": "الأتمتة",
+      "inbound": "واردة",
+      "outbound": "صادرة"
+    }
+  },
+  "unit": {
+    "message": "رسالة",
+    "conversation": "محادثة",
+    "reply": "رد",
+    "minute": "دقيقة",
+    "gigabyte_month": "غيغابايت/شهر"
   }
 }

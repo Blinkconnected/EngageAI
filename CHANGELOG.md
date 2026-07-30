@@ -16,6 +16,55 @@ for more detail on how this page is put together.
 
 ### Changed
 
+- **Billing now counts messages, not conversations.** The unit is a
+  **billable message**: any customer-facing message on any channel —
+  inbound or outbound, written by a person, the AI or an automation, in
+  any medium. A photo is one message. Internal notes, system messages,
+  assignment changes, tags, read and delivery receipts and typing
+  indicators are never charged, because none of them deliver anything to
+  a customer.
+
+  Billing is **channel-agnostic**: a message costs the same on WhatsApp,
+  Telegram, web chat, email, SMS or Instagram. Channels remain a
+  dimension for analytics — the billing page shows a period's messages
+  broken down by channel, by who sent them (customer, agent, AI
+  Autopilot, AI-assisted, automation) and by direction — but those are
+  counts, never per-channel prices. The rate card also shows the volume
+  table itself, so "why am I paying this rate?" is answerable on the
+  page rather than by asking.
+
+  **Pricing is now tiered by volume.** The first 100 messages each month
+  are free; beyond that the rate is chosen by the month's own total —
+  0.002 up to 200 messages, 0.0015 up to 500, 0.001 above that (JOD at
+  the same ratio as the existing rates). One rate applies to every
+  chargeable message, so a busier month makes *every* message cheaper
+  rather than only the ones past a boundary. Operators can still override
+  the price per company or per plan. Note the arithmetic: crossing a
+  boundary can lower the bill outright — a 501-message month costs less
+  than a 500-message one — which is inherent to volume pricing and always
+  in the customer's favour.
+
+  The dashboard charges exactly the way the invoice does, so the estimate
+  a customer watches all month and the bill they receive agree to the last
+  decimal, including which tier applied.
+
+  **Charging per conversation, per AI-assisted reply and per Autopilot
+  reply has been retired.** An AI reply is one billable message; the AI's
+  involvement is recorded for analytics instead of charged twice. Nothing
+  historical changes: those metrics, their prices, their closed periods
+  and their issued invoices all stay exactly as they were and still
+  reprint, because an invoice that cannot be reprinted cannot be
+  defended.
+
+- **Every billable message now has an immutable record behind it.** One
+  event per message, saying which message, on which channel, in which
+  conversation and from whom — so a question about an invoice can be
+  answered message by message rather than with a total. A message is
+  charged exactly once even when the system sees it several times, and the
+  database enforces that rather than trusting the code to. Messages that
+  arrive after a month has closed are recorded and reported rather than
+  billed into the wrong month.
+
 - **Jordanian companies are now billed in dinars.** Signup asks for a
   country and tells you which currency you'll be billed in before you
   commit — Jordan means JOD, everywhere else USD — and it can't change
@@ -51,6 +100,26 @@ for more detail on how this page is put together.
   runs the full height of the page in both languages and both themes.
 
 ### Added
+
+- **Push notifications reach agents on their phones**, including when the
+  app is closed. Until now the only live delivery was a browser
+  connection, which a phone drops within seconds of the screen going
+  dark — so a new conversation could sit unanswered with nothing to show
+  for it. An agent's device is registered when they sign in on it and
+  forgotten when they sign out, several devices per person are fine, and
+  a phone that no longer accepts notifications is dropped automatically
+  rather than being pushed at forever. **Push is its own switch** in
+  notification preferences, per notification type, separate from email
+  and from browser alerts: wanting an alert on screen while you work but
+  not on your phone at 3am is a setting, not a compromise. Notifications
+  older than fifteen minutes are never pushed — a "customer is waiting"
+  alert arriving three-quarters of an hour late is worse than none, and
+  the same rule means switching push on for the first time never floods
+  anybody with history. One transport covers both Android and iOS.
+  Delivery requires Firebase credentials; without them nothing changes
+  and nothing breaks — devices still register, notifications still arrive
+  everywhere they did before, and filling the credentials in starts
+  delivery with no redeploy.
 
 - **A billing dashboard for every company**, so an invoice at the end of
   the month is never a surprise. Within a few seconds it answers what you
