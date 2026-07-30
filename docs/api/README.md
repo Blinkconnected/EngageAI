@@ -146,6 +146,7 @@ rationale:
 | `/erp-configs`, `/webhooks/erpnext` | `erp.manage` / shared secret | `docs/architecture/erp-integration.md` |
 | `/billing` | `billing.read` — the caller's **own** company only; there is deliberately no `company_id` parameter | `docs/architecture/billing.md` |
 | `/platform/*` | platform authority (`get_platform_auth`), outside tenant RBAC entirely; writes additionally need a non-read-only operator | `docs/architecture/billing.md` |
+| `/platform/pricing/metrics`, `/platform/pricing/models` | platform authority; read-only catalogues — metrics are code, and models are what this build supports | `docs/architecture/billing.md` |
 
 ## Health and OpenAPI
 

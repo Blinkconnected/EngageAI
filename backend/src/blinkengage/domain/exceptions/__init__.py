@@ -200,6 +200,33 @@ class MetricNotPriceableError(DomainError):
         )
 
 
+class PricingModelNotEnabledError(DomainError):
+    """A pricing model that exists in the design but is not offered yet.
+
+    409 rather than 400: the request is well formed and the model is real —
+    it simply is not available in this release. A different message from
+    "unknown model", because "not yet" and "no such thing" send an operator
+    looking in different places.
+    """
+
+    def __init__(self, model: str) -> None:
+        super().__init__(
+            f"{model} pricing is not enabled in this release. It is declared so the "
+            "schema and the console are designed against it, and it becomes "
+            "available in the release that turns it on."
+        )
+
+
+class InvalidPricingTermsError(DomainError):
+    """Terms that cannot produce a number — a tiered rate with no table, a
+    table whose bounds do not ascend, a negative minimum.
+
+    422: the request is understood and refused on its contents. The message is
+    the domain's own explanation, verbatim, because it says exactly which rule
+    was broken.
+    """
+
+
 class PricingRangeOverlapError(DomainError):
     """The requested effective range overlaps an existing rate for the
     same target. 409 — resolving it is the operator's decision, not

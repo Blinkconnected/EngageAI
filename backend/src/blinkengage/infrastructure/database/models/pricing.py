@@ -36,7 +36,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from blinkengage.domain.money import PRICE_PRECISION, PRICE_SCALE
 from blinkengage.domain.pricing_scope import PricingScope
@@ -115,6 +115,14 @@ class PricingRate(UUIDPrimaryKeyMixin, Base):
             name="ck_pricing_rates_range",
         ),
         CheckConstraint("unit_amount >= 0", name="ck_pricing_rates_amount_non_negative"),
+        CheckConstraint(
+            "included_quantity IS NULL OR included_quantity >= 0",
+            name="ck_pricing_rates_included_non_negative",
+        ),
+        CheckConstraint(
+            "minimum_charge IS NULL OR minimum_charge >= 0",
+            name="ck_pricing_rates_minimum_non_negative",
+        ),
         # Ascending, not descending: the loader reads whole ranges
         # intersecting a window rather than a top-1, so there is no
         # DESC and none of the NULLS-LAST portability caveat that comes
@@ -158,9 +166,25 @@ class PricingRate(UUIDPrimaryKeyMixin, Base):
     profile_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("pricing_profiles.id", ondelete="RESTRICT"), default=None
     )
-    #: The price of **one** unit of this metric's MeasurementUnit. Never
-    #: a total, never a tier — tiered pricing is explicitly out of scope.
+    #: How this rate turns usage into money — see ``domain/pricing_models.py``.
+    #: Data rather than an assumption, because the metrics this product will
+    #: bill do not share one shape: tokens ladder, storage packages, seats are
+    #: a flat monthly fee.
+    pricing_model: Mapped[str] = mapped_column(String(20), nullable=False, default="FLAT")
+    #: The price of **one** unit of this metric's MeasurementUnit — the rate
+    #: for FLAT, the top/fallback rate for a tiered table, the fee itself for
+    #: FIXED_FEE.
     unit_amount: Mapped[Decimal] = mapped_column(_AMOUNT, nullable=False)
+    #: Units that cost nothing in a period. ``None`` falls back to the
+    #: metric's default in ``domain/allowances.py``, so a rate written before
+    #: allowances were per-rate keeps charging exactly as it did.
+    included_quantity: Mapped[Decimal | None] = mapped_column(_AMOUNT, default=None)
+    #: A floor under the line's subtotal, applied after everything else.
+    minimum_charge: Mapped[Decimal | None] = mapped_column(_AMOUNT, default=None)
+    #: Parameters whose shape depends on the model — package size, committed
+    #: quantity, overage rate. JSON rather than a nullable column per future
+    #: model, which would be five columns that are NULL forever.
+    model_params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     #: Per-row rather than global, so per-company currency in a later
     #: phase is a data change rather than a schema change. v1 writes
     #: BILLING_CURRENCY.code and refuses anything else.
@@ -193,6 +217,21 @@ class PricingRate(UUIDPrimaryKeyMixin, Base):
 
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=func.now(), nullable=False
+    )
+
+    #: The rate's tier table, in order. ``selectin`` rather than lazy: this is
+    #: an async session, and a lazy load mid-serialization raises
+    #: ``MissingGreenlet`` — a failure that only appears once a rate actually
+    #: has tiers, which is the worst time to discover it.
+    #:
+    #: Resolution does **not** use this relationship; it loads every
+    #: candidate's tiers in one query (see ``PricingRateRepository``), because
+    #: rating a period is a batch job and a per-rate load would undo that.
+    tiers: Mapped[list["PricingRateTier"]] = relationship(
+        "PricingRateTier",
+        lazy="selectin",
+        order_by="PricingRateTier.sort_order",
+        cascade="all, delete-orphan",
     )
 
 

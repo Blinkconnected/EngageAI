@@ -24,7 +24,6 @@ re-derivation unnecessary, so it cannot be wrong.
 Framework-free, like the rest of ``domain/``.
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -32,7 +31,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from blinkengage.domain.allowances import split_quantity
-from blinkengage.domain.tiers import Tier, charge, flat
+from blinkengage.domain.pricing_models import PricingTerms, charge
 
 
 class BillingPeriodStatus(StrEnum):
@@ -155,6 +154,10 @@ class SnapshotLine:
     #: can state *why* that rate applied years later, without re-deriving it
     #: from a table that may since have changed.
     tier_up_to: Decimal | None = None
+    #: Which pricing model produced the line — flat, volume tiers, and later
+    #: graduated or a fixed fee. Frozen because "why is this the amount?" is
+    #: answered by the model as much as by the rate.
+    pricing_model: str = "flat"
 
 
 def build_snapshot_line(
@@ -162,12 +165,10 @@ def build_snapshot_line(
     metric_code: str,
     metric_version: int,
     quantity: Decimal,
-    unit_amount: Decimal,
-    currency: str,
+    terms: PricingTerms,
     rate_id: UUID | None,
-    tiers: Sequence[Tier] | None = None,
 ) -> SnapshotLine:
-    """Freezes one line, applying the free monthly allowance and the tiers.
+    """Freezes one line by charging the period's usage under a rate's terms.
 
     The allowance is applied **here**, at close time, rather than at
     invoice generation. The snapshot is the immutable record of what the
@@ -175,37 +176,38 @@ def build_snapshot_line(
     closed period produced different invoices depending on when it was
     billed.
 
-    ``tiers`` decides the rate from the period's own volume — see
-    ``domain/tiers.py``. Passing none, or a one-step table, is a flat rate and
-    behaves exactly as this always has; ``unit_amount`` is then what is
-    charged. There is one charging path either way, because a tiered branch
-    and a flat branch eventually disagree.
+    ``terms`` carries the pricing model, the tier table, the included
+    quantity and any minimum — everything about *how* to charge. Deciding it
+    is ``domain/pricing_models.py``'s job, not this one's: there is a single
+    charging path so a close, a dashboard estimate and an operator's preview
+    cannot produce three different numbers.
 
-    The subtotal is computed **unrounded** (``money.multiply``) and
-    stored at full storage precision. Rounding to the currency happens
-    once, later, on the invoice total — rounding each line first and
-    summing is how a bill stops matching its own lines.
+    A rate with no explicit allowance falls back to the metric's default
+    (``domain/allowances.py``), so a rate written before allowances were
+    per-rate keeps charging exactly as it did.
+
+    The subtotal is **unrounded** and stored at full storage precision.
+    Rounding to the currency happens once, later, on the invoice total —
+    rounding each line first and summing is how a bill stops matching its own
+    lines.
     """
-    included, _ = split_quantity(metric_code, quantity)
-    charged = charge(
-        tiers if tiers else flat(unit_amount),
-        quantity=quantity,
-        included_quantity=included,
-    )
+    default_included, _ = split_quantity(metric_code, quantity)
+    charged = charge(terms, quantity=quantity, default_included=default_included)
     return SnapshotLine(
         metric_code=metric_code,
         metric_version=metric_version,
         quantity=charged.quantity,
         included_quantity=charged.included_quantity,
         billable_quantity=charged.billable_quantity,
-        # The rate the tier selected, not the rate that was passed in. What a
+        # The rate the model selected, not the one that was passed in. What a
         # customer was charged per unit has to be on the line, or an invoice
         # cannot be checked against its own total.
         unit_amount=charged.unit_amount,
-        currency=currency,
+        currency=charged.currency,
         subtotal=charged.subtotal,
         rate_id=rate_id,
         tier_up_to=charged.tier_up_to,
+        pricing_model=charged.model.value,
     )
 
 

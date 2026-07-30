@@ -59,6 +59,7 @@ from blinkengage.domain.money import (
     total,
     zero,
 )
+from blinkengage.domain.pricing_models import charge
 from blinkengage.domain.projection import (
     DEFAULT_STRATEGY,
     DailyCost,
@@ -70,7 +71,7 @@ from blinkengage.domain.projection import (
     ProjectionUnavailable,
     project,
 )
-from blinkengage.domain.tiers import Tier, charge
+from blinkengage.domain.tiers import Tier
 from blinkengage.domain.usage import BillingPeriodStatus, due_date
 from blinkengage.infrastructure.database.models.billing_summary import BillingDailySummary
 from blinkengage.infrastructure.database.models.invoicing import Invoice, InvoiceLine
@@ -1191,8 +1192,9 @@ class BillingDashboardService:
             if resolved is not None:
                 tiers = resolved.tiers
                 applicable = charge(
-                    resolved.tier_table(),
+                    resolved.terms(),
                     quantity=(volume or {}).get(item.metric_code, zero()),
+                    default_included=allowance_for(item.metric_code),
                 ).unit_amount
             views.append(
                 UnitPriceView(

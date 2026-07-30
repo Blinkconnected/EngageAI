@@ -28,9 +28,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.pricing_service import PricingService
+from blinkengage.domain.allowances import allowance_for
 from blinkengage.domain.billable_metrics import get_metric
 from blinkengage.domain.money import DEFAULT_CURRENCY, multiply, to_storage, zero
 from blinkengage.domain.pricing import PriceRequest
+from blinkengage.domain.pricing_models import charge
 from blinkengage.domain.projection import (
     DEFAULT_STRATEGY,
     DailyCost,
@@ -39,7 +41,6 @@ from blinkengage.domain.projection import (
     ProjectionStrategy,
     project,
 )
-from blinkengage.domain.tiers import charge
 from blinkengage.domain.usage import BillingPeriodStatus
 from blinkengage.infrastructure.database.models.billing_summary import BillingDailySummary
 from blinkengage.infrastructure.repositories.billing_summary_repository import (
@@ -192,8 +193,9 @@ class BillingSummaryService:
             # tiered branch and a flat branch eventually disagree.
             unit_amount = (
                 charge(
-                    resolved.tier_table(),
+                    resolved.terms(),
                     quantity=volume.get(metric_code, quantity),
+                    default_included=allowance_for(metric_code),
                 ).unit_amount
                 if resolved is not None
                 else None

@@ -234,6 +234,10 @@ class UsagePeriodLine(UUIDPrimaryKeyMixin, Base):
     #: tiers existed was priced flat, and a backfilled value would be a fact
     #: nobody measured.
     tier_up_to: Mapped[Decimal | None] = mapped_column(_AMOUNT, default=None)
+    #: Which pricing model produced this line. Frozen with everything else:
+    #: "why is this the amount?" is answered by the model as much as by the
+    #: rate, and the rate may have changed since.
+    pricing_model: Mapped[str] = mapped_column(String(20), nullable=False, default="FLAT")
     #: True when the metric had no configured price at close. The
     #: quantity is still recorded and the line still exists, so the gap
     #: is visible rather than the usage silently vanishing from the bill.

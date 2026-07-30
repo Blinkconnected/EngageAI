@@ -1,27 +1,35 @@
-"""Volume tiers: one rate for the whole month, chosen by how much was used.
+"""Tier arithmetic: volume and graduated ladders over any usage metric.
 
 See ``docs/architecture/billing.md``.
 
-Until now a price was a single number per unit. A tier table makes the rate a
-function of the period's own volume — the more messages a company sends in a
-month, the cheaper every chargeable message in that month becomes.
+The primitives ``domain/pricing_models.py`` charges with. Deliberately about
+*quantities*, not about messages: the same tables price tokens, gigabytes,
+phone minutes and seats, and a module that mentioned messages would have to be
+rewritten the first time one of those shipped.
+
+A tier table makes the rate a function of how much was used — the more a
+company uses in a period, the cheaper each unit becomes.
 
 **Volume pricing, not graduated pricing.** This distinction is the whole
 module, and getting it wrong changes every bill:
 
-- *Volume* (what this is): the total decides one rate, and **all** chargeable
-  units are charged at it. 600 messages → all 500 chargeable ones at the
-  600-message rate.
-- *Graduated*: each bracket keeps its own rate and the units are split across
-  them. 600 messages → the first 200 at one rate, the next 300 at another, the
-  rest at a third.
+- *Volume* (``charge_volume``): the total decides one rate, and **all**
+  chargeable units are charged at it. 600 units → all 500 chargeable ones at
+  the 600-unit rate.
+- *Graduated* (``charge_graduated``): each bracket keeps its own rate and the
+  units are split across them. 600 units → the first 200 at one rate, the next
+  300 at another, the rest at a third.
 
-Volume pricing is what was asked for, and it is the simpler thing to explain
-on an invoice: one quantity, one rate, one subtotal.
+Both are implemented here; which one a rate uses is its ``PricingModel``.
+Volume is what the message metric ships with, and it is the simpler thing to
+explain on an invoice: one quantity, one rate, one subtotal. Graduated is what
+token pricing almost always looks like, so the arithmetic is written and
+tested before it is needed rather than in a hurry afterwards.
 
-**It has a cliff, on purpose.** With rates of 0.002 up to 200 and 0.0015 up to
-500, a 500-message month costs 400 x 0.0015 = 0.60 while a 501-message month
-costs 401 x 0.001 = 0.401 — the bill *falls* as usage crosses a boundary.
+**Volume pricing has a cliff, on purpose.** With rates of 0.002 up to 200 and
+0.0015 up to 500, a 500-unit period costs 400 x 0.0015 = 0.60 while a 501-unit
+period costs 401 x 0.001 = 0.401 — the bill *falls* as usage crosses a
+boundary. (Graduated pricing has no cliff, which is exactly why it exists.)
 That is inherent to volume pricing (it is why graduated pricing exists), and
 it is worth knowing rather than discovering: nobody is ever charged more for
 using less, so the surprise is always in the customer's favour.
@@ -143,10 +151,10 @@ def select_tier(tiers: Sequence[Tier], quantity: Decimal) -> tuple[Tier, int]:
     return tiers[-1], len(tiers)
 
 
-def charge(
+def charge_volume(
     tiers: Sequence[Tier], *, quantity: Decimal, included_quantity: Decimal = Decimal(0)
 ) -> TieredCharge:
-    """Applies a tier table to one period's usage.
+    """Volume pricing: the total selects one rate for every chargeable unit.
 
     The subtotal is computed **unrounded** and at storage precision; rounding
     to the currency happens once, later, on the invoice total. Rounding here
@@ -164,6 +172,60 @@ def charge(
         tier_up_to=tier.up_to,
         tier_index=index,
         subtotal=to_storage(multiply(billable, tier.unit_amount)),
+    )
+
+
+def charge_graduated(
+    tiers: Sequence[Tier], *, quantity: Decimal, skip: Decimal = Decimal(0)
+) -> TieredCharge:
+    """Graduated pricing: each bracket charges its own rate.
+
+    ``skip`` is the free allowance. It consumes the **cheapest brackets
+    first**, so "the first 100 are free, then the ladder starts" is literally
+    what happens — which is both the common convention and the one a customer
+    reading the table expects.
+
+    ``unit_amount`` on the result is the bracket the *last* chargeable unit
+    fell in; the blended rate is the caller's to compute from the subtotal,
+    because "the rate" for a graduated charge is a summary rather than a fact.
+    """
+    if not tiers:
+        raise TierError("A tier table needs at least one step.")
+
+    gross = quantity if quantity > 0 else zero()
+    free = min(gross, skip) if skip > 0 else zero()
+    subtotal = zero()
+    lower = zero()
+    last_index = 1
+    last_rate = tiers[-1].unit_amount
+
+    for index, tier in enumerate(tiers, start=1):
+        upper = tier.up_to if tier.up_to is not None else gross
+        if upper <= lower:
+            continue
+        # The slice of the gross volume this bracket covers, minus whatever
+        # of it the allowance already absorbed.
+        bracket_top = min(upper, gross)
+        if bracket_top <= lower:
+            break
+        chargeable_from = max(lower, free)
+        units = bracket_top - chargeable_from
+        if units > 0:
+            subtotal += multiply(units, tier.unit_amount)
+            last_index = index
+            last_rate = tier.unit_amount
+        lower = bracket_top
+        if lower >= gross:
+            break
+
+    return TieredCharge(
+        quantity=to_storage(gross),
+        included_quantity=to_storage(free),
+        billable_quantity=to_storage(gross - free),
+        unit_amount=to_storage(last_rate),
+        tier_up_to=None,
+        tier_index=last_index,
+        subtotal=to_storage(subtotal),
     )
 
 
@@ -198,7 +260,8 @@ __all__ = [
     "Tier",
     "TierError",
     "TieredCharge",
-    "charge",
+    "charge_graduated",
+    "charge_volume",
     "describe",
     "flat",
     "select_tier",

@@ -1618,6 +1618,118 @@ A closed day keeps the rate it was finalized with, whatever the volume has
 since become. The immutability rule wins: those rows are what the customer was
 shown.
 
+## Usage metrics and pricing models
+
+Billing started with one metric priced one way. It now has to price many
+dimensions, several ways, without another refactor — so *what is measured* and
+*how it is charged* are separate, and both are explicit.
+
+### What a metric is, and where each part lives
+
+A metric definition spans two places on purpose, and the split is the whole
+design: a metric's **identity** is code, its **price** is data.
+
+| | Where | Why |
+|---|---|---|
+| Name, Code, Unit | `domain/billable_metrics.py` | Metrics are code so every priced thing provably has a meter. A metric an operator could type in would charge nobody. |
+| Billing type (`MetricKind`) | same | Decides how a period aggregate is derived. Not a label — it changes the arithmetic. |
+| Active (`MetricAvailability`) | same | `MEASURED` / `PLANNED` / `RETIRED`. Only a measured metric may be priced. |
+| Currency | `pricing_rates.currency` | A metric is priced in every currency it is sold in; there is no single answer. |
+| Pricing model | `pricing_rates.pricing_model` | The same metric can be flat for one plan and tiered for another. |
+| Tier table | `pricing_rate_tiers` | Belongs to one rate, so history keeps the table it was charged under. |
+| Included quantity | `pricing_rates.included_quantity` | Varies by plan and by negotiation. |
+| Minimum charge | `pricing_rates.minimum_charge` | Same. |
+| Effective date, End date | `pricing_rates.effective_from` / `effective_until` | Prices are effective-dated; a metric is not. |
+
+Putting currency, tiers or dates on the *metric* would mean one price per
+metric per installation, which is not a product anybody sells.
+
+### The catalog
+
+Twenty metrics are declared: one measured (`BILLABLE_MESSAGE`), three retired,
+and sixteen planned — messages, AI tokens in and out, image generation, audio
+transcription and synthesis, storage, file bandwidth, API requests, webhook
+events, phone minutes, SMS, email, push notifications, active agents, active
+bots and a custom dimension.
+
+They are declared **before** their meters deliberately. The schema, the audit
+trail and the console are then designed against the whole shape once, and a
+planned metric is refused a price so nobody configures a rate that charges
+nothing.
+
+### Billing type decides the aggregation
+
+`MetricKind` is written down while only one kind is metered, because the
+mistake it prevents is a multiple rather than a rounding error:
+
+- **counter** — discrete occurrences, summed. Messages, requests, tokens.
+- **continuous** — fractional amounts, summed. Phone minutes, gigabytes moved.
+- **sampled** — a level held over time, averaged. Gigabyte-months: summing
+  daily samples would bill the same gigabyte thirty times.
+- **seat** — active entities in the period. The value is the peak, never the
+  sum of daily counts, or a month bills thirty times the seats.
+
+Only `counter` has a meter today. The others' rules are stated so whoever
+ships one implements the aggregation the metric already declares.
+
+### Pricing models
+
+`domain/pricing_models.py` owns one function — `charge(terms, quantity)` — and
+every surface goes through it: the period close, the dashboard estimate, an
+operator's preview. A second implementation is how a dashboard ends up
+disagreeing with an invoice.
+
+| Model | What it does | State |
+|---|---|---|
+| `flat` | One rate for every unit | **Enabled** |
+| `volume_tier` | The total picks one rate for every chargeable unit | **Enabled** |
+| `graduated_tier` | Each bracket at its own rate | Implemented, not offered |
+| `fixed_fee` | A flat amount per period regardless of usage | Implemented, not offered |
+| `package` | Sold in blocks, part-blocks rounded up | Declared |
+| `committed` | A committed quantity, with a rate beyond it | Declared |
+| `subscription` | A plan fee with entitlements across metrics | Declared |
+
+Three states rather than two, because they answer different questions.
+`IMPLEMENTED` means the arithmetic exists and is tested; `ENABLED` is the
+product decision about what may be written today. Enabling graduated tiers is
+a one-line change plus a console field — no new maths to get wrong.
+
+`GET /platform/pricing/models` returns all seven with both flags, so a console
+can show what is coming without offering it, and an editor written today needs
+no change the day one is turned on.
+
+**Package, committed and subscription are declared but not implemented, on
+purpose.** Each needs a product decision before it needs code — does an unused
+part of a package expire? does an unmet commitment roll over? — and
+implementing maths for terms nobody has agreed would be inventing policy and
+calling it architecture. Their parameters will live in `model_params`, a JSON
+column, because the keys differ per model and a nullable column per future
+model is five columns that are NULL forever.
+
+### Included quantity and minimum charge are modifiers, not models
+
+Both apply to **every** model:
+
+- *Included usage* is `included_quantity`. Making it a separate model would
+  mean a rate could not be both tiered *and* have a free allowance, which is
+  precisely what the shipped message rate is.
+- *Overage* is simply what the model charges beyond the included quantity.
+  There is no overage model for the same reason — a committed rate adds a
+  distinct overage *rate*, which is why `committed` is its own model.
+- *Minimum charge* raises the subtotal to a floor, and the line records that
+  it did, so an invoice can say why a quiet month costs what it does.
+
+The allowance moved from `domain/allowances.py` to the rate. The code table
+remains the **default** for a rate that sets none, so every rate written
+before this keeps charging exactly as it did — and a rate that explicitly sets
+zero means zero, which is a different thing from unset.
+
+### What a frozen line records
+
+`usage_period_lines` now carries `pricing_model` alongside `tier_up_to`. "Why
+is this the amount?" is answered by the model as much as by the rate, and both
+may have changed by the time somebody asks.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:

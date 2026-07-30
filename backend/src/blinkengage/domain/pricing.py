@@ -32,14 +32,15 @@ guessed — so a naive datetime is rejected rather than assumed.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
 from blinkengage.domain.billable_metrics import MeasurementUnit
 from blinkengage.domain.money import multiply
+from blinkengage.domain.pricing_models import PricingModel, PricingTerms
 from blinkengage.domain.pricing_scope import SCOPES_BY_PRECEDENCE, PricingScope
 from blinkengage.domain.tiers import Tier, flat
 
@@ -94,9 +95,15 @@ class RateCandidate:
     currency: str
     effective_from: datetime
     effective_until: datetime | None
-    #: Volume tiers, in order. Empty for a flat rate — which is what every
-    #: rate was before tiers existed, and what most still are.
+    #: How this rate charges. Defaulted to FLAT so a candidate built in a test
+    #: — or by a caller that predates pricing models — behaves as it always
+    #: did.
+    pricing_model: PricingModel = PricingModel.FLAT
+    #: Tiers, in order. Empty for a flat rate.
     tiers: tuple[Tier, ...] = ()
+    included_quantity: Decimal | None = None
+    minimum_charge: Decimal | None = None
+    model_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,13 +158,16 @@ class ResolvedPrice:
     effective_until: datetime | None
     profile_id: UUID | None
     shadowed: tuple[ShadowedPrice, ...]
-    #: The volume tiers this rate carries, in order. Empty for a flat rate.
-    #:
-    #: ``unit_amount`` above is then the rate of the **top** tier, so a caller
-    #: that ignores tiers still gets a real price rather than nothing — but any
-    #: caller charging a period must go through ``tier_table()`` and
-    #: ``domain/tiers.charge()``, because the rate depends on the volume.
+    #: How this rate charges, and with what. ``unit_amount`` above is the flat
+    #: rate, or a tiered rate's top step, so a caller that ignores the model
+    #: still gets a real price rather than nothing — but anything charging a
+    #: period must go through ``terms()`` and ``domain/pricing_models.charge``,
+    #: because the amount depends on the volume and the model.
+    pricing_model: PricingModel = PricingModel.FLAT
     tiers: tuple[Tier, ...] = ()
+    included_quantity: Decimal | None = None
+    minimum_charge: Decimal | None = None
+    model_params: dict[str, Any] = field(default_factory=dict)
 
     def extend(self, quantity: Decimal) -> Decimal:
         """quantity x unit price, **unrounded**.
@@ -181,6 +191,19 @@ class ResolvedPrice:
         flat branch that eventually disagree.
         """
         return self.tiers if self.tiers else flat(self.unit_amount)
+
+    def terms(self) -> PricingTerms:
+        """Everything about *how* this rate charges, and nothing about which
+        rate it is. What ``domain/pricing_models.charge`` takes."""
+        return PricingTerms(
+            model=self.pricing_model,
+            unit_amount=self.unit_amount,
+            currency=self.currency,
+            tiers=self.tiers,
+            included_quantity=self.included_quantity,
+            minimum_charge=self.minimum_charge,
+            params=dict(self.model_params),
+        )
 
 
 def _require_aware(value: datetime, *, field: str) -> None:
@@ -326,7 +349,11 @@ def select_price(
         effective_until=winner.effective_until,
         profile_id=profile_id,
         shadowed=tuple(shadowed),
+        pricing_model=winner.pricing_model,
         tiers=winner.tiers,
+        included_quantity=winner.included_quantity,
+        minimum_charge=winner.minimum_charge,
+        model_params=dict(winner.model_params),
     )
 
 

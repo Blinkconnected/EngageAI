@@ -25,8 +25,13 @@ from pydantic import (
     model_validator,
 )
 
-from blinkengage.domain.billable_metrics import MeasurementUnit
+from blinkengage.domain.billable_metrics import (
+    MeasurementUnit,
+    MetricAvailability,
+    MetricKind,
+)
 from blinkengage.domain.money import DEFAULT_CURRENCY
+from blinkengage.domain.pricing_models import PricingModel
 from blinkengage.domain.pricing_scope import PricingScope
 
 #: The money wire type. See the module docstring.
@@ -35,10 +40,22 @@ MoneyIn = Annotated[Decimal, Field(max_digits=18, decimal_places=6, ge=0)]
 
 
 class BillableMetricResponse(BaseModel):
+    """One usage metric in the catalog.
+
+    What the metric *is* — not what it costs. Price, currency, tiers, included
+    quantity and effective dates all belong to a rate, because a metric is
+    priced differently per currency, per plan and per customer, and each of
+    those is effective-dated on its own.
+    """
+
     code: str
     display_name: str
     unit: MeasurementUnit
     description: str
+    #: How a period aggregate is derived — counter, continuous, sampled or
+    #: seat. The billing type, in the sense that decides the arithmetic.
+    kind: MetricKind
+    availability: MetricAvailability
     is_priceable: bool
 
 
@@ -92,6 +109,40 @@ class EffectivePricingResponse(BaseModel):
     items: list[EffectivePriceResponse]
 
 
+class TierInput(BaseModel):
+    """One step of a tier table.
+
+    ``up_to`` is inclusive, and ``null`` is the open-ended top step — every
+    table needs exactly one, or a customer who exceeds it has no price.
+    """
+
+    up_to: MoneyIn | None = None
+    unit_amount: MoneyIn
+
+
+class TierResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    up_to: MoneyOut | None
+    unit_amount: MoneyOut
+
+
+class PricingModelInfoResponse(BaseModel):
+    """A pricing model this build knows about, and whether it may be used.
+
+    Declared models are returned as well as enabled ones so a console can show
+    what is coming without pretending it is available — and so a UI written
+    today does not need changing the day one is turned on.
+    """
+
+    model: PricingModel
+    display_name: str
+    description: str
+    enabled: bool
+    implemented: bool
+    requires_tiers: bool
+
+
 class _RateWriteRequest(BaseModel):
     unit_amount: MoneyIn
     effective_from: AwareDatetime
@@ -125,6 +176,19 @@ class SetRateRequest(_RateWriteRequest):
     """
 
     currency: str = Field(default=DEFAULT_CURRENCY.code, min_length=3, max_length=3)
+    #: How the rate charges. Defaults to a flat rate — what every rate written
+    #: before pricing models was, and what most still are.
+    pricing_model: PricingModel = PricingModel.FLAT
+    #: Required for a tiered model, refused for the others: a table that is
+    #: stored but never applied is a price nobody is charged.
+    tiers: list[TierInput] | None = None
+    #: Units that cost nothing per period. Omit to leave the metric's own
+    #: default in force.
+    included_quantity: MoneyIn | None = None
+    minimum_charge: MoneyIn | None = None
+    #: Parameters for models whose shape differs. Empty until one of those is
+    #: enabled.
+    model_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class EndCompanyRateRequest(BaseModel):
@@ -157,7 +221,11 @@ class PricingRateResponse(BaseModel):
     metric_code: str
     company_id: uuid.UUID | None
     profile_id: uuid.UUID | None
+    pricing_model: str
     unit_amount: MoneyOut
+    included_quantity: MoneyOut | None
+    minimum_charge: MoneyOut | None
+    tiers: list[TierResponse] = Field(default_factory=list)
     currency: str
     effective_from: datetime
     effective_until: datetime | None

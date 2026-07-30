@@ -16,6 +16,42 @@ for more detail on how this page is put together.
 
 ### Changed
 
+- **Pricing is now generic across usage metrics.** Blink Engage will bill
+  more than messages — AI tokens, generated images, transcription and
+  speech minutes, storage, bandwidth, API requests, webhook events, phone
+  minutes, SMS, email, push notifications, agent and bot seats, and a
+  custom dimension. All twenty are now declared in the catalogue with
+  their unit and their **billing type**, which decides how a period is
+  totalled: counted events, continuous amounts, sampled levels, or seats.
+  That last distinction is written down before any of them ships because
+  getting it wrong is not a rounding error — a seat totalled like a
+  message bills thirty times the seats.
+
+  Declaring a metric does not make it chargeable. Each still needs its
+  meter before a price can be set on it, so nobody can configure a rate
+  that quietly charges nothing.
+
+  **How a price charges is now part of the price.** A rate carries its
+  pricing model, its tier table, the quantity included free and any
+  minimum charge — so the same metric can be flat on one plan and tiered
+  on another, in each currency, effective-dated independently. Flat and
+  volume tiers are available today; graduated tiers and fixed monthly
+  fees are built and tested but not yet offered; packages, committed
+  usage and subscription plans are designed into the schema and refused
+  until the terms behind them are decided. Everything that charges — the
+  invoice, the dashboard estimate, an operator's preview — now goes
+  through a single calculation, so they cannot disagree.
+
+  The free allowance moved from code onto the price, where it belongs: it
+  varies by plan and by negotiation. Nothing changes today — the message
+  metric keeps its 100 free messages a month, now recorded on its rate,
+  and a price that sets no allowance still gets the metric's own.
+
+  **Nothing changes functionally in this release.** Billable messages
+  remain the metric, the tiers and totals are identical to the last
+  release, and every existing price keeps charging exactly as it did.
+  This is the architecture the pricing editor will be built on.
+
 - **Billing now counts messages, not conversations.** The unit is a
   **billable message**: any customer-facing message on any channel —
   inbound or outbound, written by a person, the AI or an automation, in

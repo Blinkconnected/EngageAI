@@ -38,15 +38,17 @@ from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
     AmbiguousPricingConfigurationError,
     EntityNotFoundError,
+    InvalidPricingTermsError,
     MetricNotPriceableError,
     PricingBackdatingRefusedError,
     PricingConcurrentEditError,
+    PricingModelNotEnabledError,
     PricingNotConfiguredError,
     PricingRangeOverlapError,
     RateAlreadyEffectiveError,
     SystemProfileNotPriceableError,
 )
-from blinkengage.domain.money import DEFAULT_CURRENCY, currency_for
+from blinkengage.domain.money import DEFAULT_CURRENCY, currency_for, to_storage
 from blinkengage.domain.pricing import (
     PRICING_EPOCH,
     AmbiguousPricingError,
@@ -59,12 +61,21 @@ from blinkengage.domain.pricing import (
     ranges_overlap,
     select_price,
 )
+from blinkengage.domain.pricing_models import (
+    ENABLED_PRICING_MODELS,
+    PricingModel,
+    PricingModelError,
+    PricingTerms,
+    validate_terms,
+)
 from blinkengage.domain.pricing_scope import PricingScope
+from blinkengage.domain.tiers import Tier
 from blinkengage.infrastructure.database.models.pricing import (
     CompanyPricingProfileAssignment,
     PricingAuditLog,
     PricingProfile,
     PricingRate,
+    PricingRateTier,
 )
 from blinkengage.infrastructure.repositories.pricing_repository import (
     CompanyPricingAssignmentRepository,
@@ -466,6 +477,60 @@ class PricingService:
         if not is_priceable(metric_code):
             raise MetricNotPriceableError(metric_code)
 
+    def _validate_terms(
+        self,
+        *,
+        pricing_model: PricingModel,
+        unit_amount: Decimal,
+        currency: str,
+        tiers: Sequence[Tier] | None,
+        included_quantity: Decimal | None,
+        minimum_charge: Decimal | None,
+        model_params: dict[str, object] | None,
+    ) -> PricingTerms:
+        """Refuses terms that cannot be charged, before anything is written.
+
+        Two gates, and they are different questions. ``ENABLED_PRICING_MODELS``
+        is a *product* decision — which models this release offers — while
+        ``validate_terms`` is an *arithmetic* one: whether these particular
+        terms can produce a number. A model can be implemented and tested and
+        still not be offered, which is the state graduated tiers are in.
+        """
+        if pricing_model not in ENABLED_PRICING_MODELS:
+            raise PricingModelNotEnabledError(pricing_model.value)
+
+        # Quantized to the column's scale here, so the value a write returns
+        # is the value every later read returns. Without it a console shows
+        # "250" on save and "250.000000" on reload, and somebody spends an
+        # afternoon deciding which one is real.
+        terms = PricingTerms(
+            model=pricing_model,
+            unit_amount=to_storage(unit_amount),
+            currency=currency,
+            tiers=tuple(
+                Tier(
+                    up_to=to_storage(tier.up_to) if tier.up_to is not None else None,
+                    unit_amount=to_storage(tier.unit_amount),
+                )
+                for tier in tiers or ()
+            ),
+            included_quantity=(
+                to_storage(included_quantity) if included_quantity is not None else None
+            ),
+            minimum_charge=(
+                to_storage(minimum_charge) if minimum_charge is not None else None
+            ),
+            params=dict(model_params or {}),
+        )
+        try:
+            validate_terms(terms)
+        except PricingModelError as exc:
+            # Translated at the boundary, like every other pure-layer error
+            # here: the domain modules stay importable without the API's
+            # exception hierarchy.
+            raise InvalidPricingTermsError(str(exc)) from exc
+        return terms
+
     def _validate_effective_from(
         self, effective_from: datetime, *, allow_backdating: bool, reason: str | None
     ) -> bool:
@@ -559,6 +624,19 @@ class PricingService:
         #: currency that company is billed in, or resolution will not
         #: find it.
         currency: str = DEFAULT_CURRENCY.code,
+        #: How the rate charges. Defaults to a flat rate, which is what every
+        #: rate written before pricing models was.
+        pricing_model: PricingModel = PricingModel.FLAT,
+        #: The tier table, for a tiered model. Written as child rows of this
+        #: rate — a table belongs to one price, and editing a price means
+        #: writing a new rate with its own table, so history keeps the table
+        #: it was charged under.
+        tiers: Sequence[Tier] | None = None,
+        #: Units that cost nothing per period. ``None`` leaves the metric's
+        #: default in force.
+        included_quantity: Decimal | None = None,
+        minimum_charge: Decimal | None = None,
+        model_params: dict[str, object] | None = None,
     ) -> PricingRate:
         """Close the current price and insert its successor.
 
@@ -568,6 +646,15 @@ class PricingService:
         A half-applied price change is not a state this system can be in.
         """
         self._validate_metric(metric_code)
+        terms = self._validate_terms(
+            pricing_model=pricing_model,
+            unit_amount=unit_amount,
+            currency=currency_for(currency).code,
+            tiers=tiers,
+            included_quantity=included_quantity,
+            minimum_charge=minimum_charge,
+            model_params=model_params,
+        )
         backdated = self._validate_effective_from(
             effective_from, allow_backdating=allow_backdating, reason=reason
         )
@@ -613,13 +700,32 @@ class PricingService:
                 metric_code=metric_code,
                 company_id=company_id,
                 profile_id=profile_id,
-                unit_amount=unit_amount,
+                pricing_model=pricing_model.value.upper(),
+                unit_amount=terms.unit_amount,
+                included_quantity=terms.included_quantity,
+                minimum_charge=terms.minimum_charge,
+                model_params=dict(model_params or {}),
                 currency=currency_for(currency).code,
                 effective_from=effective_from,
                 effective_until=effective_until,
                 created_by_user_id=actor.user_id,
                 created_by_email=actor.email,
                 reason=reason,
+                # Through the relationship rather than as a second write: the
+                # cascade persists them with the rate *and* leaves the
+                # collection populated in memory. Inserting them separately
+                # would leave ``rate.tiers`` unloaded, and reading it to build
+                # the response would then lazy-load inside an async session —
+                # which raises MissingGreenlet, and only once a rate actually
+                # has tiers.
+                tiers=[
+                    PricingRateTier(
+                        up_to=tier.up_to,
+                        unit_amount=tier.unit_amount,
+                        sort_order=order,
+                    )
+                    for order, tier in enumerate(terms.tiers, start=1)
+                ],
             )
         )
 
@@ -628,7 +734,24 @@ class PricingService:
             PricingScope.PROFILE: "pricing.profile_rate_changed",
             PricingScope.COMPANY: "pricing.company_rate_changed",
         }[scope]
-        details: dict[str, object] = {}
+        details: dict[str, object] = {"pricing_model": pricing_model.value}
+        if terms.tiers:
+            # The table itself, in the audit row. "The price changed" is not an
+            # answer when the price is a table — an operator asking what it was
+            # last quarter needs the steps, not the count.
+            details["tiers"] = [
+                {
+                    "up_to": str(tier.up_to) if tier.up_to is not None else None,
+                    "unit_amount": str(tier.unit_amount),
+                }
+                for tier in terms.tiers
+            ]
+        # From the validated terms rather than the raw arguments, so the audit
+        # row quotes the numbers that were actually stored.
+        if terms.included_quantity is not None:
+            details["included_quantity"] = str(terms.included_quantity)
+        if terms.minimum_charge is not None:
+            details["minimum_charge"] = str(terms.minimum_charge)
         if backdated:
             details["backdated"] = True
             details["days"] = (datetime.now(UTC) - effective_from).days

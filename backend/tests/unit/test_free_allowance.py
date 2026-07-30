@@ -8,7 +8,16 @@ allowance at all.
 from decimal import Decimal
 
 from blinkengage.domain.allowances import FREE_MONTHLY_ALLOWANCE, allowance_for, split_quantity
+from blinkengage.domain.pricing_models import PricingModel, PricingTerms
 from blinkengage.domain.usage import build_snapshot_line
+
+
+def flat_terms(unit_amount: Decimal) -> PricingTerms:
+    """A flat rate with no allowance of its own, so the metric's default
+    applies — which is what these tests are about."""
+    return PricingTerms(
+        model=PricingModel.FLAT, unit_amount=unit_amount, currency="USD"
+    )
 
 
 class TestSplit:
@@ -54,8 +63,7 @@ class TestSnapshotLine:
             metric_code="CONVERSATION",
             metric_version=1,
             quantity=Decimal(150),
-            unit_amount=Decimal("0.05"),
-            currency="USD",
+            terms=flat_terms(Decimal("0.05")),
             rate_id=None,
         )
         assert line.quantity == Decimal(150)
@@ -68,8 +76,7 @@ class TestSnapshotLine:
             metric_code="CONVERSATION",
             metric_version=1,
             quantity=Decimal(80),
-            unit_amount=Decimal("0.05"),
-            currency="USD",
+            terms=flat_terms(Decimal("0.05")),
             rate_id=None,
         )
         assert line.subtotal == Decimal(0)
@@ -82,8 +89,7 @@ class TestSnapshotLine:
             metric_code="CONVERSATION",
             metric_version=1,
             quantity=Decimal(120),
-            unit_amount=Decimal("0.10"),
-            currency="USD",
+            terms=flat_terms(Decimal("0.10")),
             rate_id=None,
         )
         assert line.subtotal == Decimal(2)

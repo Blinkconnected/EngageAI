@@ -101,7 +101,7 @@ class TestCatalog:
         assert by_code[BILLABLE_MESSAGE]["unit"] == "message"
         assert by_code[BILLABLE_MESSAGE]["is_priceable"] is True
         # Declared, but nothing measures it — so it must not be priceable.
-        assert by_code["VOICE_MINUTE"]["is_priceable"] is False
+        assert by_code["PHONE_MINUTE"]["is_priceable"] is False
 
         assert (
             await client.post("/api/v1/platform/pricing/metrics", json={}, headers=headers)
@@ -127,7 +127,7 @@ class TestCatalog:
         headers = await platform_headers(client, app)
 
         response = await client.put(
-            "/api/v1/platform/pricing/global/metrics/VOICE_MINUTE",
+            "/api/v1/platform/pricing/global/metrics/PHONE_MINUTE",
             json={"unit_amount": "0.01", "effective_from": iso(soon(days=1))},
             headers=headers,
         )
@@ -693,7 +693,7 @@ class TestCoverage:
         ).json()
 
         codes = {m["metric_code"] for m in body["metrics"]}
-        assert "VOICE_MINUTE" not in codes, "planned"
+        assert "PHONE_MINUTE" not in codes, "planned"
         assert "CONVERSATION" not in codes, "retired"
         assert "AI_AUTOPILOT" not in codes, "retired"
 

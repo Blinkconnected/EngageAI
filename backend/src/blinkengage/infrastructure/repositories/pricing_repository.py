@@ -28,6 +28,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.domain.pricing import AssignmentWindow, RateCandidate
+from blinkengage.domain.pricing_models import PricingModel
 from blinkengage.domain.pricing_scope import PricingScope
 from blinkengage.domain.tiers import Tier
 from blinkengage.infrastructure.database.models.company import Company
@@ -53,6 +54,10 @@ def _to_candidate(
         currency=rate.currency,
         effective_from=rate.effective_from,
         effective_until=rate.effective_until,
+        pricing_model=PricingModel(rate.pricing_model.lower()),
+        included_quantity=rate.included_quantity,
+        minimum_charge=rate.minimum_charge,
+        model_params=dict(rate.model_params or {}),
         tiers=tuple(
             Tier(up_to=tier.up_to, unit_amount=tier.unit_amount)
             for tier in sorted(tiers, key=lambda row: row.sort_order)

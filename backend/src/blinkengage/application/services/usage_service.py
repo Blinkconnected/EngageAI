@@ -325,14 +325,13 @@ class UsageService:
                 metric_code=metric_code,
                 metric_version=metric_version,
                 quantity=quantity,
-                unit_amount=resolved.unit_amount,
-                currency=resolved.currency,
+                # The rate's own terms — model, tiers, included quantity,
+                # minimum — applied to the **period aggregate**. That is what
+                # "volume" means for a tiered rate: one rate for the month,
+                # chosen by the month's own total. See
+                # domain/pricing_models.py.
+                terms=resolved.terms(),
                 rate_id=resolved.rate_id,
-                # Volume tiers, where the rate carries them. The table is
-                # applied to the **period aggregate**, which is what "volume"
-                # means: one rate for the month, chosen by the month's own
-                # total. See domain/tiers.py.
-                tiers=resolved.tier_table(),
             )
             subtotals.append(snapshot.subtotal)
             lines.append(
@@ -347,6 +346,7 @@ class UsageService:
                     billable_quantity=snapshot.billable_quantity,
                     unit_amount=snapshot.unit_amount,
                     tier_up_to=snapshot.tier_up_to,
+                    pricing_model=snapshot.pricing_model,
                     currency=snapshot.currency,
                     subtotal=snapshot.subtotal,
                     rate_id=snapshot.rate_id,

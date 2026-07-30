@@ -56,8 +56,30 @@ class TestCatalogShape:
             "CONVERSATION",
             "AI_ASSISTED_REPLY",
             "AI_AUTOPILOT",
-            "VOICE_MINUTE",
-            "STORAGE_GB",
+            # Declared, unmetered, unpriceable — the dimensions this product
+            # intends to bill, named so the schema and the console are
+            # designed against the whole shape once.
+            "AI_TOKEN_INPUT",
+            "AI_TOKEN_OUTPUT",
+            "AI_IMAGE_GENERATION",
+            "AI_AUDIO_TRANSCRIPTION",
+            "AI_AUDIO_SYNTHESIS",
+            # Renamed from VOICE_MINUTE and STORAGE_GB. Renaming a code is
+            # normally forbidden, and this tripwire is what catches it — both
+            # were PLANNED, so no rate, usage record, snapshot or invoice
+            # could reference them, and the migration asserts exactly that
+            # before renaming.
+            "PHONE_MINUTE",
+            "STORAGE_GB_MONTH",
+            "FILE_BANDWIDTH_GB",
+            "API_REQUEST",
+            "WEBHOOK_EVENT",
+            "SMS_MESSAGE",
+            "EMAIL_SENT",
+            "PUSH_NOTIFICATION",
+            "ACTIVE_AGENT",
+            "ACTIVE_BOT",
+            "CUSTOM_METRIC",
         }
 
     def test_units_are_not_all_the_same(self) -> None:
@@ -74,14 +96,14 @@ class TestCatalogShape:
 class TestMeasurabilityGate:
     def test_a_metric_with_no_meter_cannot_be_priced(self) -> None:
         """The guarantee: every billable metric has a measurement engine.
-        Voice and storage are declared but nothing measures them yet, so
-        an operator must not be able to attach a rate — they would see no
+        Sixteen dimensions are declared and none is measured yet, so an
+        operator must not be able to attach a rate to one — they would see no
         charges and reasonably conclude billing is broken."""
-        assert is_known_metric("VOICE_MINUTE")
-        assert not is_priceable("VOICE_MINUTE")
+        assert is_known_metric("PHONE_MINUTE")
+        assert not is_priceable("PHONE_MINUTE")
 
-        assert is_known_metric("STORAGE_GB")
-        assert not is_priceable("STORAGE_GB")
+        assert is_known_metric("STORAGE_GB_MONTH")
+        assert not is_priceable("STORAGE_GB_MONTH")
 
     def test_measured_metrics_are_priceable(self) -> None:
         assert is_priceable("BILLABLE_MESSAGE")
