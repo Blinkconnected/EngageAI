@@ -82,6 +82,17 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     #: authority is checked by `require_platform_admin`, never by
     #: `require_permission`.
     is_platform_admin: Mapped[bool] = mapped_column(default=False, nullable=False)
+    #: A platform administrator who may **look but not change**. Only
+    #: meaningful alongside `is_platform_admin`.
+    #:
+    #: Platform authority is otherwise all-or-nothing, deliberately, so
+    #: that no tenant role can be edited into it. This flag does not
+    #: weaken that: it only ever *narrows* what an operator can do, and a
+    #: strictly less powerful principal cannot be an escalation path. It
+    #: exists so somebody who needs to audit pricing — a finance analyst
+    #: reviewing what a customer is charged — does not need the authority
+    #: to change it.
+    platform_read_only: Mapped[bool] = mapped_column(default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     company: Mapped["Company | None"] = relationship(back_populates="users")

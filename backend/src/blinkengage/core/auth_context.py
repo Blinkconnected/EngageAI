@@ -48,3 +48,7 @@ class PlatformContext:
     """
 
     user_id: UUID
+    #: True when this operator may read but not change. See
+    #: ``User.platform_read_only`` — it only narrows authority, never
+    #: widens it.
+    read_only: bool = False

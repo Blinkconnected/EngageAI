@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from blinkengage.api.schemas.validators import validate_password_strength
+from blinkengage.domain.money import DEFAULT_CURRENCY
 
 
 class RegisterRequest(BaseModel):
@@ -59,7 +60,7 @@ class CompanySummary(BaseModel):
     slug: str
     #: ISO 4217. The frontend formats every amount with this — a JOD
     #: figure shown to three places and a USD one to two.
-    billing_currency: str = "USD"
+    billing_currency: str = DEFAULT_CURRENCY.code
     country_code: str | None = None
     #: Whether the signup owner has confirmed their email address. The
     #: frontend shows a banner while this is false and hides the

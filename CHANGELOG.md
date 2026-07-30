@@ -52,6 +52,25 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A Billing screen for each company** in the platform console, reached
+  from the Companies list. It shows what the company is charged, **where
+  each price comes from** — global default, pricing profile, or a
+  company-specific override — the dates each price applies between, and
+  any prices that were overridden. You can set a company's own price,
+  move it onto a different pricing profile, and **ask the pricing engine
+  what it would charge at any moment in time**, getting back the same
+  answer a closing month will use. Every change is listed with who made
+  it, when it took effect and why, and nothing in that list is ever
+  deleted. Prices are shown in the company's own currency at its own
+  number of decimal places.
+
+- **Read-only platform accounts.** A platform operator can now be given
+  access to look without the ability to change: they see every screen and
+  the full history, including the pricing preview, but the controls are
+  disabled and the server refuses the change even if something got past
+  the screen. Useful for anyone reviewing what customers are charged who
+  shouldn't be able to alter it. Existing operators are unaffected.
+
 - **New workspaces now confirm their email address**, and get **100
   free conversations every month**. After signing up you can sign in and
   look around straight away, but sending messages, connecting channels
@@ -271,6 +290,12 @@ for more detail on how this page is put together.
   each company gets is unaffected.
 
 ### Fixed
+
+- **The pricing history showed the wrong currency.** A change to a
+  Jordanian company's price was recorded as US dollars — the amount was
+  right, the currency label was not, which reads like somebody made a
+  currency mistake. It now records the currency the price was actually
+  set in. Entries written before this fix still show the old label.
 
 - **Connecting WhatsApp, Messenger or Instagram no longer fails
   silently.** The "Webhook secret" field said *"leave blank to

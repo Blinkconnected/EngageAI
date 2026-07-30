@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
   Box,
@@ -109,7 +110,7 @@ export function PlatformCompaniesPage() {
     {
       field: 'actions',
       headerName: t('PlatformCompaniesPage.columnActions'),
-      width: 220,
+      width: 320,
       sortable: false,
       renderCell: (params) => {
         const suspended = params.row.status === 'suspended'
@@ -117,6 +118,14 @@ export function PlatformCompaniesPage() {
           <Stack direction="row" spacing={1}>
             <Button size="small" variant="outlined" onClick={() => setFeaturesFor(params.row)}>
               {t('PlatformCompaniesPage.featuresButton')}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              component={RouterLink}
+              to={`/platform/companies/${params.row.id}/billing`}
+            >
+              {t('PlatformCompaniesPage.billingButton')}
             </Button>
             <Button
               size="small"

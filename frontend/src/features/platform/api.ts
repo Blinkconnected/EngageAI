@@ -13,6 +13,9 @@ import type {
   PricingProfile,
 } from './types'
 import type {
+  PricingRate,
+  ResolveUsagePriceResponse,
+  SetCompanyRateInput,
   MailSettings,
   MailSettingsInput,
   TestMailResult,
@@ -311,5 +314,141 @@ export function useTestMailMutation() {
       })
       return data
     },
+  })
+}
+
+// --- Company pricing -------------------------------------------------
+//
+// Every price shown by the console comes from one of these calls. The UI
+// deliberately never picks a winner between scopes, never multiplies, and
+// never formats an amount it computed itself: precedence is the Pricing
+// Resolver's job, and a second implementation in TypeScript would drift
+// from it silently. See docs/architecture/billing.md.
+
+const companyPricingKey = (companyId: string) => ['platform', 'pricing', 'company', companyId]
+
+export function useCompanyEffectivePricingQuery(companyId: string, at?: string) {
+  return useQuery({
+    queryKey: [...companyPricingKey(companyId), 'effective', at ?? 'now'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<EffectivePricing>('/platform/pricing/effective', {
+        params: { company_id: companyId, ...(at ? { at } : {}) },
+      })
+      return data
+    },
+  })
+}
+
+/** The resolver's own answer for one metric at one instant.
+ *
+ * A POST, but a read: it is the preview, and it writes nothing. Used
+ * rather than reasoning from the effective-pricing table because the
+ * point of a preview is to ask the resolver, not to model it. */
+export function useResolvePriceMutation() {
+  return useMutation({
+    mutationFn: async (input: { companyId: string; metricCode: string; at: string }) => {
+      // The resolver is a *batch* endpoint — it is built for rating a
+      // whole period — so a preview is a batch of one.
+      //
+      // `strict: false` on purpose: "no price is configured for this at
+      // that moment" is a real answer an operator needs to see, not an
+      // error. It comes back in `unpriced` with the resolver's own reason.
+      const { data } = await apiClient.post<ResolveUsagePriceResponse>(
+        '/platform/pricing/resolve',
+        {
+          items: [
+            {
+              company_id: input.companyId,
+              metric_code: input.metricCode,
+              occurred_at: input.at,
+            },
+          ],
+          strict: false,
+        },
+      )
+      return data
+    },
+  })
+}
+
+export function useCompanyRatesQuery(companyId: string, metricCode?: string) {
+  return useQuery({
+    queryKey: [...companyPricingKey(companyId), 'rates', metricCode ?? 'all'],
+    enabled: Boolean(metricCode),
+    queryFn: async () => {
+      const { data } = await apiClient.get<PricingRate[]>('/platform/pricing/rates', {
+        params: { scope: 'company', company_id: companyId, metric_code: metricCode },
+      })
+      return data
+    },
+  })
+}
+
+export function useCompanyPricingHistoryQuery(companyId: string) {
+  return useQuery({
+    queryKey: [...companyPricingKey(companyId), 'history'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<PricingAuditEntry[]>('/platform/pricing/history', {
+        params: { company_id: companyId, limit: 100 },
+      })
+      return data
+    },
+  })
+}
+
+export function useSetCompanyRateMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ companyId, metricCode, ...body }: SetCompanyRateInput) => {
+      const { data } = await apiClient.put(
+        `/platform/pricing/companies/${companyId}/metrics/${metricCode}`,
+        body,
+      )
+      return data
+    },
+    // Invalidated rather than seeded from the response: a company
+    // override can be *shadowed* by nothing, but its effect on the
+    // resolved table depends on profile assignment and effective dates,
+    // so the authoritative answer has to come back from the resolver.
+    onSuccess: (_data, variables) =>
+      queryClient.invalidateQueries({ queryKey: companyPricingKey(variables.companyId) }),
+  })
+}
+
+export function useEndCompanyRateMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      companyId: string
+      metricCode: string
+      effective_from: string
+      reason: string
+      expected_current_rate_id?: string | null
+    }) => {
+      const { companyId, metricCode, ...body } = input
+      await apiClient.post(
+        `/platform/pricing/companies/${companyId}/metrics/${metricCode}/end`,
+        body,
+      )
+    },
+    onSuccess: (_data, variables) =>
+      queryClient.invalidateQueries({ queryKey: companyPricingKey(variables.companyId) }),
+  })
+}
+
+export function useAssignProfileMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      companyId: string
+      profile_id: string | null
+      effective_from: string
+      reason: string
+    }) => {
+      const { companyId, ...body } = input
+      await apiClient.put(`/platform/pricing/companies/${companyId}/profile`, body)
+    },
+    onSuccess: (_data, variables) =>
+      queryClient.invalidateQueries({ queryKey: companyPricingKey(variables.companyId) }),
   })
 }

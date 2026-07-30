@@ -70,7 +70,12 @@ async def platform_me(
     user = await UserRepository(session).get_by_id(platform.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return PlatformProfileResponse(id=user.id, email=user.email, full_name=user.full_name)
+    return PlatformProfileResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        read_only=user.platform_read_only,
+    )
 
 
 @router.get("/companies", response_model=Page[CompanyOverviewResponse])

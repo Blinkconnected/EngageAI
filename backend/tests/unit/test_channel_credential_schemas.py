@@ -65,10 +65,20 @@ class TestWebChat:
 
 
 class TestUnvalidatedChannelTypes:
-    def test_messenger_is_not_validated_yet(self) -> None:
-        # Messenger/Instagram/SMS aren't covered until a later phase —
-        # confirms today's permissive (pre-Phase-1) behavior is preserved
-        # for channels this phase doesn't touch.
-        validate_channel_credentials("messenger", {})
-        validate_channel_credentials("instagram", {})
+    def test_messenger_and_instagram_are_now_validated(self) -> None:
+        """They were permissive, which is why the console offered them as
+        "manual JSON setup": an operator had to know the exact field names
+        with nothing checking them, and a typo produced a channel that
+        saved cleanly and never delivered a message."""
+        for channel_type in ("messenger", "instagram"):
+            with pytest.raises(InvalidChannelCredentialsError):
+                validate_channel_credentials(channel_type, {})
+            # A real access token is all either needs.
+            validate_channel_credentials(channel_type, {"access_token": "tok"})
+
+    def test_sms_is_still_unvalidated(self) -> None:
+        """SMS has many providers with genuinely different credentials, so
+        it keeps the generic form until one is modelled properly. Asserted
+        rather than left implicit, so adding a schema is a deliberate
+        change to this test and not a silent behaviour shift."""
         validate_channel_credentials("sms", {})

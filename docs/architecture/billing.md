@@ -1183,6 +1183,66 @@ timestamps and does not silently correct them, so a payment dated after
 the allocation that drew on it will appear out of causal order —
 surfacing a pre-existing data problem rather than hiding it.
 
+## The Company Billing screen
+
+`/platform/companies/{id}/billing`. What a company is charged, why, and
+every change ever made to it.
+
+### The console never calculates a price
+
+Every figure on the screen comes from a resolver API — `/pricing/effective`
+for the table, `/pricing/resolve` for the preview, `/pricing/history` for
+the audit trail. The UI does not pick a winner between scopes, does not
+multiply, and does not re-format an amount it computed.
+
+That is not tidiness, it is the only way the screen can be trusted: a
+second implementation of the precedence hierarchy in TypeScript would
+drift from the one that actually bills, and the drift would show up as a
+customer disputing an invoice that the console had told an operator was
+right. The `scope` field on each row **is** the source; `shadowed` **is**
+the list of rates that lost.
+
+Amounts are printed as the server sent them rather than through
+`Intl.NumberFormat` on a parsed float. JOD has three decimal places and
+USD two, the API already returns each at its own scale, and re-formatting
+a parsed number is how a displayed price stops matching the billed one.
+
+### The preview asks, it does not model
+
+"Preview the resolved pricing exactly as the resolver sees it" is
+implemented literally: the screen POSTs to `/pricing/resolve` — the same
+endpoint a closing period uses — for any instant an operator picks, and
+renders the reply. It passes `strict: false`, because "no price is
+configured for that at that moment" is a real answer somebody needs to
+see rather than an error, and the resolver's own `reason` is shown
+verbatim. A reason like "no price covers 2020-01-01" saves an operator
+hunting through effective dates by hand.
+
+### Writes carry optimistic concurrency
+
+Every override sends either `expected_current_rate_id` (the rate being
+replaced) or `expect_no_current_rate`. Without one of the two, two
+operators editing the same price both succeed and the second silently
+wins — and neither learns that anything was lost.
+
+### Read-only operators
+
+`users.platform_read_only` narrows a platform operator to reading.
+Platform authority is otherwise all-or-nothing, deliberately, so that no
+tenant role can be edited into it; this does not weaken that, because it
+only ever *narrows* what an operator can do and a strictly less powerful
+principal cannot be an escalation path.
+
+It exists because auditing what a customer is charged is a normal job
+that does not need the authority to change it, and the alternative is
+sharing an account that can rewrite prices.
+
+Reads stay open — including the resolver preview, which is a POST but
+writes nothing, and which is the main reason to grant read access at all.
+Writes are refused at the API with `require_platform_write`, not merely
+disabled in the console: a disabled button is a courtesy, not a
+permission.
+
 ## Not built yet
 
 Stated explicitly so nobody looks for them:

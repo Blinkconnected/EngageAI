@@ -644,6 +644,10 @@ class PricingService:
             profile_id=profile_id,
             old_unit_amount=current.unit_amount if current else None,
             new_unit_amount=unit_amount,
+            # The rate's own currency, not the installation default: a
+            # history reading "0.028 USD" for a dinar change is unreadable
+            # and, worse, looks like a currency mistake somebody made.
+            currency=rate.currency,
             rate_id=rate.id,
             previous_rate_id=current.id if current else None,
             effective_from=effective_from,
@@ -714,6 +718,7 @@ class PricingService:
             profile_id=None,
             old_unit_amount=current.unit_amount,
             new_unit_amount=None,
+            currency=current.currency,
             rate_id=None,
             previous_rate_id=current.id,
             effective_from=effective_from,
@@ -751,6 +756,7 @@ class PricingService:
             profile_id=rate.profile_id,
             old_unit_amount=rate.unit_amount,
             new_unit_amount=None,
+            currency=rate.currency,
             rate_id=rate.id,
             previous_rate_id=None,
             effective_from=rate.effective_from,

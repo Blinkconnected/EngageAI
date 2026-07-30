@@ -9,6 +9,10 @@ export interface PlatformProfile {
   email: string
   full_name: string
   is_platform_admin: boolean
+  /** True when this operator may read but not change. The console
+   * disables its controls and says so — the server enforces it too,
+   * because a disabled button is a courtesy, not a permission. */
+  read_only?: boolean
 }
 
 /** Matches the backend's `CompanyOverviewResponse` — deliberately size
@@ -165,4 +169,68 @@ export interface TestMailResult {
   delivered: boolean
   /** The relay's own words when it refused. */
   detail: string | null
+}
+
+/** What the Pricing Resolver decided for one metric at one instant.
+ *
+ * Mirrors `ResolvedPriceResponse`. This is the *resolver's own answer* —
+ * the console renders it verbatim and never derives a price itself, so
+ * what an operator previews is exactly what a closing period will use. */
+export interface ResolvedUsagePrice {
+  company_id: string
+  metric_code: string
+  occurred_at: string
+  unit_amount: string
+  currency: string
+  scope: PricingScope
+  rate_id: string
+  quantity: string | null
+  amount: string | null
+}
+
+export interface UnpricedItem {
+  company_id: string
+  metric_code: string
+  occurred_at: string
+  /** The resolver's own explanation. Shown verbatim: it says *why* no
+   * price applied, which is the useful part. */
+  reason: string
+}
+
+/** The resolver's answer. A batch endpoint — it is built for rating a
+ * whole period — so a preview is a batch of one. */
+export interface ResolveUsagePriceResponse {
+  priced: ResolvedUsagePrice[]
+  unpriced: UnpricedItem[]
+}
+
+export interface SetCompanyRateInput {
+  companyId: string
+  metricCode: string
+  unit_amount: string
+  effective_from: string
+  effective_until?: string | null
+  reason: string
+  currency: string
+  /** Optimistic concurrency. Without one of these two, two operators
+   * editing the same price both succeed and the second silently
+   * overwrites the first. */
+  expected_current_rate_id?: string | null
+  expect_no_current_rate?: boolean
+  allow_backdating?: boolean
+}
+
+export interface PricingRate {
+  id: string
+  scope: PricingScope
+  metric_code: string
+  company_id: string | null
+  profile_id: string | null
+  unit_amount: string
+  currency: string
+  effective_from: string
+  effective_until: string | null
+  voided_at: string | null
+  created_by_email: string | null
+  reason: string | null
 }

@@ -121,11 +121,18 @@ class TestPresentation:
 
 
 def test_nothing_outside_this_module_hardcodes_the_currency() -> None:
-    """v1 is single-currency, but not currency-hardcoded. Multi-currency
-    must be a change to ``domain/money.py`` and the rows referencing it,
-    not an archaeology exercise across the codebase."""
+    """Currency must be a change to ``domain/money.py`` and the rows
+    referencing it, not an archaeology exercise across the codebase.
+
+    Scanned by **tokenizing** rather than by matching raw text, so a
+    comment or docstring that merely mentions the code is not an offender.
+    That distinction matters: a guard that reports things which are fine
+    is a guard somebody eventually deletes, and then the real ones get
+    through.
+    """
+    import io
     import pathlib
-    import re
+    import tokenize
 
     root = pathlib.Path(__file__).resolve().parents[2] / "src" / "blinkengage"
     offenders: list[str] = []
@@ -133,8 +140,22 @@ def test_nothing_outside_this_module_hardcodes_the_currency() -> None:
         if path.name == "money.py":
             continue
         text = path.read_text()
-        # A bare "USD" literal or a "$" currency prefix in an f-string is
-        # exactly the kind of thing that makes the future change hard.
-        if re.search(r'"USD"|\'USD\'', text):
-            offenders.append(str(path.relative_to(root)))
+        try:
+            tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+        except (tokenize.TokenError, IndentationError, SyntaxError):  # pragma: no cover
+            continue
+
+        previous_meaningful: int | None = None
+        for token in tokens:
+            if token.type in {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT}:
+                continue
+            if token.type == tokenize.STRING:
+                # A docstring sits at the start of a logical line; a
+                # hardcoded currency is a string used as a *value*.
+                is_docstring = previous_meaningful in {None, tokenize.INDENT, tokenize.DEDENT}
+                if not is_docstring and token.string.strip("\"'") == "USD":
+                    offenders.append(str(path.relative_to(root)))
+                    break
+            previous_meaningful = token.type
+
     assert offenders == [], f"currency hardcoded outside domain/money.py: {offenders}"

@@ -205,8 +205,12 @@ class TestTheBooksBalance:
             },
         )
 
-        tb = (await client.get(f"{LEDGER}/trial-balance", headers=headers)).json()
+        books = (await client.get(f"{LEDGER}/trial-balance", headers=headers)).json()
 
+        # One set of books per currency. This company is billed in one, so
+        # there is one set — and it has to balance on its own.
+        assert len(books) == 1
+        tb = books[0]
         assert tb["in_balance"] is True
         assert Decimal(tb["total_debits"]) == Decimal(tb["total_credits"])
         assert tb["entry_count"] >= 4
@@ -265,8 +269,8 @@ class TestTheBooksBalance:
         after = (await client.get(f"{LEDGER}/{company_id}", headers=headers)).json()
         assert Decimal(after["outstanding"]) > Decimal(before["outstanding"])
         assert Decimal(after["credit_balance"]) > Decimal(before["credit_balance"])
-        tb = (await client.get(f"{LEDGER}/trial-balance", headers=headers)).json()
-        assert tb["in_balance"] is True
+        books = (await client.get(f"{LEDGER}/trial-balance", headers=headers)).json()
+        assert all(tb["in_balance"] for tb in books)
 
 
 class TestWriteOffAndChargeback:
@@ -363,8 +367,8 @@ class TestWriteOffAndChargeback:
         assert Decimal(position["credit_balance"]) == Decimal("0")
         cash = next(row for row in position["accounts"] if row["account"] == "cash")
         assert Decimal(cash["balance"]) == Decimal("0")
-        tb = (await client.get(f"{LEDGER}/trial-balance", headers=headers)).json()
-        assert tb["in_balance"] is True
+        books = (await client.get(f"{LEDGER}/trial-balance", headers=headers)).json()
+        assert all(tb["in_balance"] for tb in books)
 
 
 class TestImmutability:

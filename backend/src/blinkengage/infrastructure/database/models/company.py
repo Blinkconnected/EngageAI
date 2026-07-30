@@ -12,6 +12,7 @@ from sqlalchemy import JSON, Boolean, Enum, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from blinkengage.domain.collections import BillingStatus
+from blinkengage.domain.money import DEFAULT_CURRENCY
 from blinkengage.infrastructure.database.base import (
     Base,
     SoftDeleteMixin,
@@ -66,7 +67,13 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     #: that silently changes currency is a different document with the
     #: same number.
     billing_currency: Mapped[str] = mapped_column(
-        String(3), nullable=False, default="USD", server_default="USD"
+        String(3),
+        nullable=False,
+        # Both from the constant, not a literal: the guard in
+        # tests/unit/test_money.py exists precisely so a second "USD"
+        # cannot drift from the one definition of the default currency.
+        default=DEFAULT_CURRENCY.code,
+        server_default=DEFAULT_CURRENCY.code,
     )
 
     #: When the signup owner proved they control the address they

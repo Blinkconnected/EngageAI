@@ -4,6 +4,7 @@ import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { PlatformRoute } from '../features/platform/PlatformRoute'
 import { PlatformLayout } from '../features/platform/PlatformLayout'
 import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPage'
+import { PlatformCompanyBillingPage } from '../features/platform/PlatformCompanyBillingPage'
 import { PlatformMailPage } from '../features/platform/PlatformMailPage'
 import { PlatformPricingPage } from '../features/platform/PlatformPricingPage'
 import { AppLayout } from '../features/layout/AppLayout'
@@ -133,6 +134,9 @@ export function AppRoutes() {
           <Route index element={<PlatformCompaniesPage />} />
           <Route path="pricing" element={<PlatformPricingPage />} />
           <Route path="mail" element={<PlatformMailPage />} />
+          {/* Per-company billing: pricing source, overrides, profile,
+              resolver preview and the audit trail. */}
+          <Route path="companies/:companyId/billing" element={<PlatformCompanyBillingPage />} />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route

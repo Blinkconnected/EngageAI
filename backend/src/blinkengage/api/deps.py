@@ -409,7 +409,7 @@ async def get_platform_auth(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Platform administrator access is required.",
         )
-    return PlatformContext(user_id=user.id)
+    return PlatformContext(user_id=user.id, read_only=user.platform_read_only)
 
 
 async def _assert_company_active(session: AsyncSession, company_id: UUID) -> None:
@@ -1231,6 +1231,27 @@ def get_verification_service(
             repository=PlatformSettingsRepository(session), settings=settings
         ),
     )
+
+
+async def require_platform_write(
+    platform: Annotated[PlatformContext, Depends(get_platform_auth)],
+) -> PlatformContext:
+    """Refuses an operator who may look but not change.
+
+    Applied to the *mutating* platform endpoints only, so a read-only
+    operator can still see everything — which is the point of the tier.
+    Enforced here rather than in the console, because a disabled button is
+    a courtesy and not a permission.
+    """
+    if platform.read_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "This platform account has read-only access. It can view pricing "
+                "and its history but not change it."
+            ),
+        )
+    return platform
 
 
 def get_platform_settings_service(

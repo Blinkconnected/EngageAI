@@ -20,7 +20,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from blinkengage.api.deps import get_platform_auth, get_pricing_service
+from blinkengage.api.deps import (
+    get_platform_auth,
+    get_pricing_service,
+    require_platform_write,
+)
 from blinkengage.api.schemas.pricing import (
     AssignProfileRequest,
     BillableMetricResponse,
@@ -182,12 +186,21 @@ async def get_effective_pricing(
     if profile_id is not None:
         profile_name = (await service.get_profile(profile_id)).name
 
+    # The **company's** currency, not the installation default. A
+    # Jordanian company's pricing screen reporting USD would put the wrong
+    # symbol and the wrong number of decimal places on every figure — and
+    # the console formats from this field rather than deciding for itself.
+    currency = BILLING_CURRENCY.code
+    if company_id is not None:
+        currencies = await service.company_currencies([company_id])
+        currency = currencies.get(company_id, BILLING_CURRENCY.code)
+
     return EffectivePricingResponse(
         resolved_at=resolved_at,
         company_id=company_id,
         profile_id=profile_id,
         profile_name=profile_name,
-        currency=BILLING_CURRENCY.code,
+        currency=currency,
         items=[_item_response(item) for item in items],
     )
 
@@ -217,6 +230,7 @@ async def _set_rate_response(
     "/global/metrics/{metric_code}",
     response_model=SetRateResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_platform_write)],
 )
 async def update_global_pricing(
     metric_code: str,
@@ -252,6 +266,7 @@ async def update_global_pricing(
     "/profiles/{profile_id}/metrics/{metric_code}",
     response_model=SetRateResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_platform_write)],
 )
 async def update_profile_pricing(
     profile_id: uuid.UUID,
@@ -283,6 +298,7 @@ async def update_profile_pricing(
     "/companies/{company_id}/metrics/{metric_code}",
     response_model=SetRateResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_platform_write)],
 )
 async def update_company_pricing(
     company_id: uuid.UUID,
@@ -322,6 +338,7 @@ async def update_company_pricing(
 @router.post(
     "/companies/{company_id}/metrics/{metric_code}/end",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_platform_write)],
 )
 async def end_company_pricing(
     company_id: uuid.UUID,
@@ -347,7 +364,11 @@ async def end_company_pricing(
     )
 
 
-@router.post("/rates/{rate_id}/void", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/rates/{rate_id}/void",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_platform_write)],
+)
 async def void_rate(
     rate_id: uuid.UUID,
     payload: VoidRateRequest,
@@ -367,7 +388,11 @@ async def void_rate(
 # --- Assign Pricing Profile -------------------------------------------
 
 
-@router.put("/companies/{company_id}/profile", status_code=status.HTTP_204_NO_CONTENT)
+@router.put(
+    "/companies/{company_id}/profile",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_platform_write)],
+)
 async def assign_pricing_profile(
     company_id: uuid.UUID,
     payload: AssignProfileRequest,
@@ -393,6 +418,10 @@ async def assign_pricing_profile(
 # --- Resolve Usage Price ----------------------------------------------
 
 
+# A POST but a **read**: this is the resolver preview and writes
+# nothing. Deliberately available to read-only operators — being
+# able to see what the resolver will decide is the main reason to
+# grant somebody read access at all.
 @router.post("/resolve", response_model=ResolveUsagePriceResponse)
 async def resolve_usage_price(
     payload: ResolveUsagePriceRequest,

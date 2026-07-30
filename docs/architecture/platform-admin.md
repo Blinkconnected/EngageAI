@@ -244,6 +244,30 @@ never touched. Internal relays legitimately send from `.local` and
 `.internal`, and the authority on whether an envelope sender is
 acceptable is the relay, which says so in the test-send result.
 
+## Read-only operators
+
+`users.platform_read_only` narrows a platform operator to reading.
+
+Platform authority is otherwise **all-or-nothing**, deliberately, so that
+no tenant role can be edited into it. This does not weaken that: it only
+ever *narrows* what an operator can do, and a strictly less powerful
+principal cannot be an escalation path. Widening would be the dangerous
+direction; narrowing is not.
+
+It exists because auditing what a customer is charged is a normal job
+that does not require the authority to change it, and the alternative is
+sharing an account that can rewrite prices.
+
+Reads stay open, including `POST /pricing/resolve` — a POST, but a read:
+it writes nothing, and seeing what the resolver will decide is the main
+reason to grant read access at all. Writes are refused by
+`require_platform_write`, at the API rather than only in the console: a
+disabled button is a courtesy, not a permission.
+
+`GET /platform/me` reports `read_only` so the console can disable its
+controls and say why, instead of letting somebody fill in a form that will
+be refused.
+
 ## Deliberately not built
 
 - **Impersonation.** Considered and rejected for this milestone: reading
