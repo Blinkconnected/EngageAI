@@ -69,7 +69,8 @@
     "emptyStateDescription": "Connect WhatsApp or another channel to start receiving conversations.",
     "disconnectDialogTitle": "Disconnect channel",
     "disconnectDialogDescription": "Disconnect {{name}}? Its webhook will stop receiving messages immediately.",
-    "disconnectButton": "Disconnect"
+    "disconnectButton": "Disconnect",
+    "advancedSetupButton": "Advanced setup"
   },
   "ConnectionLogsDialog": {
     "eventCreated": "Channel connected",

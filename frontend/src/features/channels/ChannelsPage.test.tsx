@@ -27,12 +27,17 @@ describe('ChannelsPage', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
+  // These exercise the **advanced** path — pasting credentials directly.
+  // The guided wizard is now the primary way in (see
+  // features/connect/ConnectionWizard.test.tsx); this dialog remains because
+  // it is the only path with no provider app, the fallback when consent
+  // fails, and the one that works while a provider's app review is pending.
   it('connects a WhatsApp channel and shows webhook setup instructions', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<ChannelsPage />)
     await screen.findByText('Support Telegram')
 
-    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.click(screen.getByRole('button', { name: /advanced setup/i }))
     // Channel type defaults to WhatsApp, so its fields are already shown.
     await user.type(await screen.findByLabelText(/display name/i), 'Support WhatsApp')
     await user.type(screen.getByLabelText(/phone number id/i), '123456')
@@ -90,7 +95,7 @@ describe('ChannelsPage', () => {
     renderAuthenticated(<ChannelsPage />)
     await screen.findByText('Support Telegram')
 
-    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.click(screen.getByRole('button', { name: /advanced setup/i }))
     await user.type(await screen.findByLabelText(/display name/i), 'Support WhatsApp')
     await user.type(screen.getByLabelText(/phone number id/i), '123456')
     await user.type(screen.getByLabelText(/^access token/i), 'secret-token')
@@ -130,7 +135,7 @@ describe('ChannelsPage', () => {
     renderAuthenticated(<ChannelsPage />)
     await screen.findByText('Support Telegram')
 
-    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.click(screen.getByRole('button', { name: /advanced setup/i }))
     // MUI's Select isn't a native <select>, so userEvent.selectOptions
     // doesn't work on it — open the popup and click the option instead.
     await user.click(screen.getByLabelText(/channel type/i))
@@ -154,7 +159,7 @@ describe('ChannelsPage', () => {
     renderAuthenticated(<ChannelsPage />)
     await screen.findByText('Support Telegram')
 
-    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.click(screen.getByRole('button', { name: /advanced setup/i }))
     await user.click(screen.getByLabelText(/channel type/i))
     await user.click(await screen.findByRole('option', { name: 'Email' }))
     await user.type(await screen.findByLabelText(/display name/i), 'Support Inbox')
@@ -177,7 +182,7 @@ describe('ChannelsPage', () => {
     renderAuthenticated(<ChannelsPage />)
     await screen.findByText('Support Telegram')
 
-    await user.click(screen.getByRole('button', { name: /connect channel/i }))
+    await user.click(screen.getByRole('button', { name: /advanced setup/i }))
     await user.click(screen.getByLabelText(/channel type/i))
     await user.click(await screen.findByRole('option', { name: 'Web Chat' }))
     await user.type(await screen.findByLabelText(/display name/i), 'Website Chat')

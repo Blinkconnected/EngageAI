@@ -16,6 +16,32 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Connecting a channel is now a guided flow you can finish in a couple
+  of minutes.** Press Connect channel, pick what you want to connect, and
+  follow the steps. Blink Engage asks only for what it actually needs,
+  checks it before saving, and tells you plainly what is wrong if
+  something is.
+
+  Where you have to do something outside Blink Engage — send `/newbot` to
+  BotFather, for instance — the exact text is on screen with a copy
+  button. That is the moment setup usually loses people, and it is the
+  moment nobody should need a provider's documentation.
+
+  You can also connect several at once: approving Meta once connects
+  WhatsApp, Messenger and Instagram together.
+
+  Each channel shows how finished it is before you connect it, and one
+  that is being retired or is temporarily unavailable says so rather
+  than failing halfway through.
+
+  The old credential form is still there under **Advanced setup**. It is
+  the only path on an installation with no provider app, and the fallback
+  when a sign-in cannot be completed.
+
+- **Everything the setup flow says is now available in Arabic**, including
+  every check, every fix and every explanation — 374 pieces of copy in
+  both languages.
+
 - **Connecting a channel is now a guided flow, not a settings form.** Pick
   what you want to connect, follow the steps, done — no provider
   documentation, no hunting for an id in someone else's dashboard. Web

@@ -69,7 +69,8 @@
     "emptyStateDescription": "قم بتوصيل واتساب أو قناة أخرى لبدء استقبال المحادثات.",
     "disconnectDialogTitle": "قطع اتصال القناة",
     "disconnectDialogDescription": "هل تريد قطع اتصال {{name}}؟ سيتوقف الويب هوك الخاص بها عن استقبال الرسائل فورًا.",
-    "disconnectButton": "قطع الاتصال"
+    "disconnectButton": "قطع الاتصال",
+    "advancedSetupButton": "إعداد متقدّم"
   },
   "ConnectionLogsDialog": {
     "eventCreated": "تم توصيل القناة",

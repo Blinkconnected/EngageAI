@@ -6,6 +6,7 @@ import enAuth from '../locales/en/auth.json'
 import enBilling from '../locales/en/billing.json'
 import enChangelog from '../locales/en/changelog.json'
 import enChannelsCore from '../locales/en/channelsCore.json'
+import enConnectSdk from '../locales/en/connectSdk.json'
 import enChannelsFields from '../locales/en/channelsFields.json'
 import enCompanySettings from '../locales/en/companySettings.json'
 import enCompanySettingsExtra from '../locales/en/companySettingsExtra.json'
@@ -36,6 +37,7 @@ import arAuth from '../locales/ar/auth.json'
 import arBilling from '../locales/ar/billing.json'
 import arChangelog from '../locales/ar/changelog.json'
 import arChannelsCore from '../locales/ar/channelsCore.json'
+import arConnectSdk from '../locales/ar/connectSdk.json'
 import arChannelsFields from '../locales/ar/channelsFields.json'
 import arCompanySettings from '../locales/ar/companySettings.json'
 import arCompanySettingsExtra from '../locales/ar/companySettingsExtra.json'
@@ -74,6 +76,7 @@ export const NAMESPACES = [
   'billing',
   'changelog',
   'channelsCore',
+  'connectSdk',
   'channelsFields',
   'companySettings',
   'companySettingsExtra',
@@ -135,6 +138,7 @@ void i18n.use(initReactI18next).init({
       billing: enBilling,
       changelog: enChangelog,
       channelsCore: enChannelsCore,
+      connectSdk: enConnectSdk,
       channelsFields: enChannelsFields,
       companySettings: enCompanySettings,
       companySettingsExtra: enCompanySettingsExtra,
@@ -166,6 +170,7 @@ void i18n.use(initReactI18next).init({
       billing: arBilling,
       changelog: arChangelog,
       channelsCore: arChannelsCore,
+      connectSdk: arConnectSdk,
       channelsFields: arChannelsFields,
       companySettings: arCompanySettings,
       companySettingsExtra: arCompanySettingsExtra,
