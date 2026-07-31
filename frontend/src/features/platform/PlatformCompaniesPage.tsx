@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Alert, Box, Button, Chip, MenuItem, Stack, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  MenuItem,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import { useTranslation } from 'react-i18next'
 import { DataTable } from '../../shared/components/DataTable'
@@ -9,7 +19,7 @@ import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useDebouncedValue } from '../../shared/hooks/useDebouncedValue'
 import { CompanyFeaturesDialog } from './CompanyFeaturesDialog'
-import { useCompaniesQuery, useSetCompanyStatusMutation } from './api'
+import { useCompaniesQuery, usePlatformMeQuery, useSetCompanyStatusMutation } from './api'
 import type { CompanyOverview, CompanyStatus } from './types'
 
 const STATUS_COLOR: Record<CompanyStatus, 'default' | 'success' | 'error'> = {
@@ -31,6 +41,11 @@ const STATUS_OPTIONS: CompanyStatus[] = ['trial', 'active', 'suspended']
  */
 export function PlatformCompaniesPage() {
   const { t } = useTranslation('platform')
+  // Defaults to read-only until the profile answers: assuming the greater
+  // authority while the answer is in flight offers buttons that may turn
+  // out to be refused.
+  const me = usePlatformMeQuery()
+  const readOnly = me.data?.read_only ?? true
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(20)
   const [search, setSearch] = useState('')
@@ -103,15 +118,37 @@ export function PlatformCompaniesPage() {
     {
       field: 'actions',
       headerName: t('PlatformCompaniesPage.columnActions'),
-      width: 320,
+      width: 400,
       sortable: false,
       renderCell: (params) => {
         const suspended = params.row.status === 'suspended'
         return (
           <Stack direction="row" spacing={1}>
-            <Button size="small" variant="outlined" onClick={() => setFeaturesFor(params.row)}>
-              {t('PlatformCompaniesPage.featuresButton')}
+            <Button
+              size="small"
+              variant="outlined"
+              component={RouterLink}
+              to={`/platform/companies/${params.row.id}/users`}
+            >
+              {t('PlatformCompaniesPage.usersButton')}
             </Button>
+            {/* A read-only operator may look at everything and change
+                nothing. The API refuses both of these with 403 — showing
+                them enabled teaches an operator that this console's buttons
+                are unreliable, which is a worse lesson than the absence of
+                a button they were never allowed to press. */}
+            <Tooltip title={readOnly ? t('PlatformCompaniesPage.readOnlyAction') : ''}>
+              <span>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={readOnly}
+                  onClick={() => setFeaturesFor(params.row)}
+                >
+                  {t('PlatformCompaniesPage.featuresButton')}
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               size="small"
               variant="outlined"
@@ -124,6 +161,7 @@ export function PlatformCompaniesPage() {
               size="small"
               color={suspended ? 'success' : 'error'}
               variant="outlined"
+              disabled={readOnly}
               onClick={() =>
                 setPending({ company: params.row, next: suspended ? 'active' : 'suspended' })
               }

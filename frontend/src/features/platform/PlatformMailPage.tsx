@@ -217,9 +217,7 @@ export function PlatformMailPage() {
               <Typography variant="caption" color="text.secondary">
                 {t('PlatformMailPage.lastChanged', {
                   email: settings.updated_by_email,
-                  when: settings.updated_at
-                    ? new Date(settings.updated_at).toLocaleString()
-                    : '',
+                  when: settings.updated_at ? new Date(settings.updated_at).toLocaleString() : '',
                 })}
               </Typography>
             )}

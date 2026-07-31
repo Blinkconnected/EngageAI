@@ -84,7 +84,9 @@ export function CompanyFeaturesDialog({ company, onClose }: Props) {
 
   return (
     <Dialog open={company !== null} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{t('CompanyFeaturesDialog.title', { companyName: company?.name ?? '' })}</DialogTitle>
+      <DialogTitle>
+        {t('CompanyFeaturesDialog.title', { companyName: company?.name ?? '' })}
+      </DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {t('CompanyFeaturesDialog.description')}

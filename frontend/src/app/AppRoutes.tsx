@@ -5,6 +5,7 @@ import { PlatformRoute } from '../features/platform/PlatformRoute'
 import { PlatformLayout } from '../features/platform/PlatformLayout'
 import { BillingConsoleLayout } from '../features/platform/BillingConsoleLayout'
 import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPage'
+import { CompanyUsersPage } from '../features/platform/CompanyUsersPage'
 import { PlatformCompanyBillingPage } from '../features/platform/PlatformCompanyBillingPage'
 import { PlatformMailPage } from '../features/platform/PlatformMailPage'
 import { PlatformPricingPage } from '../features/platform/PlatformPricingPage'
@@ -142,6 +143,10 @@ export function AppRoutes() {
           }
         >
           <Route index element={<PlatformCompaniesPage />} />
+          {/* One company's user accounts. Nested here rather than under
+              the billing console: restoring somebody's access is running
+              the installation, not running the revenue system. */}
+          <Route path="companies/:companyId/users" element={<CompanyUsersPage />} />
           <Route path="mail" element={<PlatformMailPage />} />
         </Route>
 
@@ -175,10 +180,7 @@ export function AppRoutes() {
               different people, and the per-company pricing screen is a
               different screen from the per-company billing workspace. */}
           <Route path="pricing" element={<PlatformPricingPage />} />
-          <Route
-            path="pricing/companies/:companyId"
-            element={<PlatformCompanyBillingPage />}
-          />
+          <Route path="pricing/companies/:companyId" element={<PlatformCompanyBillingPage />} />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route

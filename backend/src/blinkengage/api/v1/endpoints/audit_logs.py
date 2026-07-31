@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -42,6 +42,40 @@ async def _fetch_logo(
         return None
 
 
+
+#: Keys already given their own column, so the catch-all does not repeat
+#: them. Everything else an event carried is worth keeping — an export
+#: that silently drops a field is one somebody reconciles against and
+#: finds short.
+_OWN_COLUMNS = frozenset({"reason", "actor_email", "actor_name", "by_platform_staff"})
+
+
+def _actor_label(details: dict[str, Any]) -> str:
+    """Who did it, in words a reader can act on.
+
+    A platform operator is not a member of this company, so their user id
+    resolves to nobody on the customer's side. Their email is recorded on
+    the event as a value for exactly this reason, and the fact that it was
+    the vendor rather than one of the customer's own administrators is
+    stated outright — the two are very different events and nothing else
+    on the row tells them apart.
+    """
+    email = details.get("actor_email")
+    name = details.get("actor_name")
+    who = str(name or email or "")
+    if details.get("by_platform_staff"):
+        return f"{who} (Blink Engage staff)" if who else "Blink Engage staff"
+    return who
+
+
+def _detail_summary(details: dict[str, Any]) -> str:
+    """Whatever else the event carried, as `key=value` pairs."""
+    return "; ".join(
+        f"{key}={value}"
+        for key, value in sorted(details.items())
+        if key not in _OWN_COLUMNS and value is not None
+    )
+
 @router.get("", response_model=None)
 async def list_audit_logs(
     auth: Annotated[AuthContext, Depends(require_permission("audit_logs.read"))],
@@ -68,14 +102,32 @@ async def list_audit_logs(
             since=since,
             until=until,
         )
-        headers = ["Timestamp", "Actor User Id", "Action", "Entity Type", "Entity Id"]
+        # "Who" and "why" are columns, not just fields on the screen. An
+        # export that carries the id of an actor and none of the detail is
+        # the one artefact a reader takes away from an investigation, and
+        # it would be missing the two things they are investigating: who
+        # did it and what they said they were doing. Platform staff acting
+        # on this company's accounts record both in `details`.
+        headers = [
+            "Timestamp",
+            "Actor",
+            "Actor User Id",
+            "Action",
+            "Entity Type",
+            "Entity Id",
+            "Reason",
+            "Details",
+        ]
         rows = [
             [
                 item.created_at.isoformat(),
+                _actor_label(item.details),
                 str(item.actor_user_id) if item.actor_user_id else "",
                 item.action,
                 item.entity_type,
                 str(item.entity_id) if item.entity_id else "",
+                str(item.details.get("reason") or ""),
+                _detail_summary(item.details),
             ]
             for item in items
         ]

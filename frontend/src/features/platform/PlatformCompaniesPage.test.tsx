@@ -33,10 +33,24 @@ const COMPANIES = [
   },
 ]
 
-function mockCompanies(items = COMPANIES) {
+function mockCompanies(items = COMPANIES, { readOnly = false } = {}) {
   server.use(
     http.get(`${API_BASE_URL}/platform/companies`, () =>
       HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 }),
+    ),
+    // Which kind of operator is looking, stated rather than left to a
+    // default. The page defaults to read-only until this answers — it
+    // will not offer a button before it knows the button is allowed — so
+    // a test that omits this is testing the locked-down case whether it
+    // meant to or not.
+    http.get(`${API_BASE_URL}/platform/me`, () =>
+      HttpResponse.json({
+        id: 'op-1',
+        email: 'operator@blinkengage.io',
+        name: 'Ada Lovelace',
+        is_platform_admin: true,
+        read_only: readOnly,
+      }),
     ),
   )
 }
@@ -111,11 +125,14 @@ describe('PlatformCompaniesPage', () => {
     let patched: { id?: string; status?: string } = {}
     mockCompanies()
     server.use(
-      http.patch(`${API_BASE_URL}/platform/companies/:companyId/status`, async ({ params, request }) => {
-        const body = (await request.json()) as { status: string }
-        patched = { id: String(params.companyId), status: body.status }
-        return HttpResponse.json({ ...COMPANIES[0], status: body.status })
-      }),
+      http.patch(
+        `${API_BASE_URL}/platform/companies/:companyId/status`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { status: string }
+          patched = { id: String(params.companyId), status: body.status }
+          return HttpResponse.json({ ...COMPANIES[0], status: body.status })
+        },
+      ),
     )
     renderAuthenticated(<PlatformCompaniesPage />)
     await screen.findByText('Acme Support')

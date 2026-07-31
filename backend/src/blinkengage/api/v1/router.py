@@ -32,6 +32,7 @@ from blinkengage.api.v1.endpoints import (
     platform_pricing,
     platform_settings,
     platform_usage,
+    platform_users,
     queues,
     quick_replies,
     realtime,
@@ -56,6 +57,11 @@ api_router.include_router(health.router)
 api_router.include_router(version.router)
 api_router.include_router(auth.router)
 api_router.include_router(platform.router)
+# A company's user accounts, administered by platform staff. Its own
+# router, registered alongside `platform.router` rather than merged into
+# it, so the read-only gate and the tenant-content boundary are declared
+# once per file instead of once per route.
+api_router.include_router(platform_users.router)
 api_router.include_router(platform_pricing.router)
 api_router.include_router(platform_usage.router)
 api_router.include_router(platform_billing.router)

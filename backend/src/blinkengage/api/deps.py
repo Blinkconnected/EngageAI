@@ -66,6 +66,7 @@ from blinkengage.application.services.platform_service import PlatformService
 from blinkengage.application.services.platform_settings_service import (
     PlatformSettingsService,
 )
+from blinkengage.application.services.platform_user_service import PlatformUserService
 from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
@@ -1370,6 +1371,30 @@ def get_verification_service(
         platform_settings=PlatformSettingsService(
             repository=PlatformSettingsRepository(session), settings=settings
         ),
+    )
+
+
+def get_platform_user_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    refresh_tokens: Annotated[RefreshTokenStore, Depends(get_refresh_token_store)],
+    verification: Annotated[VerificationService, Depends(get_verification_service)],
+) -> PlatformUserService:
+    """Platform administration of a tenant's user accounts.
+
+    Takes the same ``VerificationService`` the self-service resend
+    endpoint uses, rather than a console-only copy: there is one
+    verification-token issuer in this application, it stores only the
+    hash, and a second one would be a second chance to get that wrong.
+    """
+    return PlatformUserService(
+        session=session,
+        companies=CompanyRepository(session),
+        users=UserRepository(session),
+        roles=RoleRepository(session),
+        verification=verification,
+        refresh_tokens=refresh_tokens,
+        events=events,
     )
 
 
