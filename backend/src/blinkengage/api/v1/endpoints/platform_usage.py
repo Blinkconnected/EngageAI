@@ -14,7 +14,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from blinkengage.api.deps import get_platform_auth, get_usage_service
+from blinkengage.api.deps import deny_read_only_writes, get_platform_auth, get_usage_service
 from blinkengage.api.schemas.usage import (
     BillingPeriodResponse,
     ClosePeriodResponse,
@@ -34,7 +34,10 @@ from blinkengage.domain.usage import UsageRecordSource
 router = APIRouter(
     prefix="/platform/usage",
     tags=["platform-usage"],
-    dependencies=[Depends(get_platform_auth)],
+    # Both gates at construction: platform authority, and — for anything
+    # that is not a GET — an operator who may change things. A route added
+    # to this router inherits both rather than shipping unguarded.
+    dependencies=[Depends(get_platform_auth), Depends(deny_read_only_writes)],
 )
 
 

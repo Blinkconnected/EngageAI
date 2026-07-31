@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
+    deny_read_only_writes,
     enforce_platform_test_connection_rate_limit,
     get_db_session,
     get_platform_auth,
@@ -37,7 +38,10 @@ logger = get_logger(__name__)
 router = APIRouter(
     prefix="/platform/settings",
     tags=["platform-settings"],
-    dependencies=[Depends(get_platform_auth)],
+    # Both gates at construction: platform authority, and — for anything
+    # that is not a GET — an operator who may change things. A route added
+    # to this router inherits both rather than shipping unguarded.
+    dependencies=[Depends(get_platform_auth), Depends(deny_read_only_writes)],
 )
 
 

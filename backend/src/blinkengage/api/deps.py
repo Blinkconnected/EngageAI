@@ -37,6 +37,7 @@ from blinkengage.application.services.customer_internal_rating_service import (
 )
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.device_token_service import DeviceTokenService
 from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.feature_service import FeatureService
@@ -119,6 +120,9 @@ from blinkengage.infrastructure.repositories.customer_internal_rating_repository
 )
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
+from blinkengage.infrastructure.repositories.device_token_repository import (
+    DeviceTokenRepository,
+)
 from blinkengage.infrastructure.repositories.erp_config_repository import ErpConfigRepository
 from blinkengage.infrastructure.repositories.erp_customer_link_repository import (
     ErpCustomerLinkRepository,
@@ -729,6 +733,12 @@ def get_notification_preference_service(
     return NotificationPreferenceService(preferences=NotificationPreferenceRepository(session))
 
 
+def get_device_token_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DeviceTokenService:
+    return DeviceTokenService(devices=DeviceTokenRepository(session))
+
+
 async def get_ai_provider(
     auth: Annotated[AuthContext, Depends(get_current_auth)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
@@ -1287,25 +1297,81 @@ def get_verification_service(
     )
 
 
+#: The methods that only read. Everything else changes something and is
+#: refused to a read-only operator.
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+#: POSTs that write nothing.
+#:
+#: A method is a good proxy for "does this change anything" and not a
+#: perfect one. These two ask the pricing engine a question whose input is
+#: too big for a query string: what does this company resolve to, and what
+#: would these terms charge. Both are exactly what read access is *for* —
+#: an auditor checking a customer's price, an operator modelling a change
+#: they cannot make — and the editor's live preview calls one of them on
+#: every keystroke.
+#:
+#: Named individually rather than inferred from a prefix or a verb, because
+#: this list is the one place where "POST" stops meaning "write": every
+#: entry has to be argued for, and anything not listed is refused. The safe
+#: direction is the default.
+_READ_ONLY_SAFE_POSTS = frozenset(
+    {
+        "/api/v1/platform/pricing/resolve",
+        "/api/v1/platform/pricing/quote",
+    }
+)
+
+_READ_ONLY_DETAIL = (
+    "This platform account has read-only access. It can view everything here, "
+    "including the full financial history, but not change it."
+)
+
+
 async def require_platform_write(
     platform: Annotated[PlatformContext, Depends(get_platform_auth)],
 ) -> PlatformContext:
     """Refuses an operator who may look but not change.
 
-    Applied to the *mutating* platform endpoints only, so a read-only
-    operator can still see everything — which is the point of the tier.
-    Enforced here rather than in the console, because a disabled button is
-    a courtesy and not a permission.
+    Applied per route where a router mixes reads and writes and the gate
+    should be visible in the signature. For a whole router, prefer
+    ``deny_read_only_writes`` — see why there.
     """
     if platform.read_only:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "This platform account has read-only access. It can view pricing "
-                "and its history but not change it."
-            ),
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_READ_ONLY_DETAIL)
     return platform
+
+
+async def deny_read_only_writes(
+    request: Request,
+    platform: Annotated[PlatformContext, Depends(get_platform_auth)],
+) -> None:
+    """Read-only means read-only, for every route on this router.
+
+    Declared once at router construction and keyed on the HTTP method, so a
+    new POST added to a gated router **inherits the gate** rather than
+    shipping unguarded because whoever added it did not think about the
+    read-only tier. That is the same principle ``api/v1/router.py`` applies
+    to platform authority itself, and it is the difference that matters:
+    twenty-one hand-applied decorators are twenty-one chances to forget, and
+    the twenty-second route is the one that suspends a customer.
+
+    Before this existed a read-only operator could write off an invoice,
+    post a ledger adjustment, run the collections sweep and suspend a
+    company. Nothing in the console offered those actions, which is why it
+    went unnoticed — a disabled button is a courtesy, not a permission, and
+    the console is about to render every one of them.
+    """
+    if not platform.read_only:
+        return
+    if request.method in _SAFE_METHODS:
+        return
+    # Matched on the route's template, not the resolved URL, so an id in the
+    # path can never be crafted to look like an allowlisted route.
+    route = request.scope.get("route")
+    if getattr(route, "path", None) in _READ_ONLY_SAFE_POSTS:
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_READ_ONLY_DETAIL)
 
 
 async def get_media_company_id(

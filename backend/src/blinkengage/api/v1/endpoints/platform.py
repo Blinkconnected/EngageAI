@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
+    deny_read_only_writes,
     get_db_session,
     get_feature_service,
     get_platform_auth,
@@ -38,7 +39,16 @@ from blinkengage.infrastructure.database.models.company import CompanyStatus
 from blinkengage.infrastructure.repositories.platform_repository import CompanyOverview
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
 
-router = APIRouter(prefix="/platform", tags=["platform"])
+router = APIRouter(
+    prefix="/platform",
+    tags=["platform"],
+    # Each route already declares `get_platform_auth` for its own context.
+    # This adds the read-only gate for anything that is not a GET, at
+    # construction, so suspending a company cannot be reached by an operator
+    # who may only look. `/me` stays readable — it is how the console learns
+    # it is read-only in the first place.
+    dependencies=[Depends(deny_read_only_writes)],
+)
 
 
 def _to_response(overview: CompanyOverview) -> CompanyOverviewResponse:

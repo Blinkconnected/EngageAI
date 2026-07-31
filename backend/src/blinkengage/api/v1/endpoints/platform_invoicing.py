@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
+    deny_read_only_writes,
     get_db_session,
     get_financial_audit_repository,
     get_invoice_service,
@@ -43,7 +44,10 @@ from blinkengage.infrastructure.repositories.user_repository import UserReposito
 router = APIRouter(
     prefix="/platform/invoices",
     tags=["platform-invoicing"],
-    dependencies=[Depends(get_platform_auth)],
+    # Both gates at construction: platform authority, and — for anything
+    # that is not a GET — an operator who may change things. A route added
+    # to this router inherits both rather than shipping unguarded.
+    dependencies=[Depends(get_platform_auth), Depends(deny_read_only_writes)],
 )
 
 

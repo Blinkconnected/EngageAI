@@ -21,6 +21,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from blinkengage.api.deps import (
+    deny_read_only_writes,
     get_platform_auth,
     get_pricing_service,
     require_platform_write,
@@ -71,7 +72,10 @@ from blinkengage.infrastructure.database.models.pricing import PricingRate
 router = APIRouter(
     prefix="/platform/pricing",
     tags=["platform-pricing"],
-    dependencies=[Depends(get_platform_auth)],
+    # Both gates at construction: platform authority, and — for anything
+    # that is not a GET — an operator who may change things. A route added
+    # to this router inherits both rather than shipping unguarded.
+    dependencies=[Depends(get_platform_auth), Depends(deny_read_only_writes)],
 )
 
 
