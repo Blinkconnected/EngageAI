@@ -75,18 +75,21 @@ from blinkengage.domain.connector import (
     Connection,
     Connector,
     DeploymentContext,
-    Field,
     Repair,
 )
+from blinkengage.domain.connector_manifest import (
+    AuthMethod,
+    ConnectorCategory,
+    ConnectorManifest,
+    CredentialSpec,
+    DocumentationLink,
+    RepairAction,
+    ValidationCode,
+    ValidationResult,
+    VerificationSpec,
+)
 from blinkengage.domain.connectors import (
-    CHECK_FAIL,
-    CHECK_OK,
-    CHECK_WARN,
-    FIX_ACTION,
-    FIX_REENTER,
     Capability,
-    CheckOutcome,
-    Fix,
 )
 from blinkengage.domain.exceptions import DomainError, InvalidChannelCredentialsError
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
@@ -224,28 +227,31 @@ class TelegramConnector(Connector):
     #: with Telegram and therefore nothing an operator could configure.
     app_key = None
 
-    declares = frozenset(
-        {
-            Capability.MANUAL_CONFIGURATION,
-            Capability.WEBHOOKS,
-            Capability.AUTOMATIC_WEBHOOK_REGISTRATION,
-            Capability.HEALTH_CHECKS,
-        }
-    )
-
-    # --- Authenticate -------------------------------------------------
-
-    def credential_fields(self) -> tuple[Field, ...]:
-        """One secret, and the command that produces it.
-
-        ``copyable`` is the whole trick. A customer who has never made a bot
-        does not need Telegram's documentation, they need four characters to
-        send to BotFather; a customer who has one already ignores it. Both
-        get to the same field without leaving the page, which is what
-        OAuth buys on other channels and what has to be bought by hand here.
-        """
-        return (
-            Field(
+    #: Everything the console needs, declared once.
+    #:
+    #: ``copyable="/newbot"`` is the whole trick for this channel. A customer
+    #: who has never made a bot does not need Telegram's documentation, they
+    #: need four characters to send to BotFather; one who has a bot already
+    #: ignores it. Both reach the same field without leaving the page — which
+    #: is what OAuth buys elsewhere and what has to be bought by hand here.
+    MANIFEST = ConnectorManifest(
+        channel_type="telegram",
+        name_key="connect.telegram.name",
+        description_key="connect.telegram.description",
+        category=ConnectorCategory.MESSAGING,
+        icon="telegram",
+        capabilities=frozenset(
+            {
+                Capability.MANUAL_CONFIGURATION,
+                Capability.WEBHOOKS,
+                Capability.AUTOMATIC_WEBHOOK_REGISTRATION,
+                Capability.HEALTH_CHECKS,
+            }
+        ),
+        # No OAuth exists for the Bot API — not withheld, absent.
+        auth_methods=(AuthMethod.CREDENTIALS,),
+        required_credentials=(
+            CredentialSpec(
                 name="bot_token",
                 kind="secret",
                 label_key="connect.telegram.botToken.label",
@@ -255,11 +261,47 @@ class TelegramConnector(Connector):
                 placeholder="123456789:AA...",
                 copyable="/newbot",
             ),
-        )
+        ),
+        verification_steps=(
+            VerificationSpec(
+                key="connect.telegram.check.token",
+                title_key="connect.telegram.check.token.title",
+                codes=(
+                    ValidationCode.OK,
+                    ValidationCode.MISSING_CREDENTIAL,
+                    ValidationCode.INVALID_TOKEN,
+                    ValidationCode.PROVIDER_UNREACHABLE,
+                ),
+            ),
+            VerificationSpec(
+                key="connect.telegram.check.delivery",
+                title_key="connect.telegram.check.delivery.title",
+                codes=(ValidationCode.OK, ValidationCode.ADVISORY),
+            ),
+        ),
+        repair_actions=(
+            RepairAction(
+                id=_REREGISTER_WEBHOOK,
+                title_key="connect.telegram.repair.reregisterWebhook.title",
+                description_key="connect.telegram.repair.reregisterWebhook.description",
+                # No confirmation: re-pointing a webhook at the URL it should
+                # already have is not a decision anybody regrets.
+                confirm=False,
+            ),
+        ),
+        supported_features=("text", "images", "documents", "edit", "delete", "typing"),
+        documentation=(
+            DocumentationLink(key="connect.telegram.docs.botFather", url="https://core.telegram.org/bots#botfather"),
+        ),
+    )
+
+    @property
+    def manifest(self) -> ConnectorManifest:
+        return self.MANIFEST
 
     # --- Verify -------------------------------------------------------
 
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
         """Is the token real, and whose bot is it.
 
         The second question is the one worth the round trip. A customer with
@@ -269,23 +311,21 @@ class TelegramConnector(Connector):
         Naming the bot back to them at the one moment they can still change
         their mind costs a single ``getMe``.
 
-        Reads ``attempt.credentials`` and nothing else: there is no grant to
-        weigh against the typed values here, and no selection, because a
-        token names exactly one bot.
+        Every return is a ``ValidationCode`` this connector's manifest
+        declared, so the console always has copy for what comes back.
         """
         token = _bot_token(attempt.credentials)
         if not token:
             return (
-                CheckOutcome(
-                    _CHECK_TOKEN,
-                    CHECK_FAIL,
-                    # ``reenter``, not ``manual`` and certainly not
-                    # ``reauthorize``: the customer is one step from the form
-                    # they typed this into, and on a channel with no OAuth a
-                    # consent button would lead nowhere. ``instructions_key``
-                    # still carries how to get a token from BotFather, for
-                    # the customer who went back and found they have none.
-                    fix=Fix(kind=FIX_REENTER, instructions_key=_FIX_ISSUE_TOKEN),
+                ValidationResult(
+                    ValidationCode.MISSING_CREDENTIAL,
+                    channel_type=self.channel_type,
+                    params={"field": "bot_token"},
+                    # No repair action: the fix is one step back to the form
+                    # the customer typed this into. ``instructions_key``
+                    # carries how to get a token from BotFather, for the
+                    # customer who goes back and finds they have none.
+                    instructions_key=_FIX_ISSUE_TOKEN,
                 ),
             )
 
@@ -293,12 +333,15 @@ class TelegramConnector(Connector):
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 status, body = await _call(client, token=token, method="getMe")
                 if status >= 500:
-                    # Telegram's problem, not the customer's credential.
-                    # Reported as a failure rather than a warning because a
-                    # channel connected against an unverified token is a
-                    # channel nobody has established anything about.
+                    # Telegram's problem, not the customer's credential — and
+                    # a distinct code, because "try again shortly" and "your
+                    # token is wrong" are different instructions.
                     return (
-                        CheckOutcome(_CHECK_REACHABLE, CHECK_FAIL, params={"status": str(status)}),
+                        ValidationResult(
+                            ValidationCode.PROVIDER_UNREACHABLE,
+                            channel_type=self.channel_type,
+                            params={"status": str(status)},
+                        ),
                     )
                 if not body.get("ok"):
                     # Telegram rejects a bad token as a 401/404 and,
@@ -308,42 +351,41 @@ class TelegramConnector(Connector):
                     # channel connect that its own health check will call
                     # broken within the minute.
                     return (
-                        CheckOutcome(
-                            _CHECK_TOKEN,
-                            CHECK_FAIL,
-                            fix=Fix(kind=FIX_REENTER, instructions_key=_FIX_ISSUE_TOKEN),
+                        ValidationResult(
+                            ValidationCode.INVALID_TOKEN,
+                            channel_type=self.channel_type,
+                            instructions_key=_FIX_ISSUE_TOKEN,
                         ),
                     )
 
                 bot = _bot_from(body.get("result") or {})
-                outcomes = [
-                    CheckOutcome(_CHECK_TOKEN, CHECK_OK),
-                    CheckOutcome(
-                        _CHECK_IDENTITY,
-                        CHECK_OK,
+                results = [
+                    ValidationResult(
+                        ValidationCode.OK,
+                        channel_type=self.channel_type,
                         params={"username": bot.username, "botName": bot.display_name},
-                    ),
+                    )
                 ]
                 delivery = await self._delivery_check(client, token=token)
                 if delivery is not None:
-                    outcomes.append(delivery)
-                return tuple(outcomes)
-        except Exception as exc:  # noqa: BLE001 - a check returns outcomes, never raises
+                    results.append(delivery)
+                return tuple(results)
+        except Exception as exc:  # noqa: BLE001 - validate returns findings, never raises
             # Deliberately broad, for the reason ``safe_health_check`` is: a
             # newline pasted into the token makes httpx raise ``InvalidURL``
             # before a request is attempted, and that is not an
             # ``HTTPError``. Every path out of here is a checklist line.
             return (
-                CheckOutcome(
-                    _CHECK_REACHABLE,
-                    CHECK_FAIL,
+                ValidationResult(
+                    ValidationCode.PROVIDER_UNREACHABLE,
+                    channel_type=self.channel_type,
                     params={"detail": redact_credentials(str(exc), {"bot_token": token})},
                 ),
             )
 
     async def _delivery_check(
         self, client: httpx.AsyncClient, *, token: str
-    ) -> CheckOutcome | None:
+    ) -> ValidationResult | None:
         """Telegram's own account of whether it can reach us — when it has one.
 
         Reported only when Telegram both has a webhook registered for this
@@ -369,11 +411,15 @@ class TelegramConnector(Connector):
         last_error = info.get("last_error_message")
         if not info.get("url") or not last_error:
             return None
-        return CheckOutcome(
-            _CHECK_DELIVERY,
-            CHECK_WARN,
-            params={"detail": redact_credentials(str(last_error), {"bot_token": token})},
-            fix=Fix(kind=FIX_ACTION, action_id=_REREGISTER_WEBHOOK),
+        return ValidationResult(
+            # Advisory, not blocking: Telegram is reporting a past delivery
+            # failure and the very next step re-registers the webhook, so
+            # stopping the customer here would be stopping them for something
+            # the flow is about to fix.
+            ValidationCode.ADVISORY,
+            channel_type=self.channel_type,
+            params={"detail": str(last_error)},
+            repair_action=_REREGISTER_WEBHOOK,
         )
 
     # --- Connect ------------------------------------------------------

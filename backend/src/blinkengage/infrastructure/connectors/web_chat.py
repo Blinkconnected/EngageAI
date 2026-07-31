@@ -94,9 +94,16 @@ from blinkengage.domain.connector import (
     Attempt,
     Connection,
     Connector,
-    Field,
 )
-from blinkengage.domain.connectors import CHECK_WARN, Capability, CheckOutcome
+from blinkengage.domain.connector_manifest import (
+    AuthMethod,
+    ConnectorCategory,
+    ConnectorManifest,
+    ValidationCode,
+    ValidationResult,
+    VerificationSpec,
+)
+from blinkengage.domain.connectors import Capability
 from blinkengage.infrastructure.connectors.registry import ConnectorRegistry
 
 #: The one line the Verify step shows. A ``warn``, not an ``ok`` — see
@@ -127,24 +134,43 @@ class WebChatConnector(Connector):
     """
 
     channel_type = "web_chat"
-    declares = frozenset({Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS})
 
-    # --- Authenticate -------------------------------------------------
+    #: The shortest honest manifest in the package.
+    #:
+    #: ``required_credentials`` is empty and that is the entire authentication
+    #: story: no secret to collect means no field to describe. It is stated
+    #: rather than omitted because "Web Chat asks for nothing" is a decision a
+    #: reader will want to see made, and an absent declaration leaves them
+    #: unable to tell a choice from an oversight.
+    MANIFEST = ConnectorManifest(
+        channel_type="web_chat",
+        name_key="connect.web_chat.name",
+        description_key="connect.web_chat.description",
+        category=ConnectorCategory.EMBEDDED,
+        icon="web_chat",
+        capabilities=frozenset(
+            {Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS}
+        ),
+        # Nothing to prove: the channel is ours on both ends.
+        auth_methods=(AuthMethod.NONE,),
+        required_credentials=(),
+        verification_steps=(
+            VerificationSpec(
+                key="connect.web_chat.check.noExternalDependency",
+                title_key="connect.web_chat.check.noExternalDependency.title",
+                codes=(ValidationCode.ADVISORY,),
+            ),
+        ),
+        supported_features=("text", "images", "documents", "typing"),
+    )
 
-    def credential_fields(self) -> tuple[Field, ...]:
-        """Nothing, and the empty tuple is the entire answer.
-
-        No secret to collect means no field to describe. The base class
-        returns the same thing; this override exists because "Web Chat asks
-        for nothing" is a decision a reader will want to see made, and an
-        absent method leaves them unable to tell a deliberate choice from an
-        oversight.
-        """
-        return ()
+    @property
+    def manifest(self) -> ConnectorManifest:
+        return self.MANIFEST
 
     # --- Verify -------------------------------------------------------
 
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
         """One line, and — of the two options — the downgraded one.
 
         **Downgraded, not probed.** The choice was between reaching the
@@ -179,7 +205,13 @@ class WebChatConnector(Connector):
         shape, and a connector that later grows a real probe should not also
         have to change how it is called.
         """
-        return (CheckOutcome(code=_CHECK_NO_EXTERNAL_DEPENDENCY, level=CHECK_WARN),)
+        return (
+            ValidationResult(
+                ValidationCode.ADVISORY,
+                channel_type=self.channel_type,
+                params={"check": _CHECK_NO_EXTERNAL_DEPENDENCY},
+            ),
+        )
 
     # --- Connect ------------------------------------------------------
 

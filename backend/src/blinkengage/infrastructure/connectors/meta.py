@@ -52,15 +52,22 @@ from blinkengage.domain.connector import (
     Repair,
     Resource,
 )
+from blinkengage.domain.connector_manifest import (
+    AuthMethod,
+    ConnectorCategory,
+    ConnectorManifest,
+    CredentialSpec,
+    DocumentationLink,
+    RepairAction,
+    ResourceSpec,
+    ValidationCode,
+    ValidationResult,
+    VerificationSpec,
+)
 from blinkengage.domain.connectors import (
-    CHECK_FAIL,
-    CHECK_OK,
-    CHECK_WARN,
-    FIX_MANUAL,
     FIX_REAUTHORIZE,
     FIX_REENTER,
     Capability,
-    CheckOutcome,
     Fix,
 )
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
@@ -134,7 +141,10 @@ class MetaConnector(Connector):
 
     app_key = META_APP
 
-    declares = frozenset(
+    #: The capability set every Meta channel shares. Kept as a class
+    #: attribute so ``WhatsAppConnector`` can add embedded signup to it
+    #: without restating the other six.
+    CAPABILITIES = frozenset(
         {
             Capability.OAUTH,
             Capability.AUTO_DISCOVERY,
@@ -145,6 +155,116 @@ class MetaConnector(Connector):
             Capability.MANUAL_CONFIGURATION,
         }
     )
+
+    #: Copy and presentation, per subclass. The three differ in almost
+    #: nothing else, which is the point of the family.
+    category = ConnectorCategory.MESSAGING
+    icon = ""
+    features: tuple[str, ...] = ("text", "images", "documents")
+    resource_title_key = ""
+    resource_empty_key = ""
+    resource_multiple = False
+
+    @property
+    def manifest(self) -> ConnectorManifest:
+        """Built from the subclass's few points of difference.
+
+        One builder rather than three literals: WhatsApp, Messenger and
+        Instagram share a provider, a webhook model, a validation routine and
+        a repair, so three near-identical manifests would be three places for
+        the shared parts to drift.
+        """
+        name = self.channel_type
+        return ConnectorManifest(
+            channel_type=name,
+            name_key=f"connect.{name}.name",
+            description_key=f"connect.{name}.description",
+            category=self.category,
+            icon=self.icon or name,
+            capabilities=self.CAPABILITIES,
+            # Both, always. Consent where the installation holds an app;
+            # the guided form where it does not — and the capability
+            # resolution, not this list, is what decides which is offered.
+            auth_methods=(AuthMethod.OAUTH, AuthMethod.CREDENTIALS),
+            required_permissions=self.scopes,
+            required_credentials=(
+                CredentialSpec(
+                    name=self.resource_credential,
+                    kind="text",
+                    label_key=f"connect.meta.{self.resource_credential}.label",
+                    help_key=f"connect.meta.{self.resource_credential}.help",
+                ),
+                CredentialSpec(
+                    name="access_token",
+                    kind="secret",
+                    label_key="connect.meta.accessToken.label",
+                    help_key="connect.meta.accessToken.help",
+                ),
+                CredentialSpec(
+                    name="webhook_secret",
+                    kind="secret",
+                    label_key="connect.meta.appSecret.label",
+                    help_key="connect.meta.appSecret.help",
+                    # Belongs in the column, not the credentials blob. Without
+                    # it a hand-connected Meta channel has nothing to verify
+                    # inbound signatures against, and every delivery fails a
+                    # check nobody can see failing.
+                    is_webhook_secret=True,
+                ),
+            ),
+            required_resources=(
+                ResourceSpec(
+                    key=self.picker_group_key,
+                    title_key=self.resource_title_key or self.picker_group_key,
+                    empty_key=self.resource_empty_key
+                    or f"connect.{name}.noResources",
+                    multiple=self.resource_multiple,
+                ),
+            ),
+            verification_steps=(
+                VerificationSpec(
+                    key="connect.meta.check.permissions",
+                    title_key="connect.meta.check.permissions.title",
+                    codes=(
+                        ValidationCode.OK,
+                        ValidationCode.MISSING_PERMISSION,
+                        # The manual path can arrive with nothing typed; the
+                        # consent path can arrive with no grant. Same code,
+                        # because to the customer both mean "we have no way
+                        # to talk to Meta as you".
+                        ValidationCode.MISSING_CREDENTIAL,
+                        ValidationCode.INVALID_TOKEN,
+                        ValidationCode.EXPIRED_CREDENTIALS,
+                        ValidationCode.PROVIDER_UNREACHABLE,
+                    ),
+                ),
+                VerificationSpec(
+                    key="connect.meta.check.resource",
+                    title_key="connect.meta.check.resource.title",
+                    codes=(
+                        ValidationCode.OK,
+                        ValidationCode.NO_RESOURCE_SELECTED,
+                        ValidationCode.RESOURCE_NOT_ELIGIBLE,
+                        ValidationCode.BUSINESS_VERIFICATION_REQUIRED,
+                        ValidationCode.ADVISORY,
+                    ),
+                ),
+            ),
+            repair_actions=(
+                RepairAction(
+                    id=REREGISTER_WEBHOOK,
+                    title_key="connect.meta.repair.reregisterWebhook.title",
+                    description_key="connect.meta.repair.reregisterWebhook.description",
+                ),
+            ),
+            supported_features=self.features,
+            documentation=(
+                DocumentationLink(
+                    key="connect.meta.docs.businessManager",
+                    url="https://business.facebook.com/settings",
+                ),
+            ),
+        )
 
     #: Which credential names the resource this connector connects to —
     #: ``phone_number_id``, ``page_id``, ``instagram_id``. The single line of
@@ -230,7 +350,7 @@ class MetaConnector(Connector):
         """
         return Fix(kind=FIX_REAUTHORIZE) if attempt.grant else Fix(kind=FIX_REENTER)
 
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
         """The Permissions Check, in the customer's terms.
 
         Every outcome here replaces something that would otherwise surface as
@@ -245,14 +365,14 @@ class MetaConnector(Connector):
         reached the summary screen entirely unverified.
         """
         token = str(attempt.credentials.get("access_token", ""))
-        outcomes: list[CheckOutcome] = []
+        outcomes: list[ValidationResult] = []
 
         if not token:
             return (
-                CheckOutcome(
-                    "meta.check.noGrant",
-                    CHECK_FAIL,
-                    fix=self._credential_fix(attempt),
+                ValidationResult(
+                    ValidationCode.MISSING_CREDENTIAL,
+                    channel_type=self.channel_type,
+                    params={"check": "meta.check.noGrant"},
                 ),
             )
 
@@ -265,11 +385,10 @@ class MetaConnector(Connector):
         # told what is wrong with their setup.
         except (MetaError, httpx.HTTPError, httpx.InvalidURL) as exc:
             return (
-                CheckOutcome(
-                    "meta.check.tokenRejected",
-                    CHECK_FAIL,
+                ValidationResult(
+                    ValidationCode.INVALID_TOKEN,
+                    channel_type=self.channel_type,
                     params={"detail": str(exc)},
-                    fix=self._credential_fix(attempt),
                 ),
             )
 
@@ -281,15 +400,16 @@ class MetaConnector(Connector):
             # A pasted token is missing permissions for a different reason (it
             # was minted without them) and gets a different button.
             outcomes.append(
-                CheckOutcome(
-                    "meta.check.scopesMissing",
-                    CHECK_FAIL,
+                ValidationResult(
+                    ValidationCode.MISSING_PERMISSION,
+                    channel_type=self.channel_type,
                     params={"scopes": ", ".join(missing)},
-                    fix=self._credential_fix(attempt),
                 )
             )
         else:
-            outcomes.append(CheckOutcome("meta.check.scopesGranted", CHECK_OK))
+            outcomes.append(
+                ValidationResult(ValidationCode.OK, channel_type=self.channel_type)
+            )
 
         selection = attempt.selection
         if not selection and not str(attempt.inputs.get(self.resource_credential, "")):
@@ -298,26 +418,24 @@ class MetaConnector(Connector):
             # resource on the form and picks nothing — failed this check and
             # was blocked from connecting by the one step meant to unblock it.
             outcomes.append(
-                CheckOutcome(
-                    "meta.check.nothingSelected",
-                    CHECK_FAIL,
-                    # On the form path the missing id is a value they type, so
-                    # the fix is one step back. On the picker path there is
-                    # nothing to type and no fix worth offering.
-                    fix=None if attempt.grant else Fix(kind=FIX_REENTER),
+                ValidationResult(
+                    ValidationCode.NO_RESOURCE_SELECTED,
+                    channel_type=self.channel_type,
                 )
             )
 
         for resource in selection:
             if resource.unavailable_reason:
                 outcomes.append(
-                    CheckOutcome(
-                        f"meta.check.{resource.unavailable_reason}",
-                        CHECK_FAIL,
-                        params={"resource": resource.label},
-                        fix=Fix(
-                            kind=FIX_MANUAL,
-                            instructions_key=f"connect.meta.fix.{resource.unavailable_reason}",
+                    ValidationResult(
+                        ValidationCode.RESOURCE_NOT_ELIGIBLE,
+                        channel_type=self.channel_type,
+                        params={
+                            "resource": resource.label,
+                            "reason": resource.unavailable_reason,
+                        },
+                        instructions_key=(
+                            f"connect.meta.fix.{resource.unavailable_reason}"
                         ),
                     )
                 )
@@ -491,12 +609,16 @@ class WhatsAppConnector(MetaConnector):
     beside a display number that is *not* it.
     """
 
+    icon = "whatsapp"
+    resource_title_key = "connect.whatsapp.resources.title"
+    resource_empty_key = "connect.whatsapp.resources.empty"
+    features = ("text", "images", "documents", "audio", "video", "templates")
     resource_credential = "phone_number_id"
     scopes = ("whatsapp_business_management", "whatsapp_business_messaging")
     picker_group_key = "connect.meta.group.whatsapp"
     subscribed_fields = "messages,message_template_status_update"
 
-    declares = MetaConnector.declares | {Capability.EMBEDDED_SIGNUP}
+    CAPABILITIES = MetaConnector.CAPABILITIES | {Capability.EMBEDDED_SIGNUP}
 
     async def discover(self, *, grant: dict[str, Any]) -> tuple[Resource, ...]:
         token = str(grant.get("access_token", ""))
@@ -549,6 +671,13 @@ class MessengerConnector(MetaConnector):
     more durable one.
     """
 
+    icon = "messenger"
+    category = ConnectorCategory.SOCIAL
+    resource_title_key = "connect.messenger.resources.title"
+    resource_empty_key = "connect.messenger.resources.empty"
+    # A customer with four Pages usually wants all four.
+    resource_multiple = True
+    features = ("text", "images", "documents", "typing")
     resource_credential = "page_id"
     scopes = ("pages_show_list", "pages_messaging", "pages_manage_metadata")
     picker_group_key = "connect.meta.group.pages"
@@ -591,6 +720,12 @@ class InstagramConnector(MetaConnector):
     a personal Instagram account cannot be connected at all.
     """
 
+    icon = "instagram"
+    category = ConnectorCategory.SOCIAL
+    resource_title_key = "connect.instagram.resources.title"
+    resource_empty_key = "connect.instagram.resources.empty"
+    resource_multiple = True
+    features = ("text", "images", "typing")
     resource_credential = "instagram_id"
     scopes = ("instagram_basic", "instagram_manage_messages", "pages_show_list")
     picker_group_key = "connect.meta.group.instagram"
@@ -630,17 +765,18 @@ class InstagramConnector(MetaConnector):
             )
         return tuple(resources)
 
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
-        outcomes = list(await super().check(attempt))
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
+        outcomes = list(await super().validate(attempt))
         # Not settable through any API, and the single most common reason a
         # correctly-connected Instagram channel receives nothing. A warning
         # rather than a failure: it is a toggle in the customer's phone, and
         # blocking the flow on something we cannot verify would strand them.
         outcomes.append(
-            CheckOutcome(
-                "meta.check.instagramMessageAccess",
-                CHECK_WARN,
-                fix=Fix(kind=FIX_MANUAL, instructions_key="connect.meta.fix.instagramInbox"),
+            ValidationResult(
+                ValidationCode.ADVISORY,
+                channel_type=self.channel_type,
+                params={"check": "meta.check.instagramMessageAccess"},
+                instructions_key="connect.meta.fix.instagramInbox",
             )
         )
         return tuple(outcomes)

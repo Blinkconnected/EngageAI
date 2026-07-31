@@ -80,17 +80,18 @@ from blinkengage.domain.connector import (
     Attempt,
     Connection,
     Connector,
-    Field,
+)
+from blinkengage.domain.connector_manifest import (
+    AuthMethod,
+    ConnectorCategory,
+    ConnectorManifest,
+    CredentialSpec,
+    ValidationCode,
+    ValidationResult,
+    VerificationSpec,
 )
 from blinkengage.domain.connectors import (
-    CHECK_FAIL,
-    CHECK_OK,
-    CHECK_WARN,
-    FIX_MANUAL,
-    FIX_REENTER,
     Capability,
-    CheckOutcome,
-    Fix,
 )
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.connectors.registry import ConnectorRegistry
@@ -135,15 +136,15 @@ _FIX_ADD_IMAP_SETTINGS = "connect.email.fix.addImapSettings"
 #: what may be written into an encrypted credentials blob. One list rather
 #: than two so the two cannot drift apart, which is the failure where a
 #: field is added to the form and then silently discarded on connect.
-_CREDENTIAL_FIELDS: tuple[Field, ...] = (
-    Field(
+_CREDENTIAL_FIELDS: tuple[CredentialSpec, ...] = (
+    CredentialSpec(
         name="smtp_host",
         kind="text",
         label_key="connect.email.smtpHostLabel",
         help_key="connect.email.smtpHostHelp",
         placeholder="smtp.example.com",
     ),
-    Field(
+    CredentialSpec(
         # Required here even though ``EmailCredentials`` tolerates its
         # absence. The provider's own fallbacks are port 587 with implicit
         # TLS — a pair almost no server accepts — so a blank port is not a
@@ -155,7 +156,7 @@ _CREDENTIAL_FIELDS: tuple[Field, ...] = (
         help_key="connect.email.smtpPortHelp",
         placeholder=str(_DEFAULT_SMTP_PORT),
     ),
-    Field(
+    CredentialSpec(
         # Optional because unauthenticated internal relays are ordinary in
         # exactly the sectors this product sells into: an on-premise MTA
         # that accepts mail from a known host and asks for no password.
@@ -166,14 +167,14 @@ _CREDENTIAL_FIELDS: tuple[Field, ...] = (
         help_key="connect.email.smtpUsernameHelp",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="smtp_password",
         kind="secret",
         label_key="connect.email.smtpPasswordLabel",
         help_key="connect.email.smtpPasswordHelp",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="smtp_use_tls",
         kind="boolean",
         label_key="connect.email.smtpUseTlsLabel",
@@ -183,7 +184,7 @@ _CREDENTIAL_FIELDS: tuple[Field, ...] = (
         help_key="connect.email.smtpUseTlsHelpPairWithPort",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         # Required, unlike in the schema. The provider falls back to the
         # SMTP username for the From header, and the username is optional
         # here — leaving both empty produces mail with no sender, which
@@ -196,7 +197,7 @@ _CREDENTIAL_FIELDS: tuple[Field, ...] = (
         help_key="connect.email.fromAddressHelp",
         placeholder="support@example.com",
     ),
-    Field(
+    CredentialSpec(
         name="imap_host",
         kind="text",
         label_key="connect.email.imapHostLabel",
@@ -204,7 +205,7 @@ _CREDENTIAL_FIELDS: tuple[Field, ...] = (
         placeholder="imap.example.com",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="imap_port",
         kind="number",
         label_key="connect.email.imapPortLabel",
@@ -212,28 +213,28 @@ _CREDENTIAL_FIELDS: tuple[Field, ...] = (
         placeholder=str(_DEFAULT_IMAP_PORT),
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="imap_username",
         kind="text",
         label_key="connect.email.imapUsernameLabel",
         help_key="connect.email.imapUsernameHelpSendOnlyWithoutIt",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="imap_password",
         kind="secret",
         label_key="connect.email.imapPasswordLabel",
         help_key="connect.email.imapPasswordHelpSendOnlyWithoutIt",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="imap_use_ssl",
         kind="boolean",
         label_key="connect.email.imapUseSslLabel",
         help_key="connect.email.imapUseSslHelp",
         required=False,
     ),
-    Field(
+    CredentialSpec(
         name="imap_folder",
         kind="text",
         label_key="connect.email.imapFolderLabel",
@@ -284,7 +285,7 @@ def _tls_and_port_disagree(raw_port: Any, *, use_tls: bool) -> bool:
     )
 
 
-def _inbound_outcome(credentials: dict[str, Any]) -> CheckOutcome:
+def _inbound_outcome(credentials: dict[str, Any]) -> ValidationResult:
     """Whether anything will ever arrive, and how sure we are.
 
     Two codes rather than one code at two levels: "we will poll this
@@ -303,15 +304,18 @@ def _inbound_outcome(credentials: dict[str, Any]) -> CheckOutcome:
         # channel with no authorization server behind it, which is the
         # mistake that kind was added to stop. What actually resolves this is
         # one step back and six more fields, and that is now sayable.
-        return CheckOutcome(
-            _CHECK_SEND_ONLY,
-            CHECK_WARN,
-            fix=Fix(FIX_REENTER, instructions_key=_FIX_ADD_IMAP_SETTINGS),
+        return ValidationResult(
+            ValidationCode.ADVISORY,
+            channel_type="email",
+            params={"check": _CHECK_SEND_ONLY},
+            instructions_key=_FIX_ADD_IMAP_SETTINGS,
         )
-    return CheckOutcome(_CHECK_IMAP_CONFIGURED, CHECK_OK, params={"host": str(imap_host)})
+    return ValidationResult(
+        ValidationCode.OK, channel_type="email", params={"host": str(imap_host)}
+    )
 
 
-async def _probe_smtp(credentials: dict[str, Any]) -> tuple[CheckOutcome, ...]:
+async def _probe_smtp(credentials: dict[str, Any]) -> tuple[ValidationResult, ...]:
     """Open the connection the send path will open, and say what happened.
 
     Reachability and credentials are reported separately because they fail
@@ -343,17 +347,20 @@ async def _probe_smtp(credentials: dict[str, Any]) -> tuple[CheckOutcome, ...]:
             if not username:
                 # An unauthenticated relay has no login to report on, and a
                 # green line saying so would imply a check that never ran.
-                return (CheckOutcome(_CHECK_SMTP_CONNECTION, CHECK_OK, params=params),)
+                return (ValidationResult(ValidationCode.OK, channel_type="email", params=params),)
             try:
                 await client.login(username, password)
             except Exception as exc:
                 return (
-                    CheckOutcome(_CHECK_SMTP_CONNECTION, CHECK_OK, params=params),
-                    CheckOutcome(
-                        _CHECK_SMTP_AUTHENTICATION,
-                        CHECK_FAIL,
+                    ValidationResult(ValidationCode.OK, channel_type="email", params=params),
+                    ValidationResult(
+                        # The credential was rejected, which is what
+                        # INVALID_TOKEN means whatever shape the credential
+                        # takes — a bearer token here is a password.
+                        ValidationCode.INVALID_TOKEN,
+                        channel_type="email",
                         params=_with_detail(params, exc, credentials),
-                        fix=Fix(FIX_MANUAL, instructions_key=_FIX_SMTP_CREDENTIALS),
+                        instructions_key=_FIX_SMTP_CREDENTIALS,
                     ),
                 )
     except Exception as exc:
@@ -362,11 +369,11 @@ async def _probe_smtp(credentials: dict[str, Any]) -> tuple[CheckOutcome, ...]:
         # and half of what can go wrong at this layer — an unparseable port,
         # a hostname with a stray newline — is not an SMTP error at all.
         outcomes = [
-            CheckOutcome(
-                _CHECK_SMTP_CONNECTION,
-                CHECK_FAIL,
+            ValidationResult(
+                ValidationCode.PROVIDER_UNREACHABLE,
+                channel_type="email",
                 params=_with_detail(params, exc, credentials),
-                fix=Fix(FIX_MANUAL, instructions_key=_FIX_SMTP_UNREACHABLE),
+                instructions_key=_FIX_SMTP_UNREACHABLE,
             )
         ]
         try:
@@ -379,18 +386,17 @@ async def _probe_smtp(credentials: dict[str, Any]) -> tuple[CheckOutcome, ...]:
             # warning that fires on something that demonstrably works is how
             # a checklist teaches people to stop reading it.
             outcomes.append(
-                CheckOutcome(
-                    _CHECK_TLS_PORT_MISMATCH,
-                    CHECK_WARN,
-                    params=params,
-                    fix=Fix(FIX_MANUAL, instructions_key=_FIX_TLS_PORT_PAIRING),
+                ValidationResult(
+                    ValidationCode.ADVISORY,
+                    channel_type="email",
+                    params={**params, "check": _CHECK_TLS_PORT_MISMATCH},
+                    instructions_key=_FIX_TLS_PORT_PAIRING,
                 )
             )
         return tuple(outcomes)
 
     return (
-        CheckOutcome(_CHECK_SMTP_CONNECTION, CHECK_OK, params=params),
-        CheckOutcome(_CHECK_SMTP_AUTHENTICATION, CHECK_OK, params=params),
+        ValidationResult(ValidationCode.OK, channel_type="email", params=params),
     )
 
 
@@ -401,12 +407,47 @@ class EmailConnector(Connector):
     #: also why nothing here degrades on a self-hosted installation. Email
     #: connects identically whether or not the operator has ever registered
     #: anything with anyone.
-    declares = frozenset({Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS})
+    MANIFEST = ConnectorManifest(
+        channel_type="email",
+        name_key="connect.email.name",
+        description_key="connect.email.description",
+        category=ConnectorCategory.EMAIL,
+        icon="email",
+        capabilities=frozenset(
+            {Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS}
+        ),
+        auth_methods=(AuthMethod.CREDENTIALS,),
+        required_credentials=_CREDENTIAL_FIELDS,
+        verification_steps=(
+            VerificationSpec(
+                key="connect.email.check.smtp",
+                title_key="connect.email.check.smtp.title",
+                codes=(
+                    ValidationCode.OK,
+                    ValidationCode.MISSING_CREDENTIAL,
+                    ValidationCode.INVALID_TOKEN,
+                    ValidationCode.PROVIDER_UNREACHABLE,
+                ),
+            ),
+            VerificationSpec(
+                key="connect.email.check.inbound",
+                title_key="connect.email.check.inbound.title",
+                # A send-only mailbox is a legitimate configuration, not a
+                # fault — so the worst this step reports is advice.
+                codes=(ValidationCode.OK, ValidationCode.ADVISORY),
+            ),
+        ),
+        # Deliberately no webhook capability and so no webhook repair:
+        # inbound email is polled over IMAP, and declaring webhooks would
+        # promise a callback that never arrives.
+        supported_features=("text", "attachments", "threading"),
+    )
 
-    def credential_fields(self) -> tuple[Field, ...]:
-        return _CREDENTIAL_FIELDS
+    @property
+    def manifest(self) -> ConnectorManifest:
+        return self.MANIFEST
 
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
         """Everything worth saying before this mailbox is written down.
 
         Read from ``inputs`` and never from ``grant`` or ``credentials``.

@@ -13,6 +13,7 @@ know what WhatsApp is, the abstraction has stopped working.
 import pytest
 
 from blinkengage.domain.connector import Attempt, Connector, DeploymentContext
+from blinkengage.domain.connector_manifest import ConnectorCategory, ConnectorManifest
 from blinkengage.domain.connectors import (
     CHECK_FAIL,
     CHECK_OK,
@@ -141,15 +142,27 @@ class TestCapabilitiesResolvePerDeployment:
     class Fictional(Connector):
         channel_type = "fictional"
         app_key = "acme"
-        declares = frozenset(
-            {
-                Capability.OAUTH,
-                Capability.AUTO_DISCOVERY,
-                Capability.WEBHOOKS,
-                Capability.MANUAL_CONFIGURATION,
-                Capability.HEALTH_CHECKS,
-            }
+
+        MANIFEST = ConnectorManifest(
+            channel_type="fictional",
+            name_key="connect.fictional.name",
+            description_key="connect.fictional.description",
+            category=ConnectorCategory.OTHER,
+            icon="fictional",
+            capabilities=frozenset(
+                {
+                    Capability.OAUTH,
+                    Capability.AUTO_DISCOVERY,
+                    Capability.WEBHOOKS,
+                    Capability.MANUAL_CONFIGURATION,
+                    Capability.HEALTH_CHECKS,
+                }
+            ),
         )
+
+        @property
+        def manifest(self) -> ConnectorManifest:
+            return self.MANIFEST
 
         async def connect(self, **_kwargs: object) -> tuple:  # type: ignore[override]
             return ()
@@ -201,7 +214,19 @@ class TestAConnectorWithAlmostNothing:
 
     class Minimal(Connector):
         channel_type = "minimal"
-        declares = frozenset({Capability.MANUAL_CONFIGURATION})
+
+        MANIFEST = ConnectorManifest(
+            channel_type="minimal",
+            name_key="connect.minimal.name",
+            description_key="connect.minimal.description",
+            category=ConnectorCategory.OTHER,
+            icon="minimal",
+            capabilities=frozenset({Capability.MANUAL_CONFIGURATION}),
+        )
+
+        @property
+        def manifest(self) -> ConnectorManifest:
+            return self.MANIFEST
 
         async def connect(self, **_kwargs: object) -> tuple:  # type: ignore[override]
             return ()
@@ -221,7 +246,7 @@ class TestAConnectorWithAlmostNothing:
 
         assert connector.credential_fields() == ()
         assert await connector.discover(grant={}) == ()
-        assert await connector.check(Attempt(context=BARE)) == ()
+        assert await connector.validate(Attempt(context=BARE)) == ()
 
     async def test_what_it_cannot_do_it_refuses_by_name(self) -> None:
         """So a wizard bug surfaces as "minimal does not support OAuth"

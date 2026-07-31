@@ -204,7 +204,12 @@ class ConnectorProfile:
         )
 
 
-def steps_for(profile: ConnectorProfile, *, using_oauth: bool | None = None) -> tuple[Step, ...]:
+def steps_for(
+    profile: ConnectorProfile,
+    *,
+    using_oauth: bool | None = None,
+    declared: tuple[tuple[StepId, StepKind], ...] = (),
+) -> tuple[Step, ...]:
     """The flow, derived from what the connector can do.
 
     This function is the load-bearing one. Every branch below tests a
@@ -223,6 +228,17 @@ def steps_for(profile: ConnectorProfile, *, using_oauth: bool | None = None) -> 
     likely to get — OAuth where it is available, because that is the path
     worth designing for.
     """
+    if declared:
+        # A manifest that states its own flow wins. Almost none do — deriving
+        # means a connector cannot forget a step — but a connector whose
+        # shape is genuinely different is saying something new about
+        # connecting to things, and it should be able to say it rather than
+        # be bent into the default.
+        return tuple(
+            Step(step_id, kind, f"connect.step.{step_id.value}")
+            for step_id, kind in declared
+        )
+
     oauth = profile.supports(Capability.OAUTH) if using_oauth is None else using_oauth
 
     steps: list[Step] = [Step(StepId.SELECT, StepKind.SELECT, "connect.step.select")]

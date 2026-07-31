@@ -46,9 +46,87 @@ class ConnectionTemplateResponse(BaseModel):
     recommended: bool
 
 
+class RepairActionResponse(BaseModel):
+    """A one-click fix, declared so the console can render it without
+    knowing what it does."""
+
+    id: str
+    title_key: str
+    description_key: str
+    confirm: bool
+    confirm_key: str | None = None
+    permission: str
+    available_during_setup: bool
+
+
+class ResourceSpecResponse(BaseModel):
+    key: str
+    title_key: str
+    #: What the picker says when discovery finds nothing — the difference
+    #: between a dead end and an explanation.
+    empty_key: str
+    multiple: bool
+
+
+class VerificationSpecResponse(BaseModel):
+    key: str
+    title_key: str
+    #: Every code this check can produce, so the console can pre-resolve copy
+    #: and show the checklist before it has answers.
+    codes: list[str]
+
+
+class DocumentationLinkResponse(BaseModel):
+    key: str
+    url: str
+
+
+class ManifestResponse(BaseModel):
+    """A connector, described completely enough to render.
+
+    This is the contract that makes the wizard a renderer. Everything the
+    console draws — the picker entry, the credential form, the resource
+    picker, the checklist, the repair buttons — comes from here, so adding a
+    connector is a backend change and nothing else.
+    """
+
+    channel_type: str
+    name_key: str
+    description_key: str
+    category: str
+    #: An identifier the console maps to an asset, never a URL — a manifest
+    #: carrying image URLs would make the backend own the asset pipeline.
+    icon: str
+    capabilities: list[str]
+    auth_methods: list[str]
+    required_permissions: list[str]
+    required_credentials: list[FieldResponse]
+    required_resources: list[ResourceSpecResponse]
+    verification_steps: list[VerificationSpecResponse]
+    repair_actions: list[RepairActionResponse]
+    supported_features: list[str]
+    documentation: list[DocumentationLinkResponse]
+    minimum_platform_version: str
+
+
+class RepairResultResponse(BaseModel):
+    """What a repair did.
+
+    ``repaired=False`` with a reason rather than an error, because "I could
+    not fix this" is an outcome the customer needs worded, not a stack trace.
+    """
+
+    action_id: str
+    repaired: bool
+    #: A translatable code when it did not work.
+    reason: str | None = None
+
+
 class CatalogResponse(BaseModel):
     connectors: list[ConnectorProfileResponse]
     templates: list[ConnectionTemplateResponse]
+    #: One per connector, keyed by channel type in the connector list above.
+    manifests: list[ManifestResponse]
 
 
 class FieldResponse(BaseModel):
@@ -85,13 +163,24 @@ class FixResponse(BaseModel):
 
 
 class CheckResponse(BaseModel):
+    """One structured finding from a connector's ``validate()``.
+
+    A code from a closed set, never a sentence — so the console translates it
+    and an Arabic customer reads Arabic.
+    """
+
     code: str
-    #: ``ok`` | ``warn`` | ``fail``. Only ``fail`` blocks — a warning that
-    #: blocked would train customers to click past the checklist.
-    level: str
+    #: Whether this stops the connection. Decided centrally from the code, so
+    #: one channel cannot block on something another waves through.
+    blocks: bool
     channel_type: str
     params: dict[str, str] = Field(default_factory=dict)
-    fix: FixResponse | None = None
+    #: The id of a ``RepairAction`` from this connector's manifest, when one
+    #: would fix this. The console renders the button from the manifest.
+    repair_action: str | None = None
+    #: Copy for something only the customer can change, in their provider's
+    #: own app — the honest answer when there is no button.
+    instructions_key: str | None = None
 
 
 class StepResponse(BaseModel):
@@ -169,10 +258,16 @@ __all__ = [
     "ConnectedChannelResponse",
     "ConnectionTemplateResponse",
     "ConnectorProfileResponse",
+    "DocumentationLinkResponse",
     "FieldResponse",
     "FixResponse",
+    "ManifestResponse",
+    "RepairActionResponse",
+    "RepairResultResponse",
     "ResourceResponse",
+    "ResourceSpecResponse",
     "SessionResponse",
     "StartSessionRequest",
     "StepResponse",
+    "VerificationSpecResponse",
 ]

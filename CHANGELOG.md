@@ -29,6 +29,25 @@ for more detail on how this page is put together.
   Problems that would stop the channel working block it; things merely
   worth knowing do not.
 
+- **Every channel now describes itself, and the setup screen is generated
+  from that description.** A connector declares its name, icon, category,
+  what it needs, what it will find, what it will check, what it can
+  repair and what it can carry — and the connection flow is built from
+  the declaration. Nothing about connecting a channel is written into
+  the screen.
+
+  Which means adding a channel adds a screen. A developer implements the
+  connector, its description, its validation and its repairs; the picker
+  entry, the form, the account list, the checks and the repair buttons
+  all appear on their own.
+
+  Problems found while connecting are reported as **structured results**
+  rather than messages — missing permission, invalid token, expired
+  credentials, webhook not registered, unsupported API version, business
+  verification required — so each is explained in the customer's own
+  language, and whether something blocks setup is decided once for every
+  channel rather than per channel.
+
 - **Channels are now built on a connector framework.** Every channel
   declares what it can do — sign in with the provider, discover your
   accounts automatically, register its own webhook, check its own health

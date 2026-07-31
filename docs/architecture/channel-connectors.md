@@ -8,6 +8,63 @@ That is a product principle, and this is where it stops being a slogan: a
 wizard, running the same code, that connects Telegram — and that will connect
 Slack, Teams, RCS, LINE or WeChat.
 
+## The manifest
+
+`domain/connector_manifest.py`. A connector does not *implement* a wizard, it
+**describes itself**, and the wizard renders the description.
+
+| Field | What the console does with it |
+|---|---|
+| `name_key`, `description_key`, `icon`, `category` | Draws the picker entry |
+| `capabilities` | Derives the flow |
+| `auth_methods` | Offers consent, a form, or both |
+| `required_permissions` | Shows what is about to be approved |
+| `required_credentials` | Renders the form, field by field |
+| `required_resources` | Titles the picker, and explains an empty one |
+| `verification_steps` | Draws the checklist *before* it has answers |
+| `repair_actions` | Renders the repair buttons |
+| `supported_features` | Says what the channel can carry, before connecting |
+| `documentation` | The last resort, for a customer genuinely stuck |
+| `minimum_platform_version` | Refuses a connector shipped ahead of its platform |
+
+Static, credential-free, serialisable whole — which is what makes the wizard a
+renderer rather than a participant. Served on `GET /channel-connect/catalog`.
+
+**The console never infers.** Anything it had to work out for itself becomes a
+lookup table keyed by channel, which is the hardcoding the manifest replaces.
+
+### Validation returns codes, not strings
+
+`ValidationCode` is a **closed set**. Two reasons pulling the same way: the
+console translates a code, so an Arabic customer reads Arabic — where a
+sentence from the server could only ever be English. And a closed set means
+every failure a connector can report is one somebody has written copy for.
+
+Whether a code blocks is decided **centrally**, in `BLOCKING_CODES`, so one
+channel cannot stop a customer for something another waves through. Four codes
+are deliberately non-blocking and each says why in the test that asserts it:
+`PROVIDER_UNREACHABLE` and `RATE_LIMITED` are somebody else's outage, and
+`WEBHOOK_NOT_REGISTERED` is always true during setup and about to stop being.
+
+A connector may only return codes its manifest declared —
+`test_connector_manifests.py` reads the source and holds it to that, because
+an undeclared code is a raw slug in front of a customer at the worst moment.
+
+### Repairs are declared, not discovered
+
+A `RepairAction` carries its title, description, whether to confirm, the
+permission it needs and whether it can run before a channel exists. One
+endpoint serves all of them:
+
+```
+POST /channel-connect/channels/{id}/repair/{action_id}
+```
+
+The action is checked against the manifest before anything runs, so the set of
+things that can be invoked is exactly the set advertised. A connector adding
+"refresh token" adds a `RepairAction` and a branch in its own `repair`; the
+console grows a button and the API does not change.
+
 ## The rule
 
 **Nothing above the connector layer may branch on a channel type.**
@@ -111,19 +168,42 @@ cheaper to find with four independent readings than with one.
 
 ## Writing a connector
 
-Three members is the bar: `channel_type`, `declares`, `connect`.
+Two members are the bar: a `manifest` and `connect`.
 
 ```python
 @ConnectorRegistry.register("slack")
 class SlackConnector(Connector):
     app_key = "slack"
-    declares = frozenset({Capability.OAUTH, Capability.AUTO_DISCOVERY, ...})
+
+    MANIFEST = ConnectorManifest(
+        channel_type="slack",
+        name_key="connect.slack.name",
+        description_key="connect.slack.description",
+        category=ConnectorCategory.MESSAGING,
+        icon="slack",
+        capabilities=frozenset({Capability.OAUTH, Capability.AUTO_DISCOVERY}),
+        auth_methods=(AuthMethod.OAUTH,),
+        required_permissions=("channels:read", "chat:write"),
+        required_resources=(ResourceSpec(...),),
+        verification_steps=(VerificationSpec(...),),
+        repair_actions=(RepairAction(...),),
+    )
+
+    @property
+    def manifest(self): return self.MANIFEST
 
     async def connect(self, *, company_id, attempt): ...
 ```
 
-Everything else — `credential_fields`, `authorize_url`, `discover`, `check`,
-`register_webhook`, `repair` — is optional and defaults to the honest answer.
+Everything else — `authorize_url`, `discover`, `validate`, `register_webhook`,
+`repair` — is optional and defaults to the honest answer. `credential_fields`
+is derived from the manifest and should not be overridden: two statements of
+one form is one place for them to disagree.
+
+**Nothing in the console changes.** That is the whole claim, and
+`test_connector_manifests.py` is where it is either true or it isn't — every
+test there derives its expectation from the registry, so a connector added
+tomorrow is covered the moment it registers.
 
 Rules, all enforced by `tests/unit/test_channel_connectors.py`:
 

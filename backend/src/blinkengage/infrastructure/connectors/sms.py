@@ -110,20 +110,25 @@ from blinkengage.domain.connector import (
     Connection,
     Connector,
     DeploymentContext,
-    Field,
     Repair,
+)
+from blinkengage.domain.connector_manifest import (
+    AuthMethod,
+    ConnectorCategory,
+    ConnectorManifest,
+    CredentialSpec,
+    RepairAction,
+    ValidationCode,
+    ValidationResult,
+    VerificationSpec,
 )
 from blinkengage.domain.connectors import (
     CHECK_FAIL,
     CHECK_OK,
     CHECK_WARN,
-    FIX_MANUAL,
-    FIX_REENTER,
     Capability,
     CapabilityState,
-    CheckOutcome,
     ConnectorProfile,
-    Fix,
 )
 from blinkengage.domain.exceptions import (
     InvalidChannelCredentialsError,
@@ -209,7 +214,7 @@ def _redact(text: str, credentials: dict[str, Any]) -> str:
     return redact_credentials(text, secrets)
 
 
-def _unreachable(exc: Exception, credentials: dict[str, Any]) -> CheckOutcome:
+def _unreachable(exc: Exception, credentials: dict[str, Any]) -> ValidationResult:
     """The carrier could not be asked, which is not the customer's fault.
 
     A warning rather than a failure: blocking here would turn a carrier's
@@ -219,29 +224,29 @@ def _unreachable(exc: Exception, credentials: dict[str, Any]) -> CheckOutcome:
     diagnostic value rather than copy, because "we could not reach your
     carrier" with nothing after it is a warning nobody can act on.
     """
-    return CheckOutcome(
+    return _finding(
         "connect.sms.check.gatewayUnreachable",
         CHECK_WARN,
         params={"detail": _redact(str(exc), credentials)},
     )
 
 
-def _rejected(credentials: dict[str, Any], *, detail: str | None = None) -> CheckOutcome:
+def _rejected(credentials: dict[str, Any], *, detail: str | None = None) -> ValidationResult:
     """The carrier was shown these credentials and said no.
 
     ``FIX_REENTER`` and never ``FIX_REAUTHORIZE``. The AUTHENTICATE step for
     this connector *is* the form, and a reauthorize fix on a channel with no
     consent screen renders a button the console cannot send anybody to.
     """
-    return CheckOutcome(
+    return _finding(
         "connect.sms.check.credentialsRejected",
         CHECK_FAIL,
         params={"detail": _redact(detail, credentials)} if detail else {},
-        fix=Fix(kind=FIX_REENTER),
+        instructions=None,
     )
 
 
-def _number_unverified(exc: Exception, credentials: dict[str, Any]) -> CheckOutcome:
+def _number_unverified(exc: Exception, credentials: dict[str, Any]) -> ValidationResult:
     """The account answered and then the number list did not.
 
     A different outcome from ``_rejected``, and the difference is the whole
@@ -258,10 +263,10 @@ def _number_unverified(exc: Exception, credentials: dict[str, Any]) -> CheckOutc
     params = {"detail": _redact(str(exc), credentials)}
     if isinstance(exc, httpx.HTTPStatusError):
         params["status"] = str(exc.response.status_code)
-    return CheckOutcome("connect.sms.check.numberUnverified", CHECK_WARN, params=params)
+    return _finding("connect.sms.check.numberUnverified", CHECK_WARN, params=params)
 
 
-def _account_outcomes(details: Mapping[str, Any]) -> tuple[CheckOutcome, ...]:
+def _account_outcomes(details: Mapping[str, Any]) -> tuple[ValidationResult, ...]:
     """What a Twilio account resource says about itself, as checklist lines.
 
     Both questions are ones only a watching customer can act on: a suspended
@@ -269,36 +274,32 @@ def _account_outcomes(details: Mapping[str, Any]) -> tuple[CheckOutcome, ...]:
     only message numbers it has verified — which is a channel that works for
     whoever tested it and for nobody else.
     """
-    outcomes = [CheckOutcome("connect.sms.check.credentialsVerified", CHECK_OK)]
+    outcomes = [_finding("connect.sms.check.credentialsVerified", CHECK_OK)]
 
     status = _text(details, "status").lower()
     if status and status != "active":
         outcomes.append(
-            CheckOutcome(
+            _finding(
                 "connect.sms.check.accountInactive",
                 CHECK_FAIL,
                 params={"status": status},
-                fix=Fix(
-                    kind=FIX_MANUAL,
-                    instructions_key="connect.sms.twilio.fix.activateAccount",
-                ),
+                instructions="connect.sms.twilio.fix.activateAccount",
             )
         )
     if _text(details, "type").lower() == "trial":
         outcomes.append(
-            CheckOutcome(
+            _finding(
                 "connect.sms.check.accountTrial",
                 CHECK_WARN,
-                fix=Fix(
-                    kind=FIX_MANUAL,
-                    instructions_key="connect.sms.twilio.fix.leaveTrial",
-                ),
+                instructions="connect.sms.twilio.fix.leaveTrial",
             )
         )
     return tuple(outcomes)
 
 
-def _number_outcomes(owned: Sequence[Mapping[str, Any]], number: str) -> tuple[CheckOutcome, ...]:
+def _number_outcomes(
+    owned: Sequence[Mapping[str, Any]], number: str
+) -> tuple[ValidationResult, ...]:
     """Whether the sending number is on this account and can carry SMS.
 
     The two ways an SMS channel connects cleanly and then fails on its first
@@ -307,29 +308,24 @@ def _number_outcomes(owned: Sequence[Mapping[str, Any]], number: str) -> tuple[C
     match = next((entry for entry in owned if _text(entry, "phone_number") == number), None)
     if match is None:
         return (
-            CheckOutcome(
+            _finding(
                 "connect.sms.check.numberNotOnAccount",
                 CHECK_FAIL,
+                fail_code=ValidationCode.RESOURCE_NOT_ELIGIBLE,
                 params={"number": number},
-                fix=Fix(
-                    kind=FIX_MANUAL,
-                    instructions_key="connect.sms.twilio.fix.buyNumber",
-                ),
+                instructions="connect.sms.twilio.fix.buyNumber",
             ),
         )
     if not (match.get("capabilities") or {}).get("sms"):
         return (
-            CheckOutcome(
+            _finding(
                 "connect.sms.check.numberNoSms",
                 CHECK_FAIL,
                 params={"number": number},
-                fix=Fix(
-                    kind=FIX_MANUAL,
-                    instructions_key="connect.sms.twilio.fix.smsCapability",
-                ),
+                instructions="connect.sms.twilio.fix.smsCapability",
             ),
         )
-    return (CheckOutcome("connect.sms.check.numberVerified", CHECK_OK, params={"number": number}),)
+    return (_finding("connect.sms.check.numberVerified", CHECK_OK, params={"number": number}),)
 
 
 async def _twilio_numbers(
@@ -353,7 +349,7 @@ async def _twilio_numbers(
     return list(found)
 
 
-async def _probe_twilio(credentials: dict[str, Any]) -> tuple[CheckOutcome, ...]:
+async def _probe_twilio(credentials: dict[str, Any]) -> tuple[ValidationResult, ...]:
     """What is worth knowing about a Twilio account before connecting it.
 
     Not a duplicate of ``TwilioGateway.health_check``, which answers "do these
@@ -477,7 +473,7 @@ class _Gateway:
 
     name: str
     label_key: str
-    fields: tuple[Field, ...]
+    fields: tuple[CredentialSpec, ...]
     #: The field holding the E.164 address the channel sends from — its
     #: identity to the outside world, and what a customer recognises it by.
     number_field: str
@@ -487,7 +483,7 @@ class _Gateway:
     #: What to tell the customer at VERIFY. ``None`` for a carrier we can
     #: collect credentials for but have nothing to say about — silence is
     #: better than a checklist that only ever reports success.
-    probe: Callable[[dict[str, Any]], Awaitable[tuple[CheckOutcome, ...]]] | None = None
+    probe: Callable[[dict[str, Any]], Awaitable[tuple[ValidationResult, ...]]] | None = None
     #: How to point this carrier at a callback URL, for a carrier that has an
     #: API for it. ``None`` is what a manual-paste warning on the checklist
     #: means, and what keeps ``AUTOMATIC_WEBHOOK_REGISTRATION`` honest on a
@@ -501,14 +497,14 @@ _TWILIO = _Gateway(
     number_field="from_number",
     account_field="account_sid",
     fields=(
-        Field(
+        CredentialSpec(
             name="account_sid",
             kind="text",
             label_key="connect.sms.twilio.accountSidLabel",
             help_key="connect.sms.twilio.accountSidHelp",
             placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         ),
-        Field(
+        CredentialSpec(
             name="auth_token",
             kind="secret",
             label_key="connect.sms.twilio.authTokenLabel",
@@ -518,7 +514,7 @@ _TWILIO = _Gateway(
             # directions at once.
             help_key="connect.sms.twilio.authTokenHelp",
         ),
-        Field(
+        CredentialSpec(
             name="from_number",
             kind="text",
             label_key="connect.sms.twilio.fromNumberLabel",
@@ -549,11 +545,50 @@ def _selectable_gateways() -> tuple[_Gateway, ...]:
     )
 
 
+
+def _finding(
+    check: str,
+    level: str,
+    *,
+    params: dict[str, str] | None = None,
+    fail_code: ValidationCode = ValidationCode.INVALID_TOKEN,
+    repair: str | None = None,
+    instructions: str | None = None,
+) -> ValidationResult:
+    """One finding, from this module's own check vocabulary.
+
+    SMS reports more distinct conditions than any other connector here —
+    account state, trial restrictions, a number's existence, its SMS
+    capability, whether the carrier can register a callback — and each was
+    written as a check key plus a severity. Mapping them here rather than at
+    twenty call sites keeps the severity-to-code translation in one readable
+    place, and keeps the specific check key, which is what the console's copy
+    is actually written against.
+
+    ``fail_code`` is explicit because "this failed" is not one thing: a
+    rejected credential and a number that cannot send SMS need different
+    words and different next actions.
+    """
+    code = (
+        ValidationCode.OK
+        if level == CHECK_OK
+        else ValidationCode.ADVISORY
+        if level == CHECK_WARN
+        else fail_code
+    )
+    return ValidationResult(
+        code,
+        channel_type="sms",
+        params={**(params or {}), "check": check},
+        repair_action=repair,
+        instructions_key=instructions,
+    )
+
 def _requires(gateway: _Gateway, name: str) -> bool:
     return any(field.name == name and field.required for field in gateway.fields)
 
 
-def _union_fields(gateways: tuple[_Gateway, ...]) -> tuple[Field, ...]:
+def _union_credential_specs(gateways: tuple[_Gateway, ...]) -> tuple[CredentialSpec, ...]:
     """Every carrier's fields, once each, required only where all agree.
 
     Field names are the carrier's own credential keys, so two carriers sharing
@@ -572,12 +607,12 @@ def _union_fields(gateways: tuple[_Gateway, ...]) -> tuple[Field, ...]:
     documentation. A field's description belongs to the carrier that wrote it;
     requiredness is the single thing the union is entitled to overrule.
     """
-    union: dict[str, Field] = {}
+    union: dict[str, CredentialSpec] = {}
     for gateway in gateways:
         for field in gateway.fields:
             union.setdefault(field.name, field)
     return tuple(
-        Field(
+        CredentialSpec(
             name=field.name,
             kind=field.kind,
             label_key=field.label_key,
@@ -605,7 +640,7 @@ def _chosen_gateway(values: Mapping[str, Any]) -> _Gateway | None:
     return _GATEWAYS.get(name)
 
 
-def _webhook_setup_outcome(gateway: _Gateway) -> CheckOutcome:
+def _webhook_setup_outcome(gateway: _Gateway) -> ValidationResult:
     """What is left for the customer to do about inbound, if anything.
 
     Per carrier now that one of them can be configured from here: a Twilio
@@ -614,14 +649,11 @@ def _webhook_setup_outcome(gateway: _Gateway) -> CheckOutcome:
     with no registration hook keeps the warning it always had.
     """
     if gateway.register is not None:
-        return CheckOutcome("connect.sms.check.webhookAutomatic", CHECK_OK)
-    return CheckOutcome(
+        return _finding("connect.sms.check.webhookAutomatic", CHECK_OK)
+    return _finding(
         "connect.sms.check.webhookManualSetup",
         CHECK_WARN,
-        fix=Fix(
-            kind=FIX_MANUAL,
-            instructions_key="connect.sms.fix.setInboundWebhook",
-        ),
+        instructions="connect.sms.fix.setInboundWebhook",
     )
 
 
@@ -631,14 +663,77 @@ class SmsConnector(Connector):
 
     channel_type = "sms"
     app_key = None
-    declares = frozenset(
-        {
-            Capability.MANUAL_CONFIGURATION,
-            Capability.WEBHOOKS,
-            Capability.AUTOMATIC_WEBHOOK_REGISTRATION,
-            Capability.HEALTH_CHECKS,
-        }
-    )
+    #: The only manifest here that is *computed*, and the reason is the
+    #: second plugin level: which fields to ask for depends on which carriers
+    #: this build shipped. It is still stable for the life of the process —
+    #: gateways register at import time — so the console can cache it as
+    #: safely as any other, but a connector whose form is a union of its
+    #: carriers' forms cannot state that union as a literal.
+    @property
+    def manifest(self) -> ConnectorManifest:
+        gateways = _selectable_gateways()
+        credentials: tuple[CredentialSpec, ...] = ()
+        if gateways:
+            credentials = (
+                CredentialSpec(
+                    name=_GATEWAY_FIELD,
+                    kind="select",
+                    label_key="connect.sms.gatewayLabel",
+                    help_key="connect.sms.gatewayHelp",
+                    options=tuple(
+                        (gateway.name, gateway.label_key) for gateway in gateways
+                    ),
+                ),
+                *_union_credential_specs(gateways),
+            )
+        return ConnectorManifest(
+            channel_type="sms",
+            name_key="connect.sms.name",
+            description_key="connect.sms.description",
+            category=ConnectorCategory.SMS,
+            icon="sms",
+            capabilities=frozenset(
+                {
+                    Capability.MANUAL_CONFIGURATION,
+                    Capability.WEBHOOKS,
+                    Capability.AUTOMATIC_WEBHOOK_REGISTRATION,
+                    Capability.HEALTH_CHECKS,
+                }
+            ),
+            auth_methods=(AuthMethod.CREDENTIALS,),
+            required_credentials=credentials,
+            verification_steps=(
+                VerificationSpec(
+                    key="connect.sms.check.account",
+                    title_key="connect.sms.check.account.title",
+                    codes=(
+                        ValidationCode.OK,
+                        ValidationCode.MISSING_CREDENTIAL,
+                        ValidationCode.INVALID_TOKEN,
+                        ValidationCode.PROVIDER_UNREACHABLE,
+                    ),
+                ),
+                VerificationSpec(
+                    key="connect.sms.check.number",
+                    title_key="connect.sms.check.number.title",
+                    codes=(
+                        ValidationCode.OK,
+                        ValidationCode.RESOURCE_NOT_ELIGIBLE,
+                        ValidationCode.ADVISORY,
+                    ),
+                ),
+            ),
+            repair_actions=(
+                RepairAction(
+                    id=_REREGISTER_WEBHOOK,
+                    title_key="connect.sms.repair.reregisterWebhook.title",
+                    description_key="connect.sms.repair.reregisterWebhook.description",
+                ),
+            ),
+            # No images: SmsProvider refuses outbound attachments, and a
+            # customer should learn that here rather than from a failed send.
+            supported_features=("text",),
+        )
 
     def resolve(self, context: DeploymentContext) -> ConnectorProfile:
         """The default answer, adjusted for what this build actually ships.
@@ -687,21 +782,7 @@ class SmsConnector(Connector):
             ),
         )
 
-    def credential_fields(self) -> tuple[Field, ...]:
-        """The carrier first, then everything any carrier could ask for."""
-        gateways = _selectable_gateways()
-        if not gateways:
-            return ()
-        choice = Field(
-            name=_GATEWAY_FIELD,
-            kind="select",
-            label_key="connect.sms.gatewayLabel",
-            help_key="connect.sms.gatewayHelp",
-            options=tuple((gateway.name, gateway.label_key) for gateway in gateways),
-        )
-        return (choice, *_union_fields(gateways))
-
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
         """Everything worth saying before an SMS channel is written down.
 
         ``attempt.credentials`` is the submitted form. This connector has no
@@ -718,11 +799,12 @@ class SmsConnector(Connector):
         gateway = _chosen_gateway(credentials)
         if gateway is None:
             return (
-                CheckOutcome(
+                _finding(
                     "connect.sms.check.gatewayUnknown",
                     CHECK_FAIL,
+                    fail_code=ValidationCode.MISSING_CREDENTIAL,
                     params={"gateway": _text(credentials, _GATEWAY_FIELD)},
-                    fix=Fix(kind=FIX_REENTER),
+                    instructions=None,
                 ),
             )
 
@@ -736,16 +818,17 @@ class SmsConnector(Connector):
         )
         if missing:
             return tuple(
-                CheckOutcome(
+                _finding(
                     "connect.sms.check.credentialMissing",
                     CHECK_FAIL,
+                    fail_code=ValidationCode.MISSING_CREDENTIAL,
                     params={"field": name},
-                    fix=Fix(kind=FIX_REENTER),
+                    instructions=None,
                 )
                 for name in missing
             )
 
-        outcomes: list[CheckOutcome] = []
+        outcomes: list[ValidationResult] = []
         if gateway.probe is not None:
             try:
                 outcomes.extend(await gateway.probe(credentials))

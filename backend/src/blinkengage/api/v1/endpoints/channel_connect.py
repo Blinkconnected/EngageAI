@@ -13,8 +13,9 @@ connect them for every customer is the opposite of a two-minute setup.
 """
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from blinkengage.api.deps import (
     get_channel_config_service,
@@ -30,12 +31,17 @@ from blinkengage.api.schemas.channel_connect import (
     ConnectionTemplateResponse,
     ConnectorProfileResponse,
     ConnectResultResponse,
+    DocumentationLinkResponse,
     FieldResponse,
-    FixResponse,
+    ManifestResponse,
+    RepairActionResponse,
+    RepairResultResponse,
     ResourceResponse,
+    ResourceSpecResponse,
     SessionResponse,
     StartSessionRequest,
     StepResponse,
+    VerificationSpecResponse,
 )
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.channel_connect_service import (
@@ -44,10 +50,79 @@ from blinkengage.application.services.channel_connect_service import (
 )
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.connection_templates import TEMPLATES
+from blinkengage.domain.connector_manifest import ConnectorManifest
 from blinkengage.domain.connectors import StepKind
 from blinkengage.infrastructure.connectors.registry import ConnectorRegistry
 
 router = APIRouter(prefix="/channel-connect", tags=["channels"])
+
+
+
+def _manifest_response(manifest: ConnectorManifest) -> ManifestResponse:
+    """A connector's own description, on the wire.
+
+    A straight projection with no interpretation: anything this function
+    decided rather than copied would be a decision the console could not see
+    and a connector author could not change.
+    """
+    return ManifestResponse(
+        channel_type=manifest.channel_type,
+        name_key=manifest.name_key,
+        description_key=manifest.description_key,
+        category=manifest.category.value,
+        icon=manifest.icon,
+        capabilities=sorted(c.value for c in manifest.capabilities),
+        auth_methods=[method.value for method in manifest.auth_methods],
+        required_permissions=list(manifest.required_permissions),
+        required_credentials=[
+            FieldResponse(
+                name=spec.name,
+                kind=spec.kind,
+                label_key=spec.label_key,
+                required=spec.required,
+                help_key=spec.help_key,
+                placeholder=spec.placeholder,
+                options=[list(option) for option in spec.options],
+                copyable=spec.copyable,
+            )
+            for spec in manifest.required_credentials
+        ],
+        required_resources=[
+            ResourceSpecResponse(
+                key=spec.key,
+                title_key=spec.title_key,
+                empty_key=spec.empty_key,
+                multiple=spec.multiple,
+            )
+            for spec in manifest.required_resources
+        ],
+        verification_steps=[
+            VerificationSpecResponse(
+                key=spec.key,
+                title_key=spec.title_key,
+                codes=[code.value for code in spec.codes],
+            )
+            for spec in manifest.verification_steps
+        ],
+        repair_actions=[
+            RepairActionResponse(
+                id=action.id,
+                title_key=action.title_key,
+                description_key=action.description_key,
+                confirm=action.confirm,
+                confirm_key=action.confirm_key,
+                permission=action.permission,
+                available_during_setup=action.available_during_setup,
+            )
+            for action in manifest.repair_actions
+        ],
+        supported_features=list(manifest.supported_features),
+        documentation=[
+            DocumentationLinkResponse(key=link.key, url=link.url)
+            for link in manifest.documentation
+        ],
+        minimum_platform_version=manifest.minimum_platform_version,
+    )
 
 
 @router.get("/catalog", response_model=CatalogResponse)
@@ -96,6 +171,10 @@ async def catalog(
                 for p in service.catalog()
                 if p.channel_type in template.channel_types
             )
+        ],
+        manifests=[
+            _manifest_response(connector.manifest)
+            for connector in ConnectorRegistry.all()
         ],
     )
 
@@ -186,10 +265,11 @@ async def _render(
         checks=[
             CheckResponse(
                 code=check["code"],
-                level=check["level"],
+                blocks=bool(check.get("blocks")),
                 channel_type=check["channel_type"],
                 params=check.get("params") or {},
-                fix=FixResponse(**check["fix"]) if check.get("fix") else None,
+                repair_action=check.get("repair_action"),
+                instructions_key=check.get("instructions_key"),
             )
             for check in session.checks
         ],
@@ -298,6 +378,80 @@ async def finish_session(
         )
 
     return ConnectResultResponse(channels=created)
+
+
+@router.post(
+    "/channels/{channel_config_id}/repair/{action_id}",
+    response_model=RepairResultResponse,
+)
+async def repair_channel(
+    channel_config_id: UUID,
+    action_id: str,
+    auth: Annotated[AuthContext, Depends(require_permission("channels.manage"))],
+    service: Annotated[ChannelConnectService, Depends(get_channel_connect_service)],
+    channels: Annotated[ChannelConfigService, Depends(get_channel_config_service)],
+) -> RepairResultResponse:
+    """Run a repair the connector declared.
+
+    One endpoint for every repair on every channel, because the action is
+    named by the manifest rather than by the route. A connector adding
+    "refresh token" adds a ``RepairAction`` and a branch in its own
+    ``repair``; the console grows a button and this file does not change —
+    which is the difference between a repair framework and a list of repair
+    endpoints.
+
+    The action is checked against the manifest before anything runs. An
+    undeclared action is refused rather than passed to the connector, so the
+    set of things that can be invoked is exactly the set the manifest
+    advertises.
+    """
+    config = await channels.get(company_id=auth.company_id, channel_config_id=channel_config_id)
+    connector = ConnectorRegistry.get(config.channel_type)
+    if connector is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{config.channel_type}' has no connector.",
+        )
+    declared = connector.manifest.repair(action_id)
+    if declared is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{config.channel_type}' does not offer '{action_id}'.",
+        )
+
+    result = await connector.repair(
+        action=action_id,
+        credentials=dict(config.credentials),
+        webhook_secret=config.webhook_secret,
+        callback_url=channels.webhook_url_for(config.id),
+        context=service.context,
+    )
+    if result.repaired:
+        # Persisted before anything verifies against it. A secret the
+        # provider has and the column does not means every inbound message
+        # fails a signature check nobody can see failing.
+        if result.webhook_secret:
+            await channels.set_webhook_secret(
+                company_id=auth.company_id,
+                channel_config_id=config.id,
+                webhook_secret=result.webhook_secret,
+            )
+        if result.credentials is not None:
+            await channels.update(
+                company_id=auth.company_id,
+                channel_config_id=config.id,
+                display_name=None,
+                credentials=result.credentials,
+                webhook_secret=None,
+                is_active=None,
+                actor_user_id=auth.user_id,
+            )
+
+    return RepairResultResponse(
+        action_id=action_id,
+        repaired=result.repaired,
+        reason=result.reason,
+    )
 
 
 __all__ = ["router"]

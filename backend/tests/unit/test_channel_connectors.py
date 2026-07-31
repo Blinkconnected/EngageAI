@@ -47,16 +47,13 @@ from blinkengage.domain.connector import (
     DeploymentContext,
     Resource,
 )
+from blinkengage.domain.connector_manifest import (
+    AuthMethod,
+    ValidationCode,
+    ValidationResult,
+)
 from blinkengage.domain.connectors import (
-    CHECK_FAIL,
-    CHECK_OK,
-    CHECK_WARN,
-    FIX_ACTION,
-    FIX_MANUAL,
-    FIX_REAUTHORIZE,
-    FIX_REENTER,
     Capability,
-    CheckOutcome,
     StepId,
     StepKind,
     steps_for,
@@ -73,6 +70,23 @@ from blinkengage.infrastructure.connectors.meta import META_APP
 # connector half of each channel is worthless if the transport half is missing,
 # and one of the tests below checks that the two registries agree.
 import blinkengage.infrastructure.channels.providers  # noqa: E402, F401  isort:skip
+
+
+def check_key(result) -> str:
+    """The specific check a finding came from.
+
+    ``ValidationCode`` is a closed set — ``invalid_token``, ``advisory`` — and
+    that is what the console translates and what blocking is decided from.
+    But a connector often reports several distinct conditions under one code,
+    and passes the specific one as ``params["check"]``. These tests assert on
+    the specific condition, so they read it back the same way.
+    """
+    return str(result.params.get("check") or result.code.value)
+
+
+def by_key(results) -> dict:
+    return {check_key(result): result for result in results}
+
 
 HOSTED = DeploymentContext(
     public_base_url="https://engage.example.com", configured_apps=frozenset({META_APP})
@@ -653,7 +667,7 @@ class TestDeclaredCapabilitiesAreTrue:
         them to click past the one that matters."""
         if {Capability.HEALTH_CHECKS, Capability.WEBHOOKS} & connector.declares:
             assert StepId.VERIFY in [step.id for step in steps_for(connector.resolve(HOSTED))]
-            assert overrides(connector, "check")
+            assert overrides(connector, "validate")
 
     @pytest.mark.parametrize(
         "connector", ConnectorRegistry.all(), ids=lambda c: str(c.channel_type)
@@ -813,7 +827,7 @@ class TestMetaTurnsOnWhetherTheInstallationHasAnApp:
         connector = ConnectorRegistry.get("whatsapp")
         assert connector is not None
 
-        outcomes = await connector.check(
+        outcomes = await connector.validate(
             Attempt(
                 context=BARE,
                 inputs={"access_token": "TYPED-TOKEN", "phone_number_id": "PN1"},
@@ -821,7 +835,7 @@ class TestMetaTurnsOnWhetherTheInstallationHasAnApp:
         )
 
         codes = {outcome.code: outcome for outcome in outcomes}
-        assert codes["meta.check.scopesGranted"].level == CHECK_OK
+        assert by_key(outcomes)["ok"].code is ValidationCode.OK
         # And nothing blocks: naming the resource on the form is a selection,
         # even though no picker ran.
         assert "meta.check.nothingSelected" not in codes
@@ -836,11 +850,19 @@ class TestMetaTurnsOnWhetherTheInstallationHasAnApp:
         connector = ConnectorRegistry.get("whatsapp")
         assert connector is not None
 
-        typed = await connector.check(Attempt(context=BARE, inputs={"access_token": "T"}))
-        consented = await connector.check(Attempt(context=HOSTED, grant={"access_token": "T"}))
+        typed = await connector.validate(Attempt(context=BARE, inputs={"access_token": "T"}))
+        consented = await connector.validate(Attempt(context=HOSTED, grant={"access_token": "T"}))
 
-        assert [o.fix.kind for o in typed if o.fix] == [FIX_REENTER, FIX_REENTER]
-        assert {o.fix.kind for o in consented if o.fix} == {FIX_REAUTHORIZE}
+        # Both paths report the same *code* — the customer has no working
+        # credential either way — and the console decides what to offer from
+        # whether the session had a grant. The connector no longer guesses at
+        # a fix kind it cannot know the rendering of.
+        # Both paths report a *blocking* finding — the customer has no
+        # working credential either way — and the console decides what to
+        # offer from whether the session carried a grant. The connector no
+        # longer guesses at a rendering it cannot know.
+        assert any(o.blocks for o in typed)
+        assert any(o.blocks for o in consented)
 
 
 class TestEveryCustomerFacingStringIsATranslationKey:
@@ -866,23 +888,32 @@ class TestEveryCustomerFacingStringIsATranslationKey:
             )
         return found
 
-    def strings_of_outcomes(self, outcomes: list[CheckOutcome]) -> list[str]:
+    def strings_of_outcomes(self, outcomes: list[ValidationResult]) -> list[str]:
+        """Every string a finding puts in front of a customer.
+
+        ``code`` is now a closed enum and cannot be prose by construction, so
+        what is left to check is the specific check key a connector passes in
+        ``params``, its instructions key, and the repair it names — the last
+        of which is not customer-facing copy but is matched against a literal
+        in ``repair``, so it must be a code too.
+        """
         found: list[str] = []
         for outcome in outcomes:
-            found.append(outcome.code)
-            if outcome.fix:
-                # ``action_id`` is not customer-facing copy, but it is matched
-                # against a literal in ``repair`` and so must be a code too.
-                found.extend(
-                    value
-                    for value in (outcome.fix.instructions_key, outcome.fix.action_id)
-                    if value
+            found.append(outcome.code.value)
+            found.extend(
+                value
+                for value in (
+                    outcome.params.get("check"),
+                    outcome.instructions_key,
+                    outcome.repair_action,
                 )
+                if value
+            )
         return found
 
     async def every_outcome(
         self, connector: Connector, monkeypatch: pytest.MonkeyPatch
-    ) -> list[CheckOutcome]:
+    ) -> list[ValidationResult]:
         """Run this connector's checklist through every shape it can take.
 
         Five submissions — nothing typed, a half-filled form either way round,
@@ -895,7 +926,7 @@ class TestEveryCustomerFacingStringIsATranslationKey:
         makes this a test of the connectors rather than of one path through
         them.
         """
-        collected: list[CheckOutcome] = []
+        collected: list[ValidationResult] = []
         scopes: tuple[str, ...] = getattr(connector, "scopes", ())
 
         def plausible(request: httpx.Request) -> httpx.Response:
@@ -959,7 +990,7 @@ class TestEveryCustomerFacingStringIsATranslationKey:
                 # The contract's other promise about ``check``: outcomes, never
                 # an exception. A raise would collapse five findings into
                 # whichever happened to be evaluated first.
-                collected.extend(await connector.check(attempt))
+                collected.extend(await connector.validate(attempt))
         return collected
 
     @pytest.mark.parametrize(
@@ -983,24 +1014,21 @@ class TestEveryCustomerFacingStringIsATranslationKey:
     async def test_every_level_and_fix_kind_is_one_of_the_named_ones(
         self, connector: Connector, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The three levels and four fix kinds are named constants so a
-        connector cannot invent a fifth by typo — a level the console does not
-        recognise is a checklist line rendered as nothing at all."""
+        """Every code comes from the closed set, and every repair a finding
+        points at is one the manifest declared.
+
+        The closed set is what lets the console translate exhaustively; the
+        declaration is what lets it render a button at all. A code outside the
+        set is a checklist line rendered as nothing, and an undeclared repair
+        is a button that cannot be drawn."""
         outcomes = await self.every_outcome(connector, monkeypatch)
+        declared = {action.id for action in connector.manifest.repair_actions}
 
         assert outcomes, connector.channel_type
         for outcome in outcomes:
-            assert outcome.level in {CHECK_OK, CHECK_WARN, CHECK_FAIL}
-            if outcome.fix:
-                assert outcome.fix.kind in {
-                    FIX_ACTION,
-                    FIX_REAUTHORIZE,
-                    FIX_REENTER,
-                    FIX_MANUAL,
-                }
-                # A button with nothing to invoke, and a connector-handled
-                # action nobody named, are the same bug from two sides.
-                assert (outcome.fix.kind == FIX_ACTION) is (outcome.fix.action_id is not None)
+            assert isinstance(outcome.code, ValidationCode)
+            if outcome.repair_action:
+                assert outcome.repair_action in declared, connector.channel_type
 
     @pytest.mark.parametrize(
         "connector", ConnectorRegistry.all(), ids=lambda c: str(c.channel_type)
@@ -1011,10 +1039,13 @@ class TestEveryCustomerFacingStringIsATranslationKey:
         """The mistake ``FIX_REENTER`` was added to stop, and three connectors
         made independently: a consent button on a channel that has no consent
         screen, which the console cannot send anybody to."""
-        outcomes = await self.every_outcome(connector, monkeypatch)
-
         if Capability.OAUTH not in connector.declares:
-            assert not [o for o in outcomes if o.fix and o.fix.kind == FIX_REAUTHORIZE]
+            # Reauthorize is meaningless without consent, and the manifest
+            # is what says whether consent exists. Nothing a connector emits
+            # can name a repair it did not declare, which is checked above —
+            # so what is left is that a non-OAuth connector declares no
+            # OAuth-shaped repair.
+            assert AuthMethod.OAUTH not in connector.manifest.auth_methods
 
     @pytest.mark.parametrize(
         "connector", ConnectorRegistry.all(), ids=lambda c: str(c.channel_type)
@@ -1022,11 +1053,12 @@ class TestEveryCustomerFacingStringIsATranslationKey:
     async def test_an_action_fix_names_a_repair_the_connector_answers(
         self, connector: Connector, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``FIX_ACTION`` is a button the connector handles itself. If
-        ``repair`` answers ``not_supported`` for the action the ``Fix`` names,
-        the button is a no-op that reports failure — worse than no button."""
+        """A finding naming a repair must name one the connector answers.
+        If ``repair`` says ``not_supported`` for the action a result points
+        at, the console renders a button that reports failure — worse than no
+        button, because the customer believes they have tried."""
         outcomes = await self.every_outcome(connector, monkeypatch)
-        actions = {o.fix.action_id for o in outcomes if o.fix and o.fix.action_id}
+        actions = {o.repair_action for o in outcomes if o.repair_action}
 
         for action in actions:
             route(monkeypatch, lambda request: json_response(request, {"ok": True}))
@@ -1180,15 +1212,20 @@ class TestMetaDiscovery:
             id="PAGE2", label="Acme Careers", unavailable_reason="noMessagingRights"
         )
 
-        outcomes = await connector.check(
+        outcomes = await connector.validate(
             Attempt(context=HOSTED, grant={"access_token": "T"}, selection=(unpickable,))
         )
 
-        blocked = [o for o in outcomes if o.code == "meta.check.noMessagingRights"]
-        assert blocked and blocked[0].level == CHECK_FAIL
-        assert blocked[0].params == {"resource": "Acme Careers"}
-        assert blocked[0].fix is not None
-        assert blocked[0].fix.instructions_key == "connect.meta.fix.noMessagingRights"
+        blocked = [o for o in outcomes if o.params.get("reason") == "noMessagingRights"]
+        assert blocked and blocked[0].blocks
+        # The label so the customer knows *which* Page, and the reason so the
+        # console can render the right instructions for why it cannot be used.
+        assert blocked[0].params == {
+            "resource": "Acme Careers",
+            "reason": "noMessagingRights",
+        }
+        assert blocked[0].instructions_key is not None
+        assert blocked[0].instructions_key == "connect.meta.fix.noMessagingRights"
 
     async def test_instagram_drops_pages_with_no_linked_account(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1462,15 +1499,15 @@ class TestTelegramRegistersItsWebhookAfterTheRowExists:
         connector = ConnectorRegistry.get("telegram")
         assert connector is not None
 
-        outcomes = await connector.check(Attempt(context=BARE, inputs={"bot_token": "123:AA"}))
+        outcomes = await connector.validate(Attempt(context=BARE, inputs={"bot_token": "123:AA"}))
 
-        identity = [o for o in outcomes if o.code == "connect.telegram.check.identity"]
+        identity = [o for o in outcomes if "username" in o.params]
         assert identity and identity[0].params["username"] == "acme_bot"
         assert identity[0].params["botName"] == "@acme_bot"
         # A first-time connect has no webhook yet, and warning that the thing
         # the next step creates does not exist is how a checklist teaches
         # people to click past it.
-        assert "connect.telegram.check.delivery" not in {o.code for o in outcomes}
+        assert "connect.telegram.check.delivery" not in {check_key(o) for o in outcomes}
 
 
 class TestSmsRegistersTheCallbackVerbatim:
@@ -1563,7 +1600,7 @@ class TestSmsRegistersTheCallbackVerbatim:
         connector = ConnectorRegistry.get("sms")
         assert connector is not None
 
-        outcomes = await connector.check(
+        outcomes = await connector.validate(
             Attempt(
                 context=BARE,
                 inputs={
@@ -1575,11 +1612,15 @@ class TestSmsRegistersTheCallbackVerbatim:
             )
         )
 
-        codes = {outcome.code: outcome for outcome in outcomes}
-        assert codes["connect.sms.check.credentialsVerified"].level == CHECK_OK
-        assert codes["connect.sms.check.numberUnverified"].level == CHECK_WARN
-        assert "connect.sms.check.credentialsRejected" not in codes
-        assert codes["connect.sms.check.numberUnverified"].params["status"] == "404"
+        found = by_key(outcomes)
+        assert found["connect.sms.check.credentialsVerified"].code is ValidationCode.OK
+        number = found["connect.sms.check.numberUnverified"]
+        assert number.code is ValidationCode.ADVISORY
+        # The account call succeeded, so a 404 on the *number* lookup must not
+        # be reported as a rejected credential — the customer would be sent
+        # back to retype a SID and token that demonstrably work.
+        assert "connect.sms.check.credentialsRejected" not in found
+        assert number.params["status"] == "404"
 
     async def test_a_carrier_that_registers_promises_nothing_is_left_to_do(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1608,7 +1649,7 @@ class TestSmsRegistersTheCallbackVerbatim:
         connector = ConnectorRegistry.get("sms")
         assert connector is not None
 
-        outcomes = await connector.check(
+        outcomes = await connector.validate(
             Attempt(
                 context=BARE,
                 inputs={
@@ -1620,7 +1661,7 @@ class TestSmsRegistersTheCallbackVerbatim:
             )
         )
 
-        codes = {outcome.code for outcome in outcomes}
+        codes = {check_key(outcome) for outcome in outcomes}
         assert "connect.sms.check.webhookAutomatic" in codes
         assert "connect.sms.check.webhookManualSetup" not in codes
         assert "connect.sms.check.numberVerified" in codes
@@ -1814,7 +1855,7 @@ class TestNoNetworkCallLacksATimeout:
         ):
             connector = ConnectorRegistry.get(channel_type)
             assert connector is not None
-            await connector.check(attempt)
+            await connector.validate(attempt)
 
         assert recorder.client_kwargs
         for kwargs in recorder.client_kwargs:
@@ -1829,7 +1870,7 @@ class TestNoNetworkCallLacksATimeout:
         connector = ConnectorRegistry.get("email")
         assert connector is not None
 
-        await connector.check(
+        await connector.validate(
             Attempt(context=BARE, inputs={"smtp_host": "smtp.example.com", "smtp_port": "587"})
         )
 

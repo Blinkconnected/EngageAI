@@ -25,10 +25,13 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from blinkengage.domain.connector_manifest import (
+    ConnectorManifest,
+    ValidationResult,
+)
 from blinkengage.domain.connectors import (
     Capability,
     CapabilityState,
-    CheckOutcome,
     ConnectorProfile,
 )
 
@@ -189,10 +192,16 @@ class Connection:
 class Connector(ABC):
     """A channel's connection lifecycle.
 
-    Only ``channel_type``, ``declares`` and ``resolve`` are required. A
-    connector that authenticates by form, discovers nothing and checks
-    nothing implements three members and gets a working guided flow — which
-    is the bar a new channel should have to clear.
+    Two required members: a ``manifest`` describing the connector, and
+    ``connect`` doing the work. Everything else has an honest default, so a
+    connector that authenticates by form, discovers nothing and validates
+    nothing is a manifest plus one method — which is the bar a new channel
+    should have to clear.
+
+    The manifest is the contract with the console. A connector *describes*
+    itself and the wizard renders the description; nothing in the console is
+    written per channel, which is what makes adding LINE or RCS a backend
+    change and nothing else.
     """
 
     #: Registry key, and the ``ChannelConfig.channel_type`` written on
@@ -204,8 +213,27 @@ class Connector(ABC):
     #: ``"meta"``, which is precisely why one consent can connect all three.
     app_key: str | None = None
 
-    #: Everything this connector could ever do. Deployment-independent.
-    declares: frozenset[Capability] = frozenset()
+    @property
+    @abstractmethod
+    def manifest(self) -> ConnectorManifest:
+        """Everything the console needs to render this connector.
+
+        Required, and required to be *static*: built at import time, holding
+        no credentials, serialisable whole. A manifest that had to be
+        computed per request would be one the console could not cache and one
+        a test could not read without a running system.
+        """
+
+    @property
+    def declares(self) -> frozenset[Capability]:
+        """What this connector can do, from its manifest.
+
+        Kept as a property rather than duplicated on the class: two places to
+        state a capability is one place for them to disagree, and the
+        disagreement would be invisible until a flow came out the wrong
+        shape.
+        """
+        return self.manifest.capabilities
 
     def resolve(self, context: DeploymentContext) -> ConnectorProfile:
         """What this connector can do on this installation.
@@ -246,8 +274,25 @@ class Connector(ABC):
     # --- Authenticate -------------------------------------------------
 
     def credential_fields(self) -> tuple[Field, ...]:
-        """The manual form, when this connector offers one."""
-        return ()
+        """The manual form, from the manifest.
+
+        Derived rather than declared twice. The manifest is what the console
+        renders, so a connector whose form disagreed with its manifest would
+        validate values the customer was never asked for.
+        """
+        return tuple(
+            Field(
+                name=spec.name,
+                kind=spec.kind,
+                label_key=spec.label_key,
+                required=spec.required,
+                help_key=spec.help_key,
+                placeholder=spec.placeholder,
+                options=spec.options,
+                copyable=spec.copyable,
+            )
+            for spec in self.manifest.required_credentials
+        )
 
     async def authorize_url(self, *, state: str, context: DeploymentContext) -> str:
         """Where to send the customer to consent."""
@@ -267,20 +312,29 @@ class Connector(ABC):
 
     # --- Verify -------------------------------------------------------
 
-    async def check(self, attempt: Attempt) -> tuple[CheckOutcome, ...]:
+    async def validate(self, attempt: Attempt) -> tuple[ValidationResult, ...]:
         """Everything worth telling the customer before connecting.
 
-        Takes the whole attempt rather than a selection of its parts. The
-        first version of this method took ``grant`` and ``selection``, which
-        read naturally for an OAuth connector and made no sense for one
-        authenticated by form — where the "grant" is just the values the
-        customer typed. Four connectors were written against it and guessed
-        four different ways; whichever guess the wizard had matched, three
-        would have silently probed an empty dict.
+        Structured results, never strings. A ``ValidationCode`` is drawn from
+        a closed set the console has copy for, so a finding renders in
+        English, in Arabic, and in any tool that has never heard of this
+        connector — where a sentence from the server could only ever be
+        English.
 
-        Returns outcomes, never raises for a failed check: a check that
-        raised would collapse a list of five findings into whichever one
-        happened to be evaluated first.
+        Takes the whole ``Attempt`` rather than a selection of its parts. An
+        earlier version took ``grant`` and ``selection``, which read
+        naturally for an OAuth connector and made no sense for one
+        authenticated by form, where the "grant" is just what was typed. Four
+        connectors were written against it and guessed four different ways.
+
+        Returns findings and never raises — transport failures included. A
+        validator that raised would collapse a list of five findings into
+        whichever was evaluated first, in the one step whose entire job is
+        explaining what is wrong.
+
+        A connector must only return codes its manifest declared. The console
+        pre-resolves copy from ``verification_steps``, so an undeclared code
+        is a raw slug in front of a customer at the worst possible moment.
         """
         return ()
 

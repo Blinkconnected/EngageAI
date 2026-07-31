@@ -33,10 +33,8 @@ from blinkengage.domain.connection_templates import ConnectionTemplate, template
 from blinkengage.domain.connector import Attempt, Connection, DeploymentContext, Resource
 from blinkengage.domain.connectors import (
     Capability,
-    CheckOutcome,
     Step,
     StepId,
-    blocks_connection,
     steps_for,
 )
 from blinkengage.domain.exceptions import DomainError
@@ -180,7 +178,19 @@ class ChannelConnectService:
     # --- The flow -----------------------------------------------------
 
     def steps(self, session: ConnectSession) -> tuple[Step, ...]:
-        return steps_for(self._profile(session.primary), using_oauth=session.using_oauth)
+        """The flow, from the connector's manifest.
+
+        Derived from capabilities unless the manifest states a flow of its
+        own — the connector decides which steps exist and the wizard only
+        renders them, which is the whole inversion.
+        """
+        connector = ConnectorRegistry.get(session.primary)
+        declared = connector.manifest.steps if connector else ()
+        return steps_for(
+            self._profile(session.primary),
+            using_oauth=session.using_oauth,
+            declared=declared,
+        )
 
     def current(self, session: ConnectSession) -> Step:
         flow = self.steps(session)
@@ -253,22 +263,15 @@ class ChannelConnectService:
             connector = ConnectorRegistry.get(name)
             if connector is None:  # pragma: no cover - start() already checked
                 continue
-            for outcome in await connector.check(self._attempt(session, name)):
+            for outcome in await connector.validate(self._attempt(session, name)):
                 checks.append(
                     {
-                        "code": outcome.code,
-                        "level": outcome.level,
+                        "code": outcome.code.value,
+                        "blocks": outcome.blocks,
                         "params": outcome.params,
-                        "channel_type": name,
-                        "fix": (
-                            {
-                                "kind": outcome.fix.kind,
-                                "action_id": outcome.fix.action_id,
-                                "instructions_key": outcome.fix.instructions_key,
-                            }
-                            if outcome.fix
-                            else None
-                        ),
+                        "channel_type": outcome.channel_type or name,
+                        "repair_action": outcome.repair_action,
+                        "instructions_key": outcome.instructions_key,
                     }
                 )
         session.checks = checks
@@ -310,11 +313,7 @@ class ChannelConnectService:
         """
         if session.completed:
             raise ConnectSessionError("That connection is already finished.")
-        if blocks_connection(
-            tuple(
-                CheckOutcome(code=c["code"], level=c["level"]) for c in session.checks
-            )
-        ):
+        if any(check.get("blocks") for check in session.checks):
             raise ConnectSessionError("Fix the problems listed before connecting.")
 
         made: list[Connection] = []
