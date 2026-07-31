@@ -1,0 +1,673 @@
+"""Why a conversation is where it is, and with whom.
+
+The product requirement this exists for: *every routing decision should be
+explainable; the platform should never behave like a black box*. For any
+conversation, somebody must be able to ask why it is in this queue, why it
+is with this agent, why AI answered it, and why it is still waiting — and
+get an answer that is a *record*, not a reconstruction.
+
+**You cannot explain a decision you did not record.** Before this module,
+``RoutingEngine.select_queue`` held the matching rule at the exact instant
+it decided and then returned a bare queue id; ``AssignmentEngine
+.select_agent`` returned a bare agent id, discarding which strategy ran,
+who else was eligible, and why each of them was passed over. The answer
+existed for one stack frame and was thrown away. This module is the
+vocabulary for keeping it.
+
+Framework-free — no SQLAlchemy, no FastAPI, no I/O — like the rest of
+``domain/``. The two engines build these shapes and the *caller* persists
+them, which is what keeps the engines unit-testable without a database.
+
+Three properties the design turns on:
+
+**Reasons are codes, not prose.** A console has to *act* on the answer —
+filter by it, colour it, group by it, count it — and it cannot act on a
+sentence. Same reasoning as ``CreditRefusal`` and ``DiagnosticKey``: the
+sentence is still rendered here, so a caller that only shows text loses
+nothing by it.
+
+**Evidence is copied as values, never referenced.** A routing rule can be
+edited or deleted, a queue renamed, an agent offboarded. A decision that
+says "rule 8f3c… matched" and needs that row to still exist is not an
+explanation, it is a query that happens to work today — the same lesson
+``ledger_entries`` and ``financial_audit_events`` already record in their
+own docstrings. Everything needed to read a decision correctly in a year
+is on the decision.
+
+**A decision with no outcome is still a decision.** "Nothing routed this"
+is the single most-asked-about case — a conversation nobody queued and
+nobody assigned is exactly the one somebody escalates about — so it is
+recorded as an explicit ``LEFT_UNROUTED``/``LEFT_UNASSIGNED`` fact with a
+reason, never as the absence of a row. Silence is indistinguishable from
+"the recorder was broken", and that is the ambiguity this whole milestone
+exists to remove.
+"""
+
+import uuid
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+#: How many rejected candidates a single decision may carry.
+#:
+#: A decision must stay a *row*, not a document. A company with several
+#: hundred agents would otherwise attach several hundred rejection entries
+#: to every conversation it ever routes, and the hundredth "offline" is
+#: worth nothing that ``candidates_considered`` does not already say. The
+#: cap keeps the most informative rejections (see ``most_informative``) and
+#: records the overflow as a count, so nothing is silently lost — the
+#: reader is told how many more there were.
+MAX_RECORDED_REJECTIONS = 25
+
+#: The longest a rendered rule name may be. Matches
+#: ``routing_decisions.matched_rule_name``'s column width — the two are
+#: the same number for a reason, and the clip happens here so a rule
+#: nobody thought to length-limit cannot cost a decision its row.
+MAX_RULE_NAME = 500
+
+
+class RoutingDecisionKind(StrEnum):
+    """What sort of decision was made.
+
+    The coarse facet: a console builds tabs and filters from this, so the
+    set is deliberately stocked ahead of the milestones that will write to
+    it. Adding a member later is additive, but a *console* built against
+    three kinds and then handed eight has to be rebuilt — and the queue
+    lifecycle, 24h-ownership and AI-as-queue-worker milestones are already
+    known to be coming.
+
+    Named as past-tense facts, like ``FinancialEventType``: a decision row
+    records something that *happened*, and a name like ``assign_agent``
+    invites the reading that it is an instruction still to be carried out.
+    """
+
+    #: A routing rule put the conversation into a queue.
+    QUEUE_SELECTED = "queue_selected"
+    #: An agent was given the conversation.
+    AGENT_ASSIGNED = "agent_assigned"
+    #: Routing ran and chose no queue at all. Distinct from
+    #: ``LEFT_UNASSIGNED``: the conversation is not merely unattended, it
+    #: is not even *anywhere*, and the fix is a routing rule rather than
+    #: an available agent.
+    LEFT_UNROUTED = "left_unrouted"
+    #: The conversation reached a queue and stayed there, unassigned. The
+    #: answer to "why is it waiting" — which is a different question, with
+    #: a different fix, from "why is it nowhere".
+    LEFT_UNASSIGNED = "left_unassigned"
+    #: AI took the conversation instead of a human. The answer to "why did
+    #: AI respond".
+    AI_ENGAGED = "ai_engaged"
+
+    # --- Reserved for later milestones -------------------------------
+    # Written by nothing today. Present so the milestones below do not
+    # have to widen this enum (and every console switch over it) under
+    # themselves.
+
+    #: AI handed the conversation back to humans. "Why did AI stop".
+    AI_RELEASED = "ai_released"
+    #: A conversation was kept with an agent by the 24h ownership window
+    #: rather than re-routed. "Why is this still with them".
+    OWNERSHIP_APPLIED = "ownership_applied"
+    #: The SLA clock stopped. "Why is the timer not running".
+    SLA_PAUSED = "sla_paused"
+    #: The SLA clock started again.
+    SLA_RESUMED = "sla_resumed"
+
+
+class RoutingDecisionOutcome(StrEnum):
+    """What the decision actually produced.
+
+    Stated rather than inferred from which id happens to be null. Two
+    nulls can mean "nothing was chosen" or "nobody filled this in", and a
+    console cannot tell them apart — so ``NOTHING`` is a value somebody
+    wrote, not a gap somebody left.
+    """
+
+    #: ``selected_queue_id`` names it.
+    QUEUE = "queue"
+    #: ``selected_agent_id`` names them.
+    AGENT = "agent"
+    #: AI owns it. There is no id for AI — that is the point of the value.
+    AUTOPILOT = "autopilot"
+    #: Explicitly nothing, and ``reason`` says why.
+    NOTHING = "nothing"
+
+
+class RoutingDecisionReason(StrEnum):
+    """Why — the closed set.
+
+    Complete for what the routing engine, the assignment engine and their
+    caller can actually conclude today, and deliberately no wider:
+    inventing codes for decisions nothing yet makes would produce a
+    console filter that never matches anything and a reader who cannot
+    tell an unused code from a broken one.
+
+    These strings are stored on every decision row and are what somebody
+    filters by years later, so renaming one orphans its history.
+    """
+
+    # --- Choosing a queue --------------------------------------------
+
+    #: A routing rule matched. ``matched_rule`` says which, as values.
+    RULE_MATCHED = "rule_matched"
+    #: Rules exist; none of them matched this conversation. The fix is a
+    #: rule that covers it (or a catch-all), and ``rules_evaluated`` says
+    #: how many were tried.
+    NO_RULE_MATCHED = "no_rule_matched"
+    #: The company has no active routing rules at all. Deliberately
+    #: distinct from ``NO_RULE_MATCHED``: "nobody has configured routing"
+    #: and "you have eleven rules and none of them fit" are different
+    #: problems with different fixes, and the first is the one a new
+    #: company hits on day one.
+    NO_RULES_CONFIGURED = "no_rules_configured"
+
+    # --- The chosen queue turned out unusable ------------------------
+
+    #: The rule points at a queue that no longer exists (deleted since the
+    #: rule was written). The conversation carries the queue id and lands
+    #: nowhere visible — without this code that is a silent dead end.
+    TARGET_QUEUE_MISSING = "target_queue_missing"
+    #: The queue exists but is deactivated. A different fix from
+    #: ``TARGET_QUEUE_MISSING``: re-activate it, rather than re-point the
+    #: rule.
+    TARGET_QUEUE_INACTIVE = "target_queue_inactive"
+
+    # --- AI instead of a human ---------------------------------------
+
+    #: The queue is an Autopilot queue and every gate above it was open,
+    #: so AI took the conversation and human assignment never ran. See
+    #: ``docs/architecture/queues-routing.md`` decision #11.
+    AUTOPILOT_QUEUE = "autopilot_queue"
+
+    # --- Choosing an agent -------------------------------------------
+
+    #: The queue's configured strategy picked them out of several
+    #: eligible agents. ``strategy`` names which strategy ran.
+    STRATEGY_SELECTED = "strategy_selected"
+    #: They were the only eligible agent. Reported separately from
+    #: ``STRATEGY_SELECTED`` because it is not really a strategy outcome:
+    #: round-robin and least-load would both have picked the same person,
+    #: and telling an operator "least-load chose them" when there was no
+    #: choice to make misrepresents what happened.
+    ONLY_CANDIDATE = "only_candidate"
+    #: The queue never auto-assigns by design — it waits for an agent to
+    #: claim the conversation. See queues-routing.md decision #6.
+    QUEUE_IS_MANUAL_PICKUP = "queue_is_manual_pickup"
+    #: The strategy looked at the eligible agents and chose none of them.
+    #: The general answer for a strategy that declines; a strategy whose
+    #: whole purpose is declining reports the specific code above.
+    STRATEGY_DECLINED = "strategy_declined"
+    #: Nobody was available: every agent in the company is offline, busy,
+    #: or gone — or the company has no agents at all.
+    NO_AGENT_AVAILABLE = "no_agent_available"
+    #: Agents were available, but the queue's required skills excluded
+    #: all of them. The answer to "we had three people online and it still
+    #: sat there".
+    NO_AGENT_WITH_REQUIRED_SKILL = "no_agent_with_required_skill"
+
+
+class CandidateRejection(StrEnum):
+    """Why one agent was passed over.
+
+    The most valuable part of an assignment decision. "Why isn't this with
+    Ada?" is answered by "Ada was skipped: she lacks a skill this queue
+    requires" — and that answer is only available if the agents who were
+    *not* chosen were recorded alongside the one who was.
+    """
+
+    #: Not connected. Excluded from auto-assignment because assigning to
+    #: them would only delay the first response.
+    AGENT_OFFLINE = "agent_offline"
+    #: Marked themselves busy. Distinct from offline deliberately: it is a
+    #: choice the agent made, not a connection state the gateway inferred
+    #: (queues-routing.md decision #10), and an operator reading "busy"
+    #: knows to ask a person rather than to check the network.
+    AGENT_BUSY = "agent_busy"
+    #: Available, but holds none of the skills the queue requires.
+    MISSING_REQUIRED_SKILL = "missing_required_skill"
+    #: Fully eligible and genuinely in contention — the strategy simply
+    #: preferred somebody else (a lighter load, fewer conversations so
+    #: far). The only rejection that means "this could have been them".
+    NOT_CHOSEN_BY_STRATEGY = "not_chosen_by_strategy"
+
+
+#: How interesting each rejection is, lowest first. Used only when there
+#: are more rejections than ``MAX_RECORDED_REJECTIONS`` allows: an agent
+#: who was in contention and lost tells a reader something an offline
+#: agent never can, so the truncation must not be a plain head-of-list.
+_REJECTION_RANK: dict[CandidateRejection, int] = {
+    CandidateRejection.NOT_CHOSEN_BY_STRATEGY: 0,
+    CandidateRejection.MISSING_REQUIRED_SKILL: 1,
+    CandidateRejection.AGENT_BUSY: 2,
+    CandidateRejection.AGENT_OFFLINE: 3,
+}
+
+_REJECTION_PHRASES: dict[CandidateRejection, str] = {
+    CandidateRejection.AGENT_OFFLINE: "offline",
+    CandidateRejection.AGENT_BUSY: "busy",
+    CandidateRejection.MISSING_REQUIRED_SKILL: "missing a required skill",
+    CandidateRejection.NOT_CHOSEN_BY_STRATEGY: "not chosen by the strategy",
+}
+
+#: How many rejected candidates the rendered sentence names before it
+#: summarises the rest. A sentence is for a human reading a log line; past
+#: three names it stops being one.
+_NAMED_IN_SENTENCE = 3
+
+
+@dataclass(frozen=True, slots=True)
+class RejectedCandidate:
+    """One agent who was considered and not chosen.
+
+    ``agent_name`` is denormalized on purpose, exactly like
+    ``FinancialAuditEvent.actor_email``: an id alone turns every decision
+    about somebody who has since left the company into an anonymous one,
+    and "who was passed over" is the question this shape exists to answer.
+    """
+
+    agent_id: uuid.UUID
+    agent_name: str | None
+    reason: CandidateRejection
+
+
+@dataclass(frozen=True, slots=True)
+class MatchedRule:
+    """The routing rule that decided this, as it read at that instant.
+
+    Every field is a **copy**. ``RoutingRule`` rows are edited and deleted
+    routinely — that is what a routing-rules admin screen is for — and a
+    decision that re-read the rule would silently change its own story
+    every time somebody tuned their routing.
+
+    ``name`` is rendered from the rule's conditions rather than read off
+    a column, because ``RoutingRule`` deliberately has no name (see
+    queues-routing.md's scope-boundary note: it is a narrow
+    ``(priority, conditions, target_queue)`` row, not a workflow). The
+    rendering is frozen here with the rest, so an operator who later edits
+    the rule's conditions does not change what an old decision says
+    matched.
+    """
+
+    rule_id: uuid.UUID | None
+    name: str
+    priority: int
+    #: The raw conditions, copied. Kept alongside ``name`` because a
+    #: console filtering "every decision made by a ``body_contains`` rule"
+    #: needs the machine-readable form, and a support engineer reading an
+    #: export needs the sentence.
+    conditions: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class QueueRouting:
+    """What ``RoutingEngine.select_queue`` concluded.
+
+    The engine's whole answer: the queue *and* the reasoning, so the
+    reasoning is no longer discarded at the return statement. It carries
+    no queue name — the routing engine only ever sees a rule's target id,
+    and inventing a lookup for it would give the engine a repository it
+    does not otherwise need. The caller, which already loads the queue,
+    supplies the name to ``queue_decision``.
+    """
+
+    queue_id: uuid.UUID | None
+    reason: RoutingDecisionReason
+    matched_rule: MatchedRule | None = None
+    #: How many active rules were tried before this conclusion. The
+    #: difference between "your one rule missed" and "all forty missed".
+    rules_evaluated: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class AgentAssignment:
+    """What ``AssignmentEngine.select_agent`` concluded.
+
+    ``candidates_considered`` counts every agent the engine looked at, not
+    only the ones in ``rejected`` — the two differ once
+    ``MAX_RECORDED_REJECTIONS`` truncates, and the count is what a list
+    view shows without parsing the detail.
+    """
+
+    agent_id: uuid.UUID | None
+    agent_name: str | None
+    #: Which strategy ran, as a value (``round_robin``/``least_load``/
+    #: ``manual``). A queue's strategy is reconfigured freely; the
+    #: decision must keep saying which one actually decided it.
+    strategy: str
+    reason: RoutingDecisionReason
+    candidates_considered: int
+    rejected: tuple[RejectedCandidate, ...] = ()
+
+
+def most_informative(
+    rejections: list[RejectedCandidate], *, limit: int = MAX_RECORDED_REJECTIONS
+) -> tuple[tuple[RejectedCandidate, ...], int]:
+    """The ``limit`` most useful rejections, and how many were dropped.
+
+    Sorted by ``_REJECTION_RANK`` and **stable** within a rank, so the
+    agents who were genuinely in contention survive truncation and the
+    original evaluation order is otherwise preserved. Returns the overflow
+    count rather than hiding it: a reader told "and 400 more" knows the
+    list is a sample, whereas a silently truncated list reads as complete.
+    """
+    if len(rejections) <= limit:
+        return tuple(rejections), 0
+    ordered = sorted(rejections, key=lambda r: _REJECTION_RANK[r.reason])
+    return tuple(ordered[:limit]), len(rejections) - limit
+
+
+@dataclass(frozen=True, slots=True)
+class RoutingDecision:
+    """One recorded decision — the thing that gets stored and read back.
+
+    Assembled by the factories below rather than constructed at call
+    sites, so the invariants between the fields ("an ``AGENT_ASSIGNED``
+    decision always names an agent", "``NOTHING`` always carries a reason
+    that explains it") live in one place instead of being re-established
+    by everybody who writes one.
+
+    Carries no conversation or company id: those belong to the row, not to
+    the reasoning, and leaving them off is what lets the engines — which
+    are pure and know neither — return these directly.
+    """
+
+    kind: RoutingDecisionKind
+    outcome: RoutingDecisionOutcome
+    reason: RoutingDecisionReason
+
+    selected_queue_id: uuid.UUID | None = None
+    #: Copied, not joined. A queue is renamed and soft-deleted through the
+    #: ordinary admin screen; a decision that lost its queue's name would
+    #: read "routed to 4f2a…" forever after.
+    selected_queue_name: str | None = None
+
+    selected_agent_id: uuid.UUID | None = None
+    selected_agent_name: str | None = None
+
+    matched_rule: MatchedRule | None = None
+    rules_evaluated: int = 0
+
+    strategy: str | None = None
+    candidates_considered: int = 0
+    rejected_candidates: tuple[RejectedCandidate, ...] = ()
+    #: Rejections that existed but did not fit within
+    #: ``MAX_RECORDED_REJECTIONS``. Zero unless truncation happened.
+    rejections_omitted: int = 0
+
+    @property
+    def sentence(self) -> str:
+        """The decision as a person would say it.
+
+        Rendered *from* the structured fields, never stored instead of
+        them: the codes are what a console filters and localises on, and a
+        sentence is what a log line, a CSV export and a support engineer
+        on the phone need. Both, in that order of authority.
+        """
+        return f"{_headline(self)}{_rejection_clause(self)}"
+
+
+# --- Rendering -------------------------------------------------------
+#
+# Deliberately plain English assembled from the fields above, and
+# deliberately not a template registry: the UI localises from the codes,
+# so this text has exactly one audience — somebody reading a log, an
+# export, or a support ticket — and a second indirection would only make
+# it harder for them to find where a phrase came from.
+
+
+def _queue_phrase(decision: RoutingDecision) -> str:
+    if decision.selected_queue_name is not None:
+        return f'the "{decision.selected_queue_name}" queue'
+    if decision.selected_queue_id is not None:
+        return f"queue {decision.selected_queue_id}"
+    return "no queue"
+
+
+def _agent_phrase(decision: RoutingDecision) -> str:
+    if decision.selected_agent_name is not None:
+        return decision.selected_agent_name
+    if decision.selected_agent_id is not None:
+        return f"agent {decision.selected_agent_id}"
+    return "nobody"
+
+
+def _rule_phrase(decision: RoutingDecision) -> str:
+    rule = decision.matched_rule
+    if rule is None:
+        return "a routing rule"
+    return f'routing rule "{rule.name}" (priority {rule.priority})'
+
+
+def _headline(decision: RoutingDecision) -> str:
+    reason = decision.reason
+    queue = _queue_phrase(decision)
+
+    if reason is RoutingDecisionReason.RULE_MATCHED:
+        return f"Routed to {queue} because {_rule_phrase(decision)} matched."
+    if reason is RoutingDecisionReason.NO_RULE_MATCHED:
+        return (
+            f"Left unrouted: none of the {decision.rules_evaluated} active routing "
+            "rules matched this conversation."
+        )
+    if reason is RoutingDecisionReason.NO_RULES_CONFIGURED:
+        return "Left unrouted: this company has no active routing rules."
+    if reason is RoutingDecisionReason.TARGET_QUEUE_MISSING:
+        return (
+            f"Left unassigned: {_rule_phrase(decision)} points at a queue that no " "longer exists."
+        )
+    if reason is RoutingDecisionReason.TARGET_QUEUE_INACTIVE:
+        return f"Left unassigned: {queue} is deactivated, so nobody was assigned."
+    if reason is RoutingDecisionReason.AUTOPILOT_QUEUE:
+        return f"AI Autopilot took the conversation because {queue} has Autopilot enabled."
+    if reason is RoutingDecisionReason.STRATEGY_SELECTED:
+        return (
+            f"Assigned to {_agent_phrase(decision)} by {queue}'s {decision.strategy} "
+            f"strategy, chosen from {decision.candidates_considered} agents considered."
+        )
+    if reason is RoutingDecisionReason.ONLY_CANDIDATE:
+        return f"Assigned to {_agent_phrase(decision)}: the only agent eligible for {queue}."
+    if reason is RoutingDecisionReason.QUEUE_IS_MANUAL_PICKUP:
+        return (
+            f"Left unassigned: {queue} never auto-assigns — it waits for an agent to "
+            "pick the conversation up."
+        )
+    if reason is RoutingDecisionReason.STRATEGY_DECLINED:
+        return (
+            f"Left unassigned: {queue}'s {decision.strategy} strategy selected nobody "
+            f"from {decision.candidates_considered} agents considered."
+        )
+    if reason is RoutingDecisionReason.NO_AGENT_AVAILABLE:
+        return (
+            f"Left unassigned: no agent was available for {queue} "
+            f"({decision.candidates_considered} considered)."
+        )
+    # NO_AGENT_WITH_REQUIRED_SKILL — the one remaining member. Written as
+    # the fall-through rather than a twelfth `if` so mypy proves this
+    # function returns a `str` on every path without an unreachable
+    # `raise` nobody can ever hit. A reason added without a branch here
+    # would render as this sentence, which is why
+    # test_every_reason_code_has_a_decision_and_a_sentence asserts every
+    # rendering is *distinct* rather than merely non-empty.
+    return (
+        f"Left unassigned: none of the {decision.candidates_considered} agents "
+        f"considered holds a skill {queue} requires."
+    )
+
+
+def _rejection_clause(decision: RoutingDecision) -> str:
+    """The "Passed over: …" tail — the half of the answer nobody records.
+
+    Empty when nothing was rejected, so a decision with no contest does
+    not end in a dangling clause.
+    """
+    if not decision.rejected_candidates:
+        return ""
+    named = decision.rejected_candidates[:_NAMED_IN_SENTENCE]
+    parts = [f"{c.agent_name or c.agent_id} ({_REJECTION_PHRASES[c.reason]})" for c in named]
+    remaining = len(decision.rejected_candidates) - len(named) + decision.rejections_omitted
+    if remaining > 0:
+        parts.append(f"and {remaining} more")
+    return " Passed over: " + ", ".join(parts) + "."
+
+
+# --- Factories -------------------------------------------------------
+
+
+def queue_decision(routing: QueueRouting, *, queue_name: str | None) -> RoutingDecision:
+    """The record of "which queue, and why".
+
+    ``queue_name`` comes from the caller because the routing engine never
+    loads the queue — see ``QueueRouting``. ``None`` is legitimate: the
+    rule's target may already have been deleted, and the decision must
+    still say which rule sent the conversation there.
+    """
+    if routing.queue_id is None:
+        return RoutingDecision(
+            kind=RoutingDecisionKind.LEFT_UNROUTED,
+            outcome=RoutingDecisionOutcome.NOTHING,
+            reason=routing.reason,
+            rules_evaluated=routing.rules_evaluated,
+        )
+    return RoutingDecision(
+        kind=RoutingDecisionKind.QUEUE_SELECTED,
+        outcome=RoutingDecisionOutcome.QUEUE,
+        reason=routing.reason,
+        selected_queue_id=routing.queue_id,
+        selected_queue_name=queue_name,
+        matched_rule=routing.matched_rule,
+        rules_evaluated=routing.rules_evaluated,
+    )
+
+
+def queue_unavailable_decision(
+    *,
+    queue_id: uuid.UUID,
+    queue_name: str | None,
+    matched_rule: MatchedRule | None,
+    inactive: bool,
+) -> RoutingDecision:
+    """The record of "it reached a queue that could not take it".
+
+    Its own decision rather than a variant of ``queue_decision`` because
+    two different things happened and both are true: a rule *did* route
+    the conversation (it carries the queue id), and the queue *then*
+    turned out unusable. Collapsing them would lose the first half — and
+    the first half is what names the rule somebody has to go and fix.
+    """
+    return RoutingDecision(
+        kind=RoutingDecisionKind.LEFT_UNASSIGNED,
+        outcome=RoutingDecisionOutcome.NOTHING,
+        reason=(
+            RoutingDecisionReason.TARGET_QUEUE_INACTIVE
+            if inactive
+            else RoutingDecisionReason.TARGET_QUEUE_MISSING
+        ),
+        selected_queue_id=queue_id,
+        selected_queue_name=queue_name,
+        matched_rule=matched_rule,
+    )
+
+
+def autopilot_decision(*, queue_id: uuid.UUID, queue_name: str | None) -> RoutingDecision:
+    """The record of "AI took this, so no human was considered".
+
+    The answer to "why did AI respond" *and* to "why was nobody assigned"
+    — one conversation has exactly one owner, and this is the decision
+    that made it AI (queues-routing.md decision #11). Without it, an
+    Autopilot conversation looks identical to one no agent was available
+    for.
+    """
+    return RoutingDecision(
+        kind=RoutingDecisionKind.AI_ENGAGED,
+        outcome=RoutingDecisionOutcome.AUTOPILOT,
+        reason=RoutingDecisionReason.AUTOPILOT_QUEUE,
+        selected_queue_id=queue_id,
+        selected_queue_name=queue_name,
+    )
+
+
+def assignment_decision(
+    assignment: AgentAssignment, *, queue_id: uuid.UUID, queue_name: str | None
+) -> RoutingDecision:
+    """The record of "which agent, and who else was in the running".
+
+    The queue is carried even though the assignment engine's answer is
+    about a person: "why is this with Ada" and "why is nobody on the VIP
+    queue" are asked of the same rows, and a decision that named only the
+    agent could not answer the second.
+    """
+    rejected, omitted = most_informative(list(assignment.rejected))
+    assigned = assignment.agent_id is not None
+    return RoutingDecision(
+        kind=(
+            RoutingDecisionKind.AGENT_ASSIGNED if assigned else RoutingDecisionKind.LEFT_UNASSIGNED
+        ),
+        outcome=(RoutingDecisionOutcome.AGENT if assigned else RoutingDecisionOutcome.NOTHING),
+        reason=assignment.reason,
+        selected_queue_id=queue_id,
+        selected_queue_name=queue_name,
+        selected_agent_id=assignment.agent_id,
+        selected_agent_name=assignment.agent_name,
+        strategy=assignment.strategy,
+        candidates_considered=assignment.candidates_considered,
+        rejected_candidates=rejected,
+        rejections_omitted=omitted,
+    )
+
+
+def describe_conditions(conditions: dict[str, str]) -> str:
+    """A routing rule's conditions as a person would read them.
+
+    ``RoutingRule`` has no name column (deliberately — see ``MatchedRule``),
+    so this *is* the rule's name for explanation purposes, frozen onto the
+    decision at the moment it matched.
+
+    An empty condition set is a catch-all, and saying so matters: "matches
+    everything" is the rule people forget they wrote and then wonder why
+    nothing reaches their other queues.
+
+    Clipped to ``MAX_RULE_NAME``. Nothing validates the length of a
+    ``body_contains`` value, so a rule authored with a paragraph in it
+    would otherwise render a name too long for the column it is stored in
+    — and the decision would be dropped by the audit-write guard rather
+    than saved short. The full, unclipped conditions are stored beside it
+    as JSON, so clipping costs a reader nothing.
+    """
+    channel = conditions.get("channel_type")
+    needle = conditions.get("body_contains")
+    parts = []
+    if channel is not None:
+        parts.append(f"channel is {channel}")
+    if needle is not None:
+        parts.append(f'message contains "{needle}"')
+    # Any key this narrow engine does not know is still shown rather than
+    # dropped: a condition nobody renders is a condition nobody can debug.
+    parts.extend(
+        f"{key} is {value}"
+        for key, value in sorted(conditions.items())
+        if key not in ("channel_type", "body_contains")
+    )
+    described = " and ".join(parts) if parts else "matches everything"
+    if len(described) <= MAX_RULE_NAME:
+        return described
+    return described[: MAX_RULE_NAME - 1] + "…"
+
+
+__all__ = [
+    "MAX_RECORDED_REJECTIONS",
+    "MAX_RULE_NAME",
+    "AgentAssignment",
+    "CandidateRejection",
+    "MatchedRule",
+    "QueueRouting",
+    "RejectedCandidate",
+    "RoutingDecision",
+    "RoutingDecisionKind",
+    "RoutingDecisionOutcome",
+    "RoutingDecisionReason",
+    "assignment_decision",
+    "autopilot_decision",
+    "describe_conditions",
+    "most_informative",
+    "queue_decision",
+    "queue_unavailable_decision",
+]

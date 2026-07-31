@@ -1,3 +1,10 @@
+"""``select_queue`` now returns a ``QueueRouting`` — the queue *and* the
+reasoning that produced it — so every assertion here reads ``.queue_id``.
+The reasoning itself (which rule matched, why nothing did) is covered in
+``tests/unit/test_routing_decisions.py``; these stay focused on the
+matching rules they were written for.
+"""
+
 from uuid import UUID, uuid4
 
 from blinkengage.application.services.routing_engine import RoutingEngine
@@ -55,7 +62,7 @@ async def test_first_matching_rule_by_priority_wins() -> None:
     selected = await engine.select_queue(
         company_id=company_id, channel_type="web_chat", body="a billing question"
     )
-    assert selected == queue_b
+    assert selected.queue_id == queue_b
 
 
 async def test_channel_type_condition_matches_exactly() -> None:
@@ -71,13 +78,10 @@ async def test_channel_type_condition_matches_exactly() -> None:
     ]
     engine = RoutingEngine(routing_rules=_FakeRoutingRuleRepository(rules))
 
-    assert (
-        await engine.select_queue(company_id=company_id, channel_type="web_chat", body=None) is None
-    )
-    assert (
-        await engine.select_queue(company_id=company_id, channel_type="whatsapp", body=None)
-        == queue_id
-    )
+    unmatched = await engine.select_queue(company_id=company_id, channel_type="web_chat", body=None)
+    matched = await engine.select_queue(company_id=company_id, channel_type="whatsapp", body=None)
+    assert unmatched.queue_id is None
+    assert matched.queue_id == queue_id
 
 
 async def test_body_contains_is_case_insensitive() -> None:
@@ -93,18 +97,14 @@ async def test_body_contains_is_case_insensitive() -> None:
     ]
     engine = RoutingEngine(routing_rules=_FakeRoutingRuleRepository(rules))
 
-    assert (
-        await engine.select_queue(
-            company_id=company_id, channel_type="web_chat", body="I want a refund please"
-        )
-        == queue_id
+    matched = await engine.select_queue(
+        company_id=company_id, channel_type="web_chat", body="I want a refund please"
     )
-    assert (
-        await engine.select_queue(
-            company_id=company_id, channel_type="web_chat", body="no relevant keyword"
-        )
-        is None
+    unmatched = await engine.select_queue(
+        company_id=company_id, channel_type="web_chat", body="no relevant keyword"
     )
+    assert matched.queue_id == queue_id
+    assert unmatched.queue_id is None
 
 
 async def test_inactive_rules_are_ignored() -> None:
@@ -120,11 +120,11 @@ async def test_inactive_rules_are_ignored() -> None:
     ]
     engine = RoutingEngine(routing_rules=_FakeRoutingRuleRepository(rules))
 
-    assert (
-        await engine.select_queue(company_id=company_id, channel_type="web_chat", body=None) is None
-    )
+    selected = await engine.select_queue(company_id=company_id, channel_type="web_chat", body=None)
+    assert selected.queue_id is None
 
 
 async def test_no_matching_rule_returns_none() -> None:
     engine = RoutingEngine(routing_rules=_FakeRoutingRuleRepository([]))
-    assert await engine.select_queue(company_id=uuid4(), channel_type="web_chat", body=None) is None
+    selected = await engine.select_queue(company_id=uuid4(), channel_type="web_chat", body=None)
+    assert selected.queue_id is None

@@ -15,6 +15,7 @@ from uuid import UUID
 import orjson
 from aio_pika.abc import AbstractIncomingMessage
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
@@ -29,6 +30,13 @@ from blinkengage.domain.company_settings import (
     is_autopilot_new_conversation_mode_enabled,
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
+from blinkengage.domain.routing_decisions import (
+    RoutingDecision,
+    assignment_decision,
+    autopilot_decision,
+    queue_decision,
+    queue_unavailable_decision,
+)
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.database.models.conversation import (
@@ -68,6 +76,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
+from blinkengage.infrastructure.repositories.routing_decision_repository import (
+    RoutingDecisionRepository,
+)
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
 )
@@ -407,6 +418,59 @@ async def handle_message_received(
         )
 
 
+async def _record_decision(
+    session: AsyncSession,
+    decisions: RoutingDecisionRepository,
+    *,
+    company_id: UUID,
+    conversation_id: UUID,
+    decision: RoutingDecision,
+) -> None:
+    """Records one routing decision, and **never** lets it cost us the
+    conversation.
+
+    The deliberate tradeoff, stated here because this is where somebody
+    would change it: routing and assignment are the product; the
+    explanation is evidence *about* the product. If the evidence cannot be
+    written we keep the conversation routed and lose the explanation —
+    never the other way round. An ingest consumer that rejected a customer
+    message because an audit row would not insert would turn a reporting
+    problem into an outage.
+
+    Three mechanisms make that true, and all three are load-bearing:
+
+    - The conversation's own pending writes are flushed **first**. A
+      ``flush`` inside the savepoint would carry them into it, and rolling
+      the savepoint back would then undo the routing as well as the
+      record of it — the exact opposite of this function's purpose. Any
+      error from *this* flush is deliberately not caught: it is the
+      conversation's own write failing, which would fail at commit anyway.
+    - The insert then runs inside a SAVEPOINT (``begin_nested``), not the
+      outer transaction. On PostgreSQL a failed statement poisons its
+      whole transaction, so merely catching the exception would leave
+      every later statement — the assignment, the domain events, the
+      message itself — failing too. The savepoint rolls back exactly this
+      insert and leaves the session usable.
+    - The failure is logged and swallowed. It is a real defect worth an
+      alert (``routing_decision_not_recorded``), not something to hide,
+      but it is not worth the conversation.
+    """
+    await session.flush()
+    try:
+        async with session.begin_nested():
+            await decisions.record(
+                company_id=company_id, conversation_id=conversation_id, decision=decision
+            )
+    except SQLAlchemyError:
+        logger.warning(
+            "routing_decision_not_recorded",
+            conversation_id=str(conversation_id),
+            kind=decision.kind.value,
+            reason=decision.reason.value,
+            exc_info=True,
+        )
+
+
 async def _route_and_assign(
     conversation: Conversation,
     *,
@@ -419,17 +483,36 @@ async def _route_and_assign(
 ) -> None:
     """Only called for a just-created conversation — see
     ``docs/architecture/queues-routing.md`` decision #1. A conversation
-    already routed/assigned is never re-routed by a later message."""
+    already routed/assigned is never re-routed by a later message.
+
+    Every branch below records *why* it went the way it did. That is the
+    reason this function reads longer than the selection logic it wraps:
+    "nobody routed this" and "nobody was available" are the two cases
+    somebody escalates about, and both used to be plain ``return``
+    statements that left no trace at all.
+    """
     routing_rules = RoutingRuleRepository(session)
     queues = QueueRepository(session)
     agent_skills = AgentSkillRepository(session)
+    decisions = RoutingDecisionRepository(session)
 
     routing_engine = RoutingEngine(routing_rules=routing_rules)
-    queue_id = await routing_engine.select_queue(
+    routing = await routing_engine.select_queue(
         company_id=company_id, channel_type=channel_type, body=body
     )
-    if queue_id is None:
+    if routing.queue_id is None:
+        # Recorded, not silent. A conversation nobody routed is exactly
+        # the case somebody asks about, and "there is no row" is
+        # indistinguishable from "the recorder was broken".
+        await _record_decision(
+            session,
+            decisions,
+            company_id=company_id,
+            conversation_id=conversation.id,
+            decision=queue_decision(routing, queue_name=None),
+        )
         return
+    queue_id = routing.queue_id
     conversation.queue_id = queue_id
     conversation.queue_entered_at = datetime.now(UTC)
     # Fires unconditionally on entering a queue, whether or not
@@ -447,7 +530,34 @@ async def _route_and_assign(
     )
 
     queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
+    # Recorded after the lookup rather than before it purely so the
+    # decision can carry the queue's *name* — a decision that said
+    # "routed to 4f2a…" would be unreadable the moment somebody renames
+    # the queue, which is the whole reason names are copied here.
+    await _record_decision(
+        session,
+        decisions,
+        company_id=company_id,
+        conversation_id=conversation.id,
+        decision=queue_decision(routing, queue_name=None if queue is None else queue.name),
+    )
     if queue is None or not queue.is_active:
+        # A rule routed the conversation into a queue that cannot take it
+        # — deleted, or deactivated. Both leave it sitting with a
+        # ``queue_id`` and no owner, which without this row is a silent
+        # dead end nobody can trace back to the rule that caused it.
+        await _record_decision(
+            session,
+            decisions,
+            company_id=company_id,
+            conversation_id=conversation.id,
+            decision=queue_unavailable_decision(
+                queue_id=queue_id,
+                queue_name=None if queue is None else queue.name,
+                matched_rule=routing.matched_rule,
+                inactive=queue is not None,
+            ),
+        )
         return
 
     if queue.autopilot_enabled:
@@ -479,10 +589,30 @@ async def _route_and_assign(
             and is_ai_available_for_company(settings, company.ai_config)
         ):
             conversation.autopilot_active = True
+            # The answer to both "why did AI respond" and "why was nobody
+            # assigned" — one conversation has exactly one owner, and this
+            # is the decision that made it AI. Without the row, an
+            # Autopilot conversation is indistinguishable from one no
+            # agent happened to be available for.
+            await _record_decision(
+                session,
+                decisions,
+                company_id=company_id,
+                conversation_id=conversation.id,
+                decision=autopilot_decision(queue_id=queue.id, queue_name=queue.name),
+            )
             return
 
     assignment_engine = AssignmentEngine(queues=queues, agent_skills=agent_skills)
-    agent_id = await assignment_engine.select_agent(queue=queue, session=session)
+    assignment = await assignment_engine.select_agent(queue=queue, session=session)
+    await _record_decision(
+        session,
+        decisions,
+        company_id=company_id,
+        conversation_id=conversation.id,
+        decision=assignment_decision(assignment, queue_id=queue.id, queue_name=queue.name),
+    )
+    agent_id = assignment.agent_id
     if agent_id is not None:
         conversation.assigned_agent_id = agent_id
         conversation.picked_up_at = datetime.now(UTC)

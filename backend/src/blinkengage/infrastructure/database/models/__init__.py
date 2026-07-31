@@ -30,6 +30,7 @@ from blinkengage.infrastructure.database.models.customer_channel_identity import
     CustomerChannelIdentity,
 )
 from blinkengage.infrastructure.database.models.department import Department
+from blinkengage.infrastructure.database.models.device_token import DeviceToken
 from blinkengage.infrastructure.database.models.erp import (
     ErpConfig,
     ErpCustomerLink,
@@ -103,6 +104,9 @@ from blinkengage.infrastructure.database.models.reporting import (
     CsatResponse,
     QueueDailyStats,
 )
+from blinkengage.infrastructure.database.models.routing_decision import (
+    RoutingDecisionRecord,
+)
 from blinkengage.infrastructure.database.models.sla import Holiday, SlaPolicy
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.database.models.usage import (
@@ -166,6 +170,7 @@ __all__ = [
     "CustomerTag",
     "DeliveryStatus",
     "Department",
+    "DeviceToken",
     "ErpConfig",
     "ErpCustomerLink",
     "ErpSyncedRecord",
@@ -191,6 +196,7 @@ __all__ = [
     "ReadStatus",
     "Role",
     "RolePermission",
+    "RoutingDecisionRecord",
     "RoutingRule",
     "SlaPolicy",
     "Tag",

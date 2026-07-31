@@ -304,7 +304,11 @@ async def test_busy_agent_excluded_while_away_agent_stays_eligible(
         )
         selected = await engine.select_agent(queue=queue, session=db_session)
 
-    assert str(selected) == away_agent_id
+    # `select_agent` returns an AgentAssignment now — the agent *and* the
+    # reasoning. The reasoning is asserted in
+    # tests/integration/test_routing_explainability.py; this test stays
+    # about who was picked.
+    assert str(selected.agent_id) == away_agent_id
 
 
 async def test_second_message_does_not_reroute_or_reassign(
@@ -403,7 +407,7 @@ async def test_least_load_strategy_prefers_the_less_loaded_agent(
         )
         selected = await engine.select_agent(queue=queue, session=db_session)
 
-    assert selected == free_agent_id
+    assert selected.agent_id == free_agent_id
 
 
 async def test_skill_based_eligibility_filters_out_unskilled_agents(
@@ -438,8 +442,8 @@ async def test_skill_based_eligibility_filters_out_unskilled_agents(
         )
         selected = await engine.select_agent(queue=queue, session=db_session)
 
-    assert str(selected) == skilled_agent_id
-    assert str(selected) != unskilled_agent
+    assert str(selected.agent_id) == skilled_agent_id
+    assert str(selected.agent_id) != unskilled_agent
 
 
 async def test_no_eligible_agent_leaves_selection_none(
@@ -466,7 +470,7 @@ async def test_no_eligible_agent_leaves_selection_none(
         )
         selected = await engine.select_agent(queue=queue, session=db_session)
 
-    assert selected is None
+    assert selected.agent_id is None
 
 
 async def test_autopilot_enabled_queue_skips_human_assignment(
