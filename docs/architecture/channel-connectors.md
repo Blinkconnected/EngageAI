@@ -65,6 +65,127 @@ things that can be invoked is exactly the set advertised. A connector adding
 "refresh token" adds a `RepairAction` and a branch in its own `repair`; the
 console grows a button and the API does not change.
 
+## Lifecycle: two axes, one badge
+
+The eight states a customer sees come from two independent facts, and keeping
+them apart is what makes the answer correct on every installation.
+
+| Axis | Values | Owner | Lifetime |
+|---|---|---|---|
+| **Maturity** | preview, beta, production, deprecated, end of life | The connector author | Ships with the code, identical everywhere |
+| **Availability** | available, maintenance, disabled | Whoever runs the installation | Runtime, different per deployment |
+
+`effective_state()` resolves them into the single badge the console draws.
+**Availability wins whenever it says anything** — "we have turned this off" is
+more urgent and more actionable than "this code is mature", and showing a
+maturity badge on a connector nobody can use answers a question the customer
+did not ask.
+
+Collapsing the two would mean a connector in maintenance forgets it is
+production-grade, and a deprecated one cannot be paused without losing the
+deprecation.
+
+**Existing channels are never withdrawn by a status change.** Disabled,
+maintenance and end-of-life refuse a *new* connection and leave running
+channels alone. Taking a channel away from a customer who is receiving
+messages on it is a decision an operator makes explicitly.
+
+Preview, beta and deprecated warn without blocking — blocking would make
+Preview useless as a release stage, and a customer may connect something
+unfinished as long as they were told.
+
+## Versioning
+
+Three versions people routinely conflate, so the manifest names each:
+
+| Field | What it is |
+|---|---|
+| `connector` | The connector's **own** code |
+| `api` | The **provider's** API this connector talks to — `v21.0`, `2010-04-01`, or nothing |
+| `minimum_platform` | The oldest Blink Engage it runs on |
+
+A connector requiring a newer platform is **not offered**, with its own
+reason — so an administrator learns they need to upgrade before a customer
+meets a flow that cannot finish.
+
+Pre-release suffixes are parsed and ignored when comparing. Blink Engage is
+`1.0.0-beta.5`; if that did not satisfy `1.0.0`, no connector could declare a
+minimum until the first stable release and the field would mean nothing. An
+*unparseable* version on either side answers "supported" — a connector that
+vanished because somebody's build stamped a non-semver string is a worse
+failure than one that appears and is never used.
+
+`api` is deliberately free text. Providers version themselves however they
+like, and Telegram's Bot API states no version at all — the connector reports
+`unversioned` rather than inventing one, because an invented version
+manufactures exactly the deprecation risk the field exists to communicate.
+
+## The feature matrix
+
+`ChannelFeature` is a closed set, and every entry carries a **direction**.
+
+That second part is what makes the matrix honest. SMS receives media and
+cannot send it — `SmsProvider.send_message` raises on an outbound
+attachment — so one tick against "Media" would be wrong whichever way the
+reader assumed. It is declared `inbound`.
+
+Free strings were the previous version, and they were a matrix that lied: one
+connector said `"images"` and another `"media"`, so nothing could be compared.
+
+Real differences the matrix now carries correctly:
+
+- WhatsApp does **not** claim typing indicators — its `typing_indicator` is a
+  documented no-op — while Messenger and Instagram genuinely send
+  `sender_action`.
+- Telegram and WhatsApp declare threading **inbound only**: the outbound half
+  is unreachable, because `ConversationService.send_reply` populates a reply
+  reference only for a provider declaring
+  `supports_invisible_reply_threading`, and Email is the only one that does.
+  The reply code in those providers is real and never called, so `both` would
+  promise a quoted reply the product cannot send.
+- Nothing claims voice or video, because nothing implements them. A test
+  asserts it — that would be the most visible possible overclaim.
+
+## Diagnostics
+
+`GET /channel-connect/channels/{id}/diagnostics`. Built for a support engineer
+with a customer on the phone: the answer to "why is this not working" without
+a database query, a log search and a guess.
+
+Two contributors, merged, with the connector winning any key both can answer —
+a real measurement beats a remembered one:
+
+- **The connector** asks the provider what only it can know: does the token
+  still work, is the webhook registered *at the provider*, which scopes are
+  granted, how much rate-limit headroom is left.
+- **The platform** reads what it already recorded: the last health check, the
+  connection log, when something last succeeded and last failed. No connector
+  implements any of it, so every channel has a useful report from the day it
+  is written.
+
+**Every key is always present.** Anything nobody measured comes back
+`unknown` rather than absent — a missing row and a row saying "not measured"
+look identical in a screenshot and mean completely different things.
+
+### The rule that matters: never invent an OK
+
+A green tick on something nobody measured sends an engineer away from the
+actual problem with more confidence than they started with. Three cases where
+that nearly shipped, each now pinned by a test:
+
+- Email reported `webhook_status: ok` from `bool(imap_host)` alone. A host
+  configured with a blank password would have shown green on the one row read
+  as "is anything arriving?" while nothing arrived.
+- Meta classified *any* Graph error envelope as a rejected credential —
+  including throttling, which arrives in the same shape. That sends an
+  engineer to rotate a working token during an outage.
+- A Graph timestamp too large for the platform clock raised outside the
+  caller's guard and silently discarded the connector's entire half of the
+  report, leaving four rows blank.
+
+A connector answers only what it can measure; `UNKNOWN` is a first-class
+answer and `complete()` fills the rest.
+
 ## The rule
 
 **Nothing above the connector layer may branch on a channel type.**

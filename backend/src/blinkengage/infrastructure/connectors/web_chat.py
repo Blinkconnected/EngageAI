@@ -28,7 +28,7 @@ store and reports ``origin="internal"``. Every other channel's red badge
 raises the question "whose fault?" and this one's never does — an unhealthy
 Web Chat channel is our incident, always. Worth surfacing precisely because
 the alternative reading, that a first-party channel cannot fail, is wrong.
-The capability is declared about the *channel*, not about ``check`` below:
+The capability is declared about the *channel*, not about ``validate`` below:
 the health check exists and runs on the monitoring sweep, and the Verify step
 says plainly that it has not run yet.
 
@@ -65,6 +65,14 @@ in a customer's console fixes. Nor is there anything to re-enter: ``FIX_REENTER`
 is the right fix for a mistyped credential on a pasted-secret channel, and this
 one collects no value that could be mistyped.
 
+**On the feature matrix.** What this channel carries is declared as directed
+rows rather than the free strings it used to be, and three of the five rows
+are one-way — which is the entire reason the free strings had to go. Every
+direction below was read off ``WebChatProvider`` and the two widget frame
+schemas, not off ``docs/architecture/web-chat.md``, which still describes an
+edit / delete / read-receipt path the provider does not implement. Where the
+code and the document disagree, the customer gets the code.
+
 **On the empty form step.** ``credential_fields`` returns nothing, and
 ``steps_for`` still puts an Authenticate step in the flow, rendered as a form
 with no inputs. That is the correct outcome, and the tempting fix — teaching
@@ -77,23 +85,40 @@ and it is what makes connecting the second channel feel like connecting the
 first. A customer who connected Telegram last week and is shown a visibly
 shorter flow today reads it as something missing, not as something saved.
 
-Nothing here makes a network call, so neither ``httpx`` nor
-``error_sanitizer`` appears below. That is not an omission awaiting a later
-pass: with credentials permanently empty ``redact_credentials`` would have
-nothing to redact, and with no provider there is no provider error text to
-sanitise. The one dependency Web Chat does have — our own attachment store —
-is reached through ``WebChatProvider``, which a connector cannot build; see
-``check``.
+Nothing here makes a network call — not ``validate``, not ``diagnose`` — so
+neither ``httpx`` nor ``error_sanitizer`` appears below. That is not an
+omission awaiting a later pass: with credentials permanently empty
+``redact_credentials`` would have nothing to redact, and with no provider
+there is no provider error text to sanitise. Adding a timed-out client to
+call nobody would be ceremony that reads, to the next person, as evidence of
+a provider that does not exist. The one dependency Web Chat does have — our
+own attachment store — is reached through ``WebChatProvider``, which a
+connector cannot build; see ``validate`` and ``diagnose``.
 """
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from blinkengage.domain.connector import (
     Attempt,
     Connection,
     Connector,
+    DeploymentContext,
+)
+from blinkengage.domain.connector_diagnostics import (
+    Diagnostic,
+    DiagnosticKey,
+    DiagnosticReport,
+    DiagnosticStatus,
+)
+from blinkengage.domain.connector_lifecycle import (
+    ChannelFeature,
+    Direction,
+    FeatureSupport,
+    Maturity,
+    VersionInfo,
 )
 from blinkengage.domain.connector_manifest import (
     AuthMethod,
@@ -107,7 +132,7 @@ from blinkengage.domain.connectors import Capability
 from blinkengage.infrastructure.connectors.registry import ConnectorRegistry
 
 #: The one line the Verify step shows. A ``warn``, not an ``ok`` — see
-#: ``WebChatConnector.check`` for why the green tick was withdrawn. Namespaced
+#: ``WebChatConnector.validate`` for why the green tick was withdrawn. Namespaced
 #: like every other connector's codes (``connect.telegram.check.token``,
 #: ``connect.sms.twilio.fix.buyNumber``) so the console resolves it out of the
 #: same ``connect`` bundle instead of needing a rule for one channel.
@@ -124,13 +149,30 @@ _CHECK_NO_EXTERNAL_DEPENDENCY = "connect.web_chat.check.noExternalDependency"
 #: naming input should require a value.
 _DEFAULT_DISPLAY_NAME = "connect.web_chat.defaultDisplayName"
 
+#: The one qualification on the feature matrix. ``MEDIA`` is outbound and the
+#: direction says so on its own; what the direction cannot say is that the
+#: outbound frame carries a storage *key* rather than a URL, and that
+#: ``WidgetMessageOut`` — the documented widget contract — does not list
+#: attachments at all. A widget therefore renders an agent's file only by
+#: implementing more than the published protocol currently describes, which is
+#: exactly the kind of "real but qualified" support ``note_key`` exists for.
+_FEATURE_MEDIA_WIDGET_SUPPORT = "connect.web_chat.feature.media.widgetSupportRequired"
+
+#: The three diagnostic rows this connector answers, each saying *permanently
+#: not applicable* rather than *not measured yet*. See ``diagnose`` for why
+#: those two are worth distinguishing and why the status stays ``UNKNOWN``.
+_DIAGNOSE_NO_CREDENTIAL = "connect.web_chat.diagnose.noCredentialToCheck"
+_DIAGNOSE_NO_WEBHOOK = "connect.web_chat.diagnose.noWebhookToRegister"
+_DIAGNOSE_NO_PROVIDER_SCOPES = "connect.web_chat.diagnose.noProviderScopes"
+
 
 @ConnectorRegistry.register("web_chat")
 class WebChatConnector(Connector):
     """Connecting a channel that is already here.
 
-    Three members, none of them long. The module docstring above explains why
-    it can be this small: there is no provider on the other end.
+    Four members, none of them long, and two of them mostly explaining what
+    they deliberately do not do. The module docstring above explains why it
+    can be this small: there is no provider on the other end.
     """
 
     channel_type = "web_chat"
@@ -148,9 +190,7 @@ class WebChatConnector(Connector):
         description_key="connect.web_chat.description",
         category=ConnectorCategory.EMBEDDED,
         icon="web_chat",
-        capabilities=frozenset(
-            {Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS}
-        ),
+        capabilities=frozenset({Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS}),
         # Nothing to prove: the channel is ours on both ends.
         auth_methods=(AuthMethod.NONE,),
         required_credentials=(),
@@ -161,7 +201,88 @@ class WebChatConnector(Connector):
                 codes=(ValidationCode.ADVISORY,),
             ),
         ),
-        supported_features=("text", "images", "documents", "typing"),
+        # What this channel actually carries. It used to be four free strings
+        # — ``"text"``, ``"images"``, ``"documents"``, ``"typing"`` — and the
+        # migration is not a rename: the strings said nothing about direction,
+        # and three of the five rows below are one-way. Every line was read
+        # off ``WebChatProvider`` and the widget frame schemas.
+        #
+        # What is absent is as deliberate, and each absence is something in
+        # the provider rather than an omission here. ``edit_message`` returns
+        # a ``SendResult`` and publishes nothing; ``delete_message`` and
+        # ``mark_as_read`` return ``None``. Three no-ops that exist to satisfy
+        # the ABC, so ``EDIT_MESSAGES``, ``DELETE_MESSAGES`` and
+        # ``READ_RECEIPTS`` would each be a tick for a change the visitor
+        # never sees. Nothing implements reactions, templates, broadcasts,
+        # interactive messages or calls, and no widget frame carries any of
+        # them.
+        supported_features=(
+            # Published to the visitor's Redis session channel; the gateway
+            # holding that socket forwards it down. Outbound by construction
+            # — a send is not a receive, and the row beneath is the other
+            # half of the same sentence.
+            FeatureSupport(feature=ChannelFeature.SEND_MESSAGES, direction=Direction.OUTBOUND),
+            # A ``"message"`` frame off the socket, parsed by
+            # ``receive_message`` into an ``InboundMessage`` and published as
+            # ``message.received`` like every other channel's webhook.
+            FeatureSupport(feature=ChannelFeature.RECEIVE_MESSAGES, direction=Direction.INBOUND),
+            # Agent → visitor only. ``upload_attachment`` and
+            # ``download_attachment`` are real work against our own object
+            # store, and ``send_message`` puts the resulting refs on the
+            # outbound frame — so the outbound half is not a claim, it is
+            # code. The inbound half does not exist at any layer:
+            # ``WidgetMessageIn`` has no attachment field and
+            # ``receive_message`` parses none, so a visitor cannot send a file
+            # at all. One tick against "Media" would have been wrong in
+            # whichever direction the reader assumed, and the free-string list
+            # above was exactly that tick, twice.
+            FeatureSupport(
+                feature=ChannelFeature.MEDIA,
+                direction=Direction.OUTBOUND,
+                note_key=_FEATURE_MEDIA_WIDGET_SUPPORT,
+            ),
+            # The one row that is genuinely both ways, and both ways are
+            # implemented rather than assumed: ``typing_indicator`` publishes
+            # to the visitor's session channel, and the gateway turns a
+            # visitor's ``"typing"`` frame into ``customer_typing`` on the
+            # company channel for the agent console.
+            FeatureSupport(feature=ChannelFeature.TYPING_INDICATORS, direction=Direction.BOTH),
+            # Inbound only — the row the free strings had no way to express.
+            # A visitor's frame may carry ``reply_to_external_message_id``,
+            # and the ingest consumer resolves it to a ``Message`` row the
+            # console renders as a quote. The return path is empty and not by
+            # oversight: ``ConversationService.send_reply`` sets a reply
+            # reference only for providers declaring
+            # ``supports_invisible_reply_threading``, which ``WebChatProvider``
+            # leaves at ``False``. So nothing ever populates the field
+            # ``send_message`` would happily forward, and claiming ``BOTH``
+            # here would promise the customer a quoted reply we never send.
+            FeatureSupport(feature=ChannelFeature.THREADING, direction=Direction.INBOUND),
+        ),
+        # Beta, and the reasoning matters because this is the one connector in
+        # the package with no unreachable path: no OAuth that cannot run, no
+        # discovery that returns nothing, no webhook registration that refuses,
+        # no repair that cannot repair. Everything it declares, it does, on
+        # every installation. What keeps it off ``PRODUCTION`` is not a hole in
+        # the code but the promise that badge makes — "supported, and changes
+        # to it are backwards-compatible". Nothing here has carried a
+        # customer's conversation yet, and the contract this channel depends on
+        # is still moving: the widget frame protocol grew its ``type``
+        # discriminator in July, and ``WidgetMessageOut`` still does not
+        # describe the attachments ``send_message`` already sends. Promising
+        # backwards compatibility across that would be promising something we
+        # would break. ``BETA`` — feature-complete and being proven — is what
+        # is true today.
+        maturity=Maturity.BETA,
+        # ``api`` is empty, and this is the only connector in the package
+        # where empty is the honest value rather than a gap. The field names
+        # *the provider's* API version, and Web Chat has no provider. The
+        # widget protocol is not a substitute: no frame carries a version,
+        # nothing is negotiated, and ``WidgetMessageIn`` accommodates an older
+        # client by defaulting a missing field rather than by branching on a
+        # number. Writing one here would put a version on the channel detail
+        # screen that neither side ever agreed to.
+        versions=VersionInfo(connector="1.0.0", api="", minimum_platform="1.0.0"),
     )
 
     @property
@@ -210,6 +331,99 @@ class WebChatConnector(Connector):
                 ValidationCode.ADVISORY,
                 channel_type=self.channel_type,
                 params={"check": _CHECK_NO_EXTERNAL_DEPENDENCY},
+            ),
+        )
+
+    # --- Diagnose -----------------------------------------------------
+
+    async def diagnose(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> DiagnosticReport:
+        """Three rows that will never have an answer, and nothing else.
+
+        The connector's half of a diagnostic report is the half only it can
+        produce by *asking the provider*: does the token still work, is the
+        webhook registered over there, which scopes were actually granted,
+        how much throttle headroom is left. Web Chat has no provider, so
+        there is nobody to ask and nothing this method could measure. The
+        interesting question is therefore not what to report but whether to
+        report anything at all.
+
+        **Not ``OK``, on any row.** A green tick on Authentication would say
+        "the stored credential still works" about a channel that stores no
+        credential. It would be true in the sense of never failing and false
+        in the sense a support engineer reads it, and a panel that invents
+        one verified line is worse than a panel with none — the whole reason
+        anybody trusts this screen is that ``UNKNOWN`` was kept as a separate
+        value from ``OK``.
+
+        **Not silence either.** ``complete()`` fills every unanswered key
+        with a bare ``UNKNOWN``, which reads as "nobody has got round to
+        checking" — so a support engineer with a customer on the phone spends
+        their next minute looking for a token check that will never exist for
+        this channel. Saying ``UNKNOWN`` *with a reason* costs nothing and
+        closes that question: not unmeasured, unmeasurable, permanently, by
+        design. That is the one thing this connector genuinely knows, and it
+        knows it from the manifest rather than from a network call —
+        ``required_credentials`` is empty, ``required_permissions`` is empty,
+        and no webhook capability is declared because inbound arrives on the
+        visitor's own socket.
+
+        **Only three rows, because the connector wins the merge.**
+        ``merge()`` takes the connector's entry over the platform's for the
+        same key, on the reasoning that a real measurement beats a remembered
+        one. Here it would be the reverse: an ``UNKNOWN`` from this method
+        would *suppress* whatever the platform inferred from stored state. So
+        the platform's own half — last successful sync, last failed request,
+        response times, retry queue, overall health — is left strictly alone,
+        and two of the connector-side keys are left alone as well:
+
+        * ``RATE_LIMITS``, because "not applicable" would be the wrong
+          lesson. There is no *provider* throttle, but the visitor session
+          endpoint is rate limited by us (``webchat_session``, 30 a minute),
+          and that limiter is both real and invisible from here. Telling a
+          support engineer to stop looking at throttling would point them
+          away from the only throttle that can actually bite this channel.
+        * ``API_VERSION``, because the manifest already carries
+          ``versions.api`` and the platform holds the manifest. Answering
+          here would displace that with nothing better.
+
+        **The one thing worth probing, this cannot reach.** Web Chat's single
+        dependency is our own attachment store, and ``WebChatProvider``
+        checks it — but a provider is built per channel with a
+        ``channel_config_id``, a realtime publisher and a request-scoped
+        ``AttachmentStorage`` handle, while a connector is the zero-argument
+        singleton the registry builds at import time. ``validate`` documents
+        the same wall for the same reason. That check belongs to the
+        monitoring sweep, which already runs it and already reports
+        ``origin="internal"`` when it fails.
+
+        Cannot raise: this builds a tuple of module constants and performs no
+        I/O, no parsing and no provider call. ``credentials`` is empty for
+        every Web Chat channel ever connected and ``context`` describes an
+        installation this method does not consult; both stay in the
+        signature because they are the contract's shape, and a connector that
+        later grows a real probe should not also have to change how it is
+        called.
+        """
+        return DiagnosticReport(
+            channel_type=self.channel_type,
+            items=(
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.UNKNOWN,
+                    detail_key=_DIAGNOSE_NO_CREDENTIAL,
+                ),
+                Diagnostic(
+                    key=DiagnosticKey.WEBHOOK_STATUS,
+                    status=DiagnosticStatus.UNKNOWN,
+                    detail_key=_DIAGNOSE_NO_WEBHOOK,
+                ),
+                Diagnostic(
+                    key=DiagnosticKey.PERMISSIONS,
+                    status=DiagnosticStatus.UNKNOWN,
+                    detail_key=_DIAGNOSE_NO_PROVIDER_SCOPES,
+                ),
             ),
         )
 

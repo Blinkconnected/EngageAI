@@ -11,6 +11,7 @@ prose sends something that can never be Arabic, and this product ships both.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,31 @@ class CapabilityStateResponse(BaseModel):
     #: A code the console translates — ``platform_app_not_configured`` and
     #: friends. Never a sentence.
     reason: str | None = None
+
+
+class FeatureSupportResponse(BaseModel):
+    """One row of the feature matrix.
+
+    ``direction`` is what makes the matrix honest: a channel that receives
+    media and cannot send it would otherwise get one tick that is wrong in
+    whichever direction the reader assumed.
+    """
+
+    feature: str
+    direction: str
+    #: Set when support is real but qualified. A translation key.
+    note_key: str | None = None
+
+
+class VersionInfoResponse(BaseModel):
+    """Three versions people routinely conflate, named separately."""
+
+    #: The connector's own code.
+    connector: str
+    #: The **provider's** API this connector talks to.
+    api: str
+    #: The oldest Blink Engage it runs on.
+    minimum_platform: str
 
 
 class ConnectorProfileResponse(BaseModel):
@@ -36,6 +62,15 @@ class ConnectorProfileResponse(BaseModel):
     #: shows it greyed with the reason rather than hiding it, since a channel
     #: that silently vanishes looks like one Blink Engage does not support.
     connectable: bool
+    #: The single state to badge, resolved from the connector's declared
+    #: maturity and this installation's runtime availability.
+    lifecycle: str
+    #: Whether to show a caution beside the badge — preview, beta, deprecated.
+    warns: bool
+    #: False when this platform is older than the connector requires. Separate
+    #: from ``lifecycle`` because "upgrade Blink Engage" and "this is in beta"
+    #: are different sentences for different audiences.
+    platform_supported: bool
 
 
 class ConnectionTemplateResponse(BaseModel):
@@ -104,9 +139,42 @@ class ManifestResponse(BaseModel):
     required_resources: list[ResourceSpecResponse]
     verification_steps: list[VerificationSpecResponse]
     repair_actions: list[RepairActionResponse]
-    supported_features: list[str]
+    supported_features: list[FeatureSupportResponse]
     documentation: list[DocumentationLinkResponse]
-    minimum_platform_version: str
+    #: How far along this connector's code is, independent of deployment.
+    maturity: str
+    versions: VersionInfoResponse
+
+
+class DiagnosticResponse(BaseModel):
+    """One line of a diagnostics report.
+
+    Structured so a support engineer reads a panel rather than a log, and so
+    the console can render it in Arabic — a diagnostic that arrived as an
+    English sentence is one no tooling can act on either.
+    """
+
+    key: str
+    #: ``ok`` | ``warn`` | ``fail`` | ``unknown``. ``unknown`` is the honest
+    #: answer for something nobody has measured, and is never collapsed into
+    #: ``ok`` — a green tick on an unverified channel is what would make this
+    #: panel worse than none.
+    status: str
+    value: str | None = None
+    detail_key: str | None = None
+    params: dict[str, str] = Field(default_factory=dict)
+    measured_at: datetime | None = None
+    #: A repair from the connector's manifest that would fix this.
+    repair_action: str | None = None
+
+
+class DiagnosticReportResponse(BaseModel):
+    channel_type: str
+    #: Every key, always — anything nobody answered comes back ``unknown``
+    #: rather than absent, so the panel has the same rows for every channel.
+    items: list[DiagnosticResponse]
+    #: The worst status present, for the badge at the top.
+    overall: str
 
 
 class RepairResultResponse(BaseModel):
@@ -258,7 +326,10 @@ __all__ = [
     "ConnectedChannelResponse",
     "ConnectionTemplateResponse",
     "ConnectorProfileResponse",
+    "DiagnosticReportResponse",
+    "DiagnosticResponse",
     "DocumentationLinkResponse",
+    "FeatureSupportResponse",
     "FieldResponse",
     "FixResponse",
     "ManifestResponse",
@@ -270,4 +341,5 @@ __all__ = [
     "StartSessionRequest",
     "StepResponse",
     "VerificationSpecResponse",
+    "VersionInfoResponse",
 ]

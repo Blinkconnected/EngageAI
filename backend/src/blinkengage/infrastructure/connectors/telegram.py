@@ -53,6 +53,30 @@ self-hosted deployment exactly as it does on a hosted one. Telegram is the
 one channel whose flow is the same everywhere, which makes it the useful
 control when a capability difference shows up in another connector.
 
+**The feature matrix is read off ``TelegramProvider``, not off the Bot API.**
+What Telegram can do and what this platform does with it are different lists,
+and the customer is promised the second one. So ``MEDIA`` is qualified rather
+than ticked — the provider sends any attachment (photos as photos, everything
+else as a document) but *receives* only ``photo`` and ``document``, so an
+inbound video or voice note arrives as its caption and nothing else.
+``EDIT_MESSAGES`` and ``DELETE_MESSAGES`` are outbound-only because
+``receive_message`` returns nothing for an ``edited_message`` update: we can
+edit what we sent, and never learn that the customer edited what they sent.
+``TYPING_INDICATORS`` is outbound-only because the Bot API has no update that
+tells a bot a human is typing. ``READ_RECEIPTS`` is absent because
+``mark_as_read`` is a deliberate no-op, and reactions, templates, broadcasts,
+interactive messages and calls are absent because nothing here implements
+them. A matrix that ticked those would be worse than no matrix: it would be
+believed.
+
+**Diagnostics answer more here than anywhere else**, because ``getWebhookInfo``
+is a provider genuinely reporting on itself — whether it holds a webhook for
+this bot, whose host it is pointing at, when it last failed to deliver and how
+many updates are waiting. Everything this connector reports is something
+Telegram said in that call or in ``getMe``; nothing is inferred, and the keys
+it cannot measure (permissions, rate-limit headroom, response times) are left
+for the platform to fill with ``UNKNOWN`` rather than answered optimistically.
+
 Everything customer-visible below is a translation key, and every string
 that starts life inside an exception goes through ``error_sanitizer`` first:
 this provider carries its bot token in the request URL, so an unsanitised
@@ -65,7 +89,9 @@ from __future__ import annotations
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
@@ -76,6 +102,19 @@ from blinkengage.domain.connector import (
     Connector,
     DeploymentContext,
     Repair,
+)
+from blinkengage.domain.connector_diagnostics import (
+    Diagnostic,
+    DiagnosticKey,
+    DiagnosticReport,
+    DiagnosticStatus,
+)
+from blinkengage.domain.connector_lifecycle import (
+    ChannelFeature,
+    Direction,
+    FeatureSupport,
+    Maturity,
+    VersionInfo,
 )
 from blinkengage.domain.connector_manifest import (
     AuthMethod,
@@ -107,6 +146,26 @@ _API_BASE_URL = "https://api.telegram.org"
 #: checklist learns something before they give up on it.
 _TIMEOUT = httpx.Timeout(10.0)
 
+#: Tighter, because ``diagnose`` makes *two* calls and the platform gives a
+#: connector one budget for the whole report — a panel that hangs waiting for
+#: a connector fails at the exact moment an unreachable provider is what the
+#: support engineer is trying to establish. Two of these fit inside that
+#: budget with room to spare; two of ``_TIMEOUT`` do not.
+_DIAGNOSE_TIMEOUT = httpx.Timeout(5.0)
+
+#: Telegram's own throttle response. Its body carries ``retry_after``, which
+#: is the only rate-limit figure the Bot API ever states — there are no
+#: headroom headers on a successful call, which is why ``RATE_LIMITS`` is
+#: answered when we are being throttled and never otherwise.
+_TOO_MANY_REQUESTS = 429
+_SERVER_ERROR = 500
+
+#: Updates in flight during a burst are ordinary; a queue that has grown past
+#: this is something nobody is draining. A threshold rather than "any pending
+#: update is a warning", because a panel that flickers amber whenever a
+#: customer sends two messages at once is a panel nobody reads.
+_PENDING_UPDATE_BACKLOG = 10
+
 #: 32 bytes of urlsafe randomness, sent to Telegram as ``secret_token`` and
 #: returned for storage. Telegram echoes it on every delivery in
 #: ``X-Telegram-Bot-Api-Secret-Token``, which is the entirety of what
@@ -123,6 +182,49 @@ _CHECK_DELIVERY = "connect.telegram.check.delivery"
 _CHECK_REACHABLE = "connect.telegram.check.reachable"
 
 _FIX_ISSUE_TOKEN = "connect.telegram.fix.issueToken"
+
+#: Qualifications on the feature matrix. Each exists because the honest
+#: answer is "yes, but", and a matrix that rounded those up to "yes" is how a
+#: customer discovers the limit by hitting it in front of their own customer.
+#: Media: photos and documents in both directions, and inbound video, audio,
+#: voice notes and stickers arriving as text only.
+_FEATURE_MEDIA_NOTE = "connect.telegram.feature.media.note"
+#: Typing: ``sendChatAction`` shows the indicator for a few seconds and
+#: expires on its own — there is no call that stops it early, so
+#: ``typing_indicator(is_typing=False)`` has nothing to send.
+_FEATURE_TYPING_NOTE = "connect.telegram.feature.typing.note"
+#: Edit: ``editMessageText`` replaces text. The caption of a photo or
+#: document this connector sent is not editable through it.
+_FEATURE_EDIT_NOTE = "connect.telegram.feature.edit.note"
+
+#: Diagnostics copy. In the platform's ``diagnostics.*`` namespace rather
+#: than this connector's ``connect.*`` one, because they render in the same
+#: panel as the platform's own lines and a support engineer reading it should
+#: not be able to tell which half produced which row.
+_DIAG_TOKEN_MISSING = "diagnostics.telegram.botTokenMissing"
+_DIAG_TOKEN_REJECTED = "diagnostics.telegram.botTokenRejected"
+_DIAG_AUTHENTICATED = "diagnostics.telegram.authenticatedAs"
+_DIAG_UNREACHABLE = "diagnostics.telegram.providerUnreachable"
+_DIAG_THROTTLED = "diagnostics.telegram.throttled"
+_DIAG_API_UNVERSIONED = "diagnostics.telegram.apiUnversioned"
+_DIAG_WEBHOOK_MISSING = "diagnostics.telegram.webhookNotRegistered"
+_DIAG_WEBHOOK_ELSEWHERE = "diagnostics.telegram.webhookRegisteredElsewhere"
+_DIAG_DELIVERY_FAILURE = "diagnostics.telegram.deliveryFailure"
+_DIAG_PENDING_UPDATES = "diagnostics.telegram.pendingUpdates"
+_DIAG_PENDING_UNDELIVERABLE = "diagnostics.telegram.pendingUpdatesUndeliverable"
+
+#: The Bot API states no version. There is none in the URL this connector
+#: builds (``/bot<token>/<method>``), none in a response header, and no
+#: method that returns one — so the version row can never be *measured*, as
+#: distinct from merely not having been measured yet. Reported as ``UNKNOWN``
+#: carrying the reason, which is strictly more than the ``UNKNOWN`` the
+#: platform would fill in for a key nobody answered, and honest in a way that
+#: inventing a number to fill the row would not be.
+_API_IS_UNVERSIONED = Diagnostic(
+    key=DiagnosticKey.API_VERSION,
+    status=DiagnosticStatus.UNKNOWN,
+    detail_key=_DIAG_API_UNVERSIONED,
+)
 
 _ERROR_TOKEN_MISSING = "connect.telegram.error.botTokenMissing"
 _ERROR_TOKEN_REJECTED = "connect.telegram.error.botTokenRejected"
@@ -190,6 +292,33 @@ def _bot_from(result: Mapping[str, Any]) -> _Bot:
         f"@{username}" if username else str(result.get("first_name") or f"telegram:{bot_id}")
     )
     return _Bot(id=bot_id, username=username, display_name=display_name)
+
+
+def _moment(value: Any) -> datetime | None:
+    """A Telegram unix timestamp, when it is one.
+
+    Guarded rather than trusted: a malformed date in one line of a
+    diagnostics report must not take the other lines with it, and
+    ``fromtimestamp`` raises on values a JSON body can perfectly well carry.
+    """
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value, tz=UTC)
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _redacted(text: str, credentials: Mapping[str, Any], token: str) -> str:
+    """Provider text, with every credential value taken out of it.
+
+    Both forms of the token, deliberately. ``_bot_token`` strips whitespace,
+    so a token pasted with a trailing newline is stored one way and
+    interpolated into the request URL another — redacting only the stored
+    value would leave the live credential in an ``httpx.InvalidURL`` message,
+    which is the exact leak ``error_sanitizer`` exists to close.
+    """
+    return redact_credentials(redact_credentials(text, dict(credentials)), {"bot_token": token})
 
 
 async def _call(
@@ -289,9 +418,89 @@ class TelegramConnector(Connector):
                 confirm=False,
             ),
         ),
-        supported_features=("text", "images", "documents", "edit", "delete", "typing"),
+        # Read off ``TelegramProvider``, method by method, and no further.
+        # The old free-string version said ``("text", "images", "documents",
+        # "edit", "delete", "typing")`` — six words no console could render
+        # into a matrix, with no direction on any of them, which meant the
+        # three that are outbound-only ticked as if they were both.
+        supported_features=(
+            # ``send_message``: ``sendMessage`` for text, and photos and
+            # documents when there are attachments.
+            FeatureSupport(ChannelFeature.SEND_MESSAGES, Direction.OUTBOUND),
+            # ``receive_message``/``webhook``: ``message`` updates. Not
+            # ``channel_post``, ``edited_message`` or ``callback_query`` —
+            # those return nothing, which is why nothing below claims them.
+            FeatureSupport(ChannelFeature.RECEIVE_MESSAGES, Direction.INBOUND),
+            # Both, and qualified in both. Outbound, ``image/*`` goes as a
+            # photo and everything else as a document. Inbound, only
+            # ``photo`` and ``document`` are pulled down: a video, a voice
+            # note or a sticker arrives with its caption and no file.
+            FeatureSupport(ChannelFeature.MEDIA, Direction.BOTH, note_key=_FEATURE_MEDIA_NOTE),
+            # Genuinely both: ``reply_to_message_id`` is set on what we send
+            # and ``reply_to_message`` is read off what arrives.
+            # INBOUND, not BOTH. The outbound half is unreachable:
+            # ``ConversationService.send_reply`` populates
+            # ``reply_to_external_message_id`` only for a provider declaring
+            # ``supports_invisible_reply_threading``, and ``EmailProvider`` is
+            # the only one in the codebase that does. The reply-reference code
+            # in this provider is real and never called, so claiming BOTH
+            # promises a customer a quoted reply the product cannot send.
+            FeatureSupport(ChannelFeature.THREADING, Direction.INBOUND),
+            # ``editMessageText``, on messages we sent. Outbound-only in the
+            # strong sense: a customer editing their own message produces an
+            # ``edited_message`` update, and ``receive_message`` drops it — so
+            # claiming ``BOTH`` would promise a change we never even see.
+            FeatureSupport(
+                ChannelFeature.EDIT_MESSAGES, Direction.OUTBOUND, note_key=_FEATURE_EDIT_NOTE
+            ),
+            # ``deleteMessage``, likewise ours only. The Bot API sends no
+            # update at all when a customer deletes something.
+            FeatureSupport(ChannelFeature.DELETE_MESSAGES, Direction.OUTBOUND),
+            # ``sendChatAction``. Outbound by nature: no Bot API update ever
+            # tells a bot that the human is typing, so an agent will never see
+            # this in the direction they might expect.
+            FeatureSupport(
+                ChannelFeature.TYPING_INDICATORS,
+                Direction.OUTBOUND,
+                note_key=_FEATURE_TYPING_NOTE,
+            ),
+            # Deliberately absent, each because the code says so:
+            # READ_RECEIPTS   — ``mark_as_read`` is a no-op; the Bot API has
+            #                   no read receipt a bot can send or observe.
+            # REACTIONS       — nothing sends ``setMessageReaction`` and
+            #                   ``message_reaction`` updates are not handled.
+            # INTERACTIVE_MESSAGES — no ``reply_markup`` is ever sent and
+            #                   ``callback_query`` updates are dropped.
+            # TEMPLATES, BROADCASTS, VOICE_CALLS, VIDEO_CALLS — no such
+            #                   concept in this provider, or in the Bot API.
+        ),
         documentation=(
-            DocumentationLink(key="connect.telegram.docs.botFather", url="https://core.telegram.org/bots#botfather"),
+            DocumentationLink(
+                key="connect.telegram.docs.botFather",
+                url="https://core.telegram.org/bots#botfather",
+            ),
+        ),
+        # Feature-complete and unproven, which is what BETA is for. Every
+        # capability declared above is implemented against the real Bot API
+        # and none of it depends on a provider app an operator might not
+        # have, so there is no path here that cannot run — which is the bar
+        # PREVIEW exists to warn about and this connector clears. What it has
+        # not done is carry a customer's traffic. PRODUCTION additionally
+        # promises that changes to it stay backwards-compatible, and that is
+        # a promise to make after the first real deployment has been survived
+        # rather than before it.
+        maturity=Maturity.BETA,
+        versions=VersionInfo(
+            connector="1.0.0",
+            # Not a number, because the Bot API does not have one. The URL
+            # this connector builds is ``/bot<token>/<method>`` — no version
+            # segment, no version header, no method that reports one. Meta's
+            # connectors can name ``v21.0`` and warn when it is retired;
+            # here there is nothing to name and nothing to be retired, and
+            # writing a plausible-looking number into this field would invent
+            # exactly the deprecation risk it exists to communicate.
+            api="unversioned",
+            minimum_platform="1.0.0",
         ),
     )
 
@@ -508,6 +717,304 @@ class TelegramConnector(Connector):
             # signature check exactly as a stale one does.
             return Repair(repaired=False, reason=_ERROR_WEBHOOK_REGISTRATION)
         return Repair(webhook_secret=secret)
+
+    # --- Diagnose -----------------------------------------------------
+
+    async def diagnose(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> DiagnosticReport:
+        """What Telegram itself says about this bot, right now.
+
+        Two calls, and between them this connector can answer more of the
+        panel than any other in the product — not because it tries harder,
+        but because ``getWebhookInfo`` is a provider giving a genuine account
+        of its own delivery: whether it holds a webhook for this bot, when it
+        last failed to reach it, and how many updates are waiting. Nothing
+        else here has an equivalent.
+
+        Every line comes from something Telegram said. Nothing is inferred
+        from stored state — that is the platform's half, and it is better at
+        it — and nothing is answered optimistically. A fabricated ``OK`` is
+        the one thing that makes this panel worse than no panel, because a
+        support engineer who cannot trust a green row has to go and read the
+        logs anyway, which is the outcome the whole feature exists to avoid.
+
+        What is deliberately not answered, and why:
+
+        - ``PERMISSIONS``: Telegram has no scopes. ``getMe`` returns
+          ``can_join_groups`` and ``can_read_all_group_messages``, but those
+          are bot *settings*, this connector requires none of them, and
+          reporting them against an empty ``required_permissions`` would put
+          a row on the panel with nothing to compare against.
+        - ``RATE_LIMITS``: the Bot API publishes no headroom — no quota
+          headers, nothing on a successful call. It states ``retry_after``
+          only while actually throttling, so that is the only time this
+          answers, and a permanent green "within limits" would be a
+          measurement nobody took.
+        - ``LAST_SUCCESSFUL_SYNC``, ``AVERAGE_RESPONSE_TIME``: the provider
+          reports neither. Timing our own ``getMe`` would be one sample of
+          our own network presented as the provider's latency.
+        - ``CONNECTION_HEALTH``: the platform's, from the health sweep that
+          already runs. A connector answer wins the merge, so answering here
+          would replace a recorded verdict with a single probe.
+
+        Returns findings and never raises, including when the token is
+        malformed enough that ``httpx`` refuses to build a URL from it.
+        """
+        token = _bot_token(credentials)
+        if not token:
+            # A stored channel with no token cannot be probed at all, and
+            # that is itself the finding: nothing about this channel works.
+            return self._report(
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.FAIL,
+                    detail_key=_DIAG_TOKEN_MISSING,
+                )
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=_DIAGNOSE_TIMEOUT) as client:
+                status, body = await _call(client, token=token, method="getMe")
+                items = self._identity(status, body)
+                if body.get("ok"):
+                    # Only worth asking once the token is known good: every
+                    # webhook line would otherwise be reporting the same
+                    # rejected credential a second time, in vaguer words.
+                    items += await self._delivery(
+                        client, token=token, credentials=credentials, context=context
+                    )
+        except Exception as exc:  # noqa: BLE001 - diagnose returns findings, never raises
+            return self._report(
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    # Not FAIL. We did not learn that the credential is bad,
+                    # we learned nothing — and a red authentication row sends
+                    # a support engineer to reissue a token that was working
+                    # fine, during somebody else's outage.
+                    status=DiagnosticStatus.UNKNOWN,
+                    detail_key=_DIAG_UNREACHABLE,
+                    params={"detail": _redacted(str(exc), credentials, token)},
+                )
+            )
+        return self._report(*items)
+
+    def _report(self, *items: Diagnostic) -> DiagnosticReport:
+        """The findings, plus the one line that is true whatever happened."""
+        return DiagnosticReport(channel_type=self.channel_type, items=(_API_IS_UNVERSIONED, *items))
+
+    @staticmethod
+    def _identity(status: int, body: Mapping[str, Any]) -> list[Diagnostic]:
+        """``getMe``, as an authentication verdict.
+
+        The four answers Telegram gives are four different things, and
+        collapsing any of them into "the token is bad" would be wrong in a
+        way that costs the customer a working credential.
+        """
+        if status == _TOO_MANY_REQUESTS:
+            parameters = body.get("parameters")
+            retry_after = parameters.get("retry_after") if isinstance(parameters, dict) else None
+            return [
+                Diagnostic(
+                    key=DiagnosticKey.RATE_LIMITS,
+                    status=DiagnosticStatus.WARN,
+                    value=str(retry_after) if isinstance(retry_after, int) else None,
+                    detail_key=_DIAG_THROTTLED,
+                    params={"unit": "s"},
+                ),
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.UNKNOWN,
+                    detail_key=_DIAG_THROTTLED,
+                ),
+            ]
+        if status >= _SERVER_ERROR:
+            return [
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.UNKNOWN,
+                    detail_key=_DIAG_UNREACHABLE,
+                    params={"status": str(status)},
+                )
+            ]
+        if not body.get("ok"):
+            # Telegram rejects a revoked or wrong token as a 401/404 and,
+            # occasionally, as a 200 whose body says ``ok: false``. Both mean
+            # the same thing, and it is the customer's to fix — in BotFather,
+            # since nothing this connector offers can reissue a bot token.
+            return [
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.FAIL,
+                    detail_key=_DIAG_TOKEN_REJECTED,
+                )
+            ]
+        bot = _bot_from(body.get("result") or {})
+        return [
+            Diagnostic(
+                key=DiagnosticKey.AUTHENTICATION,
+                status=DiagnosticStatus.OK,
+                # *Which* bot, not just "the token works". The mistake this
+                # catches is a staging token on a production channel, which
+                # authenticates perfectly and delivers to nobody.
+                value=bot.display_name,
+                detail_key=_DIAG_AUTHENTICATED,
+                params={"username": bot.username, "botId": str(bot.id)},
+            )
+        ]
+
+    async def _delivery(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        token: str,
+        credentials: Mapping[str, Any],
+        context: DeploymentContext,
+    ) -> list[Diagnostic]:
+        """``getWebhookInfo``, as three lines of the panel.
+
+        Silence when Telegram will not answer. An unanswered key comes back
+        ``UNKNOWN`` from ``complete()``, which is the truth; a guessed one
+        would not be.
+        """
+        try:
+            _status, body = await _call(client, token=token, method="getWebhookInfo")
+        except Exception:  # noqa: BLE001 - an unmeasured line is UNKNOWN, not a failure
+            return []
+        if not body.get("ok"):
+            return []
+        info = body.get("result") or {}
+        if not isinstance(info, dict):
+            return []
+
+        url = str(info.get("url") or "")
+        items = [self._webhook_status(url, context=context)]
+        failure = self._last_failure(info, credentials=credentials, token=token)
+        if failure is not None:
+            items.append(failure)
+        queue = self._retry_queue(info, registered=bool(url))
+        if queue is not None:
+            items.append(queue)
+        return items
+
+    @staticmethod
+    def _webhook_status(url: str, *, context: DeploymentContext) -> Diagnostic:
+        """Is Telegram pointed at us, at somebody else, or at nothing.
+
+        The third case is the one worth the round trip. A bot has exactly one
+        webhook, so any other tool the customer points at the same bot
+        silently replaces ours — and from the customer's side that is
+        indistinguishable from the bot having stopped working, which is what
+        they will report it as.
+
+        Only the host is reported, never the URL. A webhook another tool
+        registered may carry that tool's own secret in its path, and this
+        report is stored and read by anyone with ``channels.read``.
+        """
+        if not url:
+            return Diagnostic(
+                key=DiagnosticKey.WEBHOOK_STATUS,
+                status=DiagnosticStatus.FAIL,
+                detail_key=_DIAG_WEBHOOK_MISSING,
+                repair_action=_REREGISTER_WEBHOOK,
+            )
+        host = urlsplit(url).netloc
+        base = context.public_base_url.rstrip("/")
+        # The trailing slash matters: without it
+        # ``https://engage.example.com.attacker.test/…`` is a prefix match on
+        # this installation's own base URL. And with no base URL to compare
+        # against there is no claim to make — a webhook exists, and saying
+        # whose it is would be a guess.
+        elsewhere = bool(base) and not url.startswith(f"{base}/")
+        if not elsewhere:
+            return Diagnostic(
+                key=DiagnosticKey.WEBHOOK_STATUS,
+                status=DiagnosticStatus.OK,
+                value=host,
+            )
+        return Diagnostic(
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            # A warning rather than a failure: a legitimate second hostname
+            # for the same installation looks exactly like this, and blocking
+            # somebody's working channel over a DNS change is worse than
+            # telling them where their updates are going.
+            status=DiagnosticStatus.WARN,
+            value=host,
+            detail_key=_DIAG_WEBHOOK_ELSEWHERE,
+            params={"host": host},
+            repair_action=_REREGISTER_WEBHOOK,
+        )
+
+    @staticmethod
+    def _last_failure(
+        info: Mapping[str, Any], *, credentials: Mapping[str, Any], token: str
+    ) -> Diagnostic | None:
+        """Telegram's own record of the last delivery it could not make.
+
+        Reported only when there is one. Telegram's silence means "no
+        delivery to this webhook has ever failed", which is *not* the same
+        statement as this key's — the platform answers it from the connection
+        log, where a failed outbound send is also a failed request. A
+        connector answer wins the merge, so returning a cheerful "nothing
+        failed" here would erase a real failure the platform had recorded.
+        """
+        failed_at = _moment(info.get("last_error_date"))
+        message = info.get("last_error_message")
+        if failed_at is None or not message:
+            return None
+        return Diagnostic(
+            key=DiagnosticKey.LAST_FAILED_REQUEST,
+            status=DiagnosticStatus.WARN,
+            value=failed_at.isoformat(),
+            detail_key=_DIAG_DELIVERY_FAILURE,
+            # Telegram's text describes what it could not reach — routinely
+            # our own URL, and on a bot somebody else has registered, theirs.
+            # Through the sanitiser like every other provider string.
+            params={"detail": _redacted(str(message), credentials, token)},
+            measured_at=failed_at,
+            repair_action=_REREGISTER_WEBHOOK,
+        )
+
+    @staticmethod
+    def _retry_queue(info: Mapping[str, Any], *, registered: bool) -> Diagnostic | None:
+        """How many updates Telegram is holding for this bot.
+
+        The number that makes "the bot has stopped answering" legible. With
+        no webhook registered, Telegram queues updates for the bot and
+        nothing ever drains them — the failure ``configure_webhook`` exists
+        to prevent, and the one an operator has no other way of seeing.
+        """
+        pending = info.get("pending_update_count")
+        if not isinstance(pending, int) or isinstance(pending, bool) or pending < 0:
+            return None
+        if pending == 0:
+            return Diagnostic(
+                key=DiagnosticKey.RETRY_QUEUE,
+                status=DiagnosticStatus.OK,
+                value="0",
+            )
+        if not registered:
+            return Diagnostic(
+                key=DiagnosticKey.RETRY_QUEUE,
+                status=DiagnosticStatus.WARN,
+                value=str(pending),
+                detail_key=_DIAG_PENDING_UNDELIVERABLE,
+                repair_action=_REREGISTER_WEBHOOK,
+            )
+        if pending < _PENDING_UPDATE_BACKLOG:
+            # In flight, not stuck. Reported as the measurement it is.
+            return Diagnostic(
+                key=DiagnosticKey.RETRY_QUEUE,
+                status=DiagnosticStatus.OK,
+                value=str(pending),
+            )
+        return Diagnostic(
+            key=DiagnosticKey.RETRY_QUEUE,
+            status=DiagnosticStatus.WARN,
+            value=str(pending),
+            detail_key=_DIAG_PENDING_UPDATES,
+            repair_action=_REREGISTER_WEBHOOK,
+        )
 
     # --- Repair -------------------------------------------------------
 

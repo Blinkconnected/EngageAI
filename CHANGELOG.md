@@ -29,6 +29,37 @@ for more detail on how this page is put together.
   Problems that would stop the channel working block it; things merely
   worth knowing do not.
 
+- **Every channel now says how finished it is, what version it is, and
+  exactly what it can carry.** A channel in preview or beta says so; one
+  being deprecated warns before you connect a new one; one an
+  administrator has switched off or put into maintenance says that
+  instead — and existing channels keep working through all of it, because
+  taking a channel away from someone receiving messages on it is a
+  decision somebody makes on purpose, not a side effect.
+
+  The **feature list is now exact, including which direction each
+  feature works in**. SMS receives photos and cannot send them, so it
+  says so rather than showing one tick that would be wrong whichever way
+  you read it. WhatsApp does not claim typing indicators, because it
+  does not have them. Nothing claims voice or video calls, because
+  nothing does them yet.
+
+  And a connector that needs a newer Blink Engage than you are running
+  is not offered at all — with a note explaining that, so an
+  administrator finds out before a customer meets a setup flow that
+  cannot finish.
+
+- **Channel diagnostics for support.** One screen answering "why is this
+  not working" — whether the credentials still work, whether the
+  provider is sending us anything, which permissions are granted, what
+  last succeeded, what last failed, how much is waiting to retry — with
+  a one-click fix beside anything fixable.
+
+  Anything that has not actually been measured says so, rather than
+  showing a reassuring tick. That distinction is the whole point: a
+  green light nobody earned sends support looking in the wrong place
+  with more confidence than they started with.
+
 - **Every channel now describes itself, and the setup screen is generated
   from that description.** A connector declares its name, icon, category,
   what it needs, what it will find, what it will check, what it can

@@ -38,6 +38,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from blinkengage.domain.connector_lifecycle import (
+    ChannelFeature,
+    FeatureSupport,
+    Maturity,
+    VersionInfo,
+)
 from blinkengage.domain.connectors import Capability, StepId, StepKind
 
 
@@ -289,20 +295,38 @@ class ConnectorManifest:
     required_resources: tuple[ResourceSpec, ...] = ()
     verification_steps: tuple[VerificationSpec, ...] = ()
     repair_actions: tuple[RepairAction, ...] = ()
-    #: What this channel can carry once connected — attachments, typing
-    #: indicators, editing. Shown so a customer knows before connecting, and
-    #: so nobody files a bug about SMS not sending images.
-    supported_features: tuple[str, ...] = ()
+    #: What this channel can carry once connected, as a structured matrix
+    #: rather than free strings. The console renders it without a lookup
+    #: table, and two connectors can no longer name one capability
+    #: differently — which is what made the previous free-string version a
+    #: matrix that lied.
+    supported_features: tuple[FeatureSupport, ...] = ()
     documentation: tuple[DocumentationLink, ...] = ()
-    #: The oldest platform release this connector works on. Present so a
-    #: connector shipped out of band can refuse to appear on a build that
-    #: predates what it needs, rather than failing halfway through a flow.
-    minimum_platform_version: str = "1.0.0"
+    #: How far along this connector's code is. A property of the code, the
+    #: same on every installation — availability is the other axis and is
+    #: resolved per deployment. See ``connector_lifecycle``.
+    maturity: Maturity = Maturity.PRODUCTION
+
+    #: Its own version, the provider API version it speaks, and the oldest
+    #: platform it runs on. Three things people routinely conflate, so the
+    #: manifest names each.
+    versions: VersionInfo = field(default_factory=VersionInfo)
     #: An explicit flow, when the derived one is wrong. Almost always empty:
     #: deriving from capabilities means a connector cannot forget a step, and
     #: a connector that needs a different shape is saying something new about
     #: connecting to things — which is worth writing down here deliberately.
     steps: tuple[tuple[StepId, StepKind], ...] = ()
+
+    @property
+    def minimum_platform_version(self) -> str:
+        """Kept as a shorthand for the field that moved into ``versions``."""
+        return self.versions.minimum_platform
+
+    def supports(self, feature: ChannelFeature) -> FeatureSupport | None:
+        for support in self.supported_features:
+            if support.feature is feature:
+                return support
+        return None
 
     def repair(self, action_id: str) -> RepairAction | None:
         for action in self.repair_actions:

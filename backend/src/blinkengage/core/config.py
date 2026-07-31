@@ -21,6 +21,13 @@ class Settings(BaseSettings):
 
     # --- Application ---
     app_name: str = "Blink Engage"
+    #: What this build is, for connectors that declare a minimum. Compared
+    #: with ``VersionInfo.minimum_platform`` so a connector shipped ahead of
+    #: its platform says so plainly rather than failing halfway through a
+    #: customer's flow. Semantic, and the pre-release suffix is ignored when
+    #: comparing — a connector requiring 1.0.0 is satisfied by 1.0.0-beta.5,
+    #: or nothing could declare a minimum before the first stable release.
+    platform_version: str = "1.0.0-beta.5"
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"

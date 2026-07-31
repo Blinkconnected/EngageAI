@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from blinkengage.api.deps import (
     get_channel_config_service,
     get_channel_connect_service,
+    get_channel_diagnostics_service,
     require_permission,
 )
 from blinkengage.api.schemas.channel_connect import (
@@ -31,7 +32,10 @@ from blinkengage.api.schemas.channel_connect import (
     ConnectionTemplateResponse,
     ConnectorProfileResponse,
     ConnectResultResponse,
+    DiagnosticReportResponse,
+    DiagnosticResponse,
     DocumentationLinkResponse,
+    FeatureSupportResponse,
     FieldResponse,
     ManifestResponse,
     RepairActionResponse,
@@ -42,11 +46,15 @@ from blinkengage.api.schemas.channel_connect import (
     StartSessionRequest,
     StepResponse,
     VerificationSpecResponse,
+    VersionInfoResponse,
 )
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.channel_connect_service import (
     ChannelConnectService,
     ConnectSession,
+)
+from blinkengage.application.services.channel_diagnostics_service import (
+    ChannelDiagnosticsService,
 )
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.connection_templates import TEMPLATES
@@ -116,12 +124,24 @@ def _manifest_response(manifest: ConnectorManifest) -> ManifestResponse:
             )
             for action in manifest.repair_actions
         ],
-        supported_features=list(manifest.supported_features),
+        supported_features=[
+            FeatureSupportResponse(
+                feature=support.feature.value,
+                direction=support.direction.value,
+                note_key=support.note_key,
+            )
+            for support in manifest.supported_features
+        ],
         documentation=[
             DocumentationLinkResponse(key=link.key, url=link.url)
             for link in manifest.documentation
         ],
-        minimum_platform_version=manifest.minimum_platform_version,
+        maturity=manifest.maturity.value,
+        versions=VersionInfoResponse(
+            connector=manifest.versions.connector,
+            api=manifest.versions.api,
+            minimum_platform=manifest.versions.minimum_platform,
+        ),
     )
 
 
@@ -151,6 +171,9 @@ async def catalog(
                     for state in profile.states
                 ],
                 connectable=profile.connectable,
+                lifecycle=profile.lifecycle.value,
+                warns=profile.warns,
+                platform_supported=profile.platform_supported,
             )
             for profile in service.catalog()
         ],
@@ -451,6 +474,53 @@ async def repair_channel(
         action_id=action_id,
         repaired=result.repaired,
         reason=result.reason,
+    )
+
+
+@router.get(
+    "/channels/{channel_config_id}/diagnostics",
+    response_model=DiagnosticReportResponse,
+)
+async def channel_diagnostics(
+    channel_config_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("channels.read"))],
+    channels: Annotated[ChannelConfigService, Depends(get_channel_config_service)],
+    diagnostics: Annotated[
+        ChannelDiagnosticsService, Depends(get_channel_diagnostics_service)
+    ],
+) -> DiagnosticReportResponse:
+    """Everything known about one channel, in one call.
+
+    Built for a support engineer with a customer on the phone: the answer to
+    "why is this not working" without a database query, a log search and a
+    guess. The connector asks the provider what only it can know; the
+    platform contributes what it already recorded; anything nobody measured
+    comes back ``unknown`` rather than absent, so the panel has the same rows
+    for every channel.
+
+    ``channels.read`` rather than ``manage``: diagnosing is looking, and a
+    support engineer who can only look should still be able to answer the
+    question.
+    """
+    channel = await channels.get(
+        company_id=auth.company_id, channel_config_id=channel_config_id
+    )
+    report = await diagnostics.report(channel)
+    return DiagnosticReportResponse(
+        channel_type=report.channel_type,
+        items=[
+            DiagnosticResponse(
+                key=item.key.value,
+                status=item.status.value,
+                value=item.value,
+                detail_key=item.detail_key,
+                params=item.params,
+                measured_at=item.measured_at,
+                repair_action=item.repair_action,
+            )
+            for item in report.items
+        ],
+        overall=report.worst.value,
     )
 
 

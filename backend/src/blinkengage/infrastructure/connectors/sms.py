@@ -77,6 +77,30 @@ family. Generating a random secret here would reproduce the failure described
 there: a channel that connects green and then discards every inbound message,
 which is not a symptom anyone can diagnose.
 
+The feature matrix says *inbound* against Media and means it. ``SmsProvider``
+raises on any outbound message carrying an attachment, and ``TwilioGateway``
+downloads every ``MediaUrl`` a delivery names and stores it — so that one
+capability moves in exactly one direction, which is the case ``Direction`` was
+added for. Everything the provider merely *tolerates* is absent instead:
+``edit_message``, ``delete_message``, ``mark_as_read`` and ``typing_indicator``
+all return successfully without doing anything, and a matrix that read a
+returning no-op as support would promise four things SMS has never been able to
+do. Overclaiming is the failure mode a feature matrix has, and it is worse than
+having no matrix, because a customer plans around it.
+
+``diagnose`` asks Twilio three questions and declines to guess at the rest.
+Whether the account still accepts these credentials, where the number's
+``SmsUrl`` points *now*, and which API version Twilio will use when it calls
+it — each one a fact Twilio states rather than something inferable from
+anything stored here. Rate-limit headroom joins them only when a response
+actually carries the headers for it, which on the 2010-04-01 API is seldom.
+Permissions are never reported, because Twilio exposes no endpoint that lists
+what an API key may do; and the platform's own keys — health, retry queue, the
+timestamps — are left to the platform, whose records beat anything a single
+round trip could infer. The connector's half of the merge wins, so answering a
+key it cannot measure would shadow a real observation with a guess. Unanswered
+becomes ``UNKNOWN``, which is the truth.
+
 Every fix this file offers is ``reenter`` or ``manual``, and never
 ``reauthorize``. There is no consent screen behind any of these carriers, so
 a reauthorize fix renders a button that goes nowhere — the reason the fix kind
@@ -111,6 +135,19 @@ from blinkengage.domain.connector import (
     Connector,
     DeploymentContext,
     Repair,
+)
+from blinkengage.domain.connector_diagnostics import (
+    Diagnostic,
+    DiagnosticKey,
+    DiagnosticReport,
+    DiagnosticStatus,
+)
+from blinkengage.domain.connector_lifecycle import (
+    ChannelFeature,
+    Direction,
+    FeatureSupport,
+    Maturity,
+    VersionInfo,
 )
 from blinkengage.domain.connector_manifest import (
     AuthMethod,
@@ -159,6 +196,14 @@ _NO_WEBHOOK_REGISTRATION = "no_sms_gateway_registers_webhooks"
 #: httpx's default would let a black-holed connection stall the checklist.
 _PROBE_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
+#: Tighter than the probe's, and for a different reason. Nobody is watching a
+#: wizard step here, but ``ChannelDiagnosticsService`` gives the connector one
+#: budget for its whole half of the report, and this makes two sequential calls
+#: — so each has to fit inside half of it. A panel assembled without our half
+#: says UNKNOWN against every line only this connector could have answered,
+#: which is a worse outcome than being slightly impatient with a slow carrier.
+_DIAGNOSTIC_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
+
 #: The statuses that mean the carrier looked at our credentials and refused
 #: them, rather than having a problem of its own — the same split, and the
 #: same three codes, ``error_sanitizer.classify_health_check_failure`` uses to
@@ -166,7 +211,27 @@ _PROBE_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 #: authenticates; see ``_number_unverified``.
 _REJECTED_STATUS_CODES = frozenset({401, 403, 404})
 
-_TWILIO_API = "https://api.twilio.com/2010-04-01"
+#: Twilio versions its API by date in the request *path* rather than by a
+#: header or a parameter, so the string in the URL is the version — which is
+#: why the manifest reads its ``VersionInfo.api`` from here instead of stating
+#: it a second time, and why ``diagnose`` can compare it against the version
+#: Twilio says it will use when it calls back. It is also what
+#: ``TwilioGateway`` sends and verifies against; the two must not drift.
+_TWILIO_API_VERSION = "2010-04-01"
+
+_TWILIO_API = f"https://api.twilio.com/{_TWILIO_API_VERSION}"
+
+#: Twilio's answer to "you are going too fast", stated outright.
+_TOO_MANY_REQUESTS = 429
+
+#: The rate-limit headers Twilio *sometimes* sets, in both spellings seen in
+#: the wild. The 2010-04-01 API documents none of them and most of its
+#: endpoints send none, so they are read opportunistically and RATE_LIMITS is
+#: simply not reported when they are absent. A headroom figure derived from
+#: anything other than a header the carrier actually sent would be a number an
+#: engineer trusts and nobody measured.
+_RATE_LIMIT_REMAINING_HEADERS = ("x-rate-limit-remaining", "x-ratelimit-remaining")
+_RATE_LIMIT_LIMIT_HEADERS = ("x-rate-limit-limit", "x-ratelimit-limit")
 
 #: The one repair this connector offers, named in the health states that
 #: produce it and answered by ``repair``.
@@ -182,6 +247,32 @@ _ERROR_GATEWAY_UNKNOWN = "connect.sms.error.gatewayUnknown"
 _ERROR_NUMBER_NOT_ON_ACCOUNT = "connect.sms.error.numberNotOnAccount"
 _ERROR_WEBHOOK_REGISTRATION = "connect.sms.error.webhookRegistrationFailed"
 _ERROR_NO_CALLBACK_URL = "connect.sms.error.callbackUrlMissing"
+
+#: Copy for the diagnostics panel. Its own vocabulary rather than the check
+#: keys above, because the audience is different: a check key explains to a
+#: customer mid-wizard what to fix before they commit, and these explain to a
+#: support engineer, with that customer already on the phone, what a live
+#: channel is doing now. The same condition genuinely needs different words in
+#: the two places, and sharing a key would force one of them to be wrong.
+_DIAGNOSTIC_UNREACHABLE = "connect.sms.diagnostic.gatewayUnreachable"
+_DIAGNOSTIC_GATEWAY_UNKNOWN = "connect.sms.diagnostic.gatewayUnknown"
+_DIAGNOSTIC_CREDENTIALS_REJECTED = "connect.sms.diagnostic.credentialsRejected"
+_DIAGNOSTIC_PROVIDER_ERROR = "connect.sms.diagnostic.providerError"
+_DIAGNOSTIC_ACCOUNT_INACTIVE = "connect.sms.diagnostic.accountInactive"
+_DIAGNOSTIC_ACCOUNT_TRIAL = "connect.sms.diagnostic.accountTrial"
+_DIAGNOSTIC_NUMBER_UNREADABLE = "connect.sms.diagnostic.numberUnreadable"
+_DIAGNOSTIC_NUMBER_NOT_ON_ACCOUNT = "connect.sms.diagnostic.numberNotOnAccount"
+_DIAGNOSTIC_WEBHOOK_MISSING = "connect.sms.diagnostic.webhookMissing"
+_DIAGNOSTIC_WEBHOOK_ELSEWHERE = "connect.sms.diagnostic.webhookElsewhere"
+_DIAGNOSTIC_WEBHOOK_METHOD = "connect.sms.diagnostic.webhookMethod"
+_DIAGNOSTIC_WEBHOOK_UNVERIFIABLE = "connect.sms.diagnostic.webhookUnverifiable"
+_DIAGNOSTIC_API_VERSION_MISMATCH = "connect.sms.diagnostic.apiVersionMismatch"
+_DIAGNOSTIC_RATE_LIMITED = "connect.sms.diagnostic.rateLimited"
+
+#: Qualifications on the feature matrix. A tick with no note beside it would
+#: promise a customer that an SMS carries whatever they hand it.
+_FEATURE_TEXT_ONLY = "connect.sms.feature.textOnly"
+_FEATURE_MEDIA_INBOUND_ONLY = "connect.sms.feature.mediaInboundOnly"
 
 #: The contract's own code for "this is not something I do", returned verbatim
 #: rather than translated into a key of this module's own, so a caller can
@@ -459,6 +550,334 @@ async def _register_twilio(credentials: dict[str, Any], callback_url: str) -> Re
     return Repair(repaired=True)
 
 
+def _unmeasured(
+    key: DiagnosticKey, detail_key: str, *, params: dict[str, str] | None = None
+) -> Diagnostic:
+    """A check that could not be run, saying so and saying why.
+
+    ``UNKNOWN`` rather than an assumption in either direction — an ``OK``
+    nobody measured is the failure this whole panel is built to avoid, and a
+    ``FAIL`` would send an engineer to fix a credential that was never shown to
+    be wrong.
+
+    Reported explicitly rather than left out, even though ``complete()`` would
+    fill the gap: a silent unknown means "nobody has looked", and this one
+    means "we looked and could not see", which is the difference between a gap
+    in the product and a carrier that is down right now.
+    """
+    return Diagnostic(
+        key=key,
+        status=DiagnosticStatus.UNKNOWN,
+        detail_key=detail_key,
+        params=params or {},
+    )
+
+
+def _header(response: httpx.Response, names: tuple[str, ...]) -> str | None:
+    """The first of several spellings a carrier might have used."""
+    for name in names:
+        value = response.headers.get(name)
+        if value:
+            return str(value).strip()
+    return None
+
+
+def _rate_limit_diagnostic(response: httpx.Response) -> Diagnostic | None:
+    """Throttle headroom, and only when Twilio has actually said something.
+
+    Two genuine sources and deliberately no third. A ``429`` is Twilio stating
+    outright that we are being throttled, and some responses carry
+    ``X-Rate-Limit-*`` headers. Neither is guaranteed anywhere on the
+    2010-04-01 API, so this returns ``None`` far more often than not — which is
+    how RATE_LIMITS ends up UNKNOWN on the panel rather than wearing a
+    comfortable green tick that no measurement stands behind.
+    """
+    if response.status_code == _TOO_MANY_REQUESTS:
+        retry_after = response.headers.get("retry-after")
+        return Diagnostic(
+            key=DiagnosticKey.RATE_LIMITS,
+            status=DiagnosticStatus.WARN,
+            value=retry_after,
+            detail_key=_DIAGNOSTIC_RATE_LIMITED,
+            params={"retry_after": retry_after} if retry_after else {},
+        )
+
+    remaining = _header(response, _RATE_LIMIT_REMAINING_HEADERS)
+    if remaining is None:
+        return None
+    limit = _header(response, _RATE_LIMIT_LIMIT_HEADERS)
+    exhausted = remaining.isdigit() and int(remaining) == 0
+    return Diagnostic(
+        key=DiagnosticKey.RATE_LIMITS,
+        status=DiagnosticStatus.WARN if exhausted else DiagnosticStatus.OK,
+        value=remaining,
+        detail_key=_DIAGNOSTIC_RATE_LIMITED if exhausted else None,
+        params={"limit": limit} if limit else {},
+    )
+
+
+def _authentication_diagnostic(details: Mapping[str, Any]) -> Diagnostic:
+    """What the account resource says about the credential that fetched it.
+
+    A 200 is proof the SID and token are still accepted, which is the question
+    the key asks. The account's own ``status`` rides along because a suspended
+    account authenticates perfectly and sends nothing — reported as a warning
+    and never a failure, since sending an engineer to re-enter a token that was
+    proved correct one line above is exactly how this panel would waste the
+    call it exists to shorten.
+
+    A trial account is a note on an ``OK`` row rather than a warning of its
+    own. It sends perfectly to the numbers it has verified, and a row that
+    stays yellow for the lifetime of every trial account is a row engineers
+    learn to skip — taking the real warnings with it.
+    """
+    status = _text(details, "status").lower()
+    if status and status != "active":
+        return Diagnostic(
+            key=DiagnosticKey.AUTHENTICATION,
+            status=DiagnosticStatus.WARN,
+            value=status,
+            detail_key=_DIAGNOSTIC_ACCOUNT_INACTIVE,
+            params={"status": status},
+        )
+    trial = _text(details, "type").lower() == "trial"
+    return Diagnostic(
+        key=DiagnosticKey.AUTHENTICATION,
+        status=DiagnosticStatus.OK,
+        value=status or None,
+        detail_key=_DIAGNOSTIC_ACCOUNT_TRIAL if trial else None,
+    )
+
+
+def _webhook_diagnostic(entry: Mapping[str, Any], context: DeploymentContext) -> Diagnostic:
+    """Where this number's ``SmsUrl`` points, as Twilio holds it right now.
+
+    The one thing no amount of stored state can answer: ``SmsUrl`` is a field
+    in the carrier's console that anybody with access can change, and every
+    symptom of it having been changed is silence. A channel whose token works,
+    whose number is right and whose callback was quietly repointed looks
+    identical to one nobody has messaged.
+
+    Compared against ``public_base_url`` with the separator attached, because
+    ``startswith`` on a bare origin would accept a host that merely begins with
+    ours — which is the one wrong answer worse than no answer here.
+    """
+    sms_url = _text(entry, "sms_url")
+    if not sms_url:
+        return Diagnostic(
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            status=DiagnosticStatus.FAIL,
+            detail_key=_DIAGNOSTIC_WEBHOOK_MISSING,
+            repair_action=_REREGISTER_WEBHOOK,
+        )
+
+    base = context.public_base_url.strip().rstrip("/")
+    if not base:
+        # A callback is configured and we cannot say whose it is. Reported
+        # rather than assumed in our favour: the URL itself is the useful part.
+        return Diagnostic(
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            status=DiagnosticStatus.UNKNOWN,
+            value=sms_url,
+            detail_key=_DIAGNOSTIC_WEBHOOK_UNVERIFIABLE,
+        )
+    if not sms_url.startswith(f"{base}/"):
+        return Diagnostic(
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            status=DiagnosticStatus.WARN,
+            value=sms_url,
+            detail_key=_DIAGNOSTIC_WEBHOOK_ELSEWHERE,
+            repair_action=_REREGISTER_WEBHOOK,
+        )
+
+    method = _text(entry, "sms_method").upper()
+    if method and method != "POST":
+        # The failure ``_register_twilio`` sets ``SmsMethod`` explicitly to
+        # prevent, found after the fact: on GET, Twilio puts the message in the
+        # query string, where ``TwilioGateway`` — which parses a form-encoded
+        # body — finds an empty message it cannot even attribute to a sender.
+        # The URL is ours and inbound still does not work.
+        return Diagnostic(
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            status=DiagnosticStatus.WARN,
+            value=sms_url,
+            detail_key=_DIAGNOSTIC_WEBHOOK_METHOD,
+            params={"method": method},
+            repair_action=_REREGISTER_WEBHOOK,
+        )
+    return Diagnostic(
+        key=DiagnosticKey.WEBHOOK_STATUS,
+        status=DiagnosticStatus.OK,
+        value=sms_url,
+    )
+
+
+def _api_version_diagnostic(entry: Mapping[str, Any]) -> Diagnostic | None:
+    """Which API version Twilio will use when it calls *us*.
+
+    Not our own declaration echoed back, which would be a measurement of
+    nothing. ``api_version`` is a property of the number — set when it was
+    bought, editable since — and it decides the shape of the request Twilio
+    makes to the callback URL. A number left on an older version delivers
+    something ``TwilioGateway.parse_inbound`` cannot read, and the symptom is
+    the same silence as an unregistered webhook.
+
+    Absent rather than guessed when Twilio does not include the field.
+    """
+    version = _text(entry, "api_version")
+    if not version:
+        return None
+    matches = version == _TWILIO_API_VERSION
+    return Diagnostic(
+        key=DiagnosticKey.API_VERSION,
+        status=DiagnosticStatus.OK if matches else DiagnosticStatus.WARN,
+        value=version,
+        detail_key=None if matches else _DIAGNOSTIC_API_VERSION_MISMATCH,
+        params={} if matches else {"expected": _TWILIO_API_VERSION},
+    )
+
+
+async def _twilio_number_diagnostics(
+    client: httpx.AsyncClient,
+    *,
+    account_sid: str,
+    auth: tuple[str, str],
+    number: str,
+    credentials: dict[str, Any],
+    context: DeploymentContext,
+) -> tuple[Diagnostic, ...]:
+    """Everything the number resource answers, once the account call has passed.
+
+    Split from the account call for the reason ``_number_unverified`` gives on
+    the checklist side: these credentials are established fact by the time this
+    runs, so nothing that happens here is ever evidence against them.
+    """
+    try:
+        owned = await _twilio_numbers(client, account_sid=account_sid, auth=auth, number=number)
+    except Exception as exc:  # noqa: BLE001 - the credentials are already proven
+        return (
+            _unmeasured(
+                DiagnosticKey.WEBHOOK_STATUS,
+                _DIAGNOSTIC_NUMBER_UNREADABLE,
+                params={"detail": _redact(str(exc), credentials)},
+            ),
+        )
+
+    entry = next((item for item in owned if _text(item, "phone_number") == number), None)
+    if entry is None:
+        # A measurement, not an inference: Twilio was asked for this number
+        # under these credentials and returned nothing. No inbound can reach
+        # this channel, and no repair here can change that — re-registering
+        # needs a number resource to register against, which is precisely what
+        # is missing. Offering the button would be offering a button that
+        # cannot work.
+        return (
+            Diagnostic(
+                key=DiagnosticKey.WEBHOOK_STATUS,
+                status=DiagnosticStatus.FAIL,
+                detail_key=_DIAGNOSTIC_NUMBER_NOT_ON_ACCOUNT,
+                params={"number": number},
+            ),
+        )
+
+    items = [_webhook_diagnostic(entry, context)]
+    version = _api_version_diagnostic(entry)
+    if version is not None:
+        items.append(version)
+    return tuple(items)
+
+
+async def _diagnose_twilio(
+    credentials: dict[str, Any], context: DeploymentContext
+) -> tuple[Diagnostic, ...]:
+    """What Twilio itself can be asked about a channel that is already live.
+
+    Three keys, each one a thing Twilio states rather than a thing this could
+    assume: whether the account still accepts these credentials, where the
+    number's ``SmsUrl`` points now, and which API version Twilio will use when
+    it calls it. RATE_LIMITS joins them exactly when a response carries the
+    headers for it.
+
+    PERMISSIONS is absent because Twilio publishes no endpoint listing what an
+    API key may do, and guessing from a call that happened to succeed would be
+    inventing a scope list. CONNECTION_HEALTH, RETRY_QUEUE and the timestamps
+    are absent because the platform measures those from its own records, and
+    the connector's half of the merge wins — so answering them here would
+    replace a real observation with a worse one.
+    """
+    account_sid = _text(credentials, "account_sid")
+    auth = (account_sid, _text(credentials, "auth_token"))
+    number = _text(credentials, "from_number")
+
+    async with httpx.AsyncClient(timeout=_DIAGNOSTIC_TIMEOUT) as client:
+        try:
+            account = await client.get(f"{_TWILIO_API}/Accounts/{account_sid}.json", auth=auth)
+        except Exception as exc:  # noqa: BLE001 - findings are returned, never raised
+            # Includes ``httpx.InvalidURL``, which is not an ``httpx.HTTPError``
+            # and is raised before a request leaves — a malformed account
+            # identifier. Still unmeasured rather than rejected: nothing was
+            # ever shown to Twilio.
+            return (
+                _unmeasured(
+                    DiagnosticKey.AUTHENTICATION,
+                    _DIAGNOSTIC_UNREACHABLE,
+                    params={"detail": _redact(str(exc), credentials)},
+                ),
+            )
+
+        items: list[Diagnostic] = []
+        throttle = _rate_limit_diagnostic(account)
+        if throttle is not None:
+            items.append(throttle)
+
+        if account.status_code in _REJECTED_STATUS_CODES:
+            # No repair offered. There is no consent screen behind Twilio, so
+            # the fix is the credentials form the customer filled in — a button
+            # here would be one the console cannot send anybody to, which is
+            # the reason this file never returns ``reauthorize``.
+            items.append(
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.FAIL,
+                    value=str(account.status_code),
+                    detail_key=_DIAGNOSTIC_CREDENTIALS_REJECTED,
+                )
+            )
+            return tuple(items)
+
+        try:
+            account.raise_for_status()
+            details = account.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            # Twilio answered and the answer was not about us — a 5xx, a 429,
+            # a body that is not the resource. Unmeasured, because none of that
+            # is a statement about the credential.
+            items.append(
+                _unmeasured(
+                    DiagnosticKey.AUTHENTICATION,
+                    _DIAGNOSTIC_PROVIDER_ERROR,
+                    params={
+                        "status": str(account.status_code),
+                        "detail": _redact(str(exc), credentials),
+                    },
+                )
+            )
+            return tuple(items)
+
+        items.append(_authentication_diagnostic(details))
+        items.extend(
+            await _twilio_number_diagnostics(
+                client,
+                account_sid=account_sid,
+                auth=auth,
+                number=number,
+                credentials=credentials,
+                context=context,
+            )
+        )
+        return tuple(items)
+
+
 @dataclass(frozen=True, slots=True)
 class _Gateway:
     """One carrier, described from the wizard's side rather than the wire's.
@@ -474,6 +893,11 @@ class _Gateway:
     name: str
     label_key: str
     fields: tuple[CredentialSpec, ...]
+    #: The carrier's own API version this build talks to, as the carrier names
+    #: it. Per gateway rather than per connector because it is the one thing
+    #: about SMS that genuinely has no shared answer: "the provider API version"
+    #: means something different for each carrier behind the same channel.
+    api_version: str
     #: The field holding the E.164 address the channel sends from — its
     #: identity to the outside world, and what a customer recognises it by.
     number_field: str
@@ -489,11 +913,19 @@ class _Gateway:
     #: means, and what keeps ``AUTOMATIC_WEBHOOK_REGISTRATION`` honest on a
     #: build that ships only such carriers.
     register: Callable[[dict[str, Any], str], Awaitable[Repair]] | None = None
+    #: What this carrier can be asked about a channel that is already live.
+    #: ``None`` for one with nothing measurable to offer, and the report comes
+    #: back UNKNOWN for the keys only a carrier could have answered — which is
+    #: the honest shape, and the same reasoning that leaves ``probe`` optional.
+    diagnose: (
+        Callable[[dict[str, Any], DeploymentContext], Awaitable[tuple[Diagnostic, ...]]] | None
+    ) = None
 
 
 _TWILIO = _Gateway(
     name="twilio",
     label_key="connect.sms.gatewayOption.twilio",
+    api_version=_TWILIO_API_VERSION,
     number_field="from_number",
     account_field="account_sid",
     fields=(
@@ -524,6 +956,7 @@ _TWILIO = _Gateway(
     ),
     probe=_probe_twilio,
     register=_register_twilio,
+    diagnose=_diagnose_twilio,
 )
 
 _GATEWAYS: dict[str, _Gateway] = {_TWILIO.name: _TWILIO}
@@ -730,9 +1163,70 @@ class SmsConnector(Connector):
                     description_key="connect.sms.repair.reregisterWebhook.description",
                 ),
             ),
-            # No images: SmsProvider refuses outbound attachments, and a
-            # customer should learn that here rather than from a failed send.
-            supported_features=("text",),
+            # What this channel can carry, and which way each thing moves.
+            # ``SmsProvider`` is the authority for every line of it rather than
+            # the carrier, because the limits are the medium's: it raises on
+            # any outbound message carrying an attachment, and its
+            # ``edit_message``, ``delete_message``, ``mark_as_read`` and
+            # ``typing_indicator`` are no-ops that return successfully. A no-op
+            # that returns success is the most dangerous kind of "support"
+            # there is, so EDIT_MESSAGES, DELETE_MESSAGES, READ_RECEIPTS and
+            # TYPING_INDICATORS are absent — as are REACTIONS, THREADING,
+            # TEMPLATES, BROADCASTS, INTERACTIVE_MESSAGES and both call
+            # features, none of which exists anywhere on the SMS path.
+            supported_features=(
+                # Outbound, and text only. The refusal lives in
+                # ``SmsProvider.send_message``, so the note is a property of
+                # the channel and not of whichever carrier delivers it.
+                FeatureSupport(
+                    ChannelFeature.SEND_MESSAGES,
+                    Direction.OUTBOUND,
+                    note_key=_FEATURE_TEXT_ONLY,
+                ),
+                FeatureSupport(ChannelFeature.RECEIVE_MESSAGES, Direction.INBOUND),
+                # The case ``Direction`` was added for, and the one this file
+                # would otherwise get wrong. ``TwilioGateway.parse_inbound``
+                # reads ``NumMedia``, downloads every ``MediaUrl`` and stores
+                # each as an attachment, so inbound MMS genuinely arrives —
+                # while the same media sent the other way raises before it
+                # reaches the carrier. One tick against "Media" would have been
+                # wrong in whichever direction the reader assumed. A future
+                # carrier that cannot receive media would make this the third
+                # thing to move per gateway, alongside ``probe`` and
+                # ``register``.
+                FeatureSupport(
+                    ChannelFeature.MEDIA,
+                    Direction.INBOUND,
+                    note_key=_FEATURE_MEDIA_INBOUND_ONLY,
+                ),
+            ),
+            # Beta, and neither of its neighbours. Not production, because
+            # production means supported and nothing in this package has been
+            # in front of a paying customer yet. Not preview either, and that
+            # is the distinction worth stating: preview is for a connector
+            # whose declared path cannot be walked, and every path this one
+            # declares can. There is no consent screen behind any SMS carrier,
+            # so ``AuthMethod.CREDENTIALS`` is the entire authentication story
+            # and it is implemented — no unimplemented ``exchange()`` waiting
+            # on a provider app that does not exist. The checklist probe, the
+            # ``SmsUrl`` registration, the repair, the inbound signature check
+            # and now the diagnostics are all real calls against a real API.
+            # What is unproven is breadth: one carrier, and outbound MMS
+            # declared absent rather than built. Breadth is what customers
+            # prove for us, and feature-complete-but-unproven is exactly beta.
+            maturity=Maturity.BETA,
+            versions=VersionInfo(
+                connector="1.0.0",
+                # Read from the carrier this build actually talks to rather
+                # than restated, so it cannot drift from the URL the requests
+                # are sent to. This is the one field the union form cannot
+                # honestly collapse — two carriers on one manifest have two API
+                # versions and no shared one — so a multi-carrier build reports
+                # none rather than letting one carrier's version stand in for
+                # the other's. Today exactly one carrier ships, and it answers.
+                api=gateways[0].api_version if len(gateways) == 1 else "",
+                minimum_platform="1.0.0",
+            ),
         )
 
     def resolve(self, context: DeploymentContext) -> ConnectorProfile:
@@ -919,6 +1413,51 @@ class SmsConnector(Connector):
         if gateway.register is None:
             return Repair(repaired=False, reason=_NOT_SUPPORTED)
         return await gateway.register(credentials, callback_url)
+
+    async def diagnose(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> DiagnosticReport:
+        """Ask the stored channel's carrier what only the carrier knows.
+
+        Per carrier, like everything else here: the questions worth asking are
+        the carrier's own, and a build shipping one that cannot be asked
+        anything returns nothing rather than an invented baseline.
+
+        Never raises. ``ChannelDiagnosticsService`` catches a connector that
+        breaks the contract and drops its whole half of the report — so an
+        exception escaping here would cost the panel the four lines nobody else
+        can produce, at the moment a support engineer is asking for them.
+        """
+        gateway = _chosen_gateway(credentials)
+        if gateway is None:
+            # Stored credentials naming a carrier this build cannot load.
+            # UNKNOWN and not FAIL: nothing was ever put to a provider, and the
+            # detail names the carrier so the reason is on the panel rather
+            # than in a log.
+            return DiagnosticReport(
+                channel_type=self.channel_type,
+                items=(
+                    _unmeasured(
+                        DiagnosticKey.AUTHENTICATION,
+                        _DIAGNOSTIC_GATEWAY_UNKNOWN,
+                        params={"gateway": _text(credentials, _GATEWAY_FIELD)},
+                    ),
+                ),
+            )
+        if gateway.diagnose is None:
+            return DiagnosticReport(channel_type=self.channel_type)
+
+        try:
+            items = await gateway.diagnose(credentials, context)
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            items = (
+                _unmeasured(
+                    DiagnosticKey.AUTHENTICATION,
+                    _DIAGNOSTIC_UNREACHABLE,
+                    params={"detail": _redact(str(exc), credentials)},
+                ),
+            )
+        return DiagnosticReport(channel_type=self.channel_type, items=items)
 
     async def repair(
         self,

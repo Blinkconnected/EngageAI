@@ -29,6 +29,9 @@ from blinkengage.application.services.billing_dashboard_service import (
 from blinkengage.application.services.billing_summary_service import BillingSummaryService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
 from blinkengage.application.services.channel_connect_service import ChannelConnectService
+from blinkengage.application.services.channel_diagnostics_service import (
+    ChannelDiagnosticsService,
+)
 from blinkengage.application.services.collections_service import CollectionsService
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
@@ -572,15 +575,35 @@ def get_channel_connect_service(
     the encrypted platform settings — means consent is on offer; absent means
     the guided manual path. One resolver, so no screen has to ask why.
     """
+    return ChannelConnectService(redis=redis, context=_deployment_context(settings))
+
+
+def _deployment_context(settings: Settings) -> DeploymentContext:
+    """What this installation happens to hold.
+
+    One resolver, because two would drift: the wizard and the diagnostics
+    panel must agree about whether OAuth is on offer, and a connector
+    resolving differently in the two would be a channel that connects one way
+    and reports another.
+    """
     apps: set[str] = set()
     if settings.meta_app_id and settings.meta_app_secret:
         apps.add(META_APP)
-    return ChannelConnectService(
-        redis=redis,
-        context=DeploymentContext(
-            public_base_url=settings.public_base_url.rstrip("/"),
-            configured_apps=frozenset(apps),
-        ),
+    return DeploymentContext(
+        public_base_url=settings.public_base_url.rstrip("/"),
+        configured_apps=frozenset(apps),
+        platform_version=settings.platform_version,
+    )
+
+
+def get_channel_diagnostics_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> ChannelDiagnosticsService:
+    """Channel diagnostics, for support."""
+    return ChannelDiagnosticsService(
+        logs=ChannelConnectionLogRepository(session),
+        context=_deployment_context(settings),
     )
 
 

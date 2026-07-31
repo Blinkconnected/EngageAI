@@ -21,10 +21,13 @@ Teams, RCS or LINE a new file here and nothing else anywhere.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from blinkengage.domain.connector_diagnostics import DiagnosticReport
+from blinkengage.domain.connector_lifecycle import Availability, effective_state
 from blinkengage.domain.connector_manifest import (
     ConnectorManifest,
     ValidationResult,
@@ -53,6 +56,17 @@ class DeploymentContext:
     #: Provider app credentials this installation holds, keyed by the
     #: connector's own ``app_key``. Present means OAuth is possible.
     configured_apps: frozenset[str] = frozenset()
+    #: What this installation is running. Compared against each connector's
+    #: ``minimum_platform`` so one shipped ahead of its platform says so
+    #: rather than failing halfway through a customer's flow.
+    platform_version: str = "1.0.0"
+    #: Connectors an operator has switched off or put into maintenance,
+    #: keyed by channel type. Runtime state, not a property of the code —
+    #: which is exactly why it lives here and not in the manifest.
+    availability: Mapping[str, Availability] = field(default_factory=dict)
+
+    def availability_of(self, channel_type: str) -> Availability:
+        return self.availability.get(channel_type, Availability.AVAILABLE)
 
     def has_app(self, key: str | None) -> bool:
         return key is not None and key in self.configured_apps
@@ -265,10 +279,18 @@ class Connector(ABC):
                 )
             else:
                 states.append(CapabilityState(capability, available=True))
+        manifest = self.manifest
         return ConnectorProfile(
             channel_type=self.channel_type,
             declares=self.declares,
             states=tuple(states),
+            # Two axes resolved into the one badge the console draws: the
+            # connector's declared maturity, and whatever this installation
+            # has done to it since.
+            lifecycle=effective_state(
+                manifest.maturity, context.availability_of(self.channel_type)
+            ),
+            platform_supported=manifest.versions.supported_by(context.platform_version),
         )
 
     # --- Authenticate -------------------------------------------------
@@ -374,6 +396,26 @@ class Connector(ABC):
         register.
         """
         return Repair(repaired=False, reason="not_supported")
+
+    # --- Diagnose -----------------------------------------------------
+
+    async def diagnose(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> DiagnosticReport:
+        """What only this connector can find out about a live channel.
+
+        Whether the provider still accepts the token, whether the webhook is
+        registered *at the provider*, which permissions are actually granted,
+        how much rate-limit headroom is left. The platform fills in
+        everything it can infer from stored state, so a connector that
+        implements none of this still produces a useful report — and one that
+        implements it turns a support call into a glance.
+
+        Returns findings and never raises, for the same reason ``validate``
+        does not: a diagnostics panel that 500s is a panel that tells a
+        support engineer nothing at the moment they most need it.
+        """
+        return DiagnosticReport(channel_type=self.channel_type)
 
     # --- Repair -------------------------------------------------------
 

@@ -67,6 +67,18 @@ the one place they are certainly looking. It carries ``FIX_REENTER``,
 because the remedy is six more fields on the form they were looking at one
 step ago — a move inside our own wizard, not a trip to somebody's dashboard
 and not a consent screen this channel does not have.
+
+**Diagnostics ask the mailbox, and nothing else.** ``diagnose`` opens the same
+SMTP session the send path opens and reports what that session proved:
+whether the stored mailbox configuration is accepted, and whether the server
+speaks ESMTP at all. It answers the inbound question too, because on this
+channel the honest answer to "is the provider pointed at us?" is "nothing is
+— we poll", and a support engineer left with an unanswered webhook row goes
+hunting for a registration that was never meant to exist. Everything else on
+the panel is something email cannot measure: there are no scopes on SMTP, no
+rate-limit headroom in a greeting, and one probe's latency is not an average.
+Those stay unanswered, which the platform renders as ``UNKNOWN`` — the true
+statement, where a green tick would be a fabricated one.
 """
 
 from __future__ import annotations
@@ -80,6 +92,20 @@ from blinkengage.domain.connector import (
     Attempt,
     Connection,
     Connector,
+    DeploymentContext,
+)
+from blinkengage.domain.connector_diagnostics import (
+    Diagnostic,
+    DiagnosticKey,
+    DiagnosticReport,
+    DiagnosticStatus,
+)
+from blinkengage.domain.connector_lifecycle import (
+    ChannelFeature,
+    Direction,
+    FeatureSupport,
+    Maturity,
+    VersionInfo,
 )
 from blinkengage.domain.connector_manifest import (
     AuthMethod,
@@ -131,6 +157,30 @@ _FIX_SMTP_UNREACHABLE = "connect.email.fix.smtpUnreachable"
 _FIX_SMTP_CREDENTIALS = "connect.email.fix.smtpCredentials"
 _FIX_TLS_PORT_PAIRING = "connect.email.fix.tlsPortPairing"
 _FIX_ADD_IMAP_SETTINGS = "connect.email.fix.addImapSettings"
+
+#: The qualifications on the feature matrix. Each one exists because the
+#: unqualified row would be read as a promise this channel cannot keep — a
+#: tick against Media that says nothing about where the bytes travel, or one
+#: against Threading that a reader would take for a quoted reply bubble.
+_FEATURE_INBOUND_NEEDS_IMAP = "connect.email.feature.inboundRequiresImapSettings"
+_FEATURE_MEDIA_INSIDE_THE_MESSAGE = "connect.email.feature.mediaTravelsInsideTheMessage"
+_FEATURE_THREADING_IS_INVISIBLE = "connect.email.feature.threadingByHeadersNotQuotes"
+
+#: What ``diagnose`` found, as codes. Separate from the ``_FIX_*`` keys above
+#: even where the finding rhymes: those are instructions written for a
+#: customer part-way through a wizard, these are read by a support engineer
+#: looking at a channel that has been live for a month, and copy that tries
+#: to serve both audiences ends up addressing neither.
+_DIAG_SMTP_HOST_MISSING = "connect.email.diagnostic.smtpHostMissing"
+_DIAG_SMTP_UNREACHABLE = "connect.email.diagnostic.smtpUnreachable"
+_DIAG_SMTP_REJECTED = "connect.email.diagnostic.smtpCredentialsRejected"
+_DIAG_SMTP_ACCEPTED = "connect.email.diagnostic.smtpCredentialsAccepted"
+_DIAG_SMTP_UNAUTHENTICATED = "connect.email.diagnostic.smtpRelayAcceptsUsUnauthenticated"
+_DIAG_SERVER_SPEAKS_ESMTP = "connect.email.diagnostic.serverSpeaksEsmtp"
+_DIAG_SERVER_WITHOUT_ESMTP = "connect.email.diagnostic.serverWithoutEsmtpNoAuthNoStartTls"
+_DIAG_INBOUND_INCOMPLETE = "connect.email.diagnostic.inboundIncomplete"
+_DIAG_INBOUND_BY_IMAP_POLL = "connect.email.diagnostic.noWebhookInboundByImapPoll"
+_DIAG_INBOUND_SEND_ONLY = "connect.email.diagnostic.noWebhookAndNoImapSendOnly"
 
 #: The form, and — because every stored key comes from it — the whitelist of
 #: what may be written into an encrypted credentials blob. One list rather
@@ -400,6 +450,221 @@ async def _probe_smtp(credentials: dict[str, Any]) -> tuple[ValidationResult, ..
     )
 
 
+def _esmtp_diagnostic(*, esmtp: bool, params: dict[str, str]) -> Diagnostic:
+    """Which protocol the far side actually answered with.
+
+    Measured, not declared. ``versions.api`` says what this connector speaks;
+    this row says what the *server* speaks, and the two differ on exactly the
+    machines where it matters. A relay that answers HELO and not EHLO has no
+    ``AUTH`` and no ``STARTTLS`` to offer, which means a rejected login on
+    port 587 is not a wrong password and no number of new app passwords will
+    fix it — and it also means the mail is leaving this building in the
+    clear, which is a sentence that ends differently in a hospital than it
+    does in a startup. Worth a warning on its own for that reason, not only
+    as an explanation for a failure beside it.
+    """
+    if esmtp:
+        return Diagnostic(
+            key=DiagnosticKey.API_VERSION,
+            status=DiagnosticStatus.OK,
+            value="esmtp",
+            detail_key=_DIAG_SERVER_SPEAKS_ESMTP,
+            params=params,
+        )
+    return Diagnostic(
+        key=DiagnosticKey.API_VERSION,
+        status=DiagnosticStatus.WARN,
+        value="smtp",
+        detail_key=_DIAG_SERVER_WITHOUT_ESMTP,
+        params=params,
+    )
+
+
+async def _diagnose_smtp(credentials: dict[str, Any]) -> tuple[Diagnostic, ...]:
+    """Open the session the send path opens, and report what it proved.
+
+    ``AUTHENTICATION`` asks whether the stored credential still works, and on
+    this channel the stored credential is the whole mailbox — host, port, TLS
+    pairing, username, password. So a refused connection answers it as
+    honestly as a refused password does: this configuration does not
+    currently get mail out. The two are told apart by ``detail_key`` rather
+    than by status, because they need the same urgency and different people:
+    one is a firewall or a port, the other is an app password somebody has to
+    regenerate.
+
+    Never raises, and never guesses. Anything this probe did not establish is
+    left off the report entirely for ``complete()`` to render as ``UNKNOWN``.
+    """
+    host = str(credentials.get("smtp_host") or "")
+    raw_port = credentials.get("smtp_port", _DEFAULT_SMTP_PORT)
+    # Coerced exactly as ``EmailProvider`` coerces it, for the same reason
+    # ``_probe_smtp`` does: a diagnosis that read these values more sensibly
+    # than the code that actually sends the mail would report a healthy
+    # channel that cannot send.
+    use_tls = bool(credentials.get("smtp_use_tls", True))
+    username = str(credentials.get("smtp_username") or "")
+    password = str(credentials.get("smtp_password") or "")
+    params: dict[str, str] = {"host": host, "port": str(raw_port), "tls": str(use_tls).lower()}
+
+    if not host:
+        # A guard, not pedantry. ``aiosmtplib`` resolves an empty hostname to
+        # the local machine, so probing without one would open a session to
+        # whatever MTA happens to be listening beside this process and report
+        # a green ``AUTHENTICATION`` for a mailbox that has no server at all
+        # — a fabricated OK, arrived at by accident, on the one panel whose
+        # entire value is that its green means something.
+        return (
+            Diagnostic(
+                key=DiagnosticKey.AUTHENTICATION,
+                status=DiagnosticStatus.FAIL,
+                detail_key=_DIAG_SMTP_HOST_MISSING,
+                params=params,
+            ),
+        )
+
+    try:
+        # aiosmtplib rather than ``httpx``: there is no HTTP anywhere in this
+        # channel, and an HTTP client imported to satisfy a convention would
+        # be a dependency that never opens a socket. The convention it is
+        # actually there for — a probe that cannot hang a support engineer's
+        # panel — is honoured by passing the same explicit timeout.
+        async with aiosmtplib.SMTP(
+            hostname=host,
+            port=int(raw_port),
+            use_tls=use_tls,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        ) as client:
+            await client.noop()
+            # Read here, inside the session: closing resets the client's
+            # record of the greeting, so a version read afterwards would
+            # always say the server speaks nothing.
+            protocol = _esmtp_diagnostic(
+                esmtp=client.last_ehlo_response is not None, params=params
+            )
+            if not username:
+                # An unauthenticated relay has no password to verify, and the
+                # row must not imply one was. OK is still the honest status —
+                # the stored credential for this mailbox is "none", and the
+                # server accepted us with it — but the detail says which
+                # question was answered, so nobody reads the tick as proof of
+                # a password that does not exist.
+                return (
+                    Diagnostic(
+                        key=DiagnosticKey.AUTHENTICATION,
+                        status=DiagnosticStatus.OK,
+                        detail_key=_DIAG_SMTP_UNAUTHENTICATED,
+                        params=params,
+                    ),
+                    protocol,
+                )
+            try:
+                await client.login(username, password)
+            except Exception as exc:
+                return (
+                    Diagnostic(
+                        key=DiagnosticKey.AUTHENTICATION,
+                        status=DiagnosticStatus.FAIL,
+                        detail_key=_DIAG_SMTP_REJECTED,
+                        params=_with_detail(params, exc, credentials),
+                    ),
+                    protocol,
+                )
+            return (
+                Diagnostic(
+                    key=DiagnosticKey.AUTHENTICATION,
+                    status=DiagnosticStatus.OK,
+                    detail_key=_DIAG_SMTP_ACCEPTED,
+                    params=params,
+                ),
+                protocol,
+            )
+    except Exception as exc:
+        # Deliberately broad and never re-raised, for the reason the contract
+        # gives: a diagnostics panel that 500s tells a support engineer
+        # nothing at the moment they most need it. No protocol row here — the
+        # session never opened, so nothing was learned about what the server
+        # speaks, and inventing a value would be the fabrication this method
+        # exists to avoid.
+        return (
+            Diagnostic(
+                key=DiagnosticKey.AUTHENTICATION,
+                status=DiagnosticStatus.FAIL,
+                detail_key=_DIAG_SMTP_UNREACHABLE,
+                params=_with_detail(params, exc, credentials),
+            ),
+        )
+
+
+def _inbound_diagnostic(credentials: dict[str, Any]) -> Diagnostic:
+    """``WEBHOOK_STATUS``, answered by a channel that has no webhook.
+
+    Reported rather than omitted, and the reasoning is the whole argument for
+    a closed key set. ``complete()`` renders an unanswered key as ``UNKNOWN``,
+    so omitting this leaves a support engineer looking at "Webhook status:
+    unknown" on an email channel — which sends them to look for a
+    registration that was never meant to exist, and leaves the question they
+    actually have ("is anything arriving?") unanswered on the one panel built
+    to answer it. The key asks whether the provider is pointed at us. On this
+    channel the true answer is that nothing is, because we poll; that answer
+    fits in a ``detail_key``, and the status can then carry the part that
+    varies.
+
+    Which is why a configured mailbox is ``OK`` and not a standing warning
+    about the missing webhook. This connector already argues, in
+    ``_inbound_outcome``, that a warning firing on something that
+    demonstrably works is how a checklist teaches people to stop reading it —
+    and a permanent amber row on every correctly configured email channel is
+    that mistake made once per page load.
+
+    ``OK`` here claims exactly one thing: inbound is wired up, to this
+    mailbox, and a scheduled poll collects it. It does not claim the IMAP
+    password still works. Nothing is probed here — that credential is proven
+    by ``EmailProvider.health_check``, whose verdict reaches the same panel
+    through the platform's half of the report — so the detail key says
+    "configured" and not "verified", which is the difference between a
+    measurement and a fabrication.
+    """
+    imap_host = str(credentials.get("imap_host") or "")
+    if not imap_host:
+        # WARN, not FAIL. A send-only mailbox is a legitimate configuration —
+        # statements, reminders, notifications — so nothing here is broken.
+        # But "the customer replied and nobody saw it" is the single failure
+        # this channel produces most, and it is invisible everywhere else on
+        # the panel: outbound is green, health is green, and the reply is in
+        # a mailbox nothing reads.
+        return Diagnostic(
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            status=DiagnosticStatus.WARN,
+            detail_key=_DIAG_INBOUND_SEND_ONLY,
+        )
+    # UNKNOWN, not OK. A host being *configured* is not a mailbox being
+    # *readable*, and this is the one row a support engineer reads as "is
+    # anything arriving?". `email_imap_poll_task` needs a host, a username and
+    # a password; a channel with a host and a wrong password would show green
+    # here while nothing arrives — a fabricated green on the exact question
+    # being asked, which is what makes a panel worse than no panel.
+    #
+    # Nothing else covers it either: the platform's half of the report
+    # contributes health and log history, never WEBHOOK_STATUS, and the
+    # connector wins the merge regardless. So the honest answer is that the
+    # poll has not been observed, with what was configured shown beside it.
+    incomplete = not credentials.get("imap_username") or not credentials.get(
+        "imap_password"
+    )
+    return Diagnostic(
+        key=DiagnosticKey.WEBHOOK_STATUS,
+        status=DiagnosticStatus.WARN if incomplete else DiagnosticStatus.UNKNOWN,
+        value=imap_host,
+        detail_key=(
+            _DIAG_INBOUND_INCOMPLETE if incomplete else _DIAG_INBOUND_BY_IMAP_POLL
+        ),
+        # The folder matters and is easy to get wrong: a poll pointed at a
+        # folder the customer's own rules move mail out of finds nothing
+        # while every other row stays green.
+        params={"folder": str(credentials.get("imap_folder") or "INBOX")},
+    )
+
+
 @ConnectorRegistry.register("email")
 class EmailConnector(Connector):
     channel_type = "email"
@@ -440,7 +705,117 @@ class EmailConnector(Connector):
         # Deliberately no webhook capability and so no webhook repair:
         # inbound email is polled over IMAP, and declaring webhooks would
         # promise a callback that never arrives.
-        supported_features=("text", "attachments", "threading"),
+        #
+        # Four rows, and the absences below them are the load-bearing part.
+        # Every one of these is read off ``EmailProvider``: what it sends,
+        # what it parses, and — for most of the enum — which of its methods
+        # accept a call and then do nothing.
+        supported_features=(
+            # ``send_message`` builds a MIME message and hands it to
+            # ``aiosmtplib.send``. Outbound only, and not because of a
+            # limitation: "send" and "receive" are separate rows here, and a
+            # channel that does both says so twice rather than once
+            # ambiguously.
+            FeatureSupport(ChannelFeature.SEND_MESSAGES, Direction.OUTBOUND),
+            # ``receive_message`` parses raw MIME into an ``InboundMessage``,
+            # and either the IMAP poll or a raw-MIME POST from an ESP feeds
+            # it. The note carries the condition that a static matrix cannot:
+            # this connector *can* receive, but a channel saved without IMAP
+            # settings and without an ESP arrangement receives nothing at all
+            # — which is a property of one installation's configuration, so
+            # it is qualified here and measured per channel in ``diagnose``.
+            FeatureSupport(
+                ChannelFeature.RECEIVE_MESSAGES,
+                Direction.INBOUND,
+                note_key=_FEATURE_INBOUND_NEEDS_IMAP,
+            ),
+            # Both directions, genuinely. Outbound, ``send_message`` downloads
+            # each attachment and calls ``add_attachment``; inbound,
+            # ``receive_message`` walks the MIME parts, uploads anything with
+            # an attachment disposition and returns an ``AttachmentRef`` for
+            # it. Qualified because email carries the bytes *inside* the
+            # message rather than behind a link, so the ceiling is whatever
+            # the receiving server accepts — a limit nothing in this product
+            # sets, sees, or can report, and one that rejects the message
+            # rather than trimming it.
+            FeatureSupport(
+                ChannelFeature.MEDIA,
+                Direction.BOTH,
+                note_key=_FEATURE_MEDIA_INSIDE_THE_MESSAGE,
+            ),
+            # The one row this connector is alone in claiming, and the one
+            # most in need of its note. ``EmailProvider`` is the only provider
+            # with ``supports_invisible_reply_threading``: outbound it sets
+            # ``In-Reply-To`` and ``References`` from
+            # ``reply_to_external_message_id``, inbound it reads them back
+            # into ``external_thread_id`` and ``reply_to_external_message_id``
+            # — a real correlation to a specific earlier message, in both
+            # directions. But ``ChannelFeature.THREADING`` is documented as
+            # replying to an earlier message *visibly*, and this is the exact
+            # opposite: the headers are invisible to the reader, and what they
+            # see is their mail client's own grouping, if it groups at all.
+            # Dropping the row would deny threading that demonstrably works;
+            # taking it unqualified would promise the quoted-reply bubble
+            # WhatsApp and Telegram draw. The note is the only honest third
+            # option.
+            FeatureSupport(
+                ChannelFeature.THREADING,
+                Direction.BOTH,
+                note_key=_FEATURE_THREADING_IS_INVISIBLE,
+            ),
+            # Absent, each for a reason found in ``EmailProvider`` rather than
+            # assumed about email: ``edit_message`` returns the id back
+            # unchanged and ``delete_message`` returns ``None`` — both are
+            # stubs satisfying the interface, so EDIT_MESSAGES and
+            # DELETE_MESSAGES would be buttons that appear to work and change
+            # nothing on the far side, which is worse than their absence.
+            # ``mark_as_read`` and ``typing_indicator`` are the same shape of
+            # no-op, and there is nothing they could call: SMTP has no live
+            # signal and read receipts (RFC 3798) are a request the recipient
+            # may ignore, not a fact we could report. No REACTIONS, TEMPLATES,
+            # BROADCASTS, INTERACTIVE_MESSAGES, VOICE_CALLS or VIDEO_CALLS:
+            # nothing in this connector or its provider implements any of
+            # them, and a matrix that ticked them from what the *medium* could
+            # theoretically do would be describing a product we have not
+            # written.
+        ),
+        # BETA, and the distance from both neighbours is deliberate.
+        #
+        # Not PREVIEW: every path a customer can take is implemented end to
+        # end and none of it is waiting on anybody. There is no OAuth to be
+        # unimplemented, no provider application an operator must register
+        # first, and no method here that raises ``NotImplementedError`` — this
+        # connector behaves identically on a hosted installation and on one
+        # air-gapped in a bank, because it asks nothing of a third party.
+        # ``validate`` really opens SMTP, ``connect`` really writes a usable
+        # mailbox, ``EmailProvider`` really sends and parses, and the IMAP
+        # poll is scheduled and running.
+        #
+        # Not PRODUCTION: that word promises backwards-compatible change, and
+        # nothing here has yet met a customer's mail server. The two things
+        # most likely to move are known and both are contracts other code
+        # already depends on — the shape of the stored credential blob, whose
+        # IMAP half is read by a separate Celery task, and inbound MIME
+        # parsing, which today takes the first ``text/plain`` part and so
+        # returns an empty body for the HTML-only mail some senders produce.
+        # Fixing either after promising compatibility would be a migration;
+        # fixing them in beta is a fix. Feature-complete and being proven is
+        # exactly what this is.
+        maturity=Maturity.BETA,
+        versions=VersionInfo(
+            connector="1.0.0",
+            # No vendor API to name, so this states the two wire contracts the
+            # code actually speaks, read off the code that speaks them.
+            # Outbound is ``aiosmtplib`` doing ESMTP submission on 587 or 465.
+            # Inbound is ``imaplib`` — in ``EmailProvider._check_imap`` and in
+            # ``email_imap_poll_task``, whose SELECT / SEARCH UNSEEN / FETCH
+            # (RFC822) / STORE +FLAGS vocabulary is IMAP4rev1. Claiming
+            # IMAP4rev2 would be claiming a contract this code does not
+            # speak: RFC 9051 retired the ``RFC822`` fetch item this poll is
+            # built on.
+            api="SMTP (RFC 5321) + IMAP4rev1 (RFC 3501)",
+            minimum_platform="1.0.0",
+        ),
     )
 
     @property
@@ -461,6 +836,47 @@ class EmailConnector(Connector):
         """
         credentials = _stored_credentials(attempt.inputs)
         return (*await _probe_smtp(credentials), _inbound_outcome(credentials))
+
+    async def diagnose(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> DiagnosticReport:
+        """What this mailbox can be asked, and only that.
+
+        Three rows, from two questions worth asking a live email channel:
+        does it still get mail out (``AUTHENTICATION``, and ``API_VERSION``
+        for what the server answered with), and is anything coming back in
+        (``WEBHOOK_STATUS``). Both are things only this connector can find
+        out, which is the division the report is merged along.
+
+        Everything else is deliberately absent rather than filled in, and the
+        absences are the honest half of the contract:
+
+        - ``PERMISSIONS`` — SMTP has no scopes. A mailbox can send or it
+          cannot, and that is the ``AUTHENTICATION`` row already.
+        - ``RATE_LIMITS`` — mail servers throttle, sometimes brutally, and
+          none of them publish headroom. There is no header to read and no
+          counter to query, so any number here would be invented.
+        - ``AVERAGE_RESPONSE_TIME`` — this probe knows how long *it* took.
+          One sample is not an average, and presenting it as one would put a
+          statistic in front of a support engineer that changes every time
+          they press refresh.
+        - ``LAST_SUCCESSFUL_SYNC``, ``LAST_FAILED_REQUEST``, ``RETRY_QUEUE``
+          — the platform's own knowledge, from stored state it keeps for
+          every channel. ``merge`` gives the connector's answer priority, so
+          a connector answering these would overwrite a real history with a
+          single live probe.
+        - ``CONNECTION_HEALTH`` — the badge, derived from everything above by
+          ``DiagnosticReport.worst``. A connector asserting it would be
+          voting on a result it can only see part of.
+
+        ``context`` is unused: this channel has no provider application, no
+        callback URL to build and nothing that varies per installation, which
+        is the same reason the connector has no ``app_key``.
+        """
+        return DiagnosticReport(
+            channel_type=self.channel_type,
+            items=(*await _diagnose_smtp(credentials), _inbound_diagnostic(credentials)),
+        )
 
     async def connect(
         self, *, company_id: UUID, attempt: Attempt

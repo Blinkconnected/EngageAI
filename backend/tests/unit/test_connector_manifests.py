@@ -20,6 +20,19 @@ import re
 import pytest
 
 from blinkengage.domain.connector import Connector, DeploymentContext
+from blinkengage.domain.connector_lifecycle import (
+    BLOCKS_NEW_CONNECTIONS,
+    WARNS,
+    Availability,
+    ChannelFeature,
+    Direction,
+    LifecycleState,
+    Maturity,
+    Version,
+    VersionInfo,
+    effective_state,
+)
+from blinkengage.domain.connector_diagnostics import DiagnosticKey, DiagnosticStatus
 from blinkengage.domain.connector_manifest import (
     BLOCKING_CODES,
     AuthMethod,
@@ -31,6 +44,9 @@ from blinkengage.infrastructure.connectors import ConnectorRegistry
 
 HOSTED = DeploymentContext("https://engage.example.com", frozenset({"meta"}))
 BARE = DeploymentContext("https://engage.example.com")
+
+#: What this build is. Connectors shipped in-tree must all run on it.
+PLATFORM_VERSION = "1.0.0-beta.5"
 
 CONNECTORS = ConnectorRegistry.all()
 
@@ -333,3 +349,336 @@ class TestTheManifestDrivesTheFlow:
         assert hosted[1].kind is StepKind.OAUTH_REDIRECT
         assert bare[1].kind is StepKind.FORM
         assert StepId.DISCOVER not in [s.id for s in bare]
+
+
+@pytest.mark.parametrize("connector", CONNECTORS, ids=ids(CONNECTORS))
+class TestLifecycleAndVersions:
+    """A connector must be honest about how finished it is."""
+
+    def test_it_declares_a_maturity(self, connector: Connector) -> None:
+        assert isinstance(connector.manifest.maturity, Maturity)
+
+    def test_it_declares_all_three_versions(self, connector: Connector) -> None:
+        """Its own code, the provider's API, and the platform it needs —
+        three things people conflate, so each is stated."""
+        versions = connector.manifest.versions
+
+        assert Version.parse(versions.connector)
+        assert Version.parse(versions.minimum_platform)
+        # ``api`` is free text because providers version themselves however
+        # they like — ``v21.0``, ``2010-04-01``, or nothing at all. Empty is
+        # legitimate; a connector that invented one would be manufacturing
+        # the deprecation risk this field exists to communicate.
+        assert isinstance(versions.api, str)
+
+    def test_a_connector_needing_a_newer_platform_is_not_offered(
+        self, connector: Connector
+    ) -> None:
+        """The warning an administrator needs, before a customer meets a
+        flow that cannot finish."""
+        from_future = DeploymentContext(
+            "https://engage.example.com",
+            frozenset({"meta"}),
+            platform_version="0.9.0",
+        )
+        needs_newer = not connector.manifest.versions.supported_by("0.9.0")
+
+        if needs_newer:
+            assert not connector.resolve(from_future).connectable
+
+    def test_it_is_offered_on_this_platform(self, connector: Connector) -> None:
+        """Nothing shipped in-tree may require a platform this build is not.
+        A connector nobody can use is a connector nobody will notice is
+        broken."""
+        assert connector.manifest.versions.supported_by(PLATFORM_VERSION)
+
+
+class TestLifecycleResolution:
+    """Two axes, one badge."""
+
+    def test_maturity_shows_through_when_nothing_is_wrong(self) -> None:
+        assert (
+            effective_state(Maturity.BETA, Availability.AVAILABLE)
+            is LifecycleState.BETA
+        )
+
+    def test_availability_wins(self) -> None:
+        """"We have turned this off" is more urgent and more actionable than
+        "this code is mature", and showing the maturity badge on a connector
+        nobody can use answers a question the customer did not ask."""
+        assert (
+            effective_state(Maturity.PRODUCTION, Availability.MAINTENANCE)
+            is LifecycleState.MAINTENANCE
+        )
+        assert (
+            effective_state(Maturity.DEPRECATED, Availability.DISABLED)
+            is LifecycleState.DISABLED
+        )
+
+    def test_a_disabled_connector_refuses_new_connections(self) -> None:
+        connector = ConnectorRegistry.get("telegram")
+        assert connector is not None
+        off = DeploymentContext(
+            "https://engage.example.com",
+            availability={"telegram": Availability.DISABLED},
+        )
+
+        resolved = connector.resolve(off)
+
+        assert resolved.lifecycle is LifecycleState.DISABLED
+        assert not resolved.connectable
+
+    def test_maintenance_refuses_too(self) -> None:
+        """A connection made during an outage fails in a way the customer
+        blames on themselves."""
+        connector = ConnectorRegistry.get("telegram")
+        assert connector is not None
+        down = DeploymentContext(
+            "https://engage.example.com",
+            availability={"telegram": Availability.MAINTENANCE},
+        )
+
+        assert not connector.resolve(down).connectable
+
+    def test_one_connector_going_dark_does_not_take_the_others(self) -> None:
+        """Availability is keyed per channel type, so an operator disabling
+        one is not an outage."""
+        off = DeploymentContext(
+            "https://engage.example.com",
+            availability={"telegram": Availability.DISABLED},
+        )
+
+        others = [
+            c.channel_type
+            for c in CONNECTORS
+            if c.channel_type != "telegram" and not c.resolve(off).connectable
+        ]
+
+        assert others == []
+
+    def test_preview_and_beta_warn_without_blocking(self) -> None:
+        """A customer may connect something unfinished as long as they were
+        told. Blocking would make Preview useless as a release stage."""
+        for maturity in (Maturity.PREVIEW, Maturity.BETA, Maturity.DEPRECATED):
+            state = effective_state(maturity, Availability.AVAILABLE)
+            assert state in WARNS
+            assert state not in BLOCKS_NEW_CONNECTIONS
+
+    def test_end_of_life_blocks(self) -> None:
+        assert LifecycleState.END_OF_LIFE in BLOCKS_NEW_CONNECTIONS
+
+    def test_every_state_is_decided_about(self) -> None:
+        """A state nobody classified silently allows connections, which is
+        the dangerous direction."""
+        undecided = (
+            set(LifecycleState)
+            - BLOCKS_NEW_CONNECTIONS
+            - WARNS
+            - {LifecycleState.AVAILABLE, LifecycleState.PRODUCTION}
+        )
+
+        assert undecided == set(), sorted(s.value for s in undecided)
+
+
+class TestVersionComparison:
+    def test_a_prerelease_satisfies_its_own_release(self) -> None:
+        """Blink Engage is ``1.0.0-beta.5``. If a pre-release did not satisfy
+        ``1.0.0``, no connector could declare a minimum until the first
+        stable release — so every connector would have to declare ``0.x`` and
+        the field would mean nothing."""
+        assert Version.parse("1.0.0-beta.5").satisfies(Version.parse("1.0.0"))
+
+    def test_older_platforms_do_not_satisfy(self) -> None:
+        assert not Version.parse("0.9.9").satisfies(Version.parse("1.0.0"))
+
+    def test_an_unparseable_version_does_not_hide_a_connector(self) -> None:
+        """A connector that vanished because somebody's build stamped a
+        non-semver string is a worse failure than one that appears and is
+        never used."""
+        assert VersionInfo(minimum_platform="not-a-version").supported_by("1.0.0")
+        assert VersionInfo(minimum_platform="1.0.0").supported_by("nightly")
+
+
+@pytest.mark.parametrize("connector", CONNECTORS, ids=ids(CONNECTORS))
+class TestTheFeatureMatrixIsHonest:
+    def test_features_come_from_the_closed_set(self, connector: Connector) -> None:
+        """Free strings let one connector say "images" and another "media",
+        and a matrix built from that is a matrix that lies."""
+        for support in connector.manifest.supported_features:
+            assert isinstance(support.feature, ChannelFeature)
+            assert isinstance(support.direction, Direction)
+
+    def test_no_feature_is_claimed_twice(self, connector: Connector) -> None:
+        """Two rows for one feature is two answers to one question, and the
+        console renders whichever it reaches first."""
+        features = [s.feature for s in connector.manifest.supported_features]
+
+        assert len(features) == len(set(features)), connector.channel_type
+
+    def test_a_channel_that_connects_can_carry_something(
+        self, connector: Connector
+    ) -> None:
+        assert connector.manifest.supported_features, connector.channel_type
+
+    def test_sending_and_receiving_are_declared_in_one_direction_each(
+        self, connector: Connector
+    ) -> None:
+        """``SEND_MESSAGES`` is outbound by its own name. Declaring it
+        ``BOTH`` says nothing and reads as carelessness."""
+        for support in connector.manifest.supported_features:
+            if support.feature is ChannelFeature.SEND_MESSAGES:
+                assert support.direction is Direction.OUTBOUND, connector.channel_type
+            if support.feature is ChannelFeature.RECEIVE_MESSAGES:
+                assert support.direction is Direction.INBOUND, connector.channel_type
+
+    def test_notes_are_translation_keys(self, connector: Connector) -> None:
+        for support in connector.manifest.supported_features:
+            if support.note_key:
+                assert KEY.match(support.note_key), connector.channel_type
+
+
+class TestTheMatrixMatchesTheProviders:
+    """The check worth the most: a matrix that overclaims is worse than no
+    matrix, because a customer picks a channel for a feature that silently
+    does nothing.
+
+    Spot-checked against facts read off the transport providers by hand.
+    Deriving them would make the comparison tautological.
+    """
+
+    def test_sms_receives_media_and_cannot_send_it(self) -> None:
+        """``SmsProvider.send_message`` raises on an outbound attachment.
+        This is the exact case ``Direction`` was added for — one tick against
+        "Media" would be wrong whichever way the reader assumed."""
+        sms = ConnectorRegistry.get("sms")
+        assert sms is not None
+
+        media = sms.manifest.supports(ChannelFeature.MEDIA)
+
+        assert media is None or media.direction is Direction.INBOUND
+
+    def test_whatsapp_does_not_claim_typing(self) -> None:
+        """``WhatsAppProvider.typing_indicator`` is a documented no-op — the
+        Cloud API has no freestanding toggle — while Messenger and Instagram
+        genuinely send ``sender_action``."""
+        whatsapp = ConnectorRegistry.get("whatsapp")
+        messenger = ConnectorRegistry.get("messenger")
+        assert whatsapp is not None and messenger is not None
+
+        assert whatsapp.manifest.supports(ChannelFeature.TYPING_INDICATORS) is None
+        assert messenger.manifest.supports(ChannelFeature.TYPING_INDICATORS) is not None
+
+    def test_only_email_claims_no_typing_and_real_threading(self) -> None:
+        """Email is the one provider with
+        ``supports_invisible_reply_threading``."""
+        email = ConnectorRegistry.get("email")
+        assert email is not None
+
+        assert email.manifest.supports(ChannelFeature.THREADING) is not None
+        assert email.manifest.supports(ChannelFeature.TYPING_INDICATORS) is None
+
+    def test_nobody_claims_calls(self) -> None:
+        """No provider in this build implements voice or video. A tick here
+        would be the most visible possible overclaim."""
+        claimed = [
+            c.channel_type
+            for c in CONNECTORS
+            if c.manifest.supports(ChannelFeature.VOICE_CALLS)
+            or c.manifest.supports(ChannelFeature.VIDEO_CALLS)
+        ]
+
+        assert claimed == []
+
+
+class TestDiagnosticsAreNeverInvented:
+    """The failure that makes a support panel worse than no panel.
+
+    A green tick on something nobody measured sends an engineer away from the
+    actual problem, with more confidence than they started with. Each of
+    these pins a case where that nearly shipped.
+    """
+
+    async def test_a_huge_expiry_does_not_blank_the_report(self) -> None:
+        """A timestamp too large for the platform clock raises rather than
+        returning something wrong — and this runs outside the caller's guard,
+        so it took the connector's whole half of the report with it and left
+        four rows silently blank."""
+        from blinkengage.infrastructure.connectors.meta import WhatsAppConnector, _Probe
+
+        data = {"is_valid": True, "expires_at": 99999999999999999, "scopes": []}
+        probe = _Probe(body={"data": data}, reached=True)
+
+        found = WhatsAppConnector()._authentication(probe, data)
+
+        assert [d.status for d in found] == [DiagnosticStatus.UNKNOWN]
+
+    def test_throttling_is_not_a_rejected_credential(self) -> None:
+        """Graph returns rate limits and transient platform errors in the
+        same envelope shape as a bad token. Reporting those as a failure
+        sends an engineer to rotate a credential that works — during an
+        outage, while a customer waits."""
+        from blinkengage.infrastructure.connectors.meta import _is_transient, _Probe
+
+        assert _is_transient(_Probe(reached=True, error_code=4))
+        assert _is_transient(_Probe(reached=True, error_code=32))
+        # 190 is an expired or invalid access token: genuinely the
+        # customer's problem, and genuinely a failure.
+        assert not _is_transient(_Probe(reached=True, error_code=190))
+        assert not _is_transient(_Probe(reached=True))
+
+    async def test_a_configured_imap_host_is_not_a_working_mailbox(self) -> None:
+        """The one row a support engineer reads as "is anything arriving?".
+        A host set with a blank password would have shown green while nothing
+        arrived — and nothing else covers it, since the platform's half never
+        contributes this key and the connector wins the merge."""
+        connector = ConnectorRegistry.get("email")
+        assert connector is not None
+
+        report = await connector.diagnose(
+            credentials={"smtp_host": "smtp.example.com", "imap_host": "imap.example.com"},
+            context=BARE,
+        )
+        webhook = report.get(DiagnosticKey.WEBHOOK_STATUS)
+
+        assert webhook is not None
+        assert webhook.status is not DiagnosticStatus.OK
+
+
+@pytest.mark.parametrize("connector", CONNECTORS, ids=ids(CONNECTORS))
+class TestDiagnosticsContract:
+    async def test_it_never_raises(self, connector: Connector) -> None:
+        """Hostile input, because a panel that 500s tells a support engineer
+        nothing at the moment they most need it."""
+        for credentials in (
+            {},
+            {"bot_token": "no\nnewlines\tallowed"},
+            {"access_token": "", "phone_number_id": None},
+            {"smtp_host": "", "smtp_port": "not-a-port"},
+            {"gateway": "nonexistent", "account_sid": "x"},
+        ):
+            report = await connector.diagnose(credentials=credentials, context=BARE)
+            assert report.channel_type in {connector.channel_type, ""}
+
+    async def test_it_only_answers_keys_it_can_measure(
+        self, connector: Connector
+    ) -> None:
+        """With no credentials there is nothing to ask a provider, so nothing
+        may come back OK. A connector reporting health from an empty dict is
+        reporting something it did not measure."""
+        report = await connector.diagnose(credentials={}, context=BARE)
+
+        invented = [
+            item.key.value
+            for item in report.items
+            if item.status is DiagnosticStatus.OK
+        ]
+
+        assert invented == [], f"{connector.channel_type} invented {invented}"
+
+    async def test_repairs_it_points_at_are_declared(self, connector: Connector) -> None:
+        report = await connector.diagnose(credentials={}, context=BARE)
+        declared = {action.id for action in connector.manifest.repair_actions}
+
+        for item in report.items:
+            if item.repair_action:
+                assert item.repair_action in declared, connector.channel_type

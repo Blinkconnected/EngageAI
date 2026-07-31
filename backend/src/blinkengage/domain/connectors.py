@@ -30,6 +30,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from blinkengage.domain.connector_lifecycle import (
+    BLOCKS_NEW_CONNECTIONS,
+    WARNS,
+    LifecycleState,
+)
+
 
 class Capability(StrEnum):
     """One thing a connector may be able to do.
@@ -173,6 +179,14 @@ class ConnectorProfile:
     declares: frozenset[Capability]
     #: What it can do here, with a reason for anything it cannot.
     states: tuple[CapabilityState, ...] = ()
+    #: The single state the console badges, resolved from the connector's
+    #: declared maturity and this installation's runtime availability.
+    lifecycle: LifecycleState = LifecycleState.PRODUCTION
+    #: False when this platform is older than the connector requires. Kept
+    #: separate from ``lifecycle`` because "you need to upgrade Blink Engage"
+    #: and "this connector is in beta" are different sentences with different
+    #: audiences — one is for an administrator, the other for a customer.
+    platform_supported: bool = True
 
     def supports(self, capability: Capability) -> bool:
         """Whether the capability is available on this installation."""
@@ -193,15 +207,32 @@ class ConnectorProfile:
 
     @property
     def connectable(self) -> bool:
-        """Whether there is any way at all to connect this here.
+        """Whether a *new* channel can be connected here, right now.
 
-        A connector that can neither be authorised nor configured by hand is
-        not a channel the customer can add, and offering it would be an
-        invitation to a dead end.
+        Three ways to answer no, and all three have to be checked in one
+        place or each caller invents its own combination:
+
+        - no way in at all — neither consent nor a form, so the flow has no
+          first step;
+        - a lifecycle state that refuses new connections — switched off, in
+          maintenance, or past end of life;
+        - a platform older than the connector needs.
+
+        Existing channels are unaffected by the last two, deliberately.
+        Withdrawing a channel a customer is already receiving messages on is
+        a decision an operator takes explicitly, never a side effect of a
+        status change.
         """
+        if self.lifecycle in BLOCKS_NEW_CONNECTIONS or not self.platform_supported:
+            return False
         return self.supports(Capability.OAUTH) or self.supports(
             Capability.MANUAL_CONFIGURATION
         )
+
+    @property
+    def warns(self) -> bool:
+        """Whether the console should show a caution beside the badge."""
+        return self.lifecycle in WARNS
 
 
 def steps_for(
