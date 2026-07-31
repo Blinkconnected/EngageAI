@@ -178,6 +178,29 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
+    # --- Provider apps for channel OAuth (see
+    # docs/architecture/channel-connectors.md) ---
+    #
+    # Unset by default, and that is a fully supported state rather than a
+    # broken one: an installation with no Meta app offers the guided manual
+    # path instead of OAuth, and the connector's resolved capabilities say
+    # so. Obtaining these is weeks of app review, not an afternoon, so the
+    # product cannot assume they exist.
+    #
+    # The floor, not the source of truth — the encrypted `meta_app` platform
+    # settings group overrides them, so a self-hosted administrator can
+    # supply their own app without redeploying. Same precedent as the mail
+    # relay: stored settings override the environment, never replace it.
+    meta_app_id: str | None = None
+    meta_app_secret: str | None = None
+    #: Facebook Login for Business uses a configuration id rather than a raw
+    #: scope list. One per template is the cleanest mapping.
+    meta_login_config_id: str | None = None
+    #: The token Meta echoes back when verifying the installation-wide
+    #: webhook. One value for the whole app, because under a shared app the
+    #: callback is configured once on the app and not per channel.
+    meta_webhook_verify_token: str | None = None
+
     # --- Payments (see docs/architecture/billing.md) ---
     # Unset by default: a deployment without PayPal credentials simply
     # has no PayPal provider registered, rather than one that fails at
@@ -228,6 +251,27 @@ class Settings(BaseSettings):
     # outbound email for transactional/system notifications (e.g. "you
     # were assigned a conversation"), which must work even for a company
     # that hasn't configured any customer-facing email channel.
+    # --- Push notifications (see docs/architecture/notifications.md) ---
+    # The JSON key file from the Firebase console, verbatim. Absent means
+    # push is not configured: device registration still works and
+    # notifications are still created, nothing is sent, and no
+    # notification is marked as pushed — so configuring this later starts
+    # delivering without a redeploy.
+    fcm_service_account_json: str | None = None
+    # Optional: the key file already carries `project_id`, and this only
+    # exists for a deployment whose service account sends on behalf of a
+    # different Firebase project.
+    fcm_project_id: str | None = None
+    # How old a notification may be and still be worth pushing. A push is
+    # an interruption that claims to be current — "a customer is waiting"
+    # arriving forty minutes late is worse than not arriving, since the
+    # conversation has usually moved on. This window is also what bounds
+    # retries: past it, a notification is marked as decided-upon and
+    # skipped rather than retried forever, which is what stops a backlog
+    # (a provider outage, or push being switched on for the first time)
+    # from firing every stale alert at once.
+    push_stale_after_minutes: int = 15
+
     smtp_host: str = "localhost"
     smtp_port: int = 587
     smtp_username: str | None = None

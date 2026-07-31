@@ -16,6 +16,35 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Connecting a channel is now a guided flow, not a settings form.** Pick
+  what you want to connect, follow the steps, done — no provider
+  documentation, no hunting for an id in someone else's dashboard. Web
+  Chat connects in one click; Telegram asks for one value and tells you
+  the command to get it; Email checks your mail server before saving and
+  says plainly if it will send but never receive.
+
+  Before saving anything, the flow runs a **check** and shows what it
+  found in your terms — what is wrong, how serious, and what to press.
+  A wrong value sends you back to the field, not to a support article.
+  Problems that would stop the channel working block it; things merely
+  worth knowing do not.
+
+- **Channels are now built on a connector framework.** Every channel
+  declares what it can do — sign in with the provider, discover your
+  accounts automatically, register its own webhook, check its own health
+  — and the flow is *built from those answers*. One flow, every channel.
+
+  This is why WhatsApp, Messenger and Instagram share a single sign-in:
+  they are one provider, so approving once connects all three. And it is
+  why adding Slack, Teams, RCS or WhatsApp's successors later is one new
+  file rather than a new screen — nothing above the connector layer knows
+  what a WhatsApp is.
+
+  Where a provider sign-in is not available — a self-hosted installation
+  without provider credentials — the same flow falls back to a guided
+  manual path and explains why, rather than hiding the channel. Every
+  channel stays connectable everywhere.
+
 - **A separate Billing Console.** Pricing has moved out of the Platform
   Console into its own area at `/platform/billing`. Running the
   installation and running the revenue system need the same authority

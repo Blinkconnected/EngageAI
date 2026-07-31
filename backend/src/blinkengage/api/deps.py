@@ -28,6 +28,7 @@ from blinkengage.application.services.billing_dashboard_service import (
 )
 from blinkengage.application.services.billing_summary_service import BillingSummaryService
 from blinkengage.application.services.channel_config_service import ChannelConfigService
+from blinkengage.application.services.channel_connect_service import ChannelConnectService
 from blinkengage.application.services.collections_service import CollectionsService
 from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.conversation_service import ConversationService
@@ -79,6 +80,7 @@ from blinkengage.core.rate_limit import FixedWindowRateLimiter, enforce_rate_lim
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.ai_provider import AiProvider
 from blinkengage.domain.company_settings import is_ai_enabled
+from blinkengage.domain.connector import DeploymentContext
 from blinkengage.domain.exceptions import AiNotConfiguredError, EmailNotVerifiedError
 from blinkengage.domain.features import FEATURES, is_known_feature
 from blinkengage.domain.rbac import is_known_permission
@@ -87,6 +89,7 @@ from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
+from blinkengage.infrastructure.connectors.meta import META_APP
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
@@ -556,6 +559,29 @@ def get_audit_log_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> AuditLogService:
     return AuditLogService(audit_logs=AuditLogRepository(session))
+
+
+def get_channel_connect_service(
+    redis: Annotated[Redis, Depends(get_redis)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> ChannelConnectService:
+    """The connection wizard.
+
+    ``configured_apps`` is where the three deployment modes come from: a
+    Meta app id and secret present — from the environment or, overriding it,
+    the encrypted platform settings — means consent is on offer; absent means
+    the guided manual path. One resolver, so no screen has to ask why.
+    """
+    apps: set[str] = set()
+    if settings.meta_app_id and settings.meta_app_secret:
+        apps.add(META_APP)
+    return ChannelConnectService(
+        redis=redis,
+        context=DeploymentContext(
+            public_base_url=settings.public_base_url.rstrip("/"),
+            configured_apps=frozenset(apps),
+        ),
+    )
 
 
 def get_channel_config_service(

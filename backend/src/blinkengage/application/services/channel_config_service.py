@@ -283,6 +283,36 @@ class ChannelConfigService:
             channel_config_id=channel_config_id, offset=offset, limit=limit
         )
 
+    def webhook_url_for(self, channel_config_id: UUID) -> str:
+        """The callback URL for a channel that now exists.
+
+        Public because the connection wizard needs it: a connector registers
+        its webhook *after* the row is written, since the URL contains the id
+        the write assigns. Takes the id rather than the row so a caller
+        holding only a freshly-created id does not have to re-read it.
+        """
+        return (
+            f"{self._settings.public_base_url}{self._settings.api_v1_prefix}"
+            f"/webhooks/{channel_config_id}"
+        )
+
+    async def set_webhook_secret(
+        self, *, company_id: UUID, channel_config_id: UUID, webhook_secret: str
+    ) -> None:
+        """Store the secret a webhook registration just agreed with a provider.
+
+        Separate from ``update`` because it is not an edit anybody made: the
+        provider and this row have to agree on a value, and the moment they
+        stop agreeing every inbound message fails signature verification
+        silently — which looks exactly like a channel nobody has messaged.
+        """
+        channel_config = await self._channel_configs.get_by_id(
+            company_id=company_id, channel_config_id=channel_config_id
+        )
+        if channel_config is None:
+            raise EntityNotFoundError("ChannelConfig", channel_config_id)
+        channel_config.webhook_secret = webhook_secret
+
     def _webhook_url(self, channel_config: ChannelConfig) -> str:
         # Same reconstruction as api/v1/endpoints/webhooks.py's
         # _reconstructed_url — settings.public_base_url must be the
