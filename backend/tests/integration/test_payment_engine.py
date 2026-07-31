@@ -17,7 +17,7 @@ Each test pins a rule the code has to enforce rather than merely intend:
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -763,6 +763,176 @@ class TestCollections:
         row = next(r for r in standing.json() if r["company_id"] == company_id)
         assert row["overdue_invoices"] == 1
         assert row["next_action_on"] is not None
+
+
+class TestWritingOffEndsThePursuit:
+    """Abandoning a receivable used to be ledger-only.
+
+    The invoice kept its OVERDUE status — correctly, since it genuinely was
+    never paid — and OVERDUE is what the dunning sweep selects on. So a
+    written-off invoice kept sending notices on the same schedule as a live
+    one and kept the company suspended indefinitely, because nothing
+    downstream ever made it stop being overdue. Finance had no way out of that
+    except editing rows.
+    """
+
+    async def test_a_written_off_invoice_stops_being_chased(
+        self, client: AsyncClient, owner_headers: dict, app: Any, gateway: StubProvider
+    ) -> None:
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        due = date.fromisoformat(invoice["due_date"])
+
+        chased = await client.post(
+            "/api/v1/platform/payments/collections/run",
+            headers=headers,
+            params={"today": (due + timedelta(days=3)).isoformat()},
+        )
+        assert chased.json()["notices_sent"] >= 1, "the fixture must actually be chased"
+
+        written = await client.post(
+            f"/api/v1/platform/ledger/write-offs/{invoice['id']}",
+            headers=headers,
+            json={"reason": "Customer entered administration; debt abandoned."},
+        )
+        assert written.status_code == 200, written.text
+
+        # Far enough forward that every remaining stage would be owed.
+        later = await client.post(
+            "/api/v1/platform/payments/collections/run",
+            headers=headers,
+            params={"today": (due + timedelta(days=40)).isoformat()},
+        )
+
+        assert later.json()["notices_sent"] == 0
+        assert later.json()["suspended"] == []
+
+    async def test_it_no_longer_holds_the_company_overdue(
+        self, client: AsyncClient, owner_headers: dict, app: Any, gateway: StubProvider
+    ) -> None:
+        """The status a console shows, and the one suspension is decided
+        from."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        due = date.fromisoformat(invoice["due_date"])
+        overdue_day = (due + timedelta(days=3)).isoformat()
+
+        await client.post(
+            "/api/v1/platform/payments/collections/run",
+            headers=headers,
+            params={"today": overdue_day},
+        )
+        standing = await client.get(
+            "/api/v1/platform/payments/collections/status",
+            headers=headers,
+            params={"only_behind": False},
+        )
+        before = {row["company_id"]: row["billing_status"] for row in standing.json()}
+        assert before.get(company_id) == "payment_overdue"
+
+        await client.post(
+            f"/api/v1/platform/ledger/write-offs/{invoice['id']}",
+            headers=headers,
+            json={"reason": "Uncollectable."},
+        )
+        await client.post(
+            "/api/v1/platform/payments/collections/run",
+            headers=headers,
+            params={"today": overdue_day},
+        )
+
+        standing = await client.get(
+            "/api/v1/platform/payments/collections/status",
+            headers=headers,
+            params={"only_behind": False},
+        )
+        after = {row["company_id"]: row["billing_status"] for row in standing.json()}
+        assert after.get(company_id) == "active"
+
+    async def test_a_suspended_company_is_released_once_the_debt_is_written_off(
+        self, client: AsyncClient, owner_headers: dict, app: Any, gateway: StubProvider
+    ) -> None:
+        """The failure this fix exists for. A company suspended over a debt
+        nobody is pursuing is a company nobody can serve, and before this
+        there was no path back that did not involve editing rows."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        due = date.fromisoformat(invoice["due_date"])
+        # Past the whole sequence, so the suspension step fires.
+        suspend_day = (due + timedelta(days=25)).isoformat()
+
+        run = await client.post(
+            "/api/v1/platform/payments/collections/run",
+            headers=headers,
+            params={"today": suspend_day},
+        )
+        assert company_id in run.json()["suspended"]
+
+        await client.post(
+            f"/api/v1/platform/ledger/write-offs/{invoice['id']}",
+            headers=headers,
+            json={"reason": "Uncollectable."},
+        )
+        released = await client.post(
+            "/api/v1/platform/payments/collections/run",
+            headers=headers,
+            params={"today": suspend_day},
+        )
+
+        assert company_id in released.json()["reinstated"]
+
+    async def test_a_customer_can_still_pay_a_written_off_invoice(
+        self, client: AsyncClient, owner_headers: dict, app: Any, gateway: StubProvider
+    ) -> None:
+        """Recovery happens. Writing a debt off is a decision about chasing
+        it, not a refusal to accept the money — so the payment path
+        deliberately does not consult ``written_off_at``."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+
+        await client.post(
+            f"/api/v1/platform/ledger/write-offs/{invoice['id']}",
+            headers=headers,
+            json={"reason": "Uncollectable."},
+        )
+
+        payment = await client.post(
+            "/api/v1/platform/invoices/payments",
+            headers=headers,
+            json={
+                "company_id": company_id,
+                "amount": invoice["total_amount"],
+                "currency": invoice["currency"],
+                "method": "manual",
+                "reference": "recovered-by-phone",
+                "received_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        assert payment.status_code == 201, payment.text
+
+        allocated = await client.post(
+            f"/api/v1/platform/invoices/payments/{payment.json()['id']}/allocate",
+            headers=headers,
+            json={"invoice_id": invoice["id"], "amount": invoice["total_amount"]},
+        )
+
+        assert allocated.status_code == 200, allocated.text
+        # The invoice settles normally. Nothing about having been written off
+        # blocks the money, which is the whole point — a write-off decides
+        # whether we chase, not whether we accept.
+        assert allocated.json()["invoice"]["status"] == "paid"
 
 
 class TestSuspensionAccess:

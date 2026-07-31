@@ -142,6 +142,18 @@ class Invoice(UUIDPrimaryKeyMixin, Base):
     issued_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
     due_date: Mapped[date | None] = mapped_column(Date, default=None)
     paid_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
+    #: When the receivable was abandoned as bad debt.
+    #:
+    #: Deliberately **not** a status. A written-off invoice is still unpaid
+    #: and still overdue — that is the truth, and inventing a WRITTEN_OFF
+    #: state would say we never billed it. What changes is that we stop
+    #: *chasing* it: collections skips it, so it no longer generates dunning
+    #: notices and no longer holds a company suspended.
+    #:
+    #: Payment and the ledger deliberately do not consult this. A customer
+    #: who pays a written-off invoice must still be able to, and the ledger
+    #: already moved the receivable to bad debt when the write-off happened.
+    written_off_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
     cancelled_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, default=None)
 

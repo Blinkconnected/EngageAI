@@ -195,6 +195,21 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **Writing off a bad debt now ends the pursuit of it.** Abandoning a
+  receivable used to change only the books: the invoice stayed overdue —
+  correctly, it genuinely was never paid — and overdue is what the
+  reminder sequence runs on. So a written-off invoice kept sending the
+  customer reminders on the same schedule as a live one, and kept their
+  account suspended, indefinitely. There was no way out but editing the
+  database.
+
+  A written-off invoice is now skipped by reminders and by suspension,
+  and a company suspended over a debt that has been written off is
+  released. It stays unpaid and overdue on the record, because that is
+  what happened. And a customer who later pays it can still pay it —
+  writing a debt off decides whether we chase it, not whether we accept
+  the money.
+
 - **Prices could not be set in a second currency, and the pricing screen
   broke once one existed.** Blink Engage bills in dollars and dinars, and
   a price in each is normal — nothing converts between them. But the

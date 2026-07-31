@@ -50,14 +50,11 @@ from blinkengage.application.services.financial_audit_service import (
 )
 from blinkengage.application.services.payment_service import PaymentService
 from blinkengage.core.auth_context import PlatformContext
-from blinkengage.domain.collections import DEFAULT_DUNNING_POLICY, next_stage_date
+from blinkengage.domain.collections import DEFAULT_DUNNING_POLICY
 from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.domain.financial_audit import FinancialEntityType, FinancialEventType
-from blinkengage.domain.invoicing import OPEN_STATES
-from blinkengage.domain.money import zero
 from blinkengage.infrastructure.database.models.collections import DunningNotice
 from blinkengage.infrastructure.database.models.company import Company
-from blinkengage.infrastructure.database.models.invoicing import Invoice
 from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
 from blinkengage.infrastructure.repositories.financial_audit_repository import (
     FinancialAuditRepository,
@@ -125,72 +122,23 @@ async def run_collections(
 
 @router.get("/collections/status", response_model=list[CompanyBillingStatusResponse])
 async def billing_standing(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
+    collections: Annotated[CollectionsService, Depends(get_collections_service)],
     only_behind: Annotated[bool, Query()] = True,
 ) -> list[CompanyBillingStatusResponse]:
-    """Every company's billing standing, worst first."""
-    today = datetime.now(UTC).date()
-    stmt = select(Company).where(Company.deleted_at.is_(None))
-    companies = list((await session.execute(stmt)).scalars().all())
+    """Every company's billing standing, worst first.
 
-    rows: list[CompanyBillingStatusResponse] = []
-    for company in companies:
-        invoices = list(
-            (
-                await session.execute(
-                    select(Invoice).where(
-                        Invoice.company_id == company.id,
-                        Invoice.status.in_(tuple(OPEN_STATES)),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if only_behind and not invoices:
-            continue
-        overdue = [
-            inv for inv in invoices if inv.due_date is not None and inv.due_date < today
-        ]
-        outstanding = sum(
-            (inv.total_amount - inv.amount_paid - inv.amount_credited for inv in invoices),
-            start=zero(),
-        )
-        next_on: date | None = None
-        if overdue:
-            oldest = min(overdue, key=lambda inv: inv.due_date or today)
-            sent = frozenset(
-                (
-                    await session.execute(
-                        select(DunningNotice.stage).where(
-                            DunningNotice.invoice_id == oldest.id
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            if oldest.due_date is not None:
-                next_on = next_stage_date(
-                    due_date=oldest.due_date,
-                    already_sent=sent,
-                    policy=DEFAULT_DUNNING_POLICY,
-                )
-        rows.append(
-            CompanyBillingStatusResponse(
-                company_id=company.id,
-                company_name=company.name,
-                billing_status=company.billing_status,
-                billing_suspended_at=company.billing_suspended_at,
-                never_auto_suspend=company.billing_never_auto_suspend,
-                open_invoices=len(invoices),
-                overdue_invoices=len(overdue),
-                amount_outstanding=outstanding,
-                next_action_on=next_on,
-            )
-        )
-    rows.sort(key=lambda row: (-row.overdue_invoices, row.company_name))
-    return rows
+    The computation moved into ``CollectionsService`` so this and the
+    per-company endpoint cannot disagree — which they did the moment
+    written-off invoices stopped counting as debt in one place and not the
+    other.
+
+    No pagination, and it queries per company. A page-load-once figure, not a
+    live tile.
+    """
+    return [
+        CompanyBillingStatusResponse.model_validate(standing)
+        for standing in await collections.standing_all(only_behind=only_behind)
+    ]
 
 
 @router.get("/collections/notices/{invoice_id}", response_model=list[DunningNoticeResponse])

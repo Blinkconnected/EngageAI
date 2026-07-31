@@ -111,6 +111,10 @@ class CollectionsRunResponse(BaseModel):
 
 
 class CompanyBillingStatusResponse(BaseModel):
+    # Reads the service's own ``CompanyStanding`` directly, so the list and
+    # the per-company endpoint cannot describe the same standing differently.
+    model_config = ConfigDict(from_attributes=True)
+
     company_id: uuid.UUID
     company_name: str
     billing_status: BillingStatus

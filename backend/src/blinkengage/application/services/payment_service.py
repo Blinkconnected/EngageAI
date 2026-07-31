@@ -693,6 +693,12 @@ class PaymentService:
         concept; more importantly the invoice remains unpaid and overdue,
         which is the truth. The ledger is where the receivable stops
         being an asset.
+
+        It does stamp ``written_off_at``, which is what makes collections
+        stop chasing it. Without that the write-off was ledger-only: the
+        invoice stayed in ``OPEN_STATES``, so the dunning sweep kept sending
+        notices and the company stayed suspended indefinitely — abandoning a
+        debt never ended the pursuit of it.
         """
         if not reason.strip():
             raise PaymentProcessingError("A write-off must state a reason.")
@@ -716,6 +722,7 @@ class PaymentService:
                 "That invoice has nothing outstanding to write off."
             )
 
+        invoice.written_off_at = datetime.now(UTC)
         await self._ledger.record(
             entry_type=LedgerEntryType.WRITE_OFF,
             company_id=invoice.company_id,
