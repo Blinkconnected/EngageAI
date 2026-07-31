@@ -69,6 +69,7 @@ from blinkengage.application.services.pricing_service import PricingService
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.application.services.quick_reply_service import QuickReplyService
 from blinkengage.application.services.reporting_service import ReportingService
+from blinkengage.application.services.revenue_service import RevenueService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.search_service import SearchService
@@ -1070,6 +1071,13 @@ def get_collections_service(
         notifications=notifications,
         audit=FinancialAuditRecorder(FinancialAuditRepository(session)),
     )
+
+
+def get_revenue_service(
+    ledger: Annotated[LedgerService, Depends(get_ledger_service)],
+    collections: Annotated[CollectionsService, Depends(get_collections_service)],
+) -> RevenueService:
+    return RevenueService(ledger=ledger, collections=collections)
 
 
 def get_platform_service(

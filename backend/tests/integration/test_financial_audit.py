@@ -170,7 +170,11 @@ class TestEveryActionIsRecorded:
         search = await client.get(
             "/api/v1/platform/invoices/audit?entity_type=payment_allocation", headers=headers
         )
-        assert [e["event_type"] for e in search.json()] == ["payment.allocated"]
+        body = search.json()
+        assert [e["event_type"] for e in body["items"]] == ["payment.allocated"]
+        # The count travels with the page: a reader has to be able to tell
+        # "that is all of them" from "there are more".
+        assert body["total"] == 1
 
 
 class TestCorrelation:

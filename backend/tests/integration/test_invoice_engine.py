@@ -701,3 +701,161 @@ async def test_invoice_lines_never_change_after_generation(
     async with session_factory() as session:
         lines = (await session.execute(select(InvoiceLine))).scalars().all()
     assert all(line.unit_amount == Decimal("0.050000") for line in lines)
+
+
+class TestCancellingAnIssuedInvoiceUnwindsTheLedger:
+    """Withdrawing a document has to withdraw its money too.
+
+    A cancellation used to be documents-only: the invoice said cancelled
+    while the ledger went on holding the receivable and the revenue —
+    permanently, because nothing downstream ever cleared them. The books
+    knew, too: ``/ledger/reconciliation`` reported the divergence and no
+    operation existed that could resolve it.
+    """
+
+    async def test_the_receivable_goes_away_with_the_document(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+
+        owed = await client.get(f"/api/v1/platform/ledger/{company_id}", headers=headers)
+        assert Decimal(owed.json()["outstanding"]) == Decimal(invoice["total_amount"])
+
+        await client.post(
+            f"/api/v1/platform/invoices/{invoice['id']}/cancel",
+            headers=headers,
+            json={"reason": "Raised against the wrong period."},
+        )
+
+        after = await client.get(f"/api/v1/platform/ledger/{company_id}", headers=headers)
+        assert Decimal(after.json()["outstanding"]) == Decimal("0")
+
+    async def test_the_revenue_is_un_recognised_rather_than_adjusted(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A cancellation is not a discount. A credit note posts to
+        ``revenue_adjustments`` — a figure a finance team watches, because
+        it means we billed too much. An invoice that should never have
+        existed did not over-bill anybody; the revenue simply was never
+        earned."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        await client.post(
+            f"/api/v1/platform/invoices/{invoice['id']}/cancel",
+            headers=headers,
+            json={"reason": "Duplicate of INV-2026-000001."},
+        )
+
+        books = (
+            await client.get("/api/v1/platform/ledger/trial-balance", headers=headers)
+        ).json()[0]
+        accounts = {row["account"]: Decimal(row["balance"]) for row in books["accounts"]}
+
+        assert accounts["revenue"] == Decimal("0")
+        assert accounts["revenue_adjustments"] == Decimal("0")
+        assert accounts["accounts_receivable"] == Decimal("0")
+
+    async def test_the_books_still_balance(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        await client.post(
+            f"/api/v1/platform/invoices/{invoice['id']}/cancel",
+            headers=headers,
+            json={"reason": "Withdrawn."},
+        )
+
+        books = (
+            await client.get("/api/v1/platform/ledger/trial-balance", headers=headers)
+        ).json()
+        assert all(row["in_balance"] for row in books)
+
+    async def test_the_documents_and_the_ledger_agree_afterwards(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """The check the system was already running and failing. The
+        reconciliation endpoint compares the invoice columns against the
+        ledger; a cancellation used to leave a divergence nothing could
+        clear."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        await client.post(
+            f"/api/v1/platform/invoices/{invoice['id']}/cancel",
+            headers=headers,
+            json={"reason": "Withdrawn."},
+        )
+
+        recon = await client.get("/api/v1/platform/ledger/reconciliation", headers=headers)
+
+        assert recon.json()["divergences"] == 0
+
+    async def test_cancelling_a_draft_posts_nothing(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A draft never reached the ledger, so there is nothing to
+        unwind — and inventing a reversal for one would record a movement
+        that never happened."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        draft = (await draft_invoice(client, headers, period_id))["invoice"]
+
+        await client.post(
+            f"/api/v1/platform/invoices/{draft['id']}/cancel",
+            headers=headers,
+            json={"reason": "Generated in error."},
+        )
+
+        entries = await client.get(
+            "/api/v1/platform/ledger/entries",
+            headers=headers,
+            params={"company_id": company_id},
+        )
+        assert entries.json() == []
+
+    async def test_a_partly_credited_invoice_does_not_go_negative(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A credit note already reduced the receivable. Reversing the full
+        total on top of it would drive accounts receivable below zero —
+        the ledger claiming we owe the customer money."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers)
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        credited = await client.post(
+            f"/api/v1/platform/invoices/{invoice['id']}/credit-notes",
+            headers=headers,
+            json={
+                "reason": "Two of the four conversations were ours, not theirs.",
+                "lines": [
+                    {"description": "Partial credit", "quantity": "1", "unit_amount": "0.10"}
+                ],
+            },
+        )
+        assert credited.status_code in (200, 201), credited.text
+
+        await client.post(
+            f"/api/v1/platform/invoices/{invoice['id']}/cancel",
+            headers=headers,
+            json={"reason": "Withdrawn after partial credit."},
+        )
+
+        position = await client.get(f"/api/v1/platform/ledger/{company_id}", headers=headers)
+        assert Decimal(position.json()["outstanding"]) == Decimal("0")

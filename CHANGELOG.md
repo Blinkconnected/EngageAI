@@ -16,6 +16,89 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The Billing Console is now a finance workspace, not a settings page.**
+  It opens on what the business earned rather than on a rate editor, and
+  it has six sections that follow the way a finance day actually runs:
+
+  - **Revenue** — billed, collected, outstanding, credit held and written
+    off, for the period you choose, with a monthly run rate beside each.
+  - **Invoices** — search every document across every company, filter by
+    company, status, number or date, open one to see its lines, and export
+    the result to a spreadsheet.
+  - **Payments** — record money that arrived outside the payment
+    providers, see where every amount was applied, reverse an application
+    that went to the wrong document, and issue a refund.
+  - **Ledger** — run one company's account down movement by movement with
+    the balance carried alongside, and see the books for each currency
+    with the proof they balance.
+  - **Collections** — how overdue everything is, who is behind, and what
+    happens to them next. Run the notice sweep by hand, reinstate a
+    company, or mark one that must never be suspended automatically.
+  - **Company billing** — one customer's standing, what they owe, what
+    they are running up this month and every invoice they have had.
+
+  Every action that changes money is recorded permanently with who did it
+  and why. Withdrawing an invoice, crediting one, writing one off,
+  reversing a payment and refunding all ask for a reason first — six
+  months later that sentence is the only explanation anybody has.
+
+  **Dollars and dinars are never added together.** Each currency gets its
+  own figures, its own totals and its own set of books, because nothing
+  converts between them and a combined number would mean nothing. The
+  console is built so that such a number has nowhere to appear.
+
+  The monthly figure always says how it was worked out. Blink Engage bills
+  for what you use and sells no subscriptions, so there is no fixed
+  monthly revenue to report — the figure is what was earned over a window,
+  scaled to thirty days, and it says so. With less than a week of history
+  it says that instead of guessing.
+
+- **The whole Billing Console is available in Arabic**, right to left,
+  including every explanation of what a figure means and why an action is
+  or is not available.
+
+- **Invoices can be exported to a spreadsheet.** The export follows what
+  you searched for rather than what fits on the page, and if the result is
+  larger than one file can hold it tells you before you download — and
+  again in the file's own name, so a short file is never mistaken for a
+  complete one.
+
+### Fixed
+
+- **A dinar invoice is no longer rounded to two decimal places.** The
+  dinar settles in fils — three places — and totals were being rounded as
+  though they were dollars. A charge of 1.775 JOD was billed as 1.780.
+  Every dinar invoice and credit note now rounds to the dinar.
+
+- **Withdrawing an invoice now withdraws its money too.** Cancelling an
+  issued invoice marked the document withdrawn but left the amount
+  standing in the books as still owed and still earned — permanently, with
+  nothing able to clear it. Cancelling now reverses both, and the books
+  reconcile afterwards.
+
+- **"Outstanding" now means the same thing everywhere.** Invoice search
+  counted drafts, withdrawn documents and written-off debts as money still
+  owed, so its headline figure disagreed with collections, with the aging
+  report and with the ledger. A draft was never billed, a withdrawn
+  invoice does not exist and a written-off debt is not being chased —
+  none of them is outstanding.
+
+- **A customer's own name can no longer run as a formula in a
+  spreadsheet.** A company name beginning with `=` was written into the
+  invoice export unchanged, where Excel would execute it. Names are now
+  neutralised — still readable, no longer executable. Amounts and dates
+  are untouched, so the figures the export exists to carry are unchanged.
+
+- **A statement for a company that does not exist now says so**, instead
+  of showing a page of zeroes that reads as "they owe nothing".
+
+- **The financial audit trail now tells you how many records matched.**
+  It offered paging but returned no total, so a reader could not tell
+  "that is all of them" from "there are four hundred more" — on the one
+  screen whose entire purpose is completeness.
+
+### Added
+
 - **Connecting a channel is now a guided flow you can finish in a couple
   of minutes.** Press Connect channel, pick what you want to connect, and
   follow the steps. Blink Engage asks only for what it actually needs,

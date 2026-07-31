@@ -14,10 +14,14 @@ route.
 """
 
 import uuid
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import AwareDatetime
+from sqlalchemy import ColumnElement, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
@@ -33,6 +37,8 @@ from blinkengage.api.schemas.ledger import (
     ChargebackRequest,
     CompanyLedgerPositionResponse,
     LedgerEntryResponse,
+    LedgerStatementResponse,
+    LedgerStatementRowResponse,
     ManualAdjustmentRequest,
     ReconciliationResponse,
     ReconciliationRowResponse,
@@ -47,7 +53,10 @@ from blinkengage.application.services.ledger_service import (
 )
 from blinkengage.application.services.payment_service import PaymentService
 from blinkengage.core.auth_context import PlatformContext
-from blinkengage.domain.ledger import LedgerAccount, LedgerEntryType
+from blinkengage.domain.ledger import LedgerAccount, LedgerEntryType, balance_of
+from blinkengage.domain.money import currency_for, to_storage, zero
+from blinkengage.infrastructure.database.models.company import Company
+from blinkengage.infrastructure.database.models.ledger import LedgerEntry
 from blinkengage.infrastructure.repositories.ledger_repository import LedgerRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
 
@@ -162,6 +171,254 @@ async def entries(
         limit=limit,
     )
     return [LedgerEntryResponse.model_validate(row) for row in rows]
+
+
+# --- the running-balance statement ------------------------------------
+#
+# The one derived-on-read figure in this router. Every other number here
+# is one the engine already computed and stored; a running balance is
+# computed per request, which is exactly why each row goes through
+# ``balance_of`` — the same function ``LedgerService.balances`` and the
+# trial balance use. A statement carrying its own sign rule would agree
+# with the books for ``accounts_receivable`` and disagree for
+# ``customer_credit``, and two figures that are *nearly* the same are
+# worse than one of them being absent.
+
+
+def _scope(
+    *, company_id: uuid.UUID, account: LedgerAccount, currency: str
+) -> list[ColumnElement[bool]]:
+    """What one account's statement is made of, before any date window.
+
+    Either side of the entry: an account's statement is every movement it
+    took part in, whichever direction — the same rule ``/entries``
+    applies. The currency filter is not optional, because the running
+    balance below sums these rows.
+    """
+    return [
+        LedgerEntry.company_id == company_id,
+        LedgerEntry.currency == currency,
+        (LedgerEntry.debit_account == account) | (LedgerEntry.credit_account == account),
+    ]
+
+
+async def _totals(
+    session: AsyncSession,
+    *,
+    account: LedgerAccount,
+    conditions: Sequence[ColumnElement[bool]],
+) -> tuple[Decimal, Decimal, int]:
+    """Total debited to and credited from ``account``, and the row count.
+
+    One query for all three: the same scan answers the opening balance,
+    the closing balance and the page total, and a statement that issued a
+    query per figure would be an N+1 the moment somebody paged through
+    it.
+    """
+    result = await session.execute(
+        select(
+            func.coalesce(
+                func.sum(case((LedgerEntry.debit_account == account, LedgerEntry.amount))), 0
+            ),
+            func.coalesce(
+                func.sum(case((LedgerEntry.credit_account == account, LedgerEntry.amount))), 0
+            ),
+            func.count(),
+        ).where(*conditions)
+    )
+    row = result.one()
+    return Decimal(str(row[0])), Decimal(str(row[1])), int(row[2])
+
+
+def _effect_on(account: LedgerAccount, entry: LedgerEntry) -> Decimal:
+    """What one entry does to ``account``'s balance.
+
+    Debit and credit are not "plus" and "minus" — whether a debit
+    increases an account depends on its kind — so this defers to
+    ``balance_of`` rather than choosing a sign here. Exactly one branch
+    can be non-zero: an entry that debits and credits the same account is
+    refused by the domain and by a check constraint.
+    """
+    return balance_of(
+        account,
+        debits=entry.amount if entry.debit_account == account else zero(),
+        credits=entry.amount if entry.credit_account == account else zero(),
+    )
+
+
+async def _currencies_of(session: AsyncSession, company_id: uuid.UUID) -> list[str]:
+    """Which currencies this company holds entries in.
+
+    Reported so that a currency outside the one being run down the page
+    is *visible* rather than merely excluded. A company is billed in a
+    single currency and can never be re-denominated, so this is normally
+    one code — and if it is ever two, that is a data problem a statement
+    must not hide by quietly answering about one of them.
+    """
+    result = await session.execute(
+        select(LedgerEntry.currency)
+        .where(LedgerEntry.company_id == company_id)
+        .distinct()
+        .order_by(LedgerEntry.currency)
+    )
+    return [str(row[0]) for row in result.all()]
+
+
+@router.get("/statement/{company_id}", response_model=LedgerStatementResponse)
+async def statement(
+    company_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    ledger: Annotated[LedgerService, Depends(get_ledger_service)],
+    account: Annotated[LedgerAccount, Query()] = LedgerAccount.ACCOUNTS_RECEIVABLE,
+    currency: Annotated[str | None, Query(min_length=3, max_length=3)] = None,
+    since: Annotated[AwareDatetime | None, Query()] = None,
+    until: Annotated[AwareDatetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> LedgerStatementResponse:
+    """One company's ledger, oldest first, with a balance carried down.
+
+    **Chronological, which is the opposite of ``/entries``.** A running
+    balance only reads as a balance if the rows arrive in the order they
+    happened. Ordered by ``entry_number`` rather than ``occurred_at``:
+    entries written in one transaction share a timestamp to the
+    microsecond, so ordering by time alone can show a payment above the
+    invoice it settles — and the balance beside it would then move
+    backwards.
+
+    **Which account is being run down is a parameter, and is echoed
+    back.** ``accounts_receivable`` (the default) answers "what does this
+    customer owe"; ``customer_credit`` answers "what do we hold for
+    them". They run in opposite directions, so a balance with no account
+    beside it is not an answer.
+
+    **One currency per statement.** Rows in any other currency are
+    outside the window, the total and every balance here; nothing
+    converts and no exchange rate is stored, so a balance run across
+    currencies would be a number with no meaning. Defaults to the
+    company's own currency, and the response lists what else it has
+    entries in.
+
+    The window is half-open ``[since, until)``, like effective dating and
+    billing periods everywhere else in this engine, so an entry on a
+    boundary belongs to exactly one of two adjacent windows.
+    """
+    if since is not None and until is not None and until <= since:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "`until` must be after `since`: the window is half-open [since, until), "
+                "so this one can never contain an entry."
+            ),
+        )
+
+    # Checked before anything is computed. A company with no entries and a
+    # company that does not exist would otherwise render identically — every
+    # balance zero — and "they owe nothing" is a very different answer from
+    # "you have the wrong id". The aging report already answers 404 here, and
+    # two sibling endpoints disagreeing about a bad id is worse than either
+    # choice.
+    if await session.get(Company, company_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No such company.",
+        )
+
+    # Normalised before the query rather than trusted as given. The column
+    # is UTC on both backends, but SQLite has no timezone type and stores
+    # the wall clock it is handed, so an instant offered as 09:00+03:00
+    # would filter as 09:00Z — moving rows between the opening balance and
+    # the page, on the test database only.
+    window_start = since.astimezone(UTC) if since is not None else None
+    window_end = until.astimezone(UTC) if until is not None else None
+
+    # An unknown code raises `UnknownCurrencyError` (422) rather than
+    # defaulting: quietly answering about dollars because "EUR" was not
+    # recognised is how a statement states the wrong money.
+    code = currency_for(currency).code if currency else await ledger.company_currency(company_id)
+    scope = _scope(company_id=company_id, account=account, currency=code)
+
+    window = list(scope)
+    if window_start is not None:
+        window.append(LedgerEntry.occurred_at >= window_start)
+    if window_end is not None:
+        window.append(LedgerEntry.occurred_at < window_end)
+
+    # Everything that happened before the window. With no `since` the
+    # window starts at the first entry there is, and nothing precedes it.
+    opening = zero()
+    if window_start is not None:
+        before_debits, before_credits, _ = await _totals(
+            session,
+            account=account,
+            conditions=[*scope, LedgerEntry.occurred_at < window_start],
+        )
+        opening = balance_of(account, debits=before_debits, credits=before_credits)
+
+    window_debits, window_credits, total = await _totals(
+        session, account=account, conditions=window
+    )
+    closing = opening + balance_of(account, debits=window_debits, credits=window_credits)
+
+    page_entries = (
+        (
+            await session.execute(
+                select(LedgerEntry)
+                .where(*window)
+                .order_by(LedgerEntry.entry_number)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # What this page opens from. Paging must not restart the running
+    # balance at the window's opening, or page two states a figure the
+    # customer never held.
+    page_opening = opening
+    if page_entries and offset:
+        page_debits, page_credits, _ = await _totals(
+            session,
+            account=account,
+            conditions=[*window, LedgerEntry.entry_number < page_entries[0].entry_number],
+        )
+        page_opening = opening + balance_of(account, debits=page_debits, credits=page_credits)
+
+    rows: list[LedgerStatementRowResponse] = []
+    running = page_opening
+    for entry in page_entries:
+        running += _effect_on(account, entry)
+        debited = entry.debit_account == account
+        rows.append(
+            LedgerStatementRowResponse(
+                entry=LedgerEntryResponse.model_validate(entry),
+                debit=to_storage(entry.amount) if debited else None,
+                credit=None if debited else to_storage(entry.amount),
+                balance=to_storage(running),
+            )
+        )
+
+    # Every balance quantized to the storage scale on the way out, for the
+    # reason `money.zero()` exists: an opening balance rendering as `0`
+    # beside rows rendering as `0.200000` reads as a bug to whoever is
+    # reconciling the page.
+    return LedgerStatementResponse(
+        company_id=company_id,
+        account=account,
+        currency=code,
+        available_currencies=await _currencies_of(session, company_id),
+        since=window_start,
+        until=window_end,
+        opening_balance=to_storage(opening),
+        page_opening_balance=to_storage(page_opening),
+        closing_balance=to_storage(closing),
+        rows=rows,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/correlation/{correlation_id}", response_model=list[LedgerEntryResponse])

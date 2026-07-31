@@ -8,13 +8,15 @@ only repository discipline.
 
 import uuid
 from collections.abc import Sequence
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import ColumnElement, and_, case, func, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blinkengage.domain.invoicing import InvoiceStatus
+from blinkengage.domain.invoicing import OPEN_STATES, InvoiceStatus
+from blinkengage.domain.money import to_storage
 from blinkengage.infrastructure.database.models.invoicing import (
     CreditNote,
     CreditNoteLine,
@@ -24,6 +26,73 @@ from blinkengage.infrastructure.database.models.invoicing import (
     Payment,
     PaymentAllocation,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class InvoiceSearchFilters:
+    """What a finance team has narrowed a cross-company search to.
+
+    A value object rather than six keyword arguments passed twice: the
+    page, the count behind its pagination and the per-currency subtotals
+    are three queries that must apply *exactly* the same predicate. A
+    total computed over a slightly different filter than the rows it sits
+    beside is worse than no total, because it looks authoritative.
+
+    Every field is optional and ``None`` means "do not narrow on this" —
+    including ``company_id``, which is the whole point: the only existing
+    invoice list demands one, so nobody could search across companies at
+    all.
+    """
+
+    company_id: uuid.UUID | None = None
+    status: InvoiceStatus | None = None
+    #: An ISO 4217 code, already validated and normalised by the caller.
+    currency: str | None = None
+    #: Half-open ``[issued_from, issued_before)`` on ``issued_at``, like
+    #: every other range in billing. An inclusive upper bound expressed
+    #: against a timestamp silently drops everything issued after
+    #: midnight on the last day of the range.
+    issued_from: datetime | None = None
+    issued_before: datetime | None = None
+    #: Matched against ``invoice_number`` alone, case-insensitively.
+    #: A draft has no number, so a numbered search never returns one —
+    #: which is correct: a draft is an operator's working copy and has no
+    #: number anybody could be searching for.
+    number_query: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class InvoiceCurrencySubtotal:
+    """The billed, paid, credited and outstanding money for one currency.
+
+    Money is only ever aggregated *inside* one of these. This
+    installation bills in USD and JOD, converts nothing and stores no
+    exchange rate, so there is deliberately no type here that could hold
+    a figure spanning both — the absence is the guarantee.
+    """
+
+    currency: str
+    #: How many invoices match the filter in this currency. A count, so
+    #: it is the one figure that can honestly be added across currencies.
+    invoice_count: int
+    total_amount: Decimal
+    amount_paid: Decimal
+    amount_credited: Decimal
+    #: billed - paid - credited, summed. What this currency's book is
+    #: still owed under the current filter.
+    amount_outstanding: Decimal
+
+
+def _contains(query: str) -> str:
+    """A LIKE pattern matching ``query`` anywhere.
+
+    The wildcards are escaped rather than passed through: an operator
+    pasting ``INV-2026-%`` is searching for a literal invoice number, and
+    letting it through would quietly widen their filter instead of
+    returning the nothing it should.
+    """
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 class DocumentNumberRepository:
@@ -100,6 +169,131 @@ class InvoiceRepository:
             stmt.order_by(Invoice.period_start.desc()).limit(limit)
         )
         return list(result.scalars().all())
+
+    # --- Cross-company search ----------------------------------------
+
+    @staticmethod
+    def _search_conditions(filters: InvoiceSearchFilters) -> list[ColumnElement[bool]]:
+        """The predicate, built once and reused by all three queries.
+
+        Extracted deliberately: the page, its count and the per-currency
+        subtotals have to agree, and the cheapest way to guarantee that
+        is to leave no second place where the filter is expressed.
+        """
+        conditions: list[ColumnElement[bool]] = []
+        if filters.company_id is not None:
+            conditions.append(Invoice.company_id == filters.company_id)
+        if filters.status is not None:
+            conditions.append(Invoice.status == filters.status)
+        if filters.currency is not None:
+            conditions.append(Invoice.currency == filters.currency)
+        if filters.issued_from is not None:
+            conditions.append(Invoice.issued_at >= filters.issued_from)
+        if filters.issued_before is not None:
+            conditions.append(Invoice.issued_at < filters.issued_before)
+        if filters.number_query:
+            conditions.append(
+                Invoice.invoice_number.ilike(_contains(filters.number_query), escape="\\")
+            )
+        return conditions
+
+    async def search(
+        self, filters: InvoiceSearchFilters, *, limit: int, offset: int
+    ) -> tuple[list[Invoice], int]:
+        """One page of matching invoices, newest first, and the full count.
+
+        The count is returned with the page rather than left to a second
+        call: limit/offset without a total cannot render honest
+        pagination — a reader has no way to tell "these are all of them"
+        from "there are four hundred more".
+
+        Ordered by ``issued_at`` falling back to ``created_at``, because a
+        draft has never been issued and would otherwise sort as though it
+        had no date at all. ``id`` breaks ties, so paging through a set
+        whose timestamps collide cannot show the same invoice twice or
+        skip one — which is what an unstable sort does to OFFSET.
+        """
+        conditions = self._search_conditions(filters)
+        total = (
+            await self._session.execute(
+                select(func.count()).select_from(select(Invoice.id).where(*conditions).subquery())
+            )
+        ).scalar_one()
+        result = await self._session.execute(
+            select(Invoice)
+            .where(*conditions)
+            .order_by(
+                func.coalesce(Invoice.issued_at, Invoice.created_at).desc(),
+                Invoice.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), int(total)
+
+    async def totals_by_currency(
+        self, filters: InvoiceSearchFilters
+    ) -> list[InvoiceCurrencySubtotal]:
+        """What the filter matches, in money, **grouped by currency**.
+
+        Over the whole filtered set rather than the page, so the figures
+        do not move as a reader pages through them.
+
+        ``GROUP BY currency`` is not a presentation choice. Nothing in
+        this build converts between USD and JOD and no exchange rate is
+        stored anywhere, so a single summed figure across both would be a
+        number with no meaning — and the surest way to stop one being
+        produced is to have no query that could produce it.
+
+        The billed/paid/credited figures describe **everything the filter
+        matched** — search for cancelled invoices and you get what those
+        documents said. ``amount_outstanding`` is the one figure that does
+        not, because it is not a description of the filter but a claim
+        about money owed, and it has to mean here exactly what it means in
+        collections, in the aging report and in the ledger. A draft was
+        never billed, a cancelled invoice was withdrawn and a written-off
+        one was abandoned; none of the three is a debt, and reporting them
+        as receivables is how a console ends up telling a finance team it
+        is owed money nobody is chasing.
+        """
+        owed = case(
+            (
+                and_(
+                    Invoice.status.in_(OPEN_STATES),
+                    Invoice.written_off_at.is_(None),
+                ),
+                Invoice.total_amount - Invoice.amount_paid - Invoice.amount_credited,
+            ),
+            else_=literal(0),
+        )
+        result = await self._session.execute(
+            select(
+                Invoice.currency,
+                func.count(),
+                func.coalesce(func.sum(Invoice.total_amount), 0),
+                func.coalesce(func.sum(Invoice.amount_paid), 0),
+                func.coalesce(func.sum(Invoice.amount_credited), 0),
+                func.coalesce(func.sum(owed), 0),
+            )
+            .where(*self._search_conditions(filters))
+            .group_by(Invoice.currency)
+            .order_by(Invoice.currency)
+        )
+        # Through `str` and back at the storage scale: SQLite returns a
+        # float for SUM over NUMERIC, and feeding that straight into
+        # Decimal would carry binary drift into a figure a finance team
+        # reads. The same round trip is what `credited_total` does.
+        return [
+            InvoiceCurrencySubtotal(
+                currency=currency,
+                invoice_count=int(count),
+                total_amount=to_storage(Decimal(str(billed))),
+                amount_paid=to_storage(Decimal(str(paid))),
+                amount_credited=to_storage(Decimal(str(credited))),
+                amount_outstanding=to_storage(Decimal(str(owed))),
+            )
+            for currency, count, billed, paid, credited, owed in result.all()
+        ]
 
     async def overdue_candidates(self, *, today: date, limit: int = 500) -> list[Invoice]:
         result = await self._session.execute(
@@ -318,7 +512,9 @@ __all__ = [
     "CreditNoteRepository",
     "DocumentNumberRepository",
     "InvoiceCompanyLookup",
+    "InvoiceCurrencySubtotal",
     "InvoiceLineRepository",
     "InvoiceRepository",
+    "InvoiceSearchFilters",
     "PaymentRepository",
 ]

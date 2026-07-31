@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
@@ -28,11 +28,15 @@ from blinkengage.api.deps import (
     get_platform_auth,
 )
 from blinkengage.api.schemas.payments import (
+    AgingReportResponse,
     AutoSuspendExemptionRequest,
     CheckoutSessionResponse,
     CollectionsRunResponse,
     CompanyBillingStatusResponse,
     DunningNoticeResponse,
+    PaymentAllocationCurrencyGroupResponse,
+    PaymentAllocationPageResponse,
+    PaymentAllocationResponse,
     PaymentIntentResponse,
     RefundableResponse,
     RefundRequest,
@@ -55,6 +59,11 @@ from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.domain.financial_audit import FinancialEntityType, FinancialEventType
 from blinkengage.infrastructure.database.models.collections import DunningNotice
 from blinkengage.infrastructure.database.models.company import Company
+from blinkengage.infrastructure.database.models.invoicing import (
+    Invoice,
+    Payment,
+    PaymentAllocation,
+)
 from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
 from blinkengage.infrastructure.repositories.financial_audit_repository import (
     FinancialAuditRepository,
@@ -139,6 +148,34 @@ async def billing_standing(
         CompanyBillingStatusResponse.model_validate(standing)
         for standing in await collections.standing_all(only_behind=only_behind)
     ]
+
+
+@router.get("/collections/aging", response_model=AgingReportResponse)
+async def aging(
+    collections: Annotated[CollectionsService, Depends(get_collections_service)],
+    company_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> AgingReportResponse:
+    """Open invoices bucketed by how overdue they are.
+
+    **Grouped by currency, with no figure above the grouping.** This
+    installation bills in more than one currency and nothing converts —
+    no exchange rate is stored anywhere, on purpose — so a single "total
+    outstanding" spanning dollars and dinars is a number that means
+    nothing in either. The response has nowhere to put one: every total
+    lives inside a currency, so a caller cannot combine them without
+    first inventing a rate this build does not have.
+
+    Written-off invoices are excluded, as they are everywhere else in
+    collections. A debt finance has abandoned is not a receivable
+    anybody is waiting on, and ageing it through the report indefinitely
+    would overstate what is collectable — the figure this page exists to
+    report.
+
+    ``company_id`` scopes it to one customer. An unknown one is a 404
+    rather than an empty report, because "owes nothing" and "no such
+    company" are different answers.
+    """
+    return AgingReportResponse.model_validate(await collections.aging(company_id=company_id))
 
 
 @router.get("/collections/notices/{invoice_id}", response_model=list[DunningNoticeResponse])
@@ -305,6 +342,139 @@ async def list_intents(
     return [PaymentIntentResponse.model_validate(intent) for intent in intents]
 
 
+# --- allocations ------------------------------------------------------
+#
+# `/allocations` is declared **above** `/allocations/{allocation_id}/…`
+# and above every `/{payment_id}` route below, per the rule at the top of
+# this module.
+
+
+@router.get("/allocations", response_model=PaymentAllocationPageResponse)
+async def list_allocations(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    company_id: Annotated[uuid.UUID | None, Query()] = None,
+    payment_id: Annotated[uuid.UUID | None, Query()] = None,
+    invoice_id: Annotated[uuid.UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PaymentAllocationPageResponse:
+    """Which payments settled which invoices, newest first.
+
+    Reversal has existed since the payment engine shipped with no way to
+    *find* an allocation to reverse: the id lived only in the database,
+    so the console could offer the action but never the row. This is that
+    row — and it is a read, so a read-only operator can investigate an
+    allocation they are not permitted to undo.
+
+    Grouped by currency, and every total is per currency. Nothing in this
+    build converts, so a figure spanning dinars and dollars would be
+    meaningless; the shape is what prevents one being computed, rather
+    than a note asking callers not to.
+    """
+    # The invoice's company, which is also the payment's: allocating
+    # across companies is refused when the allocation is written, so
+    # either side answers the same question and one join is enough.
+    filters: list[ColumnElement[bool]] = []
+    if company_id is not None:
+        filters.append(Invoice.company_id == company_id)
+    if payment_id is not None:
+        filters.append(PaymentAllocation.payment_id == payment_id)
+    if invoice_id is not None:
+        filters.append(PaymentAllocation.invoice_id == invoice_id)
+
+    # Live and reversed are summed separately rather than netted: an
+    # allocation is never deleted, and "0.20 applied" reads very
+    # differently from "0.20 applied, 0.20 taken back".
+    live = case((PaymentAllocation.reversed.is_(False), PaymentAllocation.amount), else_=None)
+    undone = case((PaymentAllocation.reversed.is_(True), PaymentAllocation.amount), else_=None)
+    totals = (
+        await session.execute(
+            select(
+                Invoice.currency,
+                func.count(),
+                func.coalesce(func.sum(live), 0),
+                func.coalesce(func.sum(undone), 0),
+            )
+            .select_from(PaymentAllocation)
+            .join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+            .where(*filters)
+            .group_by(Invoice.currency)
+            .order_by(Invoice.currency)
+        )
+    ).all()
+
+    rows = (
+        await session.execute(
+            select(
+                PaymentAllocation.id,
+                PaymentAllocation.payment_id,
+                Payment.reference,
+                PaymentAllocation.invoice_id,
+                Invoice.invoice_number,
+                PaymentAllocation.amount,
+                Invoice.currency,
+                PaymentAllocation.created_at,
+                PaymentAllocation.reversed,
+                PaymentAllocation.reversed_at,
+                PaymentAllocation.reversal_reason,
+            )
+            .select_from(PaymentAllocation)
+            .join(Payment, Payment.id == PaymentAllocation.payment_id)
+            .join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+            .where(*filters)
+            # The id breaks ties rather than leaving the order to the
+            # database. Allocations written in one transaction share a
+            # timestamp to the microsecond, so ordering by time alone is
+            # unstable — and an unstable order under limit/offset shows a
+            # row on two pages or on none.
+            .order_by(PaymentAllocation.created_at.desc(), PaymentAllocation.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+
+    page: dict[str, list[PaymentAllocationResponse]] = {}
+    for row in rows:
+        page.setdefault(row.currency, []).append(
+            PaymentAllocationResponse(
+                id=row.id,
+                payment_id=row.payment_id,
+                payment_reference=row.reference,
+                invoice_id=row.invoice_id,
+                invoice_number=row.invoice_number,
+                amount=row.amount,
+                currency=row.currency,
+                allocated_at=row.created_at,
+                reversed=row.reversed,
+                reversed_at=row.reversed_at,
+                reversal_reason=row.reversal_reason,
+            )
+        )
+
+    # Groups come from the aggregate, not from the page, so every
+    # currency the filter matched is reported with its totals even when
+    # this page holds none of its rows — and so the per-currency counts
+    # always add up to ``total``.
+    groups = [
+        PaymentAllocationCurrencyGroupResponse(
+            currency=currency,
+            matching=matching,
+            allocated_total=allocated,
+            reversed_total=reversed_amount,
+            allocations=page.get(currency, []),
+        )
+        for currency, matching, allocated, reversed_amount in totals
+    ]
+    return PaymentAllocationPageResponse(
+        # The one sum this shape allows, because a row count has no
+        # currency to be wrong in.
+        total=sum(group.matching for group in groups),
+        limit=limit,
+        offset=offset,
+        currencies=groups,
+    )
+
+
 # --- reversal and refunds --------------------------------------------
 
 
@@ -342,8 +512,8 @@ async def refundable(
     payments: Annotated[PaymentService, Depends(get_payment_service)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> RefundableResponse:
-    from blinkengage.infrastructure.database.models.invoicing import Payment
-
+    # ``Payment`` is imported at module scope now that the allocation
+    # listing needs it; the local import this replaced was redundant.
     amount = await payments.refundable_amount(payment_id)
     currency = (
         await session.execute(select(Payment.currency).where(Payment.id == payment_id))

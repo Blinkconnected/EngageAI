@@ -181,7 +181,12 @@ class LedgerService:
     # --- deriving ----------------------------------------------------
 
     async def balances(
-        self, company_id: uuid.UUID | None = None, *, currency: str | None = None
+        self,
+        company_id: uuid.UUID | None = None,
+        *,
+        currency: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[AccountBalance]:
         """Every account's balance, from the entries alone.
 
@@ -189,9 +194,15 @@ class LedgerService:
         company is safe — a company is billed in exactly one currency —
         but omitting it installation-wide mixes currencies, which is why
         the trial balance always passes one.
+
+        With ``since``/``until`` this stops being a balance and becomes a
+        *period* figure: what moved through each account in that window
+        rather than what stands in it. That is the difference between "we
+        have billed 40,000 all time" and "we billed 3,000 last month", and
+        only the second is something a finance team can run on.
         """
         debits, credits = await self._entries.sums_by_account(
-            company_id=company_id, currency=currency
+            company_id=company_id, currency=currency, since=since, until=until
         )
         rows: list[AccountBalance] = []
         for account in STATEMENT_ACCOUNTS:
@@ -259,6 +270,15 @@ class LedgerService:
             total_credits=sum((row.credits for row in rows), start=zero()),
             entry_count=await self._entries.entry_count(currency=code),
         )
+
+    async def currencies(self) -> list[str]:
+        """Which currencies the books are actually kept in.
+
+        Read from the entries rather than from a settings list, so a console
+        that iterates this cannot show an empty column for a currency nobody
+        has ever been billed in — nor miss one somebody was.
+        """
+        return await self._entries.currencies_present() or [BILLING_CURRENCY.code]
 
     async def trial_balances(self) -> list[TrialBalance]:
         """A set of books per currency the ledger holds entries in.

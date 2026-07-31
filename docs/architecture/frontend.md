@@ -208,6 +208,50 @@ Full interface translation, not just RTL layout mirroring:
 *                                   404 (NotFoundPage), signed-out fallback
 ```
 
+The two **operator consoles** sit outside that shell entirely, on their own
+chrome (`ConsoleShell`). A platform operator has no company, so `AppLayout`'s
+navigation — Inbox, Customers, Reports — would be a dozen links that all 403
+for them.
+
+```
+/platform                          Platform Console (PlatformRoute → PlatformLayout)
+  index                             Companies
+  /platform/mail                    Outbound mail settings
+
+/platform/billing                  Billing Console (PlatformRoute → BillingConsoleLayout)
+  index                             Revenue dashboard — per currency, no combined total
+  /platform/billing/invoices        Invoice management — cross-company search, CSV export, per-document actions
+  /platform/billing/payments        Payments, allocations, reversals and refunds
+  /platform/billing/ledger          Customer ledger (running balance) + trial balance
+  /platform/billing/collections     Aging buckets, who is behind, the dunning sweep
+  /platform/billing/companies/:id   One company's billing workspace
+  /platform/billing/pricing         Pricing (rates, profiles, models)
+  /platform/billing/pricing/companies/:id  One company's pricing
+```
+
+The billing console is nested **under** `/platform` rather than mounted at a
+new top-level path, so it inherits `PlatformRoute` — a section added here
+cannot ship unguarded because somebody forgot the wrapper. `/billing` is the
+*tenant's* own billing page and stays theirs.
+
+Its sections are ordered the way a finance day runs rather than
+alphabetically: open on the numbers, work through the documents, follow the
+money, then chase what did not arrive. Pricing is last because a rate is set
+once and read for months.
+
+`features/billingops/` holds the six modules. Two conventions inside it are
+worth knowing before editing:
+
+- **`format.ts` is formatting only.** Nothing there adds, subtracts or
+  compares amounts — every figure was computed server-side in `Decimal` and
+  crosses the wire as a string. How many decimals a currency has is asked of
+  `Intl` rather than kept in a map, so the dinar's three places and the
+  dollar's two come from ICU rather than from a list that can drift.
+- **After any write, invalidate the whole `['billing-ops']` key.** A payment
+  moves an invoice's status, the company's standing, the aging report, the
+  ledger and the revenue figures at once. A console showing five panels where
+  one has caught up is worse than one that briefly shows spinners.
+
 Every gated route wraps its element in `RequirePermission`; the sidebar
 independently hides nav entries the current user lacks permission for, so
 the two never disagree (both read the same `usePermissions` hook).
@@ -644,10 +688,20 @@ glance should follow its patterns rather than inventing new ones:
   signal stands out instead of competing with a badge on every row. Don't
   add a badge/chip for a row's default state "for consistency"; only
   surface what needs attention.
-- **Recognizable-at-a-glance channel identity.** `ChannelIcon` maps each
-  channel type to a brand-colored icon in a tinted circular badge
-  (`CHANNEL_ICONS` in `ConversationCells.tsx`) rather than a text label —
-  faster to scan than reading "WhatsApp Business" in a column.
+- **Recognizable-at-a-glance channel identity, plus which channel it
+  was.** `ChannelIcon` maps each channel type to a brand-colored icon in
+  a tinted circular badge (`CHANNEL_ICONS` in `ConversationCells.tsx`) —
+  faster to scan than reading "WhatsApp Business" in a column. The badge
+  alone was the whole column through Beta 5, which is where the
+  pattern's limit showed: a company routinely runs several channels of
+  one type
+  (two WhatsApp numbers, a support and a sales inbox), and no brand mark
+  can distinguish them. `ChannelCell` now pairs the icon with the
+  channel's `display_name`, so the icon answers "what kind" and the label
+  answers "which one." The general rule: an icon may replace a *type*
+  label, never an *instance* name. An id the channel list can't resolve
+  (channels are soft-deleted and keep their conversations) renders a
+  labelled "Unknown channel" placeholder rather than a bare icon.
 - **Deterministic avatar color.** Customer avatars derive their
   background color from a hash of the customer's name
   (`avatarColorFor`), so the same customer always renders the same color

@@ -66,15 +66,78 @@ class InvoiceResponse(BaseModel):
     paid_at: datetime | None
     cancelled_at: datetime | None
     cancellation_reason: str | None
+    #: When the receivable was abandoned as uncollectable. Deliberately a
+    #: timestamp rather than a status: we billed correctly and were not
+    #: paid, which stays true — what changed is that we stopped chasing
+    #: it. Collections skips these, and so does every "owed" figure.
+    written_off_at: datetime | None
 
 
 class InvoiceDetailResponse(BaseModel):
     invoice: InvoiceResponse
     lines: list[InvoiceLineResponse]
     credit_notes: list["CreditNoteResponse"]
-    #: total - paid - credited. Returned rather than left to the caller
-    #: so every screen agrees on what is still owed.
+    #: What is still owed, as ``domain.invoicing.amount_owed`` defines
+    #: it — zero for a draft, a cancelled document or a written-off one,
+    #: none of which anybody is chasing. Returned rather than left to the
+    #: caller so every screen agrees.
     amount_outstanding: Money
+
+
+class InvoiceSearchCurrencyGroup(BaseModel):
+    """One currency's slice of a search result.
+
+    **Money is aggregated here and nowhere else.** This installation
+    bills in USD and JOD, nothing converts between them and no exchange
+    rate is stored anywhere, so a figure spanning both would be a number
+    that means nothing. Grouping is what makes that mistake unavailable
+    rather than merely discouraged: the enclosing response has no field
+    holding a cross-currency amount, and the invoices themselves are
+    handed out inside their own currency's group so a caller never
+    receives a mixed list it could naively add up.
+    """
+
+    currency: str
+    #: How many invoices match the filter in this currency, across the
+    #: whole result set rather than this page. A count, so unlike the
+    #: amounts below it *could* honestly be added across groups.
+    invoice_count: int
+    total_amount: Money
+    amount_paid: Money
+    amount_credited: Money
+    #: billed - paid - credited. What this currency's book is still owed
+    #: under the current filter.
+    amount_outstanding: Money
+    #: This page's invoices in this currency, newest first. Empty when a
+    #: currency's matches all fall on another page — the amounts above
+    #: still describe the whole filtered set, so they do not shift as a
+    #: reader pages through and are never a subtotal of what is visible.
+    items: list[InvoiceResponse]
+
+
+class InvoiceSearchResponse(BaseModel):
+    """A page of cross-company invoice search.
+
+    Note what is deliberately absent: any single amount. The only figure
+    spanning currencies here is ``total``, and it is a count.
+    """
+
+    #: Every invoice matching the filter, across all currencies. Returned
+    #: with the page because limit/offset without a total cannot render
+    #: honest pagination — a reader cannot tell "that is all of them"
+    #: from "there are four hundred more".
+    total: int
+    #: Echoed back so a console paginating from the response alone never
+    #: has to remember what it asked for.
+    limit: int
+    offset: int
+    #: Ordered by currency code, so the same filter always renders its
+    #: groups in the same order.
+    currencies: list[InvoiceSearchCurrencyGroup]
+    #: The most rows ``?export=csv`` will write for this filter. Stated
+    #: up front so a console can warn *before* a finance team downloads a
+    #: file that stops short of what they searched for.
+    export_row_cap: int
 
 
 class CancelInvoiceRequest(BaseModel):
@@ -182,3 +245,17 @@ class FinancialAuditEventResponse(BaseModel):
     reason: str | None
     details: dict[str, object]
     occurred_at: datetime
+
+
+class FinancialAuditPageResponse(BaseModel):
+    """One page of the audit trail, with the size of the whole result.
+
+    The count travels with the page deliberately. This is the screen an
+    investigation ends on, and a list that might be complete or might be
+    the first two hundred of nine thousand cannot settle a question.
+    """
+
+    total: int
+    limit: int
+    offset: int
+    items: list[FinancialAuditEventResponse]

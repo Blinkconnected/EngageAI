@@ -20,15 +20,17 @@ that is not a GET — on an operator who may change things.
 """
 
 import uuid
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from blinkengage.api.deps import (
     deny_read_only_writes,
     get_billing_dashboard_service,
     get_collections_service,
     get_platform_auth,
+    get_revenue_service,
 )
 from blinkengage.api.schemas.billing import (
     BillingDashboardResponse,
@@ -37,11 +39,13 @@ from blinkengage.api.schemas.billing import (
     InvoiceSummaryResponse,
 )
 from blinkengage.api.schemas.payments import CompanyBillingStatusResponse
+from blinkengage.api.schemas.revenue import RevenueOverviewResponse
 from blinkengage.application.services.billing_dashboard_service import (
     BillingDashboardService,
     ChartWindow,
 )
 from blinkengage.application.services.collections_service import CollectionsService
+from blinkengage.application.services.revenue_service import RevenueService
 from blinkengage.domain.projection import ProjectionStrategy
 
 router = APIRouter(
@@ -49,6 +53,41 @@ router = APIRouter(
     tags=["platform-billing"],
     dependencies=[Depends(get_platform_auth), Depends(deny_read_only_writes)],
 )
+
+
+@router.get("/revenue", response_model=RevenueOverviewResponse)
+async def revenue_overview(
+    service: Annotated[RevenueService, Depends(get_revenue_service)],
+    since: Annotated[
+        date | None,
+        Query(description="Start of the reporting window. Defaults to 30 days ago."),
+    ] = None,
+    until: Annotated[
+        date | None,
+        Query(description="End of the window, exclusive. Defaults to tomorrow."),
+    ] = None,
+) -> RevenueOverviewResponse:
+    """Installation-wide revenue, per currency.
+
+    **A list, never a total.** Blink Engage bills in dollars and dinars,
+    nothing converts between them, and no exchange rate is stored anywhere on
+    purpose — so there is no field here to put a combined figure in.
+
+    The run rate on each row states its own method. It is not MRR: there are no
+    subscriptions to contract, only usage, so the number is recognised revenue
+    scaled to thirty days and it says so.
+
+    Walks every company to count who is behind, so treat this as a page load
+    rather than something to poll.
+    """
+    if since and until and since >= until:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="`since` must fall before `until`.",
+        )
+    return RevenueOverviewResponse.model_validate(
+        await service.overview(since=since, until=until)
+    )
 
 
 @router.get("/companies/{company_id}/dashboard", response_model=BillingDashboardResponse)

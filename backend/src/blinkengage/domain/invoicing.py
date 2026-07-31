@@ -22,10 +22,12 @@ Framework-free, like the rest of ``domain/``.
 """
 
 from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 from typing import Final
 
 from blinkengage.domain.exceptions import DomainError
+from blinkengage.domain.money import zero
 
 
 class InvoiceStatus(StrEnum):
@@ -96,6 +98,36 @@ ISSUED_STATES: Final[frozenset[InvoiceStatus]] = frozenset(
 OPEN_STATES: Final[frozenset[InvoiceStatus]] = frozenset(
     {InvoiceStatus.ISSUED, InvoiceStatus.OVERDUE}
 )
+
+
+def amount_owed(
+    *,
+    status: InvoiceStatus,
+    written_off: bool,
+    total: Decimal,
+    paid: Decimal,
+    credited: Decimal,
+) -> Decimal:
+    """What a document is still owed — one definition, for every screen.
+
+    Subtracting paid and credited from the total is only half the answer.
+    The other half is whether the document is a debt at all: a **draft**
+    was never billed, a **cancelled** invoice was withdrawn, and a
+    **written-off** one was abandoned as uncollectable. None of the three
+    is money anybody is chasing, and reporting them as receivables is how
+    a console comes to disagree with collections, with the aging report
+    and with the ledger — three places that already apply this rule.
+
+    Written off is a timestamp rather than a status on purpose: we billed
+    correctly and were not paid, which is true and stays true. What
+    changes is only that we stop pursuing it.
+    """
+    if status not in OPEN_STATES or written_off:
+        # At the storage scale, like every other amount: a CSV column
+        # holding `0` beside `95.000000` is a column a spreadsheet reads
+        # fine and a person reading the file does not trust.
+        return zero()
+    return total - paid - credited
 
 
 class InvalidInvoiceTransitionError(DomainError):
@@ -185,6 +217,7 @@ __all__ = [
     "INVOICE_PREFIX",
     "ISSUED_STATES",
     "OPEN_STATES",
+    "amount_owed",
     "InvalidInvoiceTransitionError",
     "InvoiceStatus",
     "assert_transition",

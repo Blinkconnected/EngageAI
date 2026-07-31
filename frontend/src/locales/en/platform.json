@@ -11,7 +11,12 @@
     "title": "Billing Console",
     "subtitle": "What things cost, and who owes what",
     "pricing": "Pricing",
-    "platformConsole": "Platform Console"
+    "platformConsole": "Platform Console",
+    "revenue": "Revenue",
+    "invoices": "Invoices",
+    "payments": "Payments",
+    "ledger": "Ledger",
+    "collections": "Collections"
   },
   "PlatformCompaniesPage": {
     "title": "Companies",

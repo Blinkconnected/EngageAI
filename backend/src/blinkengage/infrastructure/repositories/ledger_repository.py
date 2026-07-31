@@ -112,12 +112,21 @@ class LedgerRepository:
         *,
         company_id: uuid.UUID | None = None,
         currency: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[dict[LedgerAccount, Decimal], dict[LedgerAccount, Decimal]]:
         """Total debited and total credited, per account.
 
         Two grouped queries rather than one per account: the number of
         accounts will grow, and a query per account is how a balance
         screen becomes an N+1.
+
+        ``since``/``until`` bound it to a window, which is what separates a
+        *balance* from a *period figure*. Without them every revenue number
+        is all-time, and "revenue" that only ever grows is not something a
+        finance team can run a month on. Half-open ``[since, until)``, like
+        every other range in the billing engine, so a boundary entry is
+        counted once.
         """
 
         async def _sums(
@@ -128,6 +137,10 @@ class LedgerRepository:
                 stmt = stmt.where(LedgerEntry.company_id == company_id)
             if currency is not None:
                 stmt = stmt.where(LedgerEntry.currency == currency)
+            if since is not None:
+                stmt = stmt.where(LedgerEntry.occurred_at >= since)
+            if until is not None:
+                stmt = stmt.where(LedgerEntry.occurred_at < until)
             result = await self._session.execute(stmt.group_by(column))
             # Keyed by the enum member, not by a string. SQLAlchemy
             # converts the stored NAME back to a LedgerAccount on read,

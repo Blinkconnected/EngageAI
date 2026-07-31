@@ -29,34 +29,6 @@ entitlements changed. See the "Feature entitlements" section below.
 
 ## Currency
 
-**v1 bills in a single currency: USD.** Multi-currency is not
-implemented and is not partially implemented — nothing converts, and
-there is no exchange-rate concept anywhere.
-
-But single-currency and currency-hardcoded are different things, and
-only the first is intended. Everything that touches an amount goes
-through one module on each side:
-
-| | Module | Holds |
-|---|---|---|
-| Backend | `domain/money.py` | `BILLING_CURRENCY`, precision, rounding, formatting |
-| Frontend | `shared/money.ts` | `BILLING_CURRENCY`, `formatMoney`, `formatUnitPrice` |
-
-Introducing a second currency later is a change to those two files and
-the rows that reference them, not an archaeological dig for stray
-`"USD"` literals and `$` signs. A unit test
-(`tests/unit/test_money.py::test_nothing_outside_this_module_hardcodes_the_currency`)
-fails the build if a currency literal appears anywhere else in the
-backend source.
-
-Currency is a **constant, not an environment variable**, on purpose. An
-env var would imply that setting `BILLING_CURRENCY=EUR` produces a
-working system. It would not — nothing converts — and a setting that
-appears to work while silently mispricing is worse than a constant that
-is honest about the build being single-currency.
-
-## Currency
-
 Each company is billed in **its own currency**, decided by the country
 given at signup: **JOD** for Jordan, USD elsewhere. Adding a currency is
 an entry in `CURRENCIES` plus prices to go with it.
@@ -64,7 +36,24 @@ an entry in `CURRENCIES` plus prices to go with it.
 This began as a single-currency build with one deliberate seam, and
 widening it was a change to `domain/money.py` and the call sites that name
 a currency — not an archaeology exercise hunting stray `"USD"` literals.
-That was the entire point of routing every amount through one module.
+That was the entire point of routing every amount through one module:
+
+| | Module | Holds |
+|---|---|---|
+| Backend | `domain/money.py` | `CURRENCIES`, `currency_for`, precision, rounding, formatting |
+| Frontend | `features/billing/money.ts`, `features/billingops/format.ts` | how an amount is rendered at its own currency's resolution |
+
+A unit test
+(`tests/unit/test_money.py::test_nothing_outside_this_module_hardcodes_the_currency`)
+fails the build if a currency literal appears anywhere else in the backend
+source — which is what keeps the seam a seam.
+
+There is no `BILLING_CURRENCY` environment variable and never was, on
+purpose. An env var would imply that setting `BILLING_CURRENCY=EUR`
+produces a working system; it would not, because nothing converts. A
+currency is added by adding it to `CURRENCIES` **and giving it prices**,
+and a setting that appears to work while silently mispricing is worse than
+a constant.
 
 ### Decimal places are a property of the currency
 
@@ -1905,7 +1894,136 @@ exactly as on save, and amounts come back quantized to the column's scale. A
 preview that validated differently would be worth less than none: an operator
 would approve `250` and store `250.000000`.
 
-## Not built yet
+## Billing Operations: the console a finance team works in
+
+Everything above is the engine. This section is the **workspace** on top of
+it — six screens under `/platform/billing`, all of them read paths over
+figures the engine already computed, plus the small set of writes that
+finance work actually consists of.
+
+The console never calculates. Not the totals, not the balances, not the
+ratios — every number on screen was produced server-side in `Decimal` and
+crosses the wire as a string. A console that derives its own revenue is one
+that will eventually disagree with the invoice, and the number people believe
+is whichever they saw first.
+
+### The rule that shapes every screen
+
+**Nothing sums across currencies, and the response has nowhere to put a
+figure that did.** Every collection the console reads is grouped by currency
+with no field above the grouping:
+
+| Endpoint | Grouped by currency | Cross-currency figures |
+|---|---|---|
+| `GET /platform/billing/revenue` | `currencies[]` | `companies_behind`, `companies_suspended` (counts) |
+| `GET /platform/invoices/search` | `currencies[]` | `total` (a row count) |
+| `GET /platform/payments/allocations` | `currencies[]` | `total` (a row count) |
+| `GET /platform/payments/collections/aging` | `currencies[]` | none |
+| `GET /platform/ledger/trial-balance` | one set of books per currency | none |
+| `GET /platform/ledger/statement/{id}` | one currency per statement | none |
+
+Counts are the only thing that legitimately spans currencies. This is
+structural rather than a convention somebody has to remember: there is no
+field a cross-currency amount could be written into, so it cannot be returned
+by accident, and tests assert the exact key set of each response so it fails
+the day somebody adds one.
+
+The one flat cross-company list, `GET /platform/payments/collections/status`,
+carries `currency` **on every row** for the same reason.
+
+### `GET /platform/billing/revenue` — and why the headline figure is not MRR
+
+Blink Engage bills for usage and sells no subscriptions, so there is no
+contracted recurring revenue to report. The dashboard's monthly figure is a
+**run rate**: revenue recognised in a window, scaled to thirty days. It
+travels with its own `method`, always, because a derived number quoted
+without its derivation is one nobody can check.
+
+| `method` | Means |
+|---|---|
+| `trailing_30_day` | A thirty-day window. The rate and the window are the same length; nothing was scaled. |
+| `scaled_from_window` | Some other window, scaled to thirty days. Steadier from ninety days, jumpier from ten — `days_observed` says which. |
+| `insufficient_history` | Under seven days. Reported as unavailable rather than guessed, because a rate scaled up from four days says more about the window than about the business. |
+
+Seven days matches the projection engine's own threshold deliberately: two
+parts of the product disagreeing about how much history is enough would be
+indefensible to a customer who noticed.
+
+Two kinds of number sit side by side on that response and the distinction is
+the whole design. **Period figures** — revenue, collected, bad debt — are what
+moved through an account inside the window. **Positions** — outstanding,
+customer credit — are what stands in it right now, whenever it was billed.
+Conflating them is how a console reports all-time revenue as this month's.
+
+`collection_ratio` is `null`, never zero, when nothing was billed: a ratio
+with no denominator is undefined, and rendering it as 0% reads as a
+collections failure in a month that simply had no invoices. It may also
+exceed 1, and is deliberately not clamped — a quiet month that collects two
+months of arrears really did collect more than it billed, and that is the
+month a collections team most wants to see.
+
+The endpoint walks every company to count who is behind. It is a page-load
+figure, not something to poll.
+
+### What "owed" means
+
+One definition, `domain/invoicing.amount_owed`, applied everywhere:
+
+```
+owed = total − paid − credited,  but only if the document is a debt at all
+```
+
+A **draft** was never billed. A **cancelled** invoice was withdrawn. A
+**written-off** one was abandoned. None of the three is money anybody is
+chasing, and reporting them as receivables is how a console comes to disagree
+with collections, with the aging report and with the ledger.
+
+### Writes, and the reason each one demands
+
+The console's write surface is small on purpose. There is no edit and no
+delete: an issued invoice is a financial record, and every correction is an
+additional document.
+
+| Action | What it means | Refused when |
+|---|---|---|
+| Issue | The draft becomes a document. Revenue is recognised and a receivable exists. | Not a draft |
+| Credit note | We billed too much. Posts to `revenue_adjustments`. | Still a draft — change the draft instead |
+| Withdraw (cancel) | This document should never have existed. Reverses the receivable **and** un-recognises the revenue. | Money has been allocated to it |
+| Write off | We billed correctly and will not be paid. Moves the receivable to `bad_debt` and stops collections chasing it. | Nothing outstanding |
+| Record payment | Money that arrived outside the providers. Lands as customer credit. | — |
+| Allocate | Applies credit to a document. | More than the document owes |
+| Reverse allocation | Un-applies it. The original stays on the record. | Already reversed |
+| Refund | Returns money. | More than remains refundable |
+| Reinstate / exempt | Lifts a suspension, or marks a company the sweep must never suspend on its own. | — |
+
+Every one of them writes an immutable financial audit event carrying the
+operator's identity **as values**, so the action stays attributable after the
+person who took it has left. Everything except issue and allocate requires a
+typed reason, which is the only part a human writes and six months later the
+only explanation anybody has.
+
+### The CSV export
+
+`GET /platform/invoices/search?export=csv` follows the **filter**, not the
+page — a download that returned only the rows on screen is the subtlest way
+to hand somebody an incomplete reconciliation. It is capped at
+`EXPORT_ROW_CAP` (5,000) and announces truncation four ways: in the JSON
+response before the download (`export_row_cap`), in `X-Export-*` headers, and
+in the filename itself (`invoices-2026-07-31-TRUNCATED-5000-of-7321.csv`).
+The headers are gone the moment the file lands on a disk; the filename is the
+only signal still visible to whoever opens it next week.
+
+Text cells are prefixed with an apostrophe when they begin with `=`, `+`,
+`-`, `@`, tab or carriage return. Customer names are written by tenants and
+read by our finance team in Excel, which is the one place a cell beginning
+`=` stops being text and becomes a command. Amounts are never quoted —
+that guard applies to text only, because quoting a negative amount would
+corrupt the figures the export exists to carry.
+
+There is no totals row: a column of amounts in two currencies has no honest
+sum.
+
+### Not built yet
 
 Stated explicitly so nobody looks for them:
 
@@ -1915,5 +2033,13 @@ Stated explicitly so nobody looks for them:
 - **A customer-facing payment page** — checkout is started through the
   platform API, so today an operator sends the approval link. The intent
   and return/cancel URLs are already modelled for a self-service page.
+- **Invoice PDF rendering** — the console shows an invoice's lines,
+  totals, credit notes and notice history on screen, and exports the
+  *list* as CSV. There is no per-document PDF yet.
+- **Partial credit notes from the console** — the API takes a line list
+  and supports them; the console's credit action currently offers the full
+  amount only, because a partial credit is a decision made against
+  specific lines and a single "amount" box would let somebody credit 40
+  against a line of 30.
 - **Contracts, taxes and discounts** — later phases.
-- **Partial-payment plans and write-offs.**
+- **Partial-payment plans.**

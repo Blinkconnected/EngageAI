@@ -16,6 +16,7 @@ from blinkengage.api.v1.router import api_router
 from blinkengage.core.changelog import ChangelogFormatError, current_release, load_releases
 from blinkengage.core.config import get_settings
 from blinkengage.core.container import Container
+from blinkengage.core.correlation import CORRELATION_HEADER
 from blinkengage.core.exceptions import register_exception_handlers
 from blinkengage.core.logging import configure_logging, get_logger
 from blinkengage.core.security_headers import SecurityHeadersMiddleware
@@ -85,6 +86,20 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # `allow_headers` governs what a browser may *send*; a response
+        # header is invisible to `fetch()` unless it is named here. The
+        # billing console downloads its CSV export through the same
+        # authenticated client as every other call, and reads the filename
+        # to learn whether the file was truncated — which it cannot do if
+        # the browser hides the header.
+        expose_headers=[
+            "Content-Disposition",
+            "X-Export-Row-Cap",
+            "X-Export-Row-Count",
+            "X-Export-Total-Matched",
+            "X-Export-Truncated",
+            CORRELATION_HEADER,
+        ],
     )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
     # Outermost of the two, so every request — including one rejected by

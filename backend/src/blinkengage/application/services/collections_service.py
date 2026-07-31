@@ -32,8 +32,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from enum import StrEnum
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,7 +56,7 @@ from blinkengage.domain.collections import (
 from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.domain.financial_audit import FinancialEntityType, FinancialEventType
 from blinkengage.domain.invoicing import OPEN_STATES
-from blinkengage.domain.money import format_amount, zero
+from blinkengage.domain.money import format_amount, to_storage, total, zero
 from blinkengage.infrastructure.database.models.collections import DunningNotice
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.invoicing import Invoice
@@ -84,6 +85,11 @@ class CompanyStanding:
 
     company_id: uuid.UUID
     company_name: str
+    #: The company's own billing currency. Carried on every row because
+    #: this list spans companies — some billed in dollars, some in dinars
+    #: — and an amount with no currency beside it in a mixed list is an
+    #: invitation to add them together.
+    currency: str
     billing_status: BillingStatus
     billing_suspended_at: datetime | None
     never_auto_suspend: bool
@@ -91,6 +97,117 @@ class CompanyStanding:
     overdue_invoices: int
     amount_outstanding: Decimal
     next_action_on: date | None
+
+
+class AgingBucket(StrEnum):
+    """How overdue an open invoice is, in the bands a debtors report uses.
+
+    Stable identifiers rather than positions in a list: a console keys its
+    columns off these, and renaming one silently moves a column's meaning.
+    """
+
+    #: Issued, not yet past its due date. Owed, but not late.
+    CURRENT = "current"
+    DAYS_1_30 = "days_1_30"
+    DAYS_31_60 = "days_31_60"
+    DAYS_61_90 = "days_61_90"
+    DAYS_90_PLUS = "days_90_plus"
+
+
+@dataclass(frozen=True, slots=True)
+class AgingBand:
+    """One band of the policy: a bucket and the ages that fall in it."""
+
+    bucket: AgingBucket
+    #: Inclusive bounds, in whole days past the due date. ``None`` is
+    #: open-ended — genuinely unbounded, not a sentinel number somebody
+    #: eventually reaches.
+    from_days: int | None
+    to_days: int | None
+
+
+#: The bands, in the order a report reads. Declared as data, once, so the
+#: service, the response and any console all describe the same policy —
+#: three places each re-deriving "which bucket is this" is three places
+#: that can disagree.
+#:
+#: The bands are **contiguous and non-overlapping**. The requirement names
+#: "61-90" and "90+", which both claim day 90; an invoice belonging to two
+#: buckets would make the bucket counts stop summing to the total, so day
+#: 90 belongs to the band that names it and the open-ended band starts at
+#: 91.
+AGING_BANDS: tuple[AgingBand, ...] = (
+    AgingBand(bucket=AgingBucket.CURRENT, from_days=None, to_days=0),
+    AgingBand(bucket=AgingBucket.DAYS_1_30, from_days=1, to_days=30),
+    AgingBand(bucket=AgingBucket.DAYS_31_60, from_days=31, to_days=60),
+    AgingBand(bucket=AgingBucket.DAYS_61_90, from_days=61, to_days=90),
+    AgingBand(bucket=AgingBucket.DAYS_90_PLUS, from_days=91, to_days=None),
+)
+
+
+def bucket_for(days_overdue: int) -> AgingBucket:
+    """Which band an age falls in. A pure function of one integer, so the
+    boundaries are unit-testable without a database behind them."""
+    for band in AGING_BANDS:
+        if (band.from_days is None or days_overdue >= band.from_days) and (
+            band.to_days is None or days_overdue <= band.to_days
+        ):
+            return band.bucket
+    # Unreachable while the bands stay contiguous and open at both ends.
+    # Kept so a future edit that leaves a gap fails loudly here rather
+    # than quietly dropping invoices out of the report.
+    raise ValueError(f"No aging band covers {days_overdue} days overdue.")
+
+
+@dataclass(frozen=True, slots=True)
+class AgingBucketTotal:
+    """One bucket, within one currency.
+
+    ``amount_outstanding`` is only ever added to other buckets **of the
+    same currency**. That is why this type is never handed out on its own.
+    """
+
+    bucket: AgingBucket
+    from_days: int | None
+    to_days: int | None
+    invoice_count: int
+    amount_outstanding: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class CurrencyAging:
+    """One currency's aging, and the only level at which a total exists.
+
+    Nothing converts and no exchange rate is stored, so a figure spanning
+    dollars and dinars could not be computed even if somebody wanted it.
+    Grouping by currency is what makes that structural rather than a
+    convention somebody remembers: the total lives *inside* a currency, so
+    there is nowhere for a cross-currency sum to be written.
+    """
+
+    currency: str
+    #: Every band, always — including the empty ones. A bucket that
+    #: vanishes when nothing is in it is indistinguishable from a bucket
+    #: the caller forgot to handle, and it makes a console's column
+    #: disappear rather than read zero.
+    buckets: tuple[AgingBucketTotal, ...]
+    invoice_count: int
+    total_outstanding: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class AgingReport:
+    """Open receivables by age. Deliberately has **no** total of its own.
+
+    ``currencies`` is the whole payload: there is no installation-wide
+    amount here, because there is no honest way to produce one.
+    """
+
+    #: The day the ages were measured against. Reported rather than left
+    #: implicit — an aging report read tomorrow describes a different set
+    #: of buckets, and a reader is entitled to know which day it is.
+    as_of: date
+    currencies: tuple[CurrencyAging, ...]
 
 
 @dataclass
@@ -519,6 +636,7 @@ class CollectionsService:
         return CompanyStanding(
             company_id=company.id,
             company_name=company.name,
+            currency=company.billing_currency,
             billing_status=company.billing_status,
             billing_suspended_at=company.billing_suspended_at,
             never_auto_suspend=company.billing_never_auto_suspend,
@@ -526,6 +644,79 @@ class CollectionsService:
             overdue_invoices=len(overdue),
             amount_outstanding=outstanding,
             next_action_on=next_on,
+        )
+
+    # --- aging --------------------------------------------------------
+
+    async def aging(
+        self, *, company_id: uuid.UUID | None = None, today: date | None = None
+    ) -> AgingReport:
+        """Open invoices bucketed by how overdue they are, per currency.
+
+        Written-off invoices are excluded, as they are everywhere else in
+        collections: a debt nobody is chasing is not a receivable anybody
+        is waiting on, and leaving it in would keep an abandoned balance
+        ageing through the report for ever — the same defect that kept
+        written-off invoices generating dunning notices.
+
+        One query, not one per company or one per bucket. Only the five
+        columns the report needs are selected: this is an
+        installation-wide read an operator opens on a dashboard, and
+        loading whole invoice entities to add three numbers together is
+        work that shows up as latency on the page.
+        """
+        reference_day = today or datetime.now(UTC).date()
+
+        # Checked rather than left to return an empty report: "this
+        # company owes nothing" and "there is no such company" must not
+        # look the same, and only one of them means the caller should go
+        # and check the id they typed.
+        if company_id is not None and await self._session.get(Company, company_id) is None:
+            raise EntityNotFoundError("Company", company_id)
+
+        conditions: list[ColumnElement[bool]] = [
+            Invoice.status.in_(tuple(OPEN_STATES)),
+            Invoice.written_off_at.is_(None),
+        ]
+        if company_id is not None:
+            conditions.append(Invoice.company_id == company_id)
+
+        rows = await self._session.execute(
+            select(
+                Invoice.currency,
+                Invoice.due_date,
+                Invoice.total_amount,
+                Invoice.amount_paid,
+                Invoice.amount_credited,
+            ).where(*conditions)
+        )
+
+        # Grouped by the currency the *invoice* states, never the one the
+        # company is on today. The document is what is owed, and a company
+        # whose currency changed would otherwise re-denominate a debt that
+        # was billed in something else.
+        tallies: dict[str, dict[AgingBucket, list[Decimal]]] = {}
+        for row in rows.all():
+            due_date: date | None = row.due_date
+            # An invoice with no due date cannot be past one. Filing it as
+            # "90+ days overdue" would invent a fact the document does not
+            # state; ``current`` says only what is known — that it is owed.
+            days_overdue = (reference_day - due_date).days if due_date is not None else 0
+            by_bucket = tallies.setdefault(
+                row.currency, {band.bucket: [] for band in AGING_BANDS}
+            )
+            by_bucket[bucket_for(days_overdue)].append(
+                row.total_amount - row.amount_paid - row.amount_credited
+            )
+
+        return AgingReport(
+            as_of=reference_day,
+            # Sorted by code so two calls that see the same data return the
+            # same order. An installation with no open invoices reports no
+            # currencies at all, which is the truth — inventing a row of
+            # zeroes for a currency nobody bills in is a column an operator
+            # then has to learn to ignore.
+            currencies=tuple(_currency_aging(code, tallies[code]) for code in sorted(tallies)),
         )
 
     async def refresh_company(self, company_id: uuid.UUID, *, today: date | None = None) -> None:
@@ -541,6 +732,34 @@ class CollectionsService:
             await self._session.execute(
                 update(Company).where(Company.id == company_id).values(billing_status=target)
             )
+
+
+def _currency_aging(currency: str, tallies: dict[AgingBucket, list[Decimal]]) -> CurrencyAging:
+    """Totals one currency's buckets — and nothing wider than that.
+
+    Summed through ``money.total`` at full working precision, then
+    quantized once to the storage scale. ``to_storage`` is what gives an
+    empty bucket the same shape as a populated one: ``Decimal("0")`` and
+    ``Decimal("0.000000")`` compare equal but do not serialize the same,
+    and a zero rendering as ``0`` beside amounts rendering as ``0.000000``
+    reads as a bug to whoever is auditing the report.
+    """
+    buckets = tuple(
+        AgingBucketTotal(
+            bucket=band.bucket,
+            from_days=band.from_days,
+            to_days=band.to_days,
+            invoice_count=len(tallies[band.bucket]),
+            amount_outstanding=to_storage(total(tallies[band.bucket])),
+        )
+        for band in AGING_BANDS
+    )
+    return CurrencyAging(
+        currency=currency,
+        buckets=buckets,
+        invoice_count=sum(bucket.invoice_count for bucket in buckets),
+        total_outstanding=to_storage(total(bucket.amount_outstanding for bucket in buckets)),
+    )
 
 
 def _compose(invoice: Invoice, step: DunningStep) -> tuple[str, str]:
@@ -598,4 +817,15 @@ def _compose(invoice: Invoice, step: DunningStep) -> tuple[str, str]:
     raise ValueError(f"No message defined for dunning stage {step.stage}.")
 
 
-__all__ = ["NOTIFICATION_TYPE", "CollectionsRun", "CollectionsService"]
+__all__ = [
+    "AGING_BANDS",
+    "NOTIFICATION_TYPE",
+    "AgingBand",
+    "AgingBucket",
+    "AgingBucketTotal",
+    "AgingReport",
+    "CollectionsRun",
+    "CollectionsService",
+    "CurrencyAging",
+    "bucket_for",
+]

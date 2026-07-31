@@ -59,6 +59,16 @@ function signedInAsOperator({ isPlatformAdmin = true }: { isPlatformAdmin?: bool
     http.get(`${API_BASE_URL}/platform/pricing/history`, () => HttpResponse.json([])),
     http.get(`${API_BASE_URL}/platform/pricing/metrics`, () => HttpResponse.json([])),
     http.get(`${API_BASE_URL}/platform/pricing/models`, () => HttpResponse.json([])),
+    http.get(`${API_BASE_URL}/platform/billing/revenue`, () =>
+      HttpResponse.json({
+        period_from: '2026-07-01',
+        period_to: '2026-07-31',
+        currencies: [],
+        companies_behind: 0,
+        companies_suspended: 0,
+        as_of: '2026-07-31T12:00:00Z',
+      }),
+    ),
   )
 }
 
@@ -107,9 +117,52 @@ describe('the operator consoles', () => {
     expect(await screen.findByText(/manage companies on this installation/i)).toBeVisible()
   })
 
-  it('keeps a company’s billing page inside the billing console', async () => {
-    // It moved with pricing. A per-company rate override is a billing
-    // decision, not a company-administration one.
+  it('opens the billing console on the numbers rather than on a form', async () => {
+    // A finance module's front page is what the business earned. A settings
+    // page's front page is a rate editor — which is why pricing moved to its
+    // own section rather than staying the console's index.
+    signedInAsOperator()
+    goTo('/platform/billing')
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Revenue' })).toBeVisible()
+  })
+
+  it('keeps a company’s billing workspace inside the billing console', async () => {
+    // What "billing" means for one company: standing, what they owe, what
+    // they have been invoiced. Their *pricing* is a different screen,
+    // because setting a rate and chasing a debt are different jobs.
+    signedInAsOperator()
+    server.use(
+      http.get(`${API_BASE_URL}/platform/billing/companies/co-1/standing`, () =>
+        HttpResponse.json({
+          company_id: 'co-1',
+          company_name: 'Acme Trading',
+          currency: 'USD',
+          billing_status: 'active',
+          billing_suspended_at: null,
+          never_auto_suspend: false,
+          open_invoices: 0,
+          overdue_invoices: 0,
+          amount_outstanding: '0.000000',
+          next_action_on: null,
+        }),
+      ),
+      http.get(`${API_BASE_URL}/platform/billing/companies/co-1/invoices`, () =>
+        HttpResponse.json([]),
+      ),
+      http.get(`${API_BASE_URL}/platform/billing/companies/co-1/dashboard`, () =>
+        HttpResponse.json({ detail: 'not needed for this assertion' }, { status: 404 }),
+      ),
+    )
+    goTo('/platform/billing/companies/co-1')
+    render(<App />)
+
+    expect(await screen.findByText('Billing Console')).toBeVisible()
+    expect(await screen.findByRole('heading', { name: 'Acme Trading' })).toBeVisible()
+  })
+
+  it('still reaches per-company pricing, on its own path', async () => {
     signedInAsOperator()
     server.use(
       http.get(`${API_BASE_URL}/platform/pricing/companies/co-1/effective`, () =>
@@ -123,7 +176,7 @@ describe('the operator consoles', () => {
         }),
       ),
     )
-    goTo('/platform/billing/companies/co-1')
+    goTo('/platform/billing/pricing/companies/co-1')
     render(<App />)
 
     expect(await screen.findByText('Billing Console')).toBeVisible()

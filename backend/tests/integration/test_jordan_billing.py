@@ -205,6 +205,59 @@ class TestBillingInDinars:
         assert position.json()["currency"] == "JOD"
         assert Decimal(position.json()["outstanding"]) == Decimal("1.75")
 
+    async def test_a_dinar_total_keeps_its_third_decimal_place(
+        self, client: AsyncClient, app: Any
+    ) -> None:
+        """The fils is real money, and rounding it away is a real error.
+
+        A rate of 0.0355 over 50 billable units is 1.775 JOD exactly.
+        Rounded to the dollar's two places it becomes 1.78 — half a fils
+        more than the customer owes, on every invoice, forever. The
+        existing dinar tests all use 0.035, which is exact at two places
+        and so cannot tell the two behaviours apart.
+        """
+        headers = await platform_headers(client, app)
+        account = await register(client, app, owner_email="fils@example.example")
+        company_id = account["user"]["company"]["id"]
+        await client.put(
+            "/api/v1/platform/pricing/global/metrics/BILLABLE_MESSAGE",
+            headers=headers,
+            json={
+                "unit_amount": "0.035500",
+                "effective_from": datetime(2020, 1, 1, tzinfo=UTC).isoformat(),
+                "reason": "A rate with a third decimal place",
+                "currency": "JOD",
+                "allow_backdating": True,
+            },
+        )
+        await client.post(
+            "/api/v1/platform/usage/records",
+            headers=headers,
+            json={
+                "company_id": company_id,
+                "metric_code": "BILLABLE_MESSAGE",
+                "quantity": "150",
+                "occurred_at": datetime.now(UTC).isoformat(),
+                "idempotency_key": f"fils-{company_id}",
+                "note": "Above the allowance",
+            },
+        )
+        current = await client.get(
+            f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
+        )
+        period_id = current.json()["period"]["id"]
+        await client.post(f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers)
+        detail = await client.post(
+            f"/api/v1/platform/invoices/generate/{period_id}", headers=headers
+        )
+
+        invoice = detail.json()["invoice"]
+        assert invoice["currency"] == "JOD"
+        assert Decimal(invoice["subtotal_amount"]) == Decimal("1.775")
+        # The billed figure, not merely the subtotal: rounding happens
+        # once, at the total, and it must round to the dinar.
+        assert Decimal(invoice["total_amount"]) == Decimal("1.775")
+
     async def test_a_payment_is_recorded_in_the_companys_currency(
         self, client: AsyncClient, app: Any
     ) -> None:

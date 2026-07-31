@@ -118,6 +118,7 @@ class LedgerEntryType(StrEnum):
     """
 
     INVOICE_ISSUED = "invoice.issued"
+    INVOICE_CANCELLED = "invoice.cancelled"
     CREDIT_NOTE_ISSUED = "credit_note.issued"
     PAYMENT_RECEIVED = "payment.received"
     PAYMENT_ALLOCATED = "payment.allocated"
@@ -147,6 +148,16 @@ POSTINGS: Final[dict[LedgerEntryType, Posting]] = {
     # Billing a customer creates a receivable and recognises revenue.
     LedgerEntryType.INVOICE_ISSUED: Posting(
         debit=LedgerAccount.ACCOUNTS_RECEIVABLE, credit=LedgerAccount.REVENUE
+    ),
+    # Withdrawing an issued invoice unwinds exactly what issuing it did.
+    # Distinct from a credit note, and the distinction is the point: a
+    # credit note says we billed too much and posts to
+    # ``revenue_adjustments``, which is a figure a finance team watches. A
+    # cancellation says the document should never have existed, so the
+    # revenue is un-recognised rather than adjusted — an invoice raised
+    # against the wrong company is not a discount to the right one.
+    LedgerEntryType.INVOICE_CANCELLED: Posting(
+        debit=LedgerAccount.REVENUE, credit=LedgerAccount.ACCOUNTS_RECEIVABLE
     ),
     # A credit note reduces what they owe, at the cost of revenue.
     LedgerEntryType.CREDIT_NOTE_ISSUED: Posting(

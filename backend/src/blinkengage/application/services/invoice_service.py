@@ -57,6 +57,7 @@ from blinkengage.domain.invoicing import (
 from blinkengage.domain.ledger import LedgerEntryType
 from blinkengage.domain.money import (
     DEFAULT_CURRENCY,
+    currency_for,
     to_billable_amount,
     to_storage,
     total,
@@ -75,8 +76,10 @@ from blinkengage.infrastructure.repositories.invoicing_repository import (
     CreditNoteRepository,
     DocumentNumberRepository,
     InvoiceCompanyLookup,
+    InvoiceCurrencySubtotal,
     InvoiceLineRepository,
     InvoiceRepository,
+    InvoiceSearchFilters,
     PaymentRepository,
 )
 from blinkengage.infrastructure.repositories.usage_repository import (
@@ -91,6 +94,26 @@ class CreditLineInput:
     quantity: Decimal
     unit_amount: Decimal
     invoice_line_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class InvoiceSearchResult:
+    """One page of a cross-company search, and what the filter matched.
+
+    ``total`` is a **count**, which is the only total that can honestly
+    span currencies. Everything expressed in money lives in
+    ``subtotals``, one entry per currency — there is deliberately no
+    field on this type holding a figure across them, because nothing in
+    this build converts and no exchange rate exists to make one mean
+    anything.
+    """
+
+    invoices: list[Invoice]
+    #: Every invoice matching the filter, not just the ones on this page.
+    total: int
+    #: Over the whole filtered set, not the page: figures that changed as
+    #: a reader paged would be read as the set changing.
+    subtotals: list[InvoiceCurrencySubtotal]
 
 
 class InvoiceService:
@@ -159,6 +182,13 @@ class InvoiceService:
         # A copy, never a recomputation. The snapshot already holds the
         # quantity, the price that applied and the subtotal.
         subtotal = to_storage(total([line.subtotal for line in snapshot]))
+        # Resolved *before* the amount is rounded, because the rounding
+        # depends on it: the dinar has three decimal places and the dollar
+        # two, and rounding a JOD total to two is wrong on every line. This
+        # is exactly the call-site class ``money.py`` warns about — the one
+        # that bills a specific company while reading the default constant.
+        code = period.currency or await self._company_currency(period.company_id)
+        currency = currency_for(code)
         invoice = await self._invoices.add(
             Invoice(
                 company_id=period.company_id,
@@ -169,12 +199,11 @@ class InvoiceService:
                 period_start=period.period_start,
                 period_end=period.period_end,
                 subtotal_amount=subtotal,
-                # Rounded exactly once, here. Every line stays at full
-                # precision; only what the customer is asked to pay is
-                # rounded to the currency.
-                total_amount=to_storage(to_billable_amount(subtotal)),
-                currency=period.currency
-                or await self._company_currency(period.company_id),
+                # Rounded exactly once, here, and to *this company's*
+                # currency. Every line stays at full precision; only what
+                # the customer is asked to pay is rounded.
+                total_amount=to_storage(to_billable_amount(subtotal, currency=currency)),
+                currency=code,
                 amount_paid=zero(),
                 amount_credited=zero(),
                 due_date=period.due_date.date() if period.due_date else None,
@@ -328,6 +357,35 @@ class InvoiceService:
         )
         if not won:
             raise InvoiceStateError("This invoice changed state; reload it and try again.")
+
+        # Only an *issued* document ever reached the ledger. Cancelling a
+        # draft has nothing to unwind — a draft was never billed and never
+        # recognised — so posting a reversal for one would invent a
+        # movement that never happened.
+        #
+        # Without this the withdrawal was documents-only: the invoice said
+        # cancelled while the ledger went on holding the receivable and the
+        # revenue, permanently, with nothing downstream to clear them.
+        # ``LedgerReconciliation`` reported the divergence and no operation
+        # existed to resolve it.
+        #
+        # The amount is what the ledger still holds against this document,
+        # not the invoice total: a credit note already reduced the
+        # receivable, and reversing the full total on top of it would drive
+        # accounts receivable negative by the credited amount.
+        unwound = invoice.total_amount - invoice.amount_credited
+        if previous_state != InvoiceStatus.DRAFT.value and unwound > zero():
+            await self._ledger.record(
+                entry_type=LedgerEntryType.INVOICE_CANCELLED,
+                company_id=invoice.company_id,
+                amount=unwound,
+                reference_entity="invoice",
+                reference_id=invoice_id,
+                reference_number=invoice.invoice_number,
+                description=f"Invoice {invoice.invoice_number} withdrawn: {reason}",
+                currency=invoice.currency,
+            )
+
         await self._audit.record(
             event_type=FinancialEventType.INVOICE_CANCELLED,
             entity_type=FinancialEntityType.INVOICE,
@@ -656,7 +714,13 @@ class InvoiceService:
                 credit_note_number=credit_note_number(issued_at.year, sequence),
                 customer_name=invoice.customer_name,
                 subtotal_amount=subtotal,
-                total_amount=to_storage(to_billable_amount(subtotal)),
+                # The invoice's own currency, not the installation default:
+                # a credit note against a dinar invoice rounds to three
+                # places, the same as the document it corrects. Rounding
+                # the two differently would leave a residue nobody billed.
+                total_amount=to_storage(
+                    to_billable_amount(subtotal, currency=currency_for(invoice.currency))
+                ),
                 currency=invoice.currency,
                 reason=reason,
                 issued_at=issued_at,
@@ -743,6 +807,28 @@ class InvoiceService:
     ) -> list[Invoice]:
         return await self._invoices.list_for_company(company_id, status=status)
 
+    async def search(
+        self, filters: InvoiceSearchFilters, *, limit: int, offset: int
+    ) -> InvoiceSearchResult:
+        """Invoices across every company, narrowed by ``filters``.
+
+        Purely a read: it re-derives nothing, re-prices nothing and
+        writes nothing. The subtotals are summed from the stored
+        ``total_amount`` / ``amount_paid`` / ``amount_credited`` columns
+        the engine already maintains, so a search cannot disagree with
+        the documents it is listing.
+
+        The count and the subtotals are fetched with the page rather than
+        left to the caller, because all three have to be answers to the
+        same question — see ``InvoiceSearchFilters``.
+        """
+        invoices, total = await self._invoices.search(filters, limit=limit, offset=offset)
+        return InvoiceSearchResult(
+            invoices=invoices,
+            total=total,
+            subtotals=await self._invoices.totals_by_currency(filters),
+        )
+
     async def payments_for_company(self, company_id: uuid.UUID) -> list[Payment]:
         return await self._payments.list_for_company(company_id)
 
@@ -778,4 +864,4 @@ class InvoiceService:
         )
 
 
-__all__ = ["CreditLineInput", "InvoiceService"]
+__all__ = ["CreditLineInput", "InvoiceSearchResult", "InvoiceService"]

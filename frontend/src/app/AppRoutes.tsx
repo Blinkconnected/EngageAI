@@ -8,6 +8,12 @@ import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPag
 import { PlatformCompanyBillingPage } from '../features/platform/PlatformCompanyBillingPage'
 import { PlatformMailPage } from '../features/platform/PlatformMailPage'
 import { PlatformPricingPage } from '../features/platform/PlatformPricingPage'
+import { RevenueDashboardPage } from '../features/billingops/RevenueDashboardPage'
+import { InvoicesPage } from '../features/billingops/InvoicesPage'
+import { PaymentsPage } from '../features/billingops/PaymentsPage'
+import { LedgerPage } from '../features/billingops/LedgerPage'
+import { CollectionsPage } from '../features/billingops/CollectionsPage'
+import { CompanyBillingWorkspace } from '../features/billingops/CompanyBillingWorkspace'
 import { AppLayout } from '../features/layout/AppLayout'
 import { RequirePermission } from '../features/layout/RequirePermission'
 import { RequireErpEnabled } from '../features/layout/RequireErpEnabled'
@@ -153,10 +159,26 @@ export function AppRoutes() {
             </PlatformRoute>
           }
         >
-          <Route index element={<PlatformPricingPage />} />
-          {/* Per-company billing: pricing source, overrides, profile,
-              resolver preview and the audit trail. */}
-          <Route path="companies/:companyId" element={<PlatformCompanyBillingPage />} />
+          {/* The console opens on the numbers rather than on the rate
+              editor. A finance module's front page is what the business
+              earned; a settings page's front page is a form. */}
+          <Route index element={<RevenueDashboardPage />} />
+          <Route path="invoices" element={<InvoicesPage />} />
+          <Route path="payments" element={<PaymentsPage />} />
+          <Route path="ledger" element={<LedgerPage />} />
+          <Route path="collections" element={<CollectionsPage />} />
+          {/* One company's money: standing, month to date, projection and
+              invoice history. */}
+          <Route path="companies/:companyId" element={<CompanyBillingWorkspace />} />
+          {/* Pricing keeps its own branch. Deciding what a customer is
+              charged and chasing what they owe are different jobs done by
+              different people, and the per-company pricing screen is a
+              different screen from the per-company billing workspace. */}
+          <Route path="pricing" element={<PlatformPricingPage />} />
+          <Route
+            path="pricing/companies/:companyId"
+            element={<PlatformCompanyBillingPage />}
+          />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route

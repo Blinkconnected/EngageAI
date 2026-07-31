@@ -12,6 +12,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
+from blinkengage.application.services.collections_service import AgingBucket
 from blinkengage.domain.collections import BillingStatus, DunningStage
 from blinkengage.domain.payments import PaymentIntentStatus, RefundStatus
 
@@ -53,6 +54,83 @@ class PaymentIntentResponse(BaseModel):
     failure_reason: str | None
     created_at: datetime
     completed_at: datetime | None
+
+
+class PaymentAllocationResponse(BaseModel):
+    """One allocation: how much of one payment settles one invoice.
+
+    Carries enough of both documents to be acted on without a second
+    call. "Which invoice does this money settle, and which payment did it
+    come from" is the question an operator has to answer *before*
+    pressing Reverse, and a row that answered it only with two UUIDs
+    would send them looking somewhere else.
+    """
+
+    id: uuid.UUID
+    payment_id: uuid.UUID
+    #: The reference the money arrived under — a transfer or cheque
+    #: number for a manual payment, the gateway's capture id otherwise.
+    #: NULL when none was recorded, which is why the id is here as well.
+    payment_reference: str | None
+    invoice_id: uuid.UUID
+    #: A number is assigned at issuance and a draft cannot take a
+    #: payment, so a live allocation always has one. Nullable because the
+    #: column is: a row that somehow lacks one is a data problem to
+    #: surface, not to hide behind an empty string.
+    invoice_number: str | None
+    amount: Money
+    #: The invoice's currency — the same one the reversal, its audit
+    #: event and its ledger entry are all recorded in. Nothing converts,
+    #: so this is the only currency this amount has ever had.
+    currency: str
+    allocated_at: datetime
+    #: An allocation is never deleted, only marked reversed. A row with
+    #: this set is history: the money is no longer applied to the
+    #: invoice, and reversing it again is refused.
+    reversed: bool
+    reversed_at: datetime | None
+    reversal_reason: str | None
+
+
+class PaymentAllocationCurrencyGroupResponse(BaseModel):
+    """Every matching allocation in one currency, with that currency's
+    own totals.
+
+    The page is grouped rather than flat because this installation bills
+    in more than one currency and **nothing converts** — no exchange rate
+    is stored anywhere, on purpose. A flat list would put a dinar row and
+    a dollar row in one array, where adding them together is one
+    ``reduce`` away and the result is a number that means nothing in
+    either currency. There is deliberately no field in this response that
+    spans currencies.
+    """
+
+    currency: str
+    #: Counts and sums cover everything the filter matches in this
+    #: currency, not only the rows below. That is what a console prints
+    #: above the table, and a figure that changed as somebody paged
+    #: through would read as money moving.
+    matching: int
+    #: Money currently applied to invoices, and money that was applied
+    #: and then taken back. Kept apart because a reversed allocation is
+    #: still a row somebody has to be able to find and explain.
+    allocated_total: Money
+    reversed_total: Money
+    #: This page's slice, in this currency. Empty when the page happens
+    #: to hold no rows of it — the totals above still stand.
+    allocations: list[PaymentAllocationResponse]
+
+
+class PaymentAllocationPageResponse(BaseModel):
+    """A page of allocations, grouped by currency."""
+
+    #: Every allocation the filter matches, across all currencies. A
+    #: count of rows, not an amount: pagination needs one number, and a
+    #: row count is the only total that has no currency to be wrong in.
+    total: int
+    limit: int
+    offset: int
+    currencies: list[PaymentAllocationCurrencyGroupResponse]
 
 
 class ReverseAllocationRequest(BaseModel):
@@ -117,6 +195,10 @@ class CompanyBillingStatusResponse(BaseModel):
 
     company_id: uuid.UUID
     company_name: str
+    #: This company's billing currency. Present because the list spans
+    #: companies billing in different ones, and ``amount_outstanding``
+    #: below is never summable across rows.
+    currency: str
     billing_status: BillingStatus
     billing_suspended_at: datetime | None
     never_auto_suspend: bool
@@ -129,6 +211,60 @@ class CompanyBillingStatusResponse(BaseModel):
     next_action_on: date | None
 
 
+class AgingBucketResponse(BaseModel):
+    """One age band, inside one currency.
+
+    Carries no currency of its own, deliberately. A bucket that named its
+    own currency could be lifted out of its group and added to another
+    one's; nested inside ``CurrencyAgingResponse`` there is nothing to
+    lift it out of.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    bucket: AgingBucket
+    #: Inclusive bounds in whole days past the due date; ``None`` is
+    #: open-ended. Sent so a console renders "1-30" in its own language
+    #: and reading direction rather than re-deriving the boundaries — a
+    #: second copy of the policy in TypeScript is a copy that drifts.
+    from_days: int | None
+    to_days: int | None
+    invoice_count: int
+    amount_outstanding: Money
+
+
+class CurrencyAgingResponse(BaseModel):
+    """One currency's books, and the only place a total appears."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    currency: str
+    #: All five bands, always, including the empty ones.
+    buckets: list[AgingBucketResponse]
+    invoice_count: int
+    #: Every figure in this object is in ``currency`` and in nothing else.
+    total_outstanding: Money
+
+
+class AgingReportResponse(BaseModel):
+    """Open receivables by age, grouped by currency.
+
+    There is deliberately **no** amount at this level. Nothing converts
+    between dollars and dinars and no exchange rate is stored anywhere, so
+    an installation-wide total is a number that means nothing — and the
+    shape is what stops one being written, rather than a comment asking
+    nobody to write it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    #: The day the ages were measured against.
+    as_of: date
+    #: Empty when nothing is outstanding. A currency appears only if there
+    #: is an open invoice denominated in it.
+    currencies: list[CurrencyAgingResponse]
+
+
 class ReinstateRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
@@ -139,11 +275,17 @@ class AutoSuspendExemptionRequest(BaseModel):
 
 
 __all__ = [
+    "AgingBucketResponse",
+    "AgingReportResponse",
     "AutoSuspendExemptionRequest",
     "CheckoutSessionResponse",
     "CollectionsRunResponse",
     "CompanyBillingStatusResponse",
+    "CurrencyAgingResponse",
     "DunningNoticeResponse",
+    "PaymentAllocationCurrencyGroupResponse",
+    "PaymentAllocationPageResponse",
+    "PaymentAllocationResponse",
     "PaymentIntentResponse",
     "RefundRequest",
     "RefundResponse",

@@ -961,3 +961,313 @@ class TestSuspensionAccess:
         from blinkengage.domain.exceptions import CompanyNotActiveError
 
         assert "unpaid invoice" in str(CompanyNotActiveError("payment_suspended"))
+
+
+ALLOCATIONS = "/api/v1/platform/payments/allocations"
+
+
+async def allocated_invoice(
+    client: AsyncClient,
+    headers: dict,
+    app: Any,
+    company_id: str,
+    *,
+    reference: str = "WIRE-88",
+) -> tuple[dict, str]:
+    """An issued invoice, settled by a manually recorded payment.
+
+    Manual rather than through the gateway stub: a bank transfer is the
+    payment an operator most often has to find an allocation for again,
+    because it is the one that gets applied to the wrong invoice.
+    """
+    period_id = await closed_period_with_usage(client, headers, app, company_id)
+    invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+    payment = await client.post(
+        "/api/v1/platform/invoices/payments",
+        headers=headers,
+        json={
+            "company_id": company_id,
+            "amount": invoice["total_amount"],
+            "received_at": datetime.now(UTC).isoformat(),
+            "reference": reference,
+        },
+    )
+    assert payment.status_code == 201, payment.text
+    allocated = await client.post(
+        f"/api/v1/platform/invoices/payments/{payment.json()['id']}/allocate",
+        headers=headers,
+        json={"invoice_id": invoice["id"], "amount": invoice["total_amount"]},
+    )
+    assert allocated.status_code == 200, allocated.text
+    return invoice, str(payment.json()["id"])
+
+
+async def jordanian_company(client: AsyncClient, headers: dict, app: Any) -> str:
+    """A company billed in dinars, priced in dinars.
+
+    A second *real* currency rather than a stub one, because the failure
+    this guards against — a figure that spans both — only exists when two
+    currencies genuinely coexist in the same installation.
+    """
+    from tests.integration.test_jordan_billing import register
+
+    account = await register(client, app)
+    seeded = await client.put(
+        "/api/v1/platform/pricing/global/metrics/BILLABLE_MESSAGE",
+        headers=headers,
+        json={
+            "unit_amount": "0.035000",
+            "effective_from": datetime(2020, 1, 1, tzinfo=UTC).isoformat(),
+            "reason": "JOD default",
+            "currency": "JOD",
+            # Backdated on purpose: the price has to cover usage metered
+            # before it was configured, and the engine requires that said
+            # out loud.
+            "allow_backdating": True,
+        },
+    )
+    assert seeded.status_code in (200, 201), seeded.text
+    return str(account["user"]["company"]["id"])
+
+
+class TestAllocationListing:
+    """Finding an allocation — which until now took a SQL client.
+
+    Reversal shipped with the payment engine and the listing did not, so
+    the console could offer *Reverse* against an id nothing exposed.
+    These pin both halves of closing that: the row is findable, and the
+    id on it is the one the reversal route accepts.
+    """
+
+    async def test_an_allocation_can_be_found_and_then_reversed(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """The gap itself. An operator who cannot find the allocation
+        cannot reverse it, however correct the reversal route is."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        invoice, payment_id = await allocated_invoice(client, headers, app, company_id)
+
+        listed = await client.get(ALLOCATIONS, headers=headers)
+
+        assert listed.status_code == 200, listed.text
+        body = listed.json()
+        assert body["total"] == 1
+        row = body["currencies"][0]["allocations"][0]
+        # Both documents are named, not merely referenced: an operator
+        # decides whether to reverse by reading the invoice number and
+        # the payment reference, and a row of bare UUIDs sends them
+        # somewhere else to find out what they are looking at.
+        assert row["payment_id"] == payment_id
+        assert row["payment_reference"] == "WIRE-88"
+        assert row["invoice_id"] == invoice["id"]
+        assert row["invoice_number"] == invoice["invoice_number"]
+        assert Decimal(row["amount"]) == Decimal(invoice["total_amount"])
+        assert row["currency"] == invoice["currency"]
+        assert row["allocated_at"]
+        assert row["reversed"] is False
+
+        reversed_ = await client.post(
+            f"{ALLOCATIONS}/{row['id']}/reverse",
+            headers=headers,
+            json={"reason": "Transfer bounced."},
+        )
+
+        # A listing whose ids the reversal route rejects would close
+        # nothing, so the round trip is the assertion that matters.
+        assert reversed_.status_code == 200, reversed_.text
+        assert Decimal(reversed_.json()["amount_paid"]) == Decimal("0")
+
+    async def test_a_reversed_allocation_is_still_listed(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """An allocation is marked reversed, never deleted. A list that
+        dropped them would erase the money's history from the only screen
+        that shows it — and leave "why is this invoice unpaid again?"
+        unanswerable."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        invoice, _ = await allocated_invoice(client, headers, app, company_id)
+        first = (await client.get(ALLOCATIONS, headers=headers)).json()
+        await client.post(
+            f"{ALLOCATIONS}/{first['currencies'][0]['allocations'][0]['id']}/reverse",
+            headers=headers,
+            json={"reason": "Applied to the wrong invoice."},
+        )
+
+        body = (await client.get(ALLOCATIONS, headers=headers)).json()
+
+        assert body["total"] == 1
+        group = body["currencies"][0]
+        row = group["allocations"][0]
+        assert row["reversed"] is True
+        assert row["reversal_reason"] == "Applied to the wrong invoice."
+        assert row["reversed_at"]
+        # The amount moves between the two totals rather than vanishing
+        # from both: money that was applied and then taken back is a
+        # different fact from money that was never applied.
+        assert Decimal(group["allocated_total"]) == Decimal("0")
+        assert Decimal(group["reversed_total"]) == Decimal(invoice["total_amount"])
+        assert group["matching"] == 1
+
+    async def test_the_filters_narrow_to_one_payment_or_one_invoice(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """One bank transfer can clear three invoices and one invoice can
+        take three transfers, so "everything" is the one view nobody
+        investigating a specific document wants."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        invoice, first_payment = await allocated_invoice(
+            client, headers, app, company_id, reference="WIRE-1"
+        )
+        # Reversed so the invoice has room for the second transfer, which
+        # is also the commonest reason two allocations exist against one
+        # invoice: the first was wrong and was replaced.
+        listed = (await client.get(ALLOCATIONS, headers=headers)).json()
+        await client.post(
+            f"{ALLOCATIONS}/{listed['currencies'][0]['allocations'][0]['id']}/reverse",
+            headers=headers,
+            json={"reason": "Wrong invoice; re-applying."},
+        )
+        second_payment = await client.post(
+            "/api/v1/platform/invoices/payments",
+            headers=headers,
+            json={
+                "company_id": company_id,
+                "amount": invoice["total_amount"],
+                "received_at": datetime.now(UTC).isoformat(),
+                "reference": "WIRE-2",
+            },
+        )
+        await client.post(
+            f"/api/v1/platform/invoices/payments/{second_payment.json()['id']}/allocate",
+            headers=headers,
+            json={"invoice_id": invoice["id"], "amount": invoice["total_amount"]},
+        )
+
+        everything = (await client.get(ALLOCATIONS, headers=headers)).json()
+        by_payment = (
+            await client.get(ALLOCATIONS, headers=headers, params={"payment_id": first_payment})
+        ).json()
+        by_invoice = (
+            await client.get(ALLOCATIONS, headers=headers, params={"invoice_id": invoice["id"]})
+        ).json()
+        by_company = (
+            await client.get(ALLOCATIONS, headers=headers, params={"company_id": company_id})
+        ).json()
+        elsewhere = (
+            await client.get(ALLOCATIONS, headers=headers, params={"company_id": str(uuid.uuid4())})
+        ).json()
+
+        assert everything["total"] == 2
+        assert by_payment["total"] == 1
+        assert by_payment["currencies"][0]["allocations"][0]["payment_id"] == first_payment
+        assert by_invoice["total"] == 2
+        assert by_company["total"] == 2
+        # A company with no allocations is an empty page, not a 404: the
+        # question "what has this customer had applied?" has the answer
+        # "nothing", and that is not an error.
+        assert elsewhere["total"] == 0
+        assert elsewhere["currencies"] == []
+
+    async def test_dinars_and_dollars_are_never_added_together(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """Nothing in this build converts and no exchange rate is stored,
+        so a total spanning both currencies would be a number that means
+        nothing in either. The shape is what prevents one being computed:
+        there is no money field anywhere above a currency group."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        usd_company = await company_id_of(client, owner_headers)
+        usd_invoice, _ = await allocated_invoice(client, headers, app, usd_company)
+        jod_company = await jordanian_company(client, headers, app)
+        jod_invoice, _ = await allocated_invoice(
+            client, headers, app, jod_company, reference="CLIQ-3"
+        )
+
+        body = (await client.get(ALLOCATIONS, headers=headers)).json()
+
+        assert set(body) == {"total", "limit", "offset", "currencies"}
+        groups = {group["currency"]: group for group in body["currencies"]}
+        assert set(groups) == {jod_invoice["currency"], usd_invoice["currency"]}
+        assert Decimal(groups[usd_invoice["currency"]]["allocated_total"]) == Decimal(
+            usd_invoice["total_amount"]
+        )
+        assert Decimal(groups[jod_invoice["currency"]]["allocated_total"]) == Decimal(
+            jod_invoice["total_amount"]
+        )
+        # Counting rows is the one total that has no currency to be wrong
+        # in, which is why the page carries a count and not an amount.
+        assert body["total"] == sum(group["matching"] for group in body["currencies"]) == 2
+        for group in body["currencies"]:
+            assert all(row["currency"] == group["currency"] for row in group["allocations"])
+
+    async def test_the_total_counts_the_filter_not_the_page(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A list with limit/offset and no total cannot render honest
+        pagination: nothing on the page says whether there is another
+        one. The pages must also be disjoint — allocations written in one
+        transaction share a timestamp, so an order that did not break the
+        tie would show a row twice or not at all."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        period_id = await closed_period_with_usage(client, headers, app, company_id)
+        invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        for part in ("0.05", "0.05", "0.10"):
+            payment = await client.post(
+                "/api/v1/platform/invoices/payments",
+                headers=headers,
+                json={
+                    "company_id": company_id,
+                    "amount": part,
+                    "received_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            allocated = await client.post(
+                f"/api/v1/platform/invoices/payments/{payment.json()['id']}/allocate",
+                headers=headers,
+                json={"invoice_id": invoice["id"], "amount": part},
+            )
+            assert allocated.status_code == 200, allocated.text
+
+        first = (
+            await client.get(ALLOCATIONS, headers=headers, params={"limit": 2})
+        ).json()
+        second = (
+            await client.get(ALLOCATIONS, headers=headers, params={"limit": 2, "offset": 2})
+        ).json()
+
+        assert first["total"] == second["total"] == 3
+        first_ids = [row["id"] for row in first["currencies"][0]["allocations"]]
+        second_ids = [row["id"] for row in second["currencies"][0]["allocations"]]
+        assert len(first_ids) == 2
+        assert len(second_ids) == 1
+        assert len(set(first_ids) | set(second_ids)) == 3
+        # The per-currency totals cover the whole filter, not the page —
+        # a figure that shrank as somebody paged through would read as
+        # money moving.
+        assert Decimal(first["currencies"][0]["allocated_total"]) == Decimal("0.20")
+        assert Decimal(second["currencies"][0]["allocated_total"]) == Decimal("0.20")
+
+    async def test_amounts_cross_the_wire_as_strings(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """A JSON number becomes a float in the browser, which
+        reintroduces exactly the drift ``Decimal`` exists to prevent."""
+        headers = await platform_headers(client, app)
+        await seed_global(client, headers, amount="0.050000")
+        company_id = await company_id_of(client, owner_headers)
+        await allocated_invoice(client, headers, app, company_id)
+
+        group = (await client.get(ALLOCATIONS, headers=headers)).json()["currencies"][0]
+
+        assert isinstance(group["allocated_total"], str)
+        assert isinstance(group["reversed_total"], str)
+        assert isinstance(group["allocations"][0]["amount"], str)

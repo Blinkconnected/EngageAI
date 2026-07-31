@@ -11,7 +11,12 @@
     "title": "وحدة تحكم الفوترة",
     "subtitle": "تكلفة الخدمات، وما هو مستحق على كل شركة",
     "pricing": "التسعير",
-    "platformConsole": "وحدة تحكم المنصة"
+    "platformConsole": "وحدة تحكم المنصة",
+    "revenue": "الإيرادات",
+    "invoices": "الفواتير",
+    "payments": "المدفوعات",
+    "ledger": "الدفتر",
+    "collections": "التحصيل"
   },
   "PlatformCompaniesPage": {
     "title": "الشركات",
