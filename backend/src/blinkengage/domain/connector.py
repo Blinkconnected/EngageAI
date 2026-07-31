@@ -23,9 +23,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 from uuid import UUID
 
+from blinkengage.domain.connector_certification import Outcome, ScenarioKind, ScenarioResult
 from blinkengage.domain.connector_diagnostics import DiagnosticReport
 from blinkengage.domain.connector_lifecycle import Availability, effective_state
 from blinkengage.domain.connector_manifest import (
@@ -416,6 +418,61 @@ class Connector(ABC):
         support engineer nothing at the moment they most need it.
         """
         return DiagnosticReport(channel_type=self.channel_type)
+
+    # --- Certify ------------------------------------------------------
+
+    async def run_scenario(
+        self,
+        kind: ScenarioKind,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None = None,
+        webhook_secret: str | None = None,
+        callback_url: str | None = None,
+        external_id: str | None = None,
+        external_parent_id: str | None = None,
+    ) -> ScenarioResult:
+        """Demonstrate one behaviour against the real provider.
+
+        The connector implements only the scenarios it can genuinely
+        exercise. Everything else is decided *for* it by the runner: a
+        scenario the manifest never claimed reports ``NOT_SUPPORTED``, and one
+        that would message a real customer without a target reports
+        ``SKIPPED``. Neither judgement belongs in a connector, because a
+        connector that got either wrong would be scoring itself.
+
+        Returns a result and never raises — a suite that stopped at the first
+        exception would report a connector as worse than it is, and hide
+        everything after the failure.
+
+        The last four arguments are exactly what ``repair`` already receives,
+        and they are here for a reason worth recording: three connectors
+        implemented this independently and all three reported the same wall.
+        Disconnect and reconnect are one provider call each and would have
+        been two free passes — but re-registering a webhook without the
+        stored secret mints a new one the channel's column does not have, and
+        the channel comes back looking perfect while every inbound message
+        fails signature verification. Silently. All three refused the passes
+        and skipped instead, which was right and cost each of them coverage.
+
+        One connector wanting something is a connector. Three hitting the
+        same wall is a contract, so the contract moved.
+        """
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.SKIPPED,
+            detail_key="certification.notImplemented",
+        )
+
+    def supported_until(self) -> date | None:
+        """When the provider retires the API version this connector speaks.
+
+        ``None`` where the provider publishes no such schedule — which is
+        most of them, and is why this is a method returning ``None`` rather
+        than a manifest field somebody would feel obliged to fill in.
+        """
+        return None
 
     # --- Repair -------------------------------------------------------
 

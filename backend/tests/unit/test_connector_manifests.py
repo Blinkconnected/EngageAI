@@ -20,6 +20,7 @@ import re
 import pytest
 
 from blinkengage.domain.connector import Connector, DeploymentContext
+from blinkengage.domain.connector_diagnostics import DiagnosticKey, DiagnosticStatus
 from blinkengage.domain.connector_lifecycle import (
     BLOCKS_NEW_CONNECTIONS,
     WARNS,
@@ -32,7 +33,6 @@ from blinkengage.domain.connector_lifecycle import (
     VersionInfo,
     effective_state,
 )
-from blinkengage.domain.connector_diagnostics import DiagnosticKey, DiagnosticStatus
 from blinkengage.domain.connector_manifest import (
     BLOCKING_CODES,
     AuthMethod,

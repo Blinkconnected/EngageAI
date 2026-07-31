@@ -85,15 +85,44 @@ and it is what makes connecting the second channel feel like connecting the
 first. A customer who connected Telegram last week and is shown a visibly
 shorter flow today reads it as something missing, not as something saved.
 
-Nothing here makes a network call — not ``validate``, not ``diagnose`` — so
-neither ``httpx`` nor ``error_sanitizer`` appears below. That is not an
-omission awaiting a later pass: with credentials permanently empty
-``redact_credentials`` would have nothing to redact, and with no provider
-there is no provider error text to sanitise. Adding a timed-out client to
-call nobody would be ceremony that reads, to the next person, as evidence of
-a provider that does not exist. The one dependency Web Chat does have — our
-own attachment store — is reached through ``WebChatProvider``, which a
-connector cannot build; see ``validate`` and ``diagnose``.
+Nothing here makes a network call — not ``validate``, not ``diagnose``, not
+``run_scenario`` — so neither ``httpx`` nor ``error_sanitizer`` appears below.
+That is not an omission awaiting a later pass: with credentials permanently
+empty ``redact_credentials`` would have nothing to redact, and with no
+provider there is no provider error text to sanitise. Adding a timed-out
+client to call nobody would be ceremony that reads, to the next person, as
+evidence of a provider that does not exist. The one dependency Web Chat does
+have — our own attachment store — is reached through ``WebChatProvider``,
+which a connector cannot build; see ``validate`` and ``diagnose``.
+
+**On certification, and why an almost-empty scorecard is the right one.** The
+suite asks a connector to *demonstrate* behaviours against a live channel, and
+Web Chat can demonstrate almost none of them from here. Not because the
+channel is unfinished — it is the one connector with no unreachable path — but
+because both ends of every scenario are ours and neither is reachable from a
+zero-argument singleton. Sending, typing and attachments run through
+``WebChatProvider``, which is built per channel with a ``channel_config_id``,
+a realtime publisher and a request-scoped ``AttachmentStorage`` handle.
+Inbound arrives when a visitor's browser puts a frame on a socket it is
+holding open, which no certification run can cause to happen. So
+``run_scenario`` answers the one row it can answer honestly — authentication,
+by asking ``diagnose`` rather than by deciding it a second time — and returns
+``SKIPPED`` with a specific reason for everything else.
+
+The report that comes out is ``INCONCLUSIVE``, and that is the accurate word
+rather than a gap: coverage is what *ran*, nothing ran, and the grade says so.
+The failure being avoided is the opposite one. Eleven cheap passes from a
+connector that never made a call would make Web Chat the best-certified
+channel in the catalogue, and the first person to notice would be whoever
+trusted the badge. A skip is a question left open; a fabricated pass is an
+answer that is wrong.
+
+``supported_until`` is left at the base class's ``None`` for exactly the
+reason ``versions.api`` is empty: a retirement date comes from a provider's
+published deprecation schedule, and there is no provider. Overriding it to
+return ``None`` would restate the default and imply somebody had gone looking
+for a schedule; inventing a date would be worse than either, because
+administrators plan migrations around that field.
 """
 
 from __future__ import annotations
@@ -106,6 +135,11 @@ from blinkengage.domain.connector import (
     Connection,
     Connector,
     DeploymentContext,
+)
+from blinkengage.domain.connector_certification import (
+    Outcome,
+    ScenarioKind,
+    ScenarioResult,
 )
 from blinkengage.domain.connector_diagnostics import (
     Diagnostic,
@@ -164,6 +198,56 @@ _FEATURE_MEDIA_WIDGET_SUPPORT = "connect.web_chat.feature.media.widgetSupportReq
 _DIAGNOSE_NO_CREDENTIAL = "connect.web_chat.diagnose.noCredentialToCheck"
 _DIAGNOSE_NO_WEBHOOK = "connect.web_chat.diagnose.noWebhookToRegister"
 _DIAGNOSE_NO_PROVIDER_SCOPES = "connect.web_chat.diagnose.noProviderScopes"
+
+#: Why a scenario was not executed — one key per distinct reason rather than a
+#: single shared "not applicable". A certification report is read by whoever
+#: has to decide what to do next, and "we could not reach a provider" and "no
+#: provider exists" and "the message has to come from a visitor's browser" are
+#: three different next actions. Namespaced into this connector's own bundle
+#: like its ``check`` and ``diagnose`` keys, so the console resolves them
+#: without a rule for one channel.
+_CERTIFY_NO_CREDENTIAL = "connect.web_chat.certify.noCredentialToAuthenticate"
+_CERTIFY_NEEDS_THE_PROVIDER = "connect.web_chat.certify.needsTheProviderThisCannotBuild"
+_CERTIFY_INBOUND_IS_A_VISITOR = "connect.web_chat.certify.inboundComesFromTheVisitorSocket"
+_CERTIFY_NO_WEBHOOK = "connect.web_chat.certify.noWebhookToDeliverTo"
+_CERTIFY_NOTHING_TO_REFRESH = "connect.web_chat.certify.nothingToRefresh"
+_CERTIFY_NO_PROVIDER_SIDE_STATE = "connect.web_chat.certify.noProviderSideRegistration"
+#: For a scenario kind added to the enum after this connector was written.
+#: Vague on purpose: a generic reason is the honest thing to say about a
+#: scenario nobody here has thought about, and it is still a skip rather than
+#: an outcome that would move the score.
+_CERTIFY_NOT_EXERCISABLE = "connect.web_chat.certify.notExercisableHere"
+
+#: Every scenario the runner can hand this connector, and why each one is not
+#: executed. ``AUTHENTICATION`` is absent because it is the one that is: see
+#: ``run_scenario``. ``MEDIA_DOWNLOAD`` and ``READ_RECEIPT`` are absent because
+#: the manifest does not claim them, so they are ``NOT_SUPPORTED`` before the
+#: runner ever gets here — re-stating them would be this connector deciding
+#: its own denominator.
+_WHY_NOT_EXECUTED: dict[ScenarioKind, str] = {
+    # Would reach a visitor's browser, and the runner only calls these when
+    # somebody typed a target on purpose — so the reason returned must not be
+    # "no target". It is that the publish goes through ``WebChatProvider``.
+    ScenarioKind.SEND_MESSAGE: _CERTIFY_NEEDS_THE_PROVIDER,
+    ScenarioKind.MEDIA_UPLOAD: _CERTIFY_NEEDS_THE_PROVIDER,
+    ScenarioKind.TYPING_INDICATOR: _CERTIFY_NEEDS_THE_PROVIDER,
+    ScenarioKind.RECEIVE_MESSAGE: _CERTIFY_INBOUND_IS_A_VISITOR,
+    ScenarioKind.WEBHOOK_DELIVERY: _CERTIFY_NO_WEBHOOK,
+    ScenarioKind.TOKEN_REFRESH: _CERTIFY_NOTHING_TO_REFRESH,
+    ScenarioKind.DISCONNECT: _CERTIFY_NO_PROVIDER_SIDE_STATE,
+    ScenarioKind.RECONNECT: _CERTIFY_NO_PROVIDER_SIDE_STATE,
+}
+
+#: How a diagnostic row becomes a scenario outcome. ``UNKNOWN`` maps to
+#: ``SKIPPED`` and not to ``PASS``, which is the whole point of the mapping:
+#: an unmeasured check is an unanswered question in both vocabularies, and the
+#: two enums keep that distinction for the same reason.
+_OUTCOME_OF: dict[DiagnosticStatus, Outcome] = {
+    DiagnosticStatus.OK: Outcome.PASS,
+    DiagnosticStatus.WARN: Outcome.WARNING,
+    DiagnosticStatus.FAIL: Outcome.FAIL,
+    DiagnosticStatus.UNKNOWN: Outcome.SKIPPED,
+}
 
 
 @ConnectorRegistry.register("web_chat")
@@ -464,6 +548,128 @@ class WebChatConnector(Connector):
                 display_name=attempt.display_name.strip() or _DEFAULT_DISPLAY_NAME,
                 credentials={},
             ),
+        )
+
+    # --- Certify ------------------------------------------------------
+
+    async def run_scenario(
+        self,
+        kind: ScenarioKind,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None = None,
+        webhook_secret: str | None = None,
+        callback_url: str | None = None,
+        external_id: str | None = None,
+        external_parent_id: str | None = None,
+    ) -> ScenarioResult:
+        """One row it can answer, and eight it says it cannot.
+
+        Every judgement that would let this connector flatter itself has
+        already been made by the runner: what the manifest never claimed is
+        ``NOT_SUPPORTED`` before this is called (``MEDIA_DOWNLOAD``, because
+        ``MEDIA`` is declared ``OUTBOUND``; ``READ_RECEIPT``, because
+        ``mark_as_read`` is a no-op and the row was left off), and anything
+        that would emit or mutate has already been gated. So what arrives here
+        is a scenario somebody meant to run, and the only question left is
+        whether it can be run — which is the one question a connector is
+        allowed to answer about itself, and only by trying.
+
+        **Authentication, by asking ``diagnose``.** The scenario and the
+        diagnostic row are the same question, so they are the same call: two
+        implementations would eventually disagree, and the screen showing a
+        green tick beside a certification skip would be the one nobody could
+        explain. The mapping is deliberate in one place — ``UNKNOWN`` becomes
+        ``SKIPPED``, never ``PASS`` — and that is what makes it safe to reuse a
+        method that today measures nothing. Web Chat's ``diagnose`` reports
+        ``UNKNOWN`` with a reason ("there is no credential to check"), so the
+        scenario skips with a reason, and the report says nobody proved
+        anything rather than claiming somebody did. If this channel ever grows
+        something to authenticate against, ``diagnose`` grows the probe and
+        this row starts passing on its own — which is the point of routing
+        through it rather than around it.
+
+        **The other eight, and why a skip is the honest answer to each.**
+        Send, typing and media upload arrive only when an operator typed a
+        target, so the reason returned is never "no target" — it is that the
+        act of publishing goes through ``WebChatProvider``, built per channel
+        with a ``channel_config_id``, a realtime publisher and a request-scoped
+        ``AttachmentStorage`` handle that a singleton built at import time
+        cannot obtain. Receive is not gated at all and still cannot run: an
+        inbound message exists when a visitor's browser puts a frame on the
+        socket it is holding, and a certification run cannot make a visitor
+        type. Webhook delivery has no webhook — inbound is that socket, and
+        ``verify_signature`` returns ``True`` because there is no signer. Token
+        refresh has no token: visitor sessions expire in Redis and belong to a
+        browser, not to the channel. Disconnect and reconnect, elsewhere, mean
+        deregistering and re-registering with a provider; here nothing was ever
+        registered anywhere, and the row's own lifecycle belongs to
+        ``ChannelConfigService`` rather than to this contract.
+
+        **Two things that were tempting, and are not done.** The first is
+        exercising ``WebChatProvider.receive_message`` on a synthetic frame:
+        it is pure parsing and would pass. It would also be a unit test wearing
+        a certification's clothes — the suite's promise is that a *live channel*
+        was made to work, and a parser returning an ``InboundMessage`` says
+        nothing about whether a visitor's socket is up, whether Redis is
+        reachable, or whether the gateway is forwarding. The second is building
+        an ``AttachmentStore`` from settings to prove ``MEDIA_UPLOAD``: that
+        would be a connector reaching into the container, which is precisely
+        what ``Attempt`` carrying deployment facts instead of infrastructure
+        handles exists to prevent — and it would leave a real object in the
+        real bucket under a channel id this method would have had to invent.
+        Both were rejected for the same reason: a pass has to mean the thing
+        the report says it means.
+
+        Cannot raise. The only call is to this class's own ``diagnose``, which
+        builds a tuple of module constants and performs no I/O, no parsing and
+        no provider call; everything else here is a dict lookup and a frozen
+        dataclass. ``target`` is unread for the same reason ``credentials`` is
+        empty, and both stay in the signature because they are the contract's
+        shape. ``duration_ms`` is left at zero rather than measured: the runner
+        times every scenario itself, on the reasoning that a connector
+        reporting its own duration is a connector reporting its own
+        performance.
+        """
+        if kind is ScenarioKind.AUTHENTICATION:
+            return await self._authentication(credentials=credentials, context=context)
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.SKIPPED,
+            detail_key=_WHY_NOT_EXECUTED.get(kind, _CERTIFY_NOT_EXERCISABLE),
+        )
+
+    async def _authentication(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> ScenarioResult:
+        """The authentication scenario, read off the diagnostic it duplicates.
+
+        The status is carried into ``diagnostics`` as evidence rather than as
+        copy, so a reader of the report can see *which* row this outcome came
+        from without having to run the diagnostics panel and compare by eye.
+        """
+        report = await self.diagnose(credentials=credentials, context=context)
+        row = next(
+            (item for item in report.items if item.key is DiagnosticKey.AUTHENTICATION),
+            None,
+        )
+        if row is None:
+            return ScenarioResult(
+                kind=ScenarioKind.AUTHENTICATION,
+                outcome=Outcome.SKIPPED,
+                detail_key=_CERTIFY_NO_CREDENTIAL,
+            )
+
+        evidence = {"source": "diagnose", "diagnostic_status": row.status.value}
+        if row.detail_key:
+            evidence["diagnostic_detail_key"] = row.detail_key
+        unmeasured = row.status is DiagnosticStatus.UNKNOWN
+        return ScenarioResult(
+            kind=ScenarioKind.AUTHENTICATION,
+            outcome=_OUTCOME_OF[row.status],
+            detail_key=_CERTIFY_NO_CREDENTIAL if unmeasured else row.detail_key,
+            diagnostics=evidence,
         )
 
 

@@ -21,13 +21,17 @@ from blinkengage.api.deps import (
     get_channel_config_service,
     get_channel_connect_service,
     get_channel_diagnostics_service,
+    get_connector_certification_service,
     require_permission,
 )
 from blinkengage.api.schemas.channel_connect import (
     AdvanceRequest,
     CapabilityStateResponse,
     CatalogResponse,
+    CertificationReportResponse,
+    CertificationResponse,
     CheckResponse,
+    CompatibilityResponse,
     ConnectedChannelResponse,
     ConnectionTemplateResponse,
     ConnectorProfileResponse,
@@ -42,6 +46,7 @@ from blinkengage.api.schemas.channel_connect import (
     RepairResultResponse,
     ResourceResponse,
     ResourceSpecResponse,
+    ScenarioResultResponse,
     SessionResponse,
     StartSessionRequest,
     StepResponse,
@@ -55,6 +60,9 @@ from blinkengage.application.services.channel_connect_service import (
 )
 from blinkengage.application.services.channel_diagnostics_service import (
     ChannelDiagnosticsService,
+)
+from blinkengage.application.services.connector_certification_service import (
+    ConnectorCertificationService,
 )
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.connection_templates import TEMPLATES
@@ -521,6 +529,78 @@ async def channel_diagnostics(
             for item in report.items
         ],
         overall=report.worst.value,
+    )
+
+
+@router.post(
+    "/channels/{channel_config_id}/certify",
+    response_model=CertificationReportResponse,
+)
+async def certify_channel(
+    channel_config_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("channels.manage"))],
+    channels: Annotated[ChannelConfigService, Depends(get_channel_config_service)],
+    certifier: Annotated[
+        ConnectorCertificationService, Depends(get_connector_certification_service)
+    ],
+    target: str | None = None,
+    include_mutating: bool = False,
+) -> CertificationReportResponse:
+    """Run the connector's scenarios against this channel and score them.
+
+    ``channels.manage`` rather than ``read``, even though most of the run
+    only observes: with a ``target`` it sends, and a permission that depended
+    on a query parameter would be a permission nobody could reason about.
+
+    **Nothing here messages a real customer.** Every scenario that would put
+    something in front of a person is skipped unless ``target`` names where
+    to send it — never guessed at, never aimed at the last person who wrote
+    in. ``include_mutating`` is off by default for the mirror reason:
+    disconnect, reconnect and token refresh change the channel's state with
+    the provider, and a run that left a working channel in whatever state it
+    finished in would be a diagnostic worse than the problem.
+
+    The score is computed from what ran and cannot be supplied.
+    """
+    channel = await channels.get(
+        company_id=auth.company_id, channel_config_id=channel_config_id
+    )
+    report = await certifier.run(
+        channel, target=target, include_mutating=include_mutating
+    )
+    return CertificationReportResponse(
+        channel_type=report.channel_type,
+        results=[
+            ScenarioResultResponse(
+                kind=result.kind.value,
+                outcome=result.outcome.value,
+                duration_ms=result.duration_ms,
+                detail_key=result.detail_key,
+                params=result.params,
+                diagnostics=result.diagnostics,
+            )
+            for result in report.results
+        ],
+        certification=CertificationResponse(
+            score=report.certification.score,
+            percent=report.certification.percent,
+            grade=report.certification.grade.value,
+            coverage=report.certification.coverage,
+            passed=report.certification.passed,
+            failed=report.certification.failed,
+            warned=report.certification.warned,
+            skipped=report.certification.skipped,
+            not_supported=report.certification.not_supported,
+        ),
+        compatibility=CompatibilityResponse(
+            platform_version=report.compatibility.platform_version,
+            connector_version=report.compatibility.connector_version,
+            provider_api_version=report.compatibility.provider_api_version,
+            last_verified=report.compatibility.last_verified,
+            supported_until=report.compatibility.supported_until,
+        ),
+        ran_at=report.ran_at,
+        duration_ms=report.duration_ms,
     )
 
 

@@ -29,6 +29,31 @@ for more detail on how this page is put together.
   Problems that would stop the channel working block it; things merely
   worth knowing do not.
 
+- **Channels can now certify themselves.** One command runs a channel
+  through every behaviour its connector claims — sign in, send, receive,
+  media, read receipts, typing, webhook delivery, reconnect — and scores
+  what actually happened. Each step reports pass, fail, warning, skipped
+  or not supported, with how long it took and what came back.
+
+  **The score cannot be given out; it is only ever earned.** There is no
+  field to set it. Three rules keep it meaningful: something a channel
+  never claimed to do is not held against it, so an honest connector
+  never scores worse than a boastful one; something that did not actually
+  run does not count in its favour, and a run that covered too little is
+  reported as inconclusive rather than as a high score; and a single real
+  failure keeps a channel out of "production ready" however good the
+  arithmetic looks.
+
+  **Nothing in a certification run messages a real customer.** Anything
+  that would put a message in front of somebody is skipped unless you say
+  explicitly where to send it. Steps that would disconnect or reconnect
+  the channel are off unless you ask for them by name.
+
+  Alongside it: which platform, connector and provider API version a
+  channel is on, when it was last verified, and when its provider
+  retires that API version — so a channel drifting out of date is visible
+  months before it stops working, rather than the week it does.
+
 - **Every channel now says how finished it is, what version it is, and
   exactly what it can carry.** A channel in preview or beta says so; one
   being deprecated warns before you connect a new one; one an

@@ -57,14 +57,28 @@ is another, so neither channel claims the corresponding feature; Messenger
 and Instagram parse an inbound ``reply_to`` but never send one, so their
 threading is inbound-only. A matrix that described the provider rather than
 our client would be wrong in exactly the cases a customer notices.
+
+**Certification runs the transport's own requests, and skips whatever it
+cannot make Graph answer.** ``run_scenario`` sends through the same Send API
+shapes ``providers/whatsapp.py`` and ``providers/_meta_messaging.py`` use, so
+a pass means the request the product will make at 3am was accepted today; the
+authentication and webhook scenarios call ``diagnose`` itself rather than a
+second copy of it, so the certification report and the diagnostics panel
+cannot disagree about the same token. Four scenarios these connectors claim
+have no executable form at all — every one of them needs a message a customer
+sent — and they report ``SKIPPED`` with the reason rather than a pass earned
+against a fixture. See ``_unexecutable``, which is the part of this file worth
+reading first.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import math
+from base64 import b64decode
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -78,6 +92,12 @@ from blinkengage.domain.connector import (
     Field,
     Repair,
     Resource,
+)
+from blinkengage.domain.connector_certification import (
+    EMITS_TO_A_CUSTOMER,
+    Outcome,
+    ScenarioKind,
+    ScenarioResult,
 )
 from blinkengage.domain.connector_diagnostics import (
     Diagnostic,
@@ -145,6 +165,53 @@ DIAGNOSTIC_TIMEOUT = 5.0
 #: it is not permanently amber on a sixty-day Page token.
 EXPIRY_WARNING_DAYS = 7
 
+#: How long one certification call may take. The runner allows a scenario
+#: twenty seconds and the media scenario spends two calls inside that budget
+#: (upload, then send), so this is deliberately under half of it — and larger
+#: than ``DIAGNOSTIC_TIMEOUT``, because a media upload is a body on the wire
+#: rather than a token being read back.
+CERTIFICATION_TIMEOUT = 8.0
+
+#: What a certification send actually puts in front of whoever owns the
+#: target, and the one customer-visible string in this module that is not a
+#: translation key. It cannot be one: this is *message content* handed to
+#: Meta, so a key would arrive on somebody's phone reading
+#: ``certification.send.body``. Short and self-identifying, because the only
+#: question its reader has is what it is and who sent it.
+CERTIFICATION_MESSAGE = "Blink Engage: channel certification test."
+
+#: A 1×1 PNG — the smallest thing that is genuinely an image to Meta's
+#: decoder. The media scenario has to upload something real, and the
+#: alternative is a picture file we ship, pay for on every run, and deliver to
+#: somebody's test handset for no benefit over seventy bytes.
+CERTIFICATION_IMAGE = b64decode(
+    b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ"
+    b"DwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+CERTIFICATION_IMAGE_TYPE = "image/png"
+CERTIFICATION_IMAGE_NAME = "certification.png"
+
+#: When Meta stops serving a Graph version, for versions somebody has actually
+#: read off Meta's published table
+#: (https://developers.facebook.com/docs/graph-api/changelog/versions, read
+#: 2026-07-30). Meta is one of the few providers that publishes this at all,
+#: which is the entire reason ``Connector.supported_until`` exists — Telegram
+#: has no such concept and answers ``None``.
+#:
+#: Keyed by version rather than written as one constant, and that is the whole
+#: design: bumping ``GRAPH_VERSION`` without re-reading Meta's table yields
+#: ``None`` — "nobody has checked" — instead of quietly attaching v21.0's
+#: retirement date to a version with its own. An administrator plans a
+#: migration around this date, so a stale one plans the wrong migration, which
+#: is worse than planning none. For the same reason there is one row and not a
+#: transcription of the whole table: a date for a version no code here speaks
+#: is a date nobody would re-verify on the day it started being used.
+GRAPH_VERSION_SUNSET: dict[str, date] = {
+    # Released 2024-10-02, retired 2027-01-21 — two years after its successor
+    # shipped, which is the rule every row of Meta's table follows.
+    "v21.0": date(2027, 1, 21),
+}
+
 #: What these connectors are, what they speak, and what they need. ``api`` is
 #: read from ``GRAPH_VERSION`` rather than restated, so the version a customer
 #: is told about and the version the code calls cannot drift — which is the
@@ -200,7 +267,7 @@ async def _graph(
 
 @dataclass(frozen=True, slots=True)
 class _Probe:
-    """One Graph read for diagnostics, classified rather than raised.
+    """One Graph call, classified rather than raised.
 
     ``reached`` is the distinction the whole report hangs on. Graph answering
     "this token is invalid" and Graph never answering at all collapse into one
@@ -208,7 +275,9 @@ class _Probe:
     wizard tells a customer to try again either way. A diagnostics panel must
     keep them apart: reporting an unreachable provider as a credential failure
     sends a support engineer rotating a token that was never the problem,
-    during an outage, while a customer waits.
+    during an outage, while a customer waits. Certification needs the same
+    distinction for the same reason and one step further on — an unreachable
+    Meta is a scenario nobody measured, not a scenario that failed.
     """
 
     #: The parsed body, present only when Graph answered cleanly.
@@ -221,24 +290,51 @@ class _Probe:
     #: it is the only thing separating "your credential is wrong" from "ask
     #: again in five minutes" — both arrive with the same shape.
     error_code: int | None = None
+    #: The subcode, where Graph sends one. Meta's send failures are routinely
+    #: one code with several subcodes meaning entirely different things — code
+    #: 10 is both "your app lacks permission" and "this thread is outside the
+    #: 24-hour window", and only the subcode says which.
+    error_subcode: int | None = None
+    #: Kept as evidence rather than for a decision: the body is what these
+    #: calls are judged on, but a support engineer reading a failed scenario
+    #: wants the number Meta actually returned.
+    status_code: int | None = None
 
 
-async def _probe(path: str, *, token: str, params: dict[str, str] | None = None) -> _Probe:
-    """A read that cannot fail, for a report that must not.
+async def _attempt(
+    method: str,
+    path: str,
+    *,
+    token: str,
+    params: dict[str, str] | None = None,
+    payload: dict[str, Any] | None = None,
+    form: dict[str, str] | None = None,
+    files: dict[str, tuple[str, bytes, str]] | None = None,
+    timeout: float = DIAGNOSTIC_TIMEOUT,
+) -> _Probe:
+    """A call that cannot fail, for a caller that must not.
 
-    Deliberately not ``_graph``: this needs the three things ``_graph``
-    discards on its way to raising — whether the response came from Meta at
-    all, whether the body was an error envelope or a payload, and the status
-    code — and bending ``_graph`` to return them would change the behaviour
-    ``validate``, ``connect`` and ``repair`` are written against. The URL and
-    the timeout still come from the same constants, so the two paths cannot
-    end up talking to different Graphs.
+    Deliberately not ``_graph``: this needs the things ``_graph`` discards on
+    its way to raising — whether the response came from Meta at all, whether
+    the body was an error envelope or a payload, and the codes inside it — and
+    bending ``_graph`` to return them would change the behaviour ``validate``,
+    ``connect`` and ``repair`` are written against. The URL and the version
+    still come from the same constants, so the two paths cannot end up talking
+    to different Graphs.
+
+    Writes go through here as well as reads, because a certification send has
+    exactly the same problem as a diagnostic probe: it has to tell "Meta said
+    no" from "Meta said nothing", and an exception says neither.
     """
     try:
-        async with httpx.AsyncClient(timeout=DIAGNOSTIC_TIMEOUT) as client:
-            response = await client.get(
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.request(
+                method,
                 f"{GRAPH_BASE}/{GRAPH_VERSION}/{path.lstrip('/')}",
                 params={**(params or {}), "access_token": token},
+                json=payload,
+                data=form,
+                files=files,
             )
     except (httpx.HTTPError, httpx.InvalidURL) as exc:
         # Never got there. The token is in the request, and httpx puts the
@@ -248,22 +344,31 @@ async def _probe(path: str, *, token: str, params: dict[str, str] | None = None)
     try:
         body = response.json()
     except ValueError:  # pragma: no cover - Graph always sends JSON
-        return _Probe(reached=True, detail="unreadable")
+        return _Probe(reached=True, detail="unreadable", status_code=response.status_code)
     if not isinstance(body, dict):
-        return _Probe(reached=True, detail="unreadable")
+        return _Probe(reached=True, detail="unreadable", status_code=response.status_code)
     error = body.get("error")
     if isinstance(error, dict):
         message = str(error.get("message", "")) or "unknown"
         raw_code = error.get("code")
+        raw_subcode = error.get("error_subcode")
         return _Probe(
             reached=True,
             detail=redact_credentials(message, {"access_token": token}),
             error_code=raw_code if isinstance(raw_code, int) else None,
+            error_subcode=raw_subcode if isinstance(raw_subcode, int) else None,
+            status_code=response.status_code,
         )
     if response.status_code >= 400:
-        return _Probe(reached=True, detail=str(response.status_code))
-    return _Probe(body=body, reached=True)
+        return _Probe(
+            reached=True, detail=str(response.status_code), status_code=response.status_code
+        )
+    return _Probe(body=body, reached=True, status_code=response.status_code)
 
+
+async def _probe(path: str, *, token: str, params: dict[str, str] | None = None) -> _Probe:
+    """The read half of ``_attempt``, named for what ``diagnose`` does."""
+    return await _attempt("GET", path, token=token, params=params)
 
 
 #: Graph error codes that mean "ask again later", not "your credential is
@@ -277,6 +382,133 @@ _TRANSIENT_GRAPH_CODES = frozenset({1, 2, 4, 17, 32, 613})
 def _is_transient(probe: object) -> bool:
     code = getattr(probe, "error_code", None)
     return isinstance(code, int) and code in _TRANSIENT_GRAPH_CODES
+
+
+#: Graph errors that mean "not this recipient, not right now" rather than
+#: "this channel is broken". A certification target is a number or a PSID
+#: somebody typed into a box, and the ordinary way it goes stale is that the
+#: person behind it last wrote in more than twenty-four hours ago — at which
+#: point Meta refuses the send by policy, on a channel that works perfectly.
+#: Scoring that as a failure would grade a healthy channel ``NOT_READY``
+#: because a test handset went quiet, and the administrator's next action
+#: would be to debug a connector that is fine.
+#:
+#: - 131026 the recipient cannot receive WhatsApp messages at all
+#: - 131030 the recipient is not on the app's allowed list (development mode)
+#: - 131047 more than 24 hours since they last wrote; needs a template
+#: - 551 Messenger's "this person isn't available right now"
+#:
+#: Deliberately short. Anything not listed is reported as a failure with
+#: Meta's code attached, because guessing at what an unrecognised code meant
+#: is how a genuinely broken channel gets certified.
+_RECIPIENT_DECLINED_CODES = frozenset({131026, 131030, 131047, 551})
+
+#: Send API subcode for "outside the allowed messaging window". Meta sends it
+#: under code 10, which on its own also means "your app lacks this
+#: permission" — a real finding. Only the subcode separates them.
+_RECIPIENT_DECLINED_SUBCODES = frozenset({2018278})
+
+
+def _target_declined(probe: _Probe) -> bool:
+    return (
+        probe.error_code in _RECIPIENT_DECLINED_CODES
+        or probe.error_subcode in _RECIPIENT_DECLINED_SUBCODES
+    )
+
+
+#: What a diagnostic status means to a scenario. ``UNKNOWN`` becomes
+#: ``SKIPPED`` and not ``FAIL``, which is the whole point of both vocabularies
+#: meeting here: ``diagnose`` says ``UNKNOWN`` exactly when it could not
+#: measure — Graph unreachable, Graph throttling us — and certification calls
+#: an unmeasured scenario an unanswered question rather than a broken channel.
+#: It costs coverage, which is the honest price, and not score, which would be
+#: a lie about the connector.
+_OUTCOME_OF_STATUS: dict[DiagnosticStatus, Outcome] = {
+    DiagnosticStatus.OK: Outcome.PASS,
+    DiagnosticStatus.WARN: Outcome.WARNING,
+    DiagnosticStatus.FAIL: Outcome.FAIL,
+    DiagnosticStatus.UNKNOWN: Outcome.SKIPPED,
+}
+
+#: The scenarios these connectors claim and cannot execute, and the reason
+#: each is unexecutable. See ``MetaConnector._unexecutable``.
+_UNEXECUTABLE: dict[ScenarioKind, str] = {
+    ScenarioKind.RECEIVE_MESSAGE: "certification.skipped.needsInboundMessage",
+    ScenarioKind.MEDIA_DOWNLOAD: "certification.skipped.needsInboundMedia",
+    ScenarioKind.READ_RECEIPT: "certification.skipped.needsInboundMessageId",
+    ScenarioKind.DISCONNECT: "certification.skipped.noProviderDisconnect",
+}
+
+
+def _skipped(kind: ScenarioKind, detail_key: str, **evidence: str) -> ScenarioResult:
+    """A scenario that did not run, and why."""
+    return ScenarioResult(
+        kind=kind, outcome=Outcome.SKIPPED, detail_key=detail_key, diagnostics=dict(evidence)
+    )
+
+
+def _evidence(probe: _Probe) -> dict[str, str]:
+    """What the call is worth keeping regardless of how it came out.
+
+    Diagnostics, not copy: a status code and Meta's own error code are what
+    somebody pastes into a support ticket, and they are useless translated.
+    """
+    found: dict[str, str] = {}
+    if probe.status_code is not None:
+        found["status_code"] = str(probe.status_code)
+    if probe.error_code is not None:
+        found["error_code"] = str(probe.error_code)
+    if probe.error_subcode is not None:
+        found["error_subcode"] = str(probe.error_subcode)
+    if probe.detail:
+        found["detail"] = probe.detail
+    return found
+
+
+def _refusal(
+    kind: ScenarioKind,
+    probe: _Probe,
+    *,
+    failure_key: str,
+    extra: dict[str, str] | None = None,
+) -> ScenarioResult | None:
+    """Why a call does not count, or ``None`` when it did what was asked.
+
+    Three of the four answers are ``SKIPPED``, and each is a case where
+    ``FAIL`` would blame the connector for something that is not the
+    connector: Meta being unreachable, Meta throttling the app, and Meta
+    declining this particular recipient. Only a rejection that is actually
+    about this channel — a bad token, a missing permission, a malformed send —
+    reaches the last line.
+    """
+    if probe.body is not None:
+        return None
+    diagnostics = {**_evidence(probe), **(extra or {})}
+    if not probe.reached:
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.SKIPPED,
+            detail_key="certification.skipped.providerUnreachable",
+            diagnostics=diagnostics,
+        )
+    if _is_transient(probe):
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.SKIPPED,
+            detail_key="certification.skipped.providerThrottled",
+            diagnostics=diagnostics,
+        )
+    if _target_declined(probe):
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.SKIPPED,
+            detail_key="certification.skipped.targetNotReachable",
+            diagnostics=diagnostics,
+        )
+    return ScenarioResult(
+        kind=kind, outcome=Outcome.FAIL, detail_key=failure_key, diagnostics=diagnostics
+    )
+
 
 class MetaConnector(Connector):
     """Shared behaviour for the three Meta channels.
@@ -630,6 +862,15 @@ class MetaConnector(Connector):
     #: WhatsApp number emit different things.
     subscribed_fields: str = "messages"
 
+    #: Whether the app is subscribed on something other than the resource this
+    #: channel's credentials name — the WABA behind a WhatsApp number, the
+    #: Page behind an Instagram account. A restatement of what ``discover``
+    #: puts in ``subscribe_on``, in the one form ``repair`` and certification
+    #: can read: they are handed credentials, and the parent id lives in the
+    #: ``external_parent_id`` column, which neither is given. False here is
+    #: Messenger's case, where the Page *is* the subscription node.
+    subscribes_on_parent: bool = False
+
     async def connect(self, *, company_id: UUID, attempt: Attempt) -> tuple[Connection, ...]:
         """Subscribe the app to each resource, and hand back what to store.
 
@@ -824,9 +1065,7 @@ class MetaConnector(Connector):
                     # method exists to prevent — so a throttle is UNKNOWN:
                     # we learned nothing, rather than learned something bad.
                     status=(
-                        DiagnosticStatus.UNKNOWN
-                        if _is_transient(probe)
-                        else DiagnosticStatus.FAIL
+                        DiagnosticStatus.UNKNOWN if _is_transient(probe) else DiagnosticStatus.FAIL
                     ),
                     detail_key=(
                         "meta.diagnostic.authentication.notAnswered"
@@ -1031,6 +1270,527 @@ class MetaConnector(Connector):
             value=str(len(subscribed)) if subscribed else None,
         )
 
+    # --- Certify ------------------------------------------------------
+
+    async def run_scenario(
+        self,
+        kind: ScenarioKind,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None = None,
+        webhook_secret: str | None = None,
+        callback_url: str | None = None,
+        external_id: str | None = None,
+        external_parent_id: str | None = None,
+    ) -> ScenarioResult:
+        """Demonstrate one behaviour against Graph, or say why it could not.
+
+        Everything below either measured something or reports that it did not.
+        There is no branch that returns ``PASS`` from a shape check, a fixture
+        or a credential being non-empty: a fabricated pass certifies a broken
+        channel, and the administrator who reads it stops looking.
+
+        No judgement about applicability or safety is made here, because the
+        runner already made both. A scenario the manifest never claimed never
+        arrives, and one that would message a customer arrives only with a
+        target somebody typed on purpose — so a ``target`` in hand is
+        permission to send, and this method uses it.
+
+        The blanket ``except`` is not laziness about which errors are
+        possible. The contract is a result and never a raise; the runner
+        honours a raise by scoring the scenario ``FAIL`` with no evidence at
+        all, and a ``FAIL`` carrying the redacted exception is the same
+        outcome with something in it somebody can act on.
+        """
+        # The last guard in front of an irreversible call, and the reason it
+        # is here rather than left to the runner: `target or ""` used to
+        # convert None into an empty recipient and go to the wire anyway —
+        # uploading a *persistent* attachment to the customer's Page before
+        # the recipient was ever consulted. Graph rejected the empty
+        # recipient, so nothing reached a thread, but a healthy channel
+        # certified as broken and a reusable attachment id was minted on it.
+        # Every sibling connector kept this guard; this is the one that
+        # dropped it.
+        if kind in EMITS_TO_A_CUSTOMER and not target:
+            return ScenarioResult(
+                kind=kind,
+                outcome=Outcome.SKIPPED,
+                detail_key="meta.certification.skipped.noTarget",
+            )
+        try:
+            return await self._scenario(
+                kind, credentials=credentials, context=context, target=target
+            )
+        except Exception as exc:  # noqa: BLE001 - a connector reports; it never raises
+            return ScenarioResult(
+                kind=kind,
+                outcome=Outcome.FAIL,
+                detail_key="meta.certification.unexpectedError",
+                diagnostics={
+                    "error": redact_credentials(f"{type(exc).__name__}: {exc}", credentials)
+                },
+            )
+
+    async def _scenario(
+        self,
+        kind: ScenarioKind,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None,
+    ) -> ScenarioResult:
+        """Which scenario is which. Split out so the guard above wraps all."""
+        match kind:
+            case ScenarioKind.AUTHENTICATION:
+                return await self._certify_authentication(credentials=credentials, context=context)
+            case ScenarioKind.WEBHOOK_DELIVERY:
+                return await self._certify_webhook(credentials=credentials, context=context)
+            # `target` is narrowed here rather than asserted: the caller's
+            # guard already refused these three without one, and a type
+            # checker that cannot see that is a type checker asking for the
+            # guard to be stated twice — which is how one of them later gets
+            # removed as redundant.
+            case ScenarioKind.SEND_MESSAGE if target:
+                return await self._certify_send(credentials=credentials, target=target)
+            case ScenarioKind.MEDIA_UPLOAD if target:
+                return await self._certify_media(credentials=credentials, target=target)
+            case ScenarioKind.TYPING_INDICATOR if target:
+                return await self._certify_typing(credentials=credentials, target=target)
+            case ScenarioKind.RECONNECT:
+                return await self._certify_reconnect(credentials=credentials)
+            case ScenarioKind.TOKEN_REFRESH:
+                return self._certify_token_refresh(context=context)
+            case (
+                ScenarioKind.RECEIVE_MESSAGE
+                | ScenarioKind.MEDIA_DOWNLOAD
+                | ScenarioKind.READ_RECEIPT
+                | ScenarioKind.DISCONNECT
+            ):
+                return self._unexecutable(kind)
+        # A scenario kind added after this connector was written. Saying so is
+        # the honest answer; guessing at it would be the dishonest one.
+        return _skipped(kind, "certification.notImplemented")
+
+    def _unexecutable(self, kind: ScenarioKind) -> ScenarioResult:
+        """The scenarios these connectors claim and genuinely cannot run.
+
+        Four of them, and every one is a place where a plausible-looking pass
+        was available and would have been a lie:
+
+        - **RECEIVE_MESSAGE.** Nothing in Graph makes an inbound message
+          appear; only a customer can. The tempting version feeds a saved
+          webhook payload through the parser and calls it a pass — which
+          certifies our fixture, not the channel, and would go on passing
+          after Meta changed the envelope.
+        - **MEDIA_DOWNLOAD.** Needs the media id (WhatsApp) or CDN URL
+          (Messenger, Instagram) that only an inbound message carries. It is
+          possible to upload our own file and read it back, and that would
+          prove nothing about the case that actually breaks: reading media
+          somebody *else* sent, which is where the permission failures live.
+        - **READ_RECEIPT.** WhatsApp marks one specific inbound message read,
+          so it needs a ``wamid``. The target is a recipient identity, not a
+          message id, and reinterpreting it as one when it happens to look
+          like a ``wamid`` would break the send scenario that reads the same
+          field. One target means one thing.
+        - **DISCONNECT.** There is no provider-side disconnect here to run. A
+          Meta channel is disconnected by removing it from Blink Engage;
+          deleting the app subscription is the webhook, which is
+          ``RECONNECT``'s business, and doing it under the name "disconnect"
+          would leave a live channel dark to prove a point nobody asked for.
+
+        All four cost coverage and none costs score, which is exactly the
+        trade the outcome vocabulary was built to express.
+        """
+        return _skipped(kind, _UNEXECUTABLE[kind])
+
+    async def _certify_authentication(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> ScenarioResult:
+        """``debug_token``, via ``diagnose`` rather than beside it.
+
+        The same call, through the same method, so the certification report
+        and the diagnostics panel cannot disagree about one token. A second
+        copy of this would drift — and the first symptom would be a channel
+        certified ``PRODUCTION_READY`` with a red authentication row on the
+        panel next to it.
+
+        It costs the subscription probe ``diagnose`` issues concurrently, so
+        this scenario's duration is the pair rather than the token read alone.
+        A slightly pessimistic number is a better trade than two
+        implementations of the same measurement.
+
+        Missing permissions turn a pass into a warning. The token is genuinely
+        valid — that is what was measured — but a Meta token can authenticate
+        perfectly and still be missing the scope the first outbound message
+        needs, and with no target the send scenario is skipped and nothing
+        else would catch it. "It worked, with something worth saying" is what
+        ``WARNING`` is for.
+        """
+        kind = ScenarioKind.AUTHENTICATION
+        report = await self.diagnose(credentials=credentials, context=context)
+        item = report.get(DiagnosticKey.AUTHENTICATION)
+        if item is None:  # pragma: no cover - diagnose always answers this key
+            return _skipped(kind, "certification.skipped.notMeasured")
+
+        outcome = _OUTCOME_OF_STATUS[item.status]
+        detail_key = item.detail_key
+        params = dict(item.params)
+        diagnostics = {"authentication": item.status.value}
+        if item.value:
+            diagnostics["expires_at"] = item.value
+
+        permissions = report.get(DiagnosticKey.PERMISSIONS)
+        if permissions is not None:
+            diagnostics["permissions"] = permissions.value or permissions.status.value
+            if outcome is Outcome.PASS and permissions.status is DiagnosticStatus.FAIL:
+                outcome = Outcome.WARNING
+                detail_key = permissions.detail_key
+                params = dict(permissions.params)
+        return ScenarioResult(
+            kind=kind,
+            outcome=outcome,
+            detail_key=detail_key,
+            params=params,
+            diagnostics=diagnostics,
+        )
+
+    async def _certify_webhook(
+        self, *, credentials: dict[str, Any], context: DeploymentContext
+    ) -> ScenarioResult:
+        """Whether Meta is still pointed at us for this resource.
+
+        What is measurable from here is the subscription — that Meta will send
+        this resource's events to *our* app, matched on the app id
+        ``debug_token`` reports — and not a delivery. Nothing a connector can
+        call makes Meta post an event on demand, so the pass carries a detail
+        key naming what was actually established rather than letting
+        "webhook delivery: pass" be read as "an event arrived".
+
+        No row at all is a skip, not a failure, and for two of the three
+        channels it is the expected answer: the app is subscribed on the WABA
+        or the Page, whose id lives in a column certification is not handed.
+        Failing that would send somebody to repair a subscription that was
+        never broken — the same limitation ``repair`` documents, with the same
+        resolution.
+        """
+        kind = ScenarioKind.WEBHOOK_DELIVERY
+        report = await self.diagnose(credentials=credentials, context=context)
+        item = report.get(DiagnosticKey.WEBHOOK_STATUS)
+        if item is None:
+            if self.subscribes_on_parent:
+                return _skipped(
+                    kind,
+                    "certification.skipped.subscriptionNodeUnknown",
+                    node_credential=self.resource_credential,
+                )
+            return _skipped(kind, "certification.skipped.notMeasured")
+
+        outcome = _OUTCOME_OF_STATUS[item.status]
+        return ScenarioResult(
+            kind=kind,
+            outcome=outcome,
+            detail_key=(
+                item.detail_key
+                or ("meta.certification.webhook.subscribed" if outcome is Outcome.PASS else None)
+            ),
+            params=dict(item.params),
+            diagnostics={"subscribed_fields": item.value or "0"},
+        )
+
+    async def _certify_send(self, *, credentials: dict[str, Any], target: str) -> ScenarioResult:
+        """A real message, through the request the transport would build.
+
+        Not a dry run and not a permissions inference: the Send API is where
+        this channel actually fails, and it fails for reasons — a token
+        without ``pages_messaging``, a number the business account no longer
+        owns — that every earlier check passes cleanly.
+        """
+        kind = ScenarioKind.SEND_MESSAGE
+        node, token = self._node_and_token(credentials)
+        if not node or not token:
+            return _skipped(kind, "certification.skipped.credentialsIncomplete")
+
+        sent = await self._send_text_call(
+            node=node, token=token, target=target, body=CERTIFICATION_MESSAGE
+        )
+        refused = _refusal(kind, sent, failure_key="meta.certification.sendFailed")
+        if refused is not None:
+            return refused
+        return self._delivered(kind, sent)
+
+    async def _certify_media(self, *, credentials: dict[str, Any], target: str) -> ScenarioResult:
+        """Upload an image to Meta, then send it — both halves, in order.
+
+        The upload alone would pass on a channel that cannot deliver: they are
+        different endpoints with different failure modes, and Instagram in
+        particular takes attachments on a path Messenger's upload does not
+        feed. Since the runner only reaches this with a deliberate target,
+        proving the whole path is what the opt-in bought.
+        """
+        kind = ScenarioKind.MEDIA_UPLOAD
+        node, token = self._node_and_token(credentials)
+        if not node or not token:
+            return _skipped(kind, "certification.skipped.credentialsIncomplete")
+
+        upload = await self._upload_media_call(node=node, token=token)
+        refused = _refusal(kind, upload, failure_key="meta.certification.uploadFailed")
+        if refused is not None:
+            return refused
+        media_id = self._uploaded_media_id(upload.body or {})
+        if not media_id:
+            # A clean answer with nothing to send. The transport would raise a
+            # KeyError here on the next customer's attachment.
+            return ScenarioResult(
+                kind=kind,
+                outcome=Outcome.FAIL,
+                detail_key="meta.certification.noMediaId",
+                diagnostics=_evidence(upload),
+            )
+
+        sent = await self._send_media_call(node=node, token=token, target=target, media_id=media_id)
+        refused = _refusal(
+            kind,
+            sent,
+            failure_key="meta.certification.mediaSendFailed",
+            extra={"media_id": media_id},
+        )
+        if refused is not None:
+            return refused
+        return self._delivered(kind, sent, extra={"media_id": media_id})
+
+    async def _certify_typing(self, *, credentials: dict[str, Any], target: str) -> ScenarioResult:
+        """Turn the typing indicator on, then off again.
+
+        The second call is not part of the measurement — the outcome is
+        decided by the first — but a certification run should not leave a
+        "typing…" bubble sitting in somebody's thread, and whether it managed
+        to clear it is worth recording either way.
+        """
+        kind = ScenarioKind.TYPING_INDICATOR
+        node, token = self._node_and_token(credentials)
+        if not node or not token:
+            return _skipped(kind, "certification.skipped.credentialsIncomplete")
+
+        started = await self._typing_call(node=node, token=token, target=target, on=True)
+        refused = _refusal(kind, started, failure_key="meta.certification.typingFailed")
+        if refused is not None:
+            return refused
+        cleared = await self._typing_call(node=node, token=token, target=target, on=False)
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.PASS,
+            diagnostics={
+                **_evidence(started),
+                "cleared": "true" if cleared.body is not None else "false",
+            },
+        )
+
+    async def _certify_reconnect(self, *, credentials: dict[str, Any]) -> ScenarioResult:
+        """Re-subscribe the app — the exact call the one-click repair makes.
+
+        Through ``_subscribe`` rather than beside it, so what certification
+        proves and what the repair button does are the same request. Safe to
+        run on a working channel: re-subscribing an already-subscribed app is
+        Meta's own no-op, which is why this needs no prior disconnect and why
+        running it does not leave the channel anywhere it was not already.
+
+        Skipped where the subscription lives on the parent node, for the
+        reason ``_certify_webhook`` gives: the id is in a column this is not
+        handed, and subscribing the wrong node would fail a channel that
+        works.
+        """
+        kind = ScenarioKind.RECONNECT
+        if self.subscribes_on_parent:
+            return _skipped(
+                kind,
+                "certification.skipped.subscriptionNodeUnknown",
+                node_credential=self.resource_credential,
+            )
+        node, token = self._node_and_token(credentials)
+        if not node or not token:
+            return _skipped(kind, "certification.skipped.credentialsIncomplete")
+
+        try:
+            await self._subscribe(node, token, self.subscribed_fields)
+        except MetaError as exc:
+            # Already redacted by ``_graph``, which puts the token through
+            # ``redact_credentials`` before it ever reaches an exception.
+            return ScenarioResult(
+                kind=kind,
+                outcome=Outcome.FAIL,
+                detail_key="meta.certification.subscribeFailed",
+                diagnostics={"detail": str(exc)},
+            )
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+            return _skipped(
+                kind,
+                "certification.skipped.providerUnreachable",
+                detail=redact_credentials(str(exc), {"access_token": token}),
+            )
+        return ScenarioResult(
+            kind=kind,
+            outcome=Outcome.PASS,
+            diagnostics={"node": node, "subscribed_fields": self.subscribed_fields},
+        )
+
+    def _certify_token_refresh(self, *, context: DeploymentContext) -> ScenarioResult:
+        """Meta long-lived tokens can be exchanged. This cannot exchange them.
+
+        Two things are missing and only one of them is code. The exchange is
+        ``GET /oauth/access_token?grant_type=fb_exchange_token``, which needs
+        the app id and app secret — and ``run_scenario`` is handed channel
+        credentials and a ``DeploymentContext`` that says *whether* an app is
+        configured, never what it is. On top of that ``exchange`` is not
+        implemented on this connector at all, which is the same unfinished
+        half that makes these three ``PREVIEW``.
+
+        So this reports what it found rather than running anything, and both
+        facts go in ``diagnostics`` because they are the two separate things
+        that would have to change. Attempting the call with credentials we do
+        not have, in order to produce a ``FAIL``, would report a connector
+        that never claimed to refresh tokens as one that tried and broke.
+        """
+        implemented = type(self).exchange is not Connector.exchange
+        return ScenarioResult(
+            kind=ScenarioKind.TOKEN_REFRESH,
+            outcome=Outcome.SKIPPED,
+            detail_key=(
+                "certification.skipped.noAppCredentials"
+                if implemented
+                else "certification.skipped.tokenExchangeUnimplemented"
+            ),
+            diagnostics={
+                "exchange_implemented": str(implemented).lower(),
+                "app_configured": str(context.has_app(self.app_key)).lower(),
+            },
+        )
+
+    # The Graph calls each scenario makes. Everything below is the Messenger
+    # Platform's Send API — the shape ``providers/_meta_messaging.py`` uses,
+    # shared by Messenger and Instagram for the same reason it is shared
+    # there. WhatsApp's Cloud API agrees with it on the host and nothing else,
+    # so ``WhatsAppConnector`` overrides every one of them.
+    #
+    # Authentication travels as a parameter rather than the Bearer header the
+    # WhatsApp transport uses. Graph accepts either, and every other call in
+    # this module already uses the parameter — one convention here means one
+    # place where redaction has to be right.
+
+    def _node_and_token(self, credentials: dict[str, Any]) -> tuple[str, str]:
+        """The resource this channel sends from, and what it sends with."""
+        return (
+            str(credentials.get(self.resource_credential, "")),
+            str(credentials.get("access_token", "")),
+        )
+
+    def _delivered(
+        self, kind: ScenarioKind, sent: _Probe, *, extra: dict[str, str] | None = None
+    ) -> ScenarioResult:
+        """A send Graph accepted, graded on whether it can be evidenced.
+
+        A 200 with no message id in it is not quite a pass: the transport
+        reads that field to record what it sent, so a body without one is a
+        message we cannot point at afterwards. It went, which is why this is a
+        warning rather than a failure.
+        """
+        diagnostics = {**_evidence(sent), **(extra or {})}
+        message_id = self._sent_message_id(sent.body or {})
+        if not message_id:
+            return ScenarioResult(
+                kind=kind,
+                outcome=Outcome.WARNING,
+                detail_key="meta.certification.noMessageId",
+                diagnostics=diagnostics,
+            )
+        return ScenarioResult(
+            kind=kind, outcome=Outcome.PASS, diagnostics={**diagnostics, "message_id": message_id}
+        )
+
+    async def _send_text_call(self, *, node: str, token: str, target: str, body: str) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/messages",
+            token=token,
+            payload={"recipient": {"id": target}, "message": {"text": body}},
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    async def _upload_media_call(self, *, node: str, token: str) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/message_attachments",
+            token=token,
+            form={
+                "message": json.dumps(
+                    {"attachment": {"type": "image", "payload": {"is_reusable": True}}}
+                )
+            },
+            files={
+                "filedata": (
+                    CERTIFICATION_IMAGE_NAME,
+                    CERTIFICATION_IMAGE,
+                    CERTIFICATION_IMAGE_TYPE,
+                )
+            },
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    async def _send_media_call(
+        self, *, node: str, token: str, target: str, media_id: str
+    ) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/messages",
+            token=token,
+            payload={
+                "recipient": {"id": target},
+                "message": {
+                    "attachment": {"type": "image", "payload": {"attachment_id": media_id}}
+                },
+            },
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    async def _typing_call(self, *, node: str, token: str, target: str, on: bool) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/messages",
+            token=token,
+            payload={
+                "recipient": {"id": target},
+                "sender_action": "typing_on" if on else "typing_off",
+            },
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    @staticmethod
+    def _uploaded_media_id(body: dict[str, Any]) -> str:
+        return str(body.get("attachment_id", "") or "")
+
+    @staticmethod
+    def _sent_message_id(body: dict[str, Any]) -> str:
+        return str(body.get("message_id", "") or "")
+
+    def supported_until(self) -> date | None:
+        """When Meta stops serving the Graph version this connector speaks.
+
+        A real date, because Meta genuinely publishes one — each version
+        retires roughly two years after its successor ships, listed per
+        version in Meta's changelog — and ``None`` here would throw away the
+        one piece of information the field exists to carry. v21.0 retires on
+        2027-01-21, so an installation on this connector starts being flagged
+        as expiring in late October 2026, which is when a migration should
+        start rather than when it becomes urgent.
+
+        The date is looked up by version rather than returned as a constant,
+        so bumping ``GRAPH_VERSION`` without re-reading Meta's table answers
+        ``None`` instead of the previous version's retirement date. That
+        matters more than it sounds: an administrator schedules work around
+        this, and a confidently wrong date schedules the wrong work.
+        """
+        return GRAPH_VERSION_SUNSET.get(GRAPH_VERSION)
+
     # --- Repair -------------------------------------------------------
 
     async def repair(
@@ -1140,6 +1900,9 @@ class WhatsAppConnector(MetaConnector):
     scopes = ("whatsapp_business_management", "whatsapp_business_messaging")
     picker_group_key = "connect.meta.group.whatsapp"
     subscribed_fields = "messages,message_template_status_update"
+    #: The app is subscribed on the WABA, never on the phone number —
+    #: ``discover`` puts the WABA in ``subscribe_on`` for exactly this reason.
+    subscribes_on_parent = True
 
     CAPABILITIES = MetaConnector.CAPABILITIES | {Capability.EMBEDDED_SIGNUP}
 
@@ -1182,6 +1945,75 @@ class WhatsAppConnector(MetaConnector):
                     )
                 )
         return tuple(resources)
+
+    # --- Certify ------------------------------------------------------
+    #
+    # The Cloud API's own shapes, read off ``providers/whatsapp.py``. It
+    # shares a host with the Messenger Send API and nothing else: a different
+    # recipient field, a different envelope, a different media endpoint and a
+    # different place to find the id of what was sent. Certification sends
+    # what the transport sends, so a pass means the exact request the product
+    # makes on the next customer reply was accepted today.
+    #
+    # ``_typing_call`` is deliberately not among them. This channel does not
+    # claim typing indicators — the Cloud API has no freestanding toggle — so
+    # the runner never asks for that scenario, and inheriting the Messenger
+    # shape means that if somebody ever adds the feature to the manifest
+    # without adding it to the transport, certification fails it rather than
+    # quietly passing.
+
+    async def _send_text_call(self, *, node: str, token: str, target: str, body: str) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/messages",
+            token=token,
+            payload={
+                "messaging_product": "whatsapp",
+                "to": target,
+                "type": "text",
+                "text": {"body": body},
+            },
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    async def _upload_media_call(self, *, node: str, token: str) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/media",
+            token=token,
+            form={"messaging_product": "whatsapp", "type": CERTIFICATION_IMAGE_TYPE},
+            files={
+                "file": (CERTIFICATION_IMAGE_NAME, CERTIFICATION_IMAGE, CERTIFICATION_IMAGE_TYPE)
+            },
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    async def _send_media_call(
+        self, *, node: str, token: str, target: str, media_id: str
+    ) -> _Probe:
+        return await _attempt(
+            "POST",
+            f"{node}/messages",
+            token=token,
+            payload={
+                "messaging_product": "whatsapp",
+                "to": target,
+                "type": "image",
+                "image": {"id": media_id},
+            },
+            timeout=CERTIFICATION_TIMEOUT,
+        )
+
+    @staticmethod
+    def _uploaded_media_id(body: dict[str, Any]) -> str:
+        return str(body.get("id", "") or "")
+
+    @staticmethod
+    def _sent_message_id(body: dict[str, Any]) -> str:
+        """The Cloud API answers with a list; the Send API with a field."""
+        messages = body.get("messages")
+        first = messages[0] if isinstance(messages, list) and messages else None
+        return str(first.get("id", "") or "") if isinstance(first, dict) else ""
 
 
 @ConnectorRegistry.register("messenger")
@@ -1298,6 +2130,9 @@ class InstagramConnector(MetaConnector):
     scopes = ("instagram_basic", "instagram_manage_messages", "pages_show_list")
     picker_group_key = "connect.meta.group.instagram"
     subscribed_fields = "messages,messaging_postbacks"
+    #: Subscription happens on the linked Page, never on the Instagram account
+    #: — the same fact ``discover`` records as ``subscribe_on``.
+    subscribes_on_parent = True
 
     async def discover(self, *, grant: dict[str, Any]) -> tuple[Resource, ...]:
         token = str(grant.get("access_token", ""))

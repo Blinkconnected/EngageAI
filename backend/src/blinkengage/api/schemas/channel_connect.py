@@ -11,7 +11,7 @@ prose sends something that can never be Arabic, and this product ships both.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -177,6 +177,63 @@ class DiagnosticReportResponse(BaseModel):
     overall: str
 
 
+class ScenarioResultResponse(BaseModel):
+    """One executed scenario."""
+
+    kind: str
+    #: ``pass`` | ``fail`` | ``warning`` | ``skipped`` | ``not_supported``.
+    #: The last three are distinct on purpose: not-supported is excluded from
+    #: the score entirely, skipped counts against coverage but not the score,
+    #: and a warning is a partial pass.
+    outcome: str
+    duration_ms: int
+    detail_key: str | None = None
+    params: dict[str, str] = Field(default_factory=dict)
+    diagnostics: dict[str, str] = Field(default_factory=dict)
+
+
+class CertificationResponse(BaseModel):
+    """A score, and everything needed to distrust it."""
+
+    score: float
+    percent: int
+    #: ``production_ready`` | ``needs_attention`` | ``not_ready`` |
+    #: ``inconclusive``.
+    grade: str
+    #: Of what the connector claims, how much actually ran. The number that
+    #: stops a high score from being cheap — a grade is withheld below a
+    #: threshold whatever the score says.
+    coverage: float
+    passed: int
+    failed: int
+    warned: int
+    skipped: int
+    not_supported: int
+
+
+class CompatibilityResponse(BaseModel):
+    """Whether this connector is drifting out of date."""
+
+    platform_version: str
+    connector_version: str
+    provider_api_version: str
+    #: ``null`` means never certified — a different state from certified long
+    #: ago, and a different next action.
+    last_verified: datetime | None = None
+    #: ``null`` where the provider publishes no retirement schedule, rather
+    #: than a date nobody promised.
+    supported_until: date | None = None
+
+
+class CertificationReportResponse(BaseModel):
+    channel_type: str
+    results: list[ScenarioResultResponse]
+    certification: CertificationResponse
+    compatibility: CompatibilityResponse
+    ran_at: datetime
+    duration_ms: int
+
+
 class RepairResultResponse(BaseModel):
     """What a repair did.
 
@@ -321,7 +378,10 @@ __all__ = [
     "AdvanceRequest",
     "CapabilityStateResponse",
     "CatalogResponse",
+    "CertificationReportResponse",
+    "CertificationResponse",
     "CheckResponse",
+    "CompatibilityResponse",
     "ConnectResultResponse",
     "ConnectedChannelResponse",
     "ConnectionTemplateResponse",
@@ -338,6 +398,7 @@ __all__ = [
     "ResourceResponse",
     "ResourceSpecResponse",
     "SessionResponse",
+    "ScenarioResultResponse",
     "StartSessionRequest",
     "StepResponse",
     "VerificationSpecResponse",

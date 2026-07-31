@@ -77,6 +77,31 @@ Telegram said in that call or in ``getMe``; nothing is inferred, and the keys
 it cannot measure (permissions, rate-limit headroom, response times) are left
 for the platform to fill with ``UNKNOWN`` rather than answered optimistically.
 
+**Certification is where "it is configured" and "it works" stop being the
+same sentence**, and Telegram can pay for more of that difference than any
+other connector here: ``getMe``, ``getWebhookInfo``, ``sendMessage``,
+``sendPhoto``, ``sendChatAction`` and ``getFile`` are all reachable with
+nothing but a bot token and, where something is going to be sent, a chat id
+somebody typed on purpose. Seven of the eleven scenarios genuinely execute.
+
+The other four are the ones worth reading, because each is a place a
+plausible-looking ``PASS`` was available and not taken:
+
+- ``RECEIVE_MESSAGE`` cannot be made to happen. Nothing here can cause a
+  customer to message the bot, and the webhook evidence that looks like proof
+  is proof of something else — see ``_prove_receiving``.
+- ``TOKEN_REFRESH`` has nothing to refresh: bot tokens do not expire, they are
+  revoked in BotFather. That is reported as unexecuted rather than as
+  inapplicable, because deciding a scenario does not apply is deciding one's
+  own denominator, and that judgement belongs to the runner.
+- ``DISCONNECT`` and ``RECONNECT`` are one call each — ``deleteWebhook`` and
+  ``setWebhook`` — and both would leave this channel silently deaf. Telegram
+  holds ``secret_token`` write-only: ``getWebhookInfo`` never returns it, so a
+  re-registration must supply a *new* one, and a scenario has no way to hand
+  that back for the ``webhook_secret`` column the way ``Repair`` does. The
+  webhook would come back looking healthy while every update failed signature
+  verification. See ``_prove_reconnection``.
+
 Everything customer-visible below is a translation key, and every string
 that starts life inside an exception goes through ``error_sanitizer`` first:
 this provider carries its bot token in the request URL, so an unsanitised
@@ -86,10 +111,11 @@ the caller happens to keep failures in.
 
 from __future__ import annotations
 
+import base64
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -102,6 +128,11 @@ from blinkengage.domain.connector import (
     Connector,
     DeploymentContext,
     Repair,
+)
+from blinkengage.domain.connector_certification import (
+    Outcome,
+    ScenarioKind,
+    ScenarioResult,
 )
 from blinkengage.domain.connector_diagnostics import (
     Diagnostic,
@@ -146,6 +177,13 @@ _API_BASE_URL = "https://api.telegram.org"
 #: checklist learns something before they give up on it.
 _TIMEOUT = httpx.Timeout(10.0)
 
+#: Where Telegram serves the bytes ``getFile`` names, matching
+#: ``TelegramProvider``'s own default. A second base URL rather than a path
+#: under the first: the Bot API answers ``/bot<token>/<method>`` and the file
+#: service answers ``/file/bot<token>/<path>``, and only the download scenario
+#: has any use for the second.
+_FILE_BASE_URL = "https://api.telegram.org/file"
+
 #: Tighter, because ``diagnose`` makes *two* calls and the platform gives a
 #: connector one budget for the whole report — a panel that hangs waiting for
 #: a connector fails at the exact moment an unreachable provider is what the
@@ -153,12 +191,33 @@ _TIMEOUT = httpx.Timeout(10.0)
 #: budget with room to spare; two of ``_TIMEOUT`` do not.
 _DIAGNOSE_TIMEOUT = httpx.Timeout(5.0)
 
+#: Tighter again, for certification. The runner allows one scenario twenty
+#: seconds and moves on, and the longest scenario here spends up to four round
+#: trips (``getChat``, ``getUserProfilePhotos``, ``getFile``, then the file
+#: itself) — four of these fit inside that budget, and two of ``_TIMEOUT``
+#: already do not.
+_SCENARIO_TIMEOUT = httpx.Timeout(5.0)
+
+#: How recently Telegram must have failed a delivery for the failure to be
+#: describing the present rather than a bad afternoon last month. Telegram
+#: reports the last delivery it could *not* make and never reports one it
+#: could, so the age of that failure — together with the queue sitting behind
+#: it — is the only evidence available that delivery has since recovered. A
+#: day, because anything shorter calls a webhook healthy while it is still
+#: inside its own retry window.
+_RECENT_FAILURE = timedelta(hours=24)
+
 #: Telegram's own throttle response. Its body carries ``retry_after``, which
 #: is the only rate-limit figure the Bot API ever states — there are no
 #: headroom headers on a successful call, which is why ``RATE_LIMITS`` is
 #: answered when we are being throttled and never otherwise.
 _TOO_MANY_REQUESTS = 429
 _SERVER_ERROR = 500
+
+#: The only status the file service answering with a body means anything on.
+#: Its 302s and 404s are not JSON and carry no ``ok`` flag to read, so the
+#: download scenario judges it by status and size alone.
+_OK = 200
 
 #: Updates in flight during a burst are ordinary; a queue that has grown past
 #: this is something nobody is draining. A threshold rather than "any pending
@@ -225,6 +284,55 @@ _API_IS_UNVERSIONED = Diagnostic(
     status=DiagnosticStatus.UNKNOWN,
     detail_key=_DIAG_API_UNVERSIONED,
 )
+
+#: Certification copy, in the platform's ``certification.*`` namespace beside
+#: the runner's own ``certification.skipped.noTarget`` — a report has the same
+#: rows for every channel, and a reader should not be able to tell which half
+#: of the system worded which line.
+_CERT_TOKEN_MISSING = "certification.telegram.botTokenMissing"
+_CERT_UNREACHABLE = "certification.telegram.providerUnreachable"
+_CERT_THROTTLED = "certification.telegram.throttled"
+_CERT_REJECTED = "certification.telegram.rejectedByProvider"
+_CERT_UNEXPECTED = "certification.telegram.unexpectedFailure"
+_CERT_NO_TARGET_CHAT = "certification.telegram.noTargetChat"
+_CERT_AUTHENTICATED = "certification.telegram.authenticatedAs"
+_CERT_NOT_MEASURED = "certification.telegram.notMeasured"
+_CERT_WEBHOOK_REGISTERED = "certification.telegram.webhookRegistered"
+_CERT_WEBHOOK_MISSING = "certification.telegram.webhookNotRegistered"
+_CERT_WEBHOOK_ELSEWHERE = "certification.telegram.webhookRegisteredElsewhere"
+_CERT_WEBHOOK_FAILING = "certification.telegram.webhookDeliveryFailing"
+_CERT_WEBHOOK_BACKLOG = "certification.telegram.webhookBacklog"
+_CERT_TOKEN_NOT_ACCEPTED = "certification.telegram.tokenNotAccepted"
+_CERT_MESSAGE_UNCONFIRMED = "certification.telegram.messageUnconfirmed"
+_CERT_PHOTO_UNCONFIRMED = "certification.telegram.photoUnconfirmed"
+_CERT_MESSAGE_SENT = "certification.telegram.messageSent"
+_CERT_PHOTO_SENT = "certification.telegram.photoSent"
+_CERT_TYPING_ACCEPTED = "certification.telegram.chatActionAccepted"
+_CERT_FILE_DOWNLOADED = "certification.telegram.fileDownloaded"
+_CERT_NO_FILE_TO_DOWNLOAD = "certification.telegram.noFileToDownload"
+_CERT_INBOUND_NOT_PROVOKABLE = "certification.telegram.inboundCannotBeProvoked"
+_CERT_TOKENS_DO_NOT_EXPIRE = "certification.telegram.botTokensDoNotExpire"
+_CERT_SECRET_NOT_RECOVERABLE = "certification.telegram.webhookSecretNotRecoverable"
+
+#: What the emitting scenarios put in front of whoever the operator named.
+#: The one customer-visible string in this module that is deliberately *not* a
+#: translation key: it is the payload rather than the copy, Telegram delivers
+#: it verbatim into a chat window, and a chat id carries no locale to pick a
+#: translation with — so a key here would be a slug in front of a human, which
+#: is the failure the key convention exists to prevent, arrived at backwards.
+_CERTIFICATION_MESSAGE = "BlinkEngage connector certification"
+
+#: A 64×64 PNG, 136 bytes, embedded rather than fetched: ``sendPhoto`` has to
+#: be given real bytes to prove the upload path, and a certification run that
+#: reached out to some third host for a test image would fail in every
+#: air-gapped installation this product is deployed into. Telegram rejects
+#: images below a few pixels a side, which is why this is not a 1×1.
+_CERTIFICATION_IMAGE = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsMticHvZxgi+hcEK"
+    "LNXzWgQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQELgvkFpF4VhtebgAA"
+    "AABJRU5ErkJggg=="
+)
+_CERTIFICATION_IMAGE_NAME = "blinkengage-certification.png"
 
 _ERROR_TOKEN_MISSING = "connect.telegram.error.botTokenMissing"
 _ERROR_TOKEN_REJECTED = "connect.telegram.error.botTokenRejected"
@@ -327,6 +435,7 @@ async def _call(
     token: str,
     method: str,
     payload: dict[str, Any] | None = None,
+    files: dict[str, tuple[str, bytes, str]] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """One Bot API call, as ``(status, body)``.
 
@@ -336,9 +445,19 @@ async def _call(
     code is returned instead so callers can tell Telegram rejecting a
     credential (4xx, and 200 with ``ok: false``) from Telegram being
     unwell (5xx) without ever touching an ``httpx`` error string.
+
+    ``files`` switches the request to multipart, which ``sendPhoto`` needs and
+    nothing else here does. It lives on this function rather than in the one
+    caller so the property above stays true — a second place building
+    ``/bot<token>/`` is a second place a token can end up in an error string.
     """
     url = f"{_API_BASE_URL}/bot{token}/{method}"
-    response = await client.get(url) if payload is None else await client.post(url, json=payload)
+    if files is not None:
+        response = await client.post(url, data=payload or {}, files=files)
+    elif payload is None:
+        response = await client.get(url)
+    else:
+        response = await client.post(url, json=payload)
     try:
         body = response.json()
     except ValueError:
@@ -346,6 +465,249 @@ async def _call(
         # from a provider outage from here, and handled as one.
         body = {}
     return response.status_code, body if isinstance(body, dict) else {}
+
+
+@dataclass(frozen=True, slots=True)
+class _Answer:
+    """One Bot API call, as a scenario has to read it.
+
+    ``_call`` returns ``(status, body)`` and raises when no response arrived —
+    which is the right shape for a flow that can afford to be interrupted, and
+    the wrong one for a scenario, whose entire contract is to return a result.
+    ``status`` of zero is the case ``_call`` cannot express: nothing answered.
+    """
+
+    status: int
+    body: dict[str, Any]
+    #: Already redacted. Set exactly when no response was received at all.
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and bool(self.body.get("ok"))
+
+    @property
+    def description(self) -> str:
+        """Telegram's own account of a refusal. Redact before reporting."""
+        return str(self.body.get("description") or "")
+
+    @property
+    def result(self) -> dict[str, Any]:
+        result = self.body.get("result")
+        return result if isinstance(result, dict) else {}
+
+
+@dataclass(frozen=True, slots=True)
+class _Fetched:
+    """A file download, as evidence rather than as bytes.
+
+    The content is deliberately dropped at the boundary: the scenario proves
+    that Telegram served the file, and holding somebody's attachment in memory
+    for one line of a report is a cost with no reader.
+    """
+
+    status: int
+    size: int = 0
+    error: str | None = None
+
+
+async def _ask(
+    client: httpx.AsyncClient,
+    *,
+    token: str,
+    credentials: Mapping[str, Any],
+    method: str,
+    payload: dict[str, Any] | None = None,
+    files: dict[str, tuple[str, bytes, str]] | None = None,
+) -> _Answer:
+    """``_call``, with the transport failures folded into the answer.
+
+    Deliberately broad, like every other call site in this module: a token
+    with a newline in it makes ``httpx`` raise ``InvalidURL`` before a request
+    is attempted, and that is not an ``HTTPError``.
+    """
+    try:
+        status, body = await _call(client, token=token, method=method, payload=payload, files=files)
+    except Exception as exc:  # noqa: BLE001 - a scenario reports, it never raises
+        return _Answer(status=0, body={}, error=_redacted(str(exc), credentials, token))
+    return _Answer(status=status, body=body)
+
+
+async def _fetch_file(
+    client: httpx.AsyncClient,
+    *,
+    token: str,
+    credentials: Mapping[str, Any],
+    file_path: str,
+) -> _Fetched:
+    """Pull down what ``getFile`` named, by the route the provider uses.
+
+    The second — and last — place a bot token is interpolated into a URL, for
+    the reason the file service is a separate host: ``getFile`` answers with a
+    path and nothing else, and the bytes are only reachable under
+    ``/file/bot<token>/``. Neither the URL nor the content leaves this
+    function; only how much of it arrived.
+    """
+    try:
+        response = await client.get(f"{_FILE_BASE_URL}/bot{token}/{file_path}")
+    except Exception as exc:  # noqa: BLE001 - see ``_ask``
+        return _Fetched(status=0, error=_redacted(str(exc), credentials, token))
+    return _Fetched(status=response.status_code, size=len(response.content))
+
+
+def _recent(moment: datetime | None) -> bool:
+    return moment is not None and datetime.now(UTC) - moment <= _RECENT_FAILURE
+
+
+def _outcome(
+    kind: ScenarioKind,
+    outcome: Outcome,
+    detail_key: str,
+    *,
+    params: Mapping[str, str] | None = None,
+    diagnostics: Mapping[str, str] | None = None,
+) -> ScenarioResult:
+    """One result, with the empty evidence dropped.
+
+    ``params`` interpolates into the translated line; ``diagnostics`` is what
+    the run learned and is never rendered as copy. Empty values are dropped
+    from both rather than reported: a report row reading ``last_error:`` with
+    nothing after it is a question about whether the field is broken.
+
+    ``duration_ms`` is left at zero throughout: the runner times the call, and
+    a connector reporting its own duration is a connector reporting its own
+    performance.
+    """
+    return ScenarioResult(
+        kind=kind,
+        outcome=outcome,
+        detail_key=detail_key,
+        params={key: value for key, value in (params or {}).items() if value},
+        diagnostics={key: value for key, value in (diagnostics or {}).items() if value},
+    )
+
+
+def _unmeasured(kind: ScenarioKind, answer: _Answer) -> ScenarioResult | None:
+    """``SKIPPED`` when Telegram never gave us an answer to read.
+
+    A dead connection, a 5xx or a 429 is Telegram being unwell or busy, not
+    this channel being broken, and a ``FAIL`` would send an operator to repair
+    a channel that works — the same judgement ``diagnose`` makes when it
+    answers ``UNKNOWN`` rather than red for an unreachable provider.
+
+    It is not a free pass either. ``SKIPPED`` costs *coverage*, so a run
+    against a provider that is down comes back ``INCONCLUSIVE`` rather than
+    clean, which is the honest reading: an unanswered question, not a good
+    answer. ``None`` means Telegram answered and the answer can be judged.
+    """
+    if answer.error is not None:
+        return _outcome(
+            kind, Outcome.SKIPPED, _CERT_UNREACHABLE, diagnostics={"error": answer.error}
+        )
+    if answer.status == _TOO_MANY_REQUESTS:
+        parameters = answer.body.get("parameters")
+        retry_after = parameters.get("retry_after") if isinstance(parameters, dict) else None
+        return _outcome(
+            kind,
+            Outcome.SKIPPED,
+            _CERT_THROTTLED,
+            diagnostics={
+                "retry_after": str(retry_after) if isinstance(retry_after, int) else "",
+            },
+        )
+    if answer.status >= _SERVER_ERROR:
+        return _outcome(
+            kind, Outcome.SKIPPED, _CERT_UNREACHABLE, diagnostics={"status": str(answer.status)}
+        )
+    return None
+
+
+def _rejected(
+    kind: ScenarioKind, answer: _Answer, *, credentials: Mapping[str, Any], token: str
+) -> ScenarioResult:
+    """Telegram answered, and refused. That is the channel failing.
+
+    Distinct from ``_unmeasured`` in exactly the way that matters: something
+    was asked of the provider and the provider said no, which is a scenario
+    that ran and did not work. Telegram's ``description`` is kept as evidence
+    — through the sanitiser, since it is a provider string — and never used as
+    copy: it names Bot API methods and is only ever English.
+    """
+    return _outcome(
+        kind,
+        Outcome.FAIL,
+        _CERT_REJECTED,
+        diagnostics={
+            "status": str(answer.status),
+            "description": _redacted(answer.description, credentials, token),
+        },
+    )
+
+
+def _sent_id(result: Mapping[str, Any]) -> str:
+    """The id the platform would have stored for this message.
+
+    ``f"{chat_id}:{message_id}"`` — ``TelegramProvider``'s own composite form,
+    so evidence in a certification report can be matched against a real
+    ``Message.external_message_id`` rather than merely resembling one.
+    """
+    chat = result.get("chat")
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    message_id = result.get("message_id")
+    if chat_id is None or message_id is None:
+        return ""
+    return f"{chat_id}:{message_id}"
+
+
+def _largest_photo_file_id(result: Mapping[str, Any]) -> str:
+    """The file id Telegram assigned the bytes we just uploaded.
+
+    Proof the upload landed rather than merely that the request was accepted:
+    Telegram only issues one once it holds the file. Largest size last, the
+    same end of the same list ``TelegramProvider`` reads inbound.
+    """
+    photo = result.get("photo")
+    if not isinstance(photo, list) or not photo:
+        return ""
+    largest = photo[-1]
+    return str(largest.get("file_id") or "") if isinstance(largest, dict) else ""
+
+
+def _chat_photo_file_id(result: Mapping[str, Any]) -> str:
+    """A file this bot can legitimately download, if the chat has one."""
+    photo = result.get("photo")
+    if not isinstance(photo, dict):
+        return ""
+    # The small one: this is a round trip to prove the path works, not to move
+    # as many bytes as possible through somebody's certification run.
+    return str(photo.get("small_file_id") or photo.get("big_file_id") or "")
+
+
+def _private_chat_user_id(result: Mapping[str, Any]) -> int | None:
+    """The user behind a one-to-one chat, when that is what the target is.
+
+    Read off Telegram's own answer rather than off the target string: only
+    ``getChat`` can say whether an id names a person, a group or a channel,
+    and ``getUserProfilePhotos`` is meaningless for the last two.
+    """
+    if str(result.get("type") or "") != "private":
+        return None
+    chat_id = result.get("id")
+    if not isinstance(chat_id, int) or isinstance(chat_id, bool):
+        return None
+    return chat_id
+
+
+def _profile_photo_file_id(result: Mapping[str, Any]) -> str:
+    """The smallest size of the most recent profile photo, if there is one."""
+    photos = result.get("photos")
+    if not isinstance(photos, list) or not photos:
+        return ""
+    sizes = photos[0]
+    if not isinstance(sizes, list) or not sizes:
+        return ""
+    smallest = sizes[0]
+    return str(smallest.get("file_id") or "") if isinstance(smallest, dict) else ""
 
 
 @ConnectorRegistry.register("telegram")
@@ -1015,6 +1377,632 @@ class TelegramConnector(Connector):
             detail_key=_DIAG_PENDING_UPDATES,
             repair_action=_REREGISTER_WEBHOOK,
         )
+
+    # --- Certify ------------------------------------------------------
+
+    async def run_scenario(
+        self,
+        kind: ScenarioKind,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None = None,
+        webhook_secret: str | None = None,
+        callback_url: str | None = None,
+        external_id: str | None = None,
+        external_parent_id: str | None = None,
+    ) -> ScenarioResult:
+        """Demonstrate one behaviour against the real Bot API.
+
+        Nothing here decides whether a scenario applies or whether it is safe
+        to run: the runner has already reported ``NOT_SUPPORTED`` for anything
+        this manifest never claimed, and ``SKIPPED`` for anything that would
+        message a person without a target or change the channel without an
+        opt-in. Being called means being expected to try, so the only reasons
+        a scenario comes back unexecuted from here are reasons Telegram gave.
+
+        Three outcomes, and the line between the last two is the whole value
+        of the report:
+
+        - ``PASS``/``WARNING`` — Telegram did the thing, and said so.
+        - ``FAIL`` — Telegram was asked and refused. The channel is broken.
+        - ``SKIPPED`` — nobody was able to ask. A provider outage, a throttle,
+          a precondition the run does not hold. It costs coverage rather than
+          score, because an unexecuted test is an unanswered question.
+
+        Never raises, and never returns ``PASS`` for anything it did not
+        watch happen.
+        """
+        token = _bot_token(credentials)
+        if not token:
+            # Nothing can be attempted at all. Not a failure of this scenario
+            # — it never started — and the AUTHENTICATION row carries the same
+            # fact in the place an operator looks first.
+            return _outcome(kind, Outcome.SKIPPED, _CERT_TOKEN_MISSING)
+
+        try:
+            match kind:
+                case ScenarioKind.AUTHENTICATION:
+                    return await self._prove_identity(kind, token=token, credentials=credentials)
+                case ScenarioKind.WEBHOOK_DELIVERY:
+                    return await self._prove_delivery(
+                        kind, token=token, credentials=credentials, context=context
+                    )
+                case ScenarioKind.RECEIVE_MESSAGE:
+                    return self._prove_receiving(kind)
+                case ScenarioKind.SEND_MESSAGE:
+                    return await self._prove_sending(
+                        kind, token=token, credentials=credentials, target=target
+                    )
+                case ScenarioKind.MEDIA_UPLOAD:
+                    return await self._prove_upload(
+                        kind, token=token, credentials=credentials, target=target
+                    )
+                case ScenarioKind.TYPING_INDICATOR:
+                    return await self._prove_typing(
+                        kind, token=token, credentials=credentials, target=target
+                    )
+                case ScenarioKind.MEDIA_DOWNLOAD:
+                    return await self._prove_download(
+                        kind, token=token, credentials=credentials, target=target
+                    )
+                case ScenarioKind.TOKEN_REFRESH:
+                    return self._prove_token_refresh(kind)
+                case ScenarioKind.DISCONNECT | ScenarioKind.RECONNECT:
+                    return self._prove_reconnection(kind)
+                case _:
+                    # Unreachable through the runner: ``READ_RECEIPT`` is the
+                    # only kind left, this manifest does not claim
+                    # ``READ_RECEIPTS``, and a scenario the manifest never
+                    # claimed is reported ``NOT_SUPPORTED`` before we are
+                    # called. Answered rather than asserted, because a caller
+                    # that is not the runner must still get a result.
+                    return _outcome(kind, Outcome.SKIPPED, "certification.notImplemented")
+        except Exception as exc:  # noqa: BLE001 - a scenario reports, it never raises
+            # Everything Telegram can do to us is already an outcome above, so
+            # anything arriving here is a defect in this connector. Reported
+            # as ``FAIL`` — the same score the runner would give the raise
+            # this replaces, and never as ``SKIPPED``, which would let a bug
+            # buy its way out of the denominator.
+            return _outcome(
+                kind,
+                Outcome.FAIL,
+                _CERT_UNEXPECTED,
+                diagnostics={"error": _redacted(str(exc), credentials, token)},
+            )
+
+    async def _prove_identity(
+        self, kind: ScenarioKind, *, token: str, credentials: Mapping[str, Any]
+    ) -> ScenarioResult:
+        """``getMe``, judged by the same function ``diagnose`` judges it with.
+
+        The call is repeated; the *verdict* is not. ``_identity`` is the one
+        place that decides what each of Telegram's four answers means, and a
+        second opinion here would eventually disagree with the diagnostics
+        panel — a channel certified green beside a red authentication row,
+        with nothing to say which was right.
+
+        ``UNKNOWN`` becomes ``SKIPPED`` rather than ``FAIL`` for the reason
+        ``diagnose`` gives it: we did not learn that the credential is bad, we
+        learned nothing, and a red row sends a support engineer to reissue a
+        working token during somebody else's outage.
+        """
+        async with httpx.AsyncClient(timeout=_SCENARIO_TIMEOUT) as client:
+            answer = await _ask(client, token=token, credentials=credentials, method="getMe")
+
+        unmeasured = _unmeasured(kind, answer)
+        if unmeasured is not None:
+            return unmeasured
+
+        verdicts = self._identity(answer.status, answer.body)
+        authentication = next(
+            (item for item in verdicts if item.key is DiagnosticKey.AUTHENTICATION), None
+        )
+        if authentication is None:  # pragma: no cover - ``_identity`` always answers this key
+            return _outcome(kind, Outcome.SKIPPED, _CERT_NOT_MEASURED)
+
+        if authentication.status is DiagnosticStatus.OK:
+            # *Which* bot, not merely that a token worked. The mistake this
+            # catches is a staging token on a production channel, which
+            # authenticates perfectly and delivers to nobody.
+            return _outcome(
+                kind,
+                Outcome.PASS,
+                _CERT_AUTHENTICATED,
+                params={"botName": authentication.value or ""},
+                diagnostics={
+                    "username": authentication.params.get("username", ""),
+                    "bot_id": authentication.params.get("botId", ""),
+                },
+            )
+        if authentication.status is DiagnosticStatus.FAIL:
+            return _outcome(
+                kind,
+                Outcome.FAIL,
+                authentication.detail_key or _CERT_TOKEN_NOT_ACCEPTED,
+                diagnostics={
+                    "status": str(answer.status),
+                    "description": _redacted(answer.description, credentials, token),
+                },
+            )
+        if authentication.status is DiagnosticStatus.WARN:
+            return _outcome(kind, Outcome.WARNING, authentication.detail_key or _CERT_AUTHENTICATED)
+        return _outcome(kind, Outcome.SKIPPED, authentication.detail_key or _CERT_NOT_MEASURED)
+
+    async def _prove_delivery(
+        self,
+        kind: ScenarioKind,
+        *,
+        token: str,
+        credentials: Mapping[str, Any],
+        context: DeploymentContext,
+    ) -> ScenarioResult:
+        """``getWebhookInfo`` — Telegram's own account of whether it reaches us.
+
+        The one scenario in the product where the provider genuinely reports
+        on itself, and the reason this connector can certify delivery at all
+        while others can only certify that a URL was configured somewhere.
+
+        Read through the same three classifiers the diagnostics panel uses, so
+        the certification row and the panel cannot tell an operator different
+        things about one ``getWebhookInfo`` response:
+
+        - no URL at all — Telegram has nowhere to deliver and updates are
+          piling up behind it. ``FAIL``; this is a channel that receives
+          nothing, whatever else works.
+        - a URL on somebody else's host — ``WARNING``, not ``FAIL``, because a
+          second legitimate hostname for this installation looks identical to
+          a bot another tool has taken over, and only one of those is broken.
+        - a recent delivery failure, or a queue nobody is draining —
+          ``WARNING`` carrying what Telegram said.
+        - otherwise ``PASS``.
+
+        A failure Telegram recorded weeks ago does not warn: it is kept as
+        evidence and nothing more. Telegram never reports a delivery it
+        *managed*, so an old error behind an empty queue is the only shape
+        "this recovered" can take, and warning about it forever would train an
+        operator to ignore the row that eventually matters.
+        """
+        async with httpx.AsyncClient(timeout=_SCENARIO_TIMEOUT) as client:
+            answer = await _ask(
+                client, token=token, credentials=credentials, method="getWebhookInfo"
+            )
+
+        unmeasured = _unmeasured(kind, answer)
+        if unmeasured is not None:
+            return unmeasured
+        if not answer.ok:
+            # A rejected token, almost always. Delivery was not measured, and
+            # the AUTHENTICATION row already fails for it — counting one dead
+            # credential as two broken behaviours would make the score say
+            # something arithmetically true and factually misleading.
+            return _outcome(
+                kind,
+                Outcome.SKIPPED,
+                _CERT_NOT_MEASURED,
+                diagnostics={
+                    "status": str(answer.status),
+                    "description": _redacted(answer.description, credentials, token),
+                },
+            )
+
+        info = answer.result
+        url = str(info.get("url") or "")
+        registration = self._webhook_status(url, context=context)
+        failure = self._last_failure(info, credentials=credentials, token=token)
+        queue = self._retry_queue(info, registered=bool(url))
+
+        evidence = {
+            "webhook_host": registration.value or "",
+            "pending_updates": (queue.value or "") if queue is not None else "",
+            "last_error_at": (failure.value or "") if failure is not None else "",
+            "last_error": failure.params.get("detail", "") if failure is not None else "",
+        }
+
+        if registration.status is DiagnosticStatus.FAIL:
+            return _outcome(kind, Outcome.FAIL, _CERT_WEBHOOK_MISSING, diagnostics=evidence)
+        if registration.status is DiagnosticStatus.WARN:
+            return _outcome(
+                kind,
+                Outcome.WARNING,
+                _CERT_WEBHOOK_ELSEWHERE,
+                params={"host": registration.value or ""},
+                diagnostics=evidence,
+            )
+        if failure is not None and _recent(failure.measured_at):
+            return _outcome(
+                kind,
+                Outcome.WARNING,
+                _CERT_WEBHOOK_FAILING,
+                params={"detail": failure.params.get("detail", ""), "at": failure.value or ""},
+                diagnostics=evidence,
+            )
+        if queue is not None and queue.status is DiagnosticStatus.WARN:
+            return _outcome(
+                kind,
+                Outcome.WARNING,
+                _CERT_WEBHOOK_BACKLOG,
+                params={"pending": queue.value or ""},
+                diagnostics=evidence,
+            )
+        return _outcome(
+            kind,
+            Outcome.PASS,
+            _CERT_WEBHOOK_REGISTERED,
+            params={"host": registration.value or ""},
+            diagnostics=evidence,
+        )
+
+    @staticmethod
+    def _prove_receiving(kind: ScenarioKind) -> ScenarioResult:
+        """``SKIPPED``, and the one place this connector was owed a ``PASS``.
+
+        The evidence is genuinely tempting: a registered webhook pointing at
+        this installation, no delivery failure, ``pending_update_count`` at
+        zero. It reads like a bot receiving messages, and calling it one would
+        give Telegram a scenario nobody else in the product can execute.
+
+        It is the wrong measurement, twice over.
+
+        It is not evidence of receiving. Telegram holding a delivery address
+        is a statement about Telegram, not about us: zero pending updates is
+        equally the signature of a channel nobody has ever messaged, and a
+        queue that is empty because there was never anything in it looks
+        exactly like a queue that is empty because everything drained. Neither
+        does any of it exercise the half that actually breaks — an update
+        arriving at our endpoint, clearing signature verification, and
+        ``receive_message`` turning it into a ``Message`` row. A bot with a
+        perfect ``getWebhookInfo`` and a stale ``webhook_secret`` discards
+        every update it is sent, silently, and would certify green here.
+
+        And it is a measurement this report already contains. It is precisely
+        what ``WEBHOOK_DELIVERY`` asserts, reported one row above; counting it
+        again under a second name would be one fact presented as two, which is
+        how a coverage number stops meaning anything.
+
+        Receiving needs a customer to send something, and nothing in a
+        certification run may cause that. So this stays unexecuted and says
+        why — which costs coverage, and should.
+        """
+        return _outcome(kind, Outcome.SKIPPED, _CERT_INBOUND_NOT_PROVOKABLE)
+
+    async def _prove_sending(
+        self,
+        kind: ScenarioKind,
+        *,
+        token: str,
+        credentials: Mapping[str, Any],
+        target: str | None,
+    ) -> ScenarioResult:
+        """``sendMessage`` to the chat somebody named on purpose."""
+        if not target:
+            # Not a second guess at the runner's safety gate — that one is
+            # about consent, and it already ran. This is the mechanical half:
+            # there is no chat to name in the payload, and it is what makes
+            # "this never sends without a target" true of the method rather
+            # than of its caller.
+            return _outcome(kind, Outcome.SKIPPED, _CERT_NO_TARGET_CHAT)
+
+        async with httpx.AsyncClient(timeout=_SCENARIO_TIMEOUT) as client:
+            answer = await _ask(
+                client,
+                token=token,
+                credentials=credentials,
+                method="sendMessage",
+                payload={"chat_id": target, "text": _CERTIFICATION_MESSAGE},
+            )
+
+        unmeasured = _unmeasured(kind, answer)
+        if unmeasured is not None:
+            return unmeasured
+        if not answer.ok:
+            return _rejected(kind, answer, credentials=credentials, token=token)
+        message_id = _sent_id(answer.result)
+        if not message_id:
+            # Telegram said ok and named nothing. A pass with no provider id
+            # behind it is a pass nobody can check against a real Message row,
+            # and `_outcome` drops empty evidence — so it would be
+            # indistinguishable from one that carried it. Both siblings guard
+            # this: SMS skips an empty sid, Meta warns on one.
+            return _outcome(kind, Outcome.WARNING, _CERT_MESSAGE_UNCONFIRMED)
+        return _outcome(
+            kind,
+            Outcome.PASS,
+            _CERT_MESSAGE_SENT,
+            diagnostics={"message_id": message_id, "status": str(answer.status)},
+        )
+
+    async def _prove_upload(
+        self,
+        kind: ScenarioKind,
+        *,
+        token: str,
+        credentials: Mapping[str, Any],
+        target: str | None,
+    ) -> ScenarioResult:
+        """``sendPhoto``, with real bytes, by the route the provider uses.
+
+        Multipart with the image inline rather than a URL Telegram would fetch
+        for us: the second proves Telegram's downloader works, and it is the
+        first that ``TelegramProvider._send_attachments`` actually does.
+
+        The file id in the evidence is the part worth keeping. Telegram issues
+        one only once it holds the bytes, so it is the difference between "the
+        request was accepted" and "the upload landed".
+        """
+        if not target:
+            return _outcome(kind, Outcome.SKIPPED, _CERT_NO_TARGET_CHAT)
+
+        async with httpx.AsyncClient(timeout=_SCENARIO_TIMEOUT) as client:
+            answer = await _ask(
+                client,
+                token=token,
+                credentials=credentials,
+                method="sendPhoto",
+                payload={"chat_id": target, "caption": _CERTIFICATION_MESSAGE},
+                files={
+                    "photo": (_CERTIFICATION_IMAGE_NAME, _CERTIFICATION_IMAGE, "image/png"),
+                },
+            )
+
+        unmeasured = _unmeasured(kind, answer)
+        if unmeasured is not None:
+            return unmeasured
+        if not answer.ok:
+            return _rejected(kind, answer, credentials=credentials, token=token)
+        file_id = _largest_photo_file_id(answer.result)
+        if not file_id:
+            # The docstring's own claim, now enforced: Telegram issues a
+            # file id only once it holds the bytes, which is the difference
+            # between "the request was accepted" and "the upload landed".
+            # Passing without one asserted the second and measured the first.
+            return _outcome(kind, Outcome.WARNING, _CERT_PHOTO_UNCONFIRMED)
+        return _outcome(
+            kind,
+            Outcome.PASS,
+            _CERT_PHOTO_SENT,
+            diagnostics={
+                "message_id": _sent_id(answer.result),
+                "file_id": file_id,
+                "bytes_sent": str(len(_CERTIFICATION_IMAGE)),
+            },
+        )
+
+    async def _prove_typing(
+        self,
+        kind: ScenarioKind,
+        *,
+        token: str,
+        credentials: Mapping[str, Any],
+        target: str | None,
+    ) -> ScenarioResult:
+        """``sendChatAction``, and the honest limit of what it proves.
+
+        Telegram answers ``result: true`` and nothing else — no id, no handle,
+        and no update that would let a bot observe its own indicator. So a
+        ``PASS`` here means Telegram accepted a typing action for this chat,
+        which is the whole of what the Bot API offers to measure. Saying more
+        would be describing a bubble nobody here can see.
+        """
+        if not target:
+            return _outcome(kind, Outcome.SKIPPED, _CERT_NO_TARGET_CHAT)
+
+        async with httpx.AsyncClient(timeout=_SCENARIO_TIMEOUT) as client:
+            answer = await _ask(
+                client,
+                token=token,
+                credentials=credentials,
+                method="sendChatAction",
+                payload={"chat_id": target, "action": "typing"},
+            )
+
+        unmeasured = _unmeasured(kind, answer)
+        if unmeasured is not None:
+            return unmeasured
+        if not answer.ok:
+            return _rejected(kind, answer, credentials=credentials, token=token)
+        return _outcome(
+            kind,
+            Outcome.PASS,
+            _CERT_TYPING_ACCEPTED,
+            diagnostics={"action": "typing", "status": str(answer.status)},
+        )
+
+    async def _prove_download(
+        self,
+        kind: ScenarioKind,
+        *,
+        token: str,
+        credentials: Mapping[str, Any],
+        target: str | None,
+    ) -> ScenarioResult:
+        """``getFile`` and the file service, against the target chat's photo.
+
+        Downloading needs a file id, and a file id normally arrives on an
+        inbound message this run cannot cause. Two files are reachable without
+        waiting for a customer — the target chat's photo, or, when the target
+        is a one-to-one chat, the profile photo of the person on the other end
+        — and both are pulled down through exactly the two steps
+        ``TelegramProvider._download_file`` takes: ``getFile`` for the path,
+        then the bytes from the file service. What that does *not* exercise is
+        pulling a file id out of an update, which is the half that needs a
+        human and the half ``RECEIVE_MESSAGE`` declines to claim.
+
+        Nothing is sent to get there. ``MEDIA_DOWNLOAD`` is deliberately not
+        one of the scenarios the runner gates on a target, because downloading
+        observes and does not emit — and the obvious way to guarantee a file
+        to fetch, uploading one first, would quietly turn a read-only scenario
+        into one that messages somebody.
+
+        The line between ``SKIPPED`` and ``FAIL`` here is precise: not being
+        able to obtain a file id is a missing precondition, and every reason
+        for it (no target, a chat this bot cannot see, a chat with no photo)
+        is a fact about the run rather than about the download path. Once
+        Telegram has handed us an id it issued itself, anything that goes
+        wrong after that is the download path failing.
+        """
+        if not target:
+            return _outcome(kind, Outcome.SKIPPED, _CERT_NO_TARGET_CHAT)
+
+        async with httpx.AsyncClient(timeout=_SCENARIO_TIMEOUT) as client:
+            chat = await _ask(
+                client,
+                token=token,
+                credentials=credentials,
+                method="getChat",
+                payload={"chat_id": target},
+            )
+            unmeasured = _unmeasured(kind, chat)
+            if unmeasured is not None:
+                return unmeasured
+
+            file_id = _chat_photo_file_id(chat.result) if chat.ok else ""
+            user_id = _private_chat_user_id(chat.result) if chat.ok else None
+            if not file_id and user_id is not None:
+                # A one-to-one chat has no photo of its own — the participants
+                # do. Worth the extra round trip because a private chat is
+                # what an operator names as a test target nine times in ten,
+                # and without it this scenario almost never runs.
+                photos = await _ask(
+                    client,
+                    token=token,
+                    credentials=credentials,
+                    method="getUserProfilePhotos",
+                    payload={"user_id": user_id, "limit": 1},
+                )
+                unmeasured = _unmeasured(kind, photos)
+                if unmeasured is not None:
+                    return unmeasured
+                file_id = _profile_photo_file_id(photos.result) if photos.ok else ""
+
+            if not file_id:
+                return _outcome(
+                    kind,
+                    Outcome.SKIPPED,
+                    _CERT_NO_FILE_TO_DOWNLOAD,
+                    diagnostics={
+                        "description": _redacted(chat.description, credentials, token),
+                    },
+                )
+
+            located = await _ask(
+                client,
+                token=token,
+                credentials=credentials,
+                method="getFile",
+                payload={"file_id": file_id},
+            )
+            unmeasured = _unmeasured(kind, located)
+            if unmeasured is not None:
+                return unmeasured
+            if not located.ok:
+                return _rejected(kind, located, credentials=credentials, token=token)
+
+            file_path = str(located.result.get("file_path") or "")
+            if not file_path:
+                # ``getFile`` succeeded and named nothing to fetch. Telegram
+                # promises a path on a resolvable id, so this is the download
+                # path not working rather than a precondition we lack.
+                return _outcome(
+                    kind, Outcome.FAIL, _CERT_REJECTED, diagnostics={"status": str(located.status)}
+                )
+
+            fetched = await _fetch_file(
+                client, token=token, credentials=credentials, file_path=file_path
+            )
+
+        if fetched.error is not None:
+            return _outcome(
+                kind, Outcome.SKIPPED, _CERT_UNREACHABLE, diagnostics={"error": fetched.error}
+            )
+        if fetched.status >= _SERVER_ERROR:
+            return _outcome(
+                kind,
+                Outcome.SKIPPED,
+                _CERT_UNREACHABLE,
+                diagnostics={"status": str(fetched.status)},
+            )
+        if fetched.status != _OK or fetched.size <= 0:
+            # An id Telegram issued, a path Telegram named, and no bytes at
+            # the end of it. Nothing about that is a missing precondition.
+            return _outcome(
+                kind,
+                Outcome.FAIL,
+                _CERT_REJECTED,
+                diagnostics={
+                    "status": str(fetched.status),
+                    "bytes_received": str(fetched.size),
+                },
+            )
+        return _outcome(
+            kind,
+            Outcome.PASS,
+            _CERT_FILE_DOWNLOADED,
+            # The path, not the URL: the URL it hangs off carries the bot
+            # token, and this report is read by anyone with ``channels.read``.
+            diagnostics={"file_path": file_path, "bytes_received": str(fetched.size)},
+        )
+
+    @staticmethod
+    def _prove_token_refresh(kind: ScenarioKind) -> ScenarioResult:
+        """There is nothing to refresh, and saying so is not the same as passing.
+
+        Bot tokens do not expire. They are revoked — deliberately, by the
+        customer, in BotFather — which is why ``TOKEN_REFRESH`` is absent from
+        this manifest's capabilities and why no refresh material is stored.
+
+        Reported as ``SKIPPED`` rather than ``NOT_SUPPORTED``, which was
+        available and is the wrong answer coming from here: ``NOT_SUPPORTED``
+        removes the row from the denominator entirely, and a connector that
+        can strike its own scenarios off the list is a connector setting its
+        own score. That judgement is the runner's, from the manifest. So this
+        costs coverage instead, which is the correct price for a question this
+        run did not answer.
+        """
+        return _outcome(kind, Outcome.SKIPPED, _CERT_TOKENS_DO_NOT_EXPIRE)
+
+    @staticmethod
+    def _prove_reconnection(kind: ScenarioKind) -> ScenarioResult:
+        """The two scenarios that are one API call each, and still cannot run.
+
+        ``deleteWebhook`` and ``setWebhook`` are trivially callable here, the
+        operator has opted into mutation by asking for it, and either would
+        return ``ok: true`` within the second. That is what makes this the
+        most dangerous ``PASS`` available in this file.
+
+        Telegram holds ``secret_token`` write-only. ``getWebhookInfo`` reports
+        the URL, the last error and the queue, and never the secret — so a
+        webhook that is torn down cannot be put back as it was, only replaced
+        with one carrying a *new* secret. A scenario has nowhere to return
+        that: ``register_webhook`` and ``repair`` hand theirs back as
+        ``Repair.webhook_secret``, bound for the ``ChannelConfig`` column, and
+        ``run_scenario`` returns a ``ScenarioResult``, whose ``diagnostics``
+        are read by anyone with ``channels.read`` and are the last place a live
+        secret should be written.
+
+        So the channel would come back looking perfect — a URL registered, no
+        error, an empty queue — while ``TelegramProvider.verify_signature``
+        rejected every update against a column Telegram no longer agrees with.
+        Silently, because a channel nobody has messaged looks exactly the same.
+        A certification run that produced that state would have caused, in the
+        name of measuring it, the precise failure it exists to catch.
+
+        The honest report is two unexecuted rows and the reason. What would
+        make them executable is not a connector change: it is
+        ``run_scenario`` being given the callback URL and stored secret the
+        repair path already receives, or a way to hand a rotated secret back.
+        Until then, the button that genuinely re-registers this webhook is the
+        ``reregister_webhook`` repair, which has both.
+        """
+        return _outcome(kind, Outcome.SKIPPED, _CERT_SECRET_NOT_RECOVERABLE)
+
+    # ``supported_until`` is deliberately not overridden. The base returns
+    # ``None`` and that is the true answer here: the Bot API states no version
+    # anywhere — see ``versions.api="unversioned"`` above — so there is nothing
+    # to retire and no schedule to read a date off. An administrator plans a
+    # migration around that field, and a plausible-looking date invented to
+    # fill the row would manufacture the deprecation risk the field exists to
+    # report.
 
     # --- Repair -------------------------------------------------------
 

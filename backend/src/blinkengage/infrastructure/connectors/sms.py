@@ -101,6 +101,44 @@ round trip could infer. The connector's half of the merge wins, so answering a
 key it cannot measure would shadow a real observation with a guess. Unanswered
 becomes ``UNKNOWN``, which is the truth.
 
+``run_scenario`` demonstrates three of the eleven scenarios and declines the
+rest by name. AUTHENTICATION and WEBHOOK_DELIVERY are not measured a second
+time: they *are* the two diagnostics above, read through ``diagnose`` and
+scored, because two implementations of "is this token still accepted" would
+eventually disagree and the one an administrator was shown would be whichever
+ran last. SEND_MESSAGE is the only scenario here that sends anything, only
+ever to a ``target`` the runner was given deliberately, and it is the only
+one that costs the customer money — one billable segment per run, said
+outright in the result rather than discovered on an invoice.
+
+The other five are skipped, each for a reason that is not "unimplemented".
+RECEIVE_MESSAGE and MEDIA_DOWNLOAD both need somebody to text this number,
+which a certification run must not arrange and cannot fake: Twilio's message
+log would prove that *Twilio* received something, never that this platform
+did, and reading a real customer's stored MMS to prove the download path
+would be spending their privacy on our score. TOKEN_REFRESH has nothing to
+refresh — a carrier auth token is a static secret typed into a form, which is
+why ``TOKEN_REFRESH`` is absent from the capability set. DISCONNECT and
+RECONNECT have nothing to break: SMS holds no session and no revocable grant,
+and the one link that could be cut — the number's ``SmsUrl`` — cannot be put
+back, because the callback URL contains the channel id and ``run_scenario``
+is not given one. Clearing it would leave a working channel deaf with no way
+back, which is precisely the outcome ``MUTATES_THE_CHANNEL`` exists to
+prevent. That honesty costs coverage, and it is supposed to: an unexecuted
+scenario is an unanswered question, and answering it with a green tick would
+be the one thing certification cannot survive.
+
+``supported_until`` is deliberately not overridden, so the contract's ``None``
+stands. Twilio publishes no retirement date for the 2010-04-01 API — it has
+been the only version since 2010, and Twilio's deprecation notices retire
+*products*, not it. A date invented here would be worse than none, because
+administrators plan migrations around it. There is a second reason it could
+not be answered even if Twilio published one: this connector is a medium
+rather than a vendor, ``supported_until`` is handed no credentials, and so it
+cannot know which carrier the channel it is being asked about actually uses —
+the same problem that leaves ``VersionInfo.api`` empty on a multi-carrier
+build.
+
 Every fix this file offers is ``reenter`` or ``manual``, and never
 ``reauthorize``. There is no consent screen behind any of these carriers, so
 a reauthorize fix renders a button that goes nowhere — the reason the fix kind
@@ -119,7 +157,7 @@ differently.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -135,6 +173,11 @@ from blinkengage.domain.connector import (
     Connector,
     DeploymentContext,
     Repair,
+)
+from blinkengage.domain.connector_certification import (
+    Outcome,
+    ScenarioKind,
+    ScenarioResult,
 )
 from blinkengage.domain.connector_diagnostics import (
     Diagnostic,
@@ -203,6 +246,15 @@ _PROBE_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 #: says UNKNOWN against every line only this connector could have answered,
 #: which is a worse outcome than being slightly impatient with a slow carrier.
 _DIAGNOSTIC_TIMEOUT = httpx.Timeout(5.0, connect=3.0)
+
+#: A certification send gets the probe's budget rather than the diagnostics'.
+#: One POST, watched by whoever started the run, and it has to finish well
+#: inside the runner's ``SCENARIO_TIMEOUT`` — which the runner states but does
+#: not enforce, so a connector that hangs here hangs the whole suite. It is
+#: also the one timeout in this file with a price attached: a request abandoned
+#: after ten seconds may still have been accepted and billed, which is why that
+#: path reports what it does not know rather than assuming nothing happened.
+_SEND_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 #: The statuses that mean the carrier looked at our credentials and refused
 #: them, rather than having a problem of its own — the same split, and the
@@ -278,6 +330,83 @@ _FEATURE_MEDIA_INBOUND_ONLY = "connect.sms.feature.mediaInboundOnly"
 #: rather than translated into a key of this module's own, so a caller can
 #: tell a carrier that has no registration API from one that tried and failed.
 _NOT_SUPPORTED = "not_supported"
+
+#: Copy for the certification report — a third vocabulary, for the same reason
+#: there is a second. A check key is read by a customer mid-wizard and a
+#: diagnostic key by a support engineer with that customer on the phone; these
+#: are read by an administrator deciding whether this channel is fit to put
+#: customers on. Where a diagnostic already states the reason exactly — an
+#: inactive account, a callback pointing elsewhere — that key is reused rather
+#: than restated, because certification and the panel measure the same facts
+#: with the same calls and must never word them differently. What is added here
+#: is only what the panel has no reason to say: that something passed, and why
+#: something was not attempted.
+_CERT_AUTHENTICATED = "certification.sms.authenticated"
+_CERT_WEBHOOK_POINTS_HERE = "certification.sms.webhookPointsHere"
+_CERT_MESSAGE_ACCEPTED = "certification.sms.messageAccepted"
+_CERT_SEND_REJECTED = "certification.sms.sendRejected"
+_CERT_SEND_UNCONFIRMED = "certification.sms.skipped.sendUnconfirmed"
+_CERT_CARRIER_SILENT = "certification.sms.skipped.carrierDidNotAnswer"
+_CERT_GATEWAY_UNKNOWN = "certification.sms.skipped.gatewayUnknown"
+_CERT_INBOUND_NEEDS_A_REAL_MESSAGE = "certification.sms.skipped.inboundNeedsARealMessage"
+_CERT_MEDIA_NEEDS_A_REAL_MMS = "certification.sms.skipped.mediaNeedsARealMms"
+_CERT_NO_REFRESHABLE_CREDENTIAL = "certification.sms.skipped.noRefreshableCredential"
+_CERT_NOTHING_TO_DISCONNECT = "certification.sms.skipped.nothingToDisconnect"
+_CERT_NO_SEND_PATH = "certification.sms.skipped.carrierSendNotExercisable"
+
+#: The runner's own key for a connector that raised, reused verbatim rather
+#: than given a variant of this module's own. A defect caught here and one that
+#: escaped mean the same thing to whoever reads the report and should read the
+#: same; what catching it adds is the redacted exception as evidence, which the
+#: runner — holding no credentials to redact against — cannot produce.
+_CERT_RAISED = "certification.raised"
+
+#: The runner's key for an emitting scenario with nowhere to send. Returned
+#: only to satisfy a signature whose ``target`` is optional; see
+#: ``SmsConnector._certify_send``.
+_CERT_NO_TARGET = "certification.skipped.noTarget"
+
+#: The body of the only message certification is ever allowed to send, and the
+#: one customer-facing string in this file that is not a translation key. It has
+#: nowhere to be translated *to*: it arrives on a handset over a protocol with
+#: no locale, no metadata and no sender beyond a number, so the string that
+#: leaves here is the string somebody reads. Written to be unambiguous on a lock
+#: screen, and kept inside one GSM-7 segment because the account being certified
+#: is billed per segment for it.
+_CERTIFICATION_SMS_BODY = "Blink Engage certification test. No action required."
+
+#: Twilio message states that mean the carrier took the message and then
+#: refused it. Read on the create response, where they are rare but not
+#: impossible; the ordinary answer is ``queued``.
+_TWILIO_REFUSED_STATUSES = frozenset({"failed", "undelivered", "canceled"})
+
+#: How a measured diagnostic becomes a scored outcome. Only the last line is
+#: worth arguing about: an ``UNKNOWN`` diagnostic is a question the carrier did
+#: not answer — a timeout, a 5xx, a body that was not the resource — and
+#: scoring that as a failure would mark a working channel down for its carrier
+#: having a bad minute. ``SKIPPED`` costs coverage instead, which is the lever
+#: that exists for "we could not tell", and it is the lever that cannot flatter
+#: anybody: an unanswered question never raises a score.
+_OUTCOME_FOR_STATUS: dict[DiagnosticStatus, Outcome] = {
+    DiagnosticStatus.OK: Outcome.PASS,
+    DiagnosticStatus.WARN: Outcome.WARNING,
+    DiagnosticStatus.FAIL: Outcome.FAIL,
+    DiagnosticStatus.UNKNOWN: Outcome.SKIPPED,
+}
+
+#: The one place certification deliberately weighs a diagnostic differently
+#: from the panel, and the reason it is a set rather than a coincidence.
+#: ``_authentication_diagnostic`` reports a trial account as ``OK`` with a note,
+#: because on a live channel it sends perfectly to the numbers it has verified
+#: and a row that stays yellow for the lifetime of every trial account is a row
+#: engineers learn to skip. Certification answers a different question — is this
+#: fit to put customers on — and a trial Twilio account can message only numbers
+#: it has verified. Certifying one at a clean 100% would produce "Production
+#: Ready" for a channel that works for whoever tested it and for nobody else,
+#: which is the exact sentence this feature exists to make impossible. Same
+#: measurement, same key, different weight, stated here rather than hidden in a
+#: branch.
+_PASSES_BUT_WORTH_SAYING: frozenset[str] = frozenset({_DIAGNOSTIC_ACCOUNT_TRIAL})
 
 
 def _text(values: Mapping[str, Any], name: str) -> str:
@@ -548,6 +677,174 @@ async def _register_twilio(credentials: dict[str, Any], callback_url: str) -> Re
         return Repair(repaired=False, reason=_ERROR_WEBHOOK_REGISTRATION)
 
     return Repair(repaired=True)
+
+
+def _send_outcome(
+    outcome: Outcome,
+    detail_key: str,
+    *,
+    target: str,
+    diagnostics: dict[str, str],
+) -> ScenarioResult:
+    """One SEND_MESSAGE verdict, with the number it was aimed at.
+
+    ``target`` rides in ``params`` rather than ``diagnostics`` because it is
+    part of the sentence an administrator reads — a run that sent a message
+    must say where it went — while everything in ``diagnostics`` is evidence
+    nobody has to translate to act on.
+    """
+    return ScenarioResult(
+        kind=ScenarioKind.SEND_MESSAGE,
+        outcome=outcome,
+        detail_key=detail_key,
+        params={"target": target},
+        diagnostics=diagnostics,
+    )
+
+
+async def _certify_send_twilio(credentials: dict[str, Any], target: str) -> ScenarioResult:
+    """Send one real SMS, to one number somebody typed on purpose.
+
+    The only call in this connector that costs the customer money: one
+    billable segment, on their Twilio account, every time a certification run
+    is given a target. That is stated in the result — ``billable`` and
+    ``segments`` — rather than left to be discovered on an invoice, because a
+    suite that quietly spends money is a suite an administrator stops running.
+
+    What a pass means here is exactly "Twilio issued a message SID for it",
+    and the result says so: ``delivery`` is reported ``unobserved``. Twilio
+    answers the create call with ``queued``, and a delivery receipt arrives
+    seconds or minutes later, from some carriers never. Polling for one would
+    make the scenario slow, make it non-deterministic, and turn every handset
+    that is merely slow to acknowledge into a channel that looks broken —
+    while reporting ``PASS`` on a queue and *calling* it delivered would be
+    the fabrication this contract is written against. Acceptance is what is
+    measured, so acceptance is what is claimed.
+
+    Sent with this file's own client rather than through ``TwilioGateway``,
+    for the reason every other carrier call here is: the transport layer is
+    constructed per message with an attachment store this layer has none of,
+    and its client sets no timeout, so a certification run routed through it
+    could hang past the runner's whole budget. It posts the same three fields
+    to the same endpoint; if those ever diverge, this scenario certifies the
+    wrong send, and that is the cost of the split.
+    """
+    account_sid = _text(credentials, "account_sid")
+    auth = (account_sid, _text(credentials, "auth_token"))
+    from_number = _text(credentials, "from_number")
+
+    try:
+        async with httpx.AsyncClient(timeout=_SEND_TIMEOUT) as client:
+            response = await client.post(
+                f"{_TWILIO_API}/Accounts/{account_sid}/Messages.json",
+                auth=auth,
+                data={"To": target, "From": from_number, "Body": _CERTIFICATION_SMS_BODY},
+            )
+    except Exception as exc:  # noqa: BLE001 - a scenario reports, it never raises
+        # Includes ``httpx.InvalidURL``, raised before anything leaves. No
+        # answer came back, so nothing was demonstrated — but a POST that timed
+        # out may still have been accepted and billed, and an administrator
+        # reconciling a bill needs that said rather than assumed away.
+        return _send_outcome(
+            Outcome.SKIPPED,
+            _CERT_SEND_UNCONFIRMED,
+            target=target,
+            diagnostics={
+                "detail": _redact(str(exc), credentials),
+                "possibly_sent": "true",
+                "billable": "unknown",
+            },
+        )
+
+    diagnostics = {"http_status": str(response.status_code)}
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    body: dict[str, Any] = payload if isinstance(payload, dict) else {}
+
+    if response.status_code == _TOO_MANY_REQUESTS:
+        # Throttled before the message existed. Nothing was sent and nothing
+        # was proved: a channel being busy is not a channel being broken, and
+        # the same response on the diagnostics side is a WARN rather than a
+        # rejection for the same reason.
+        retry_after = response.headers.get("retry-after")
+        if retry_after:
+            diagnostics["retry_after"] = str(retry_after)
+        diagnostics["billable"] = "false"
+        return _send_outcome(
+            Outcome.SKIPPED, _DIAGNOSTIC_RATE_LIMITED, target=target, diagnostics=diagnostics
+        )
+
+    if response.status_code >= 500:
+        # Twilio answered and the answer was not about this channel. Unmeasured
+        # rather than failed, exactly as ``_diagnose_twilio`` treats a 5xx.
+        diagnostics["billable"] = "false"
+        return _send_outcome(
+            Outcome.SKIPPED, _DIAGNOSTIC_PROVIDER_ERROR, target=target, diagnostics=diagnostics
+        )
+
+    if response.status_code in _REJECTED_STATUS_CODES:
+        diagnostics["billable"] = "false"
+        return _send_outcome(
+            Outcome.FAIL,
+            _DIAGNOSTIC_CREDENTIALS_REJECTED,
+            target=target,
+            diagnostics=diagnostics,
+        )
+
+    if response.status_code >= 400:
+        # Twilio read the message and refused it on its merits: an unverified
+        # recipient on a trial account, a From that cannot carry SMS, a
+        # malformed To. Every one of them is a real statement about whether
+        # this channel can send, so every one of them is a failure. Twilio's
+        # numeric code is the single most useful thing in the whole report.
+        code = body.get("code")
+        if code is not None:
+            diagnostics["provider_code"] = str(code)
+        message = body.get("message")
+        if isinstance(message, str) and message:
+            diagnostics["detail"] = _redact(message, credentials)
+        diagnostics["billable"] = "false"
+        return _send_outcome(
+            Outcome.FAIL, _CERT_SEND_REJECTED, target=target, diagnostics=diagnostics
+        )
+
+    sid = _text(body, "sid")
+    status = _text(body, "status").lower()
+    error_code = body.get("error_code")
+    if status:
+        diagnostics["message_status"] = status
+    segments = body.get("num_segments")
+    if segments is not None:
+        diagnostics["segments"] = str(segments)
+
+    if not sid:
+        # Accepted, and no message id to show for it. Something may well have
+        # been sent; nothing can be pointed at. Unconfirmed rather than passed,
+        # because a pass with no provider id behind it is a pass nobody can
+        # check — and unconfirmed rather than failed, because the carrier did
+        # not say no.
+        diagnostics["possibly_sent"] = "true"
+        diagnostics["billable"] = "unknown"
+        return _send_outcome(
+            Outcome.SKIPPED, _CERT_SEND_UNCONFIRMED, target=target, diagnostics=diagnostics
+        )
+
+    diagnostics["message_sid"] = sid
+    diagnostics["billable"] = "true"
+    if error_code is not None or status in _TWILIO_REFUSED_STATUSES:
+        if error_code is not None:
+            diagnostics["provider_code"] = str(error_code)
+        return _send_outcome(
+            Outcome.FAIL, _CERT_SEND_REJECTED, target=target, diagnostics=diagnostics
+        )
+
+    # What was measured, and only what was measured.
+    diagnostics["delivery"] = "unobserved"
+    return _send_outcome(
+        Outcome.PASS, _CERT_MESSAGE_ACCEPTED, target=target, diagnostics=diagnostics
+    )
 
 
 def _unmeasured(
@@ -878,6 +1175,60 @@ async def _diagnose_twilio(
         return tuple(items)
 
 
+def _skipped(kind: ScenarioKind, detail_key: str, **params: str) -> ScenarioResult:
+    """A scenario this connector will not pretend to have run.
+
+    Every use of this carries a reason specific enough to argue with. A skip
+    that only said "not implemented" would be indistinguishable from a
+    connector nobody finished, and the whole value of the distinction between
+    ``SKIPPED`` and ``FAIL`` is that somebody reading the report can tell what
+    would have to change for the answer to exist.
+    """
+    return ScenarioResult(kind=kind, outcome=Outcome.SKIPPED, detail_key=detail_key, params=params)
+
+
+def _scenario_from_diagnostic(
+    kind: ScenarioKind, item: Diagnostic | None, *, key: DiagnosticKey, passed_key: str
+) -> ScenarioResult:
+    """One diagnostic, scored.
+
+    Certification and the diagnostics panel put the same questions to the same
+    carrier over the same calls, so the scenario *is* the diagnostic — read
+    rather than measured again. Two implementations of "is this token still
+    accepted" would drift, and the one an administrator was shown would be
+    whichever happened to run last.
+
+    A missing diagnostic is a skip and never a pass. The carrier was asked and
+    said nothing about this key — which happens when the account call failed
+    before the number could be looked at, and would happen for any future
+    carrier with no ``diagnose`` hook at all.
+    """
+    if item is None:
+        return _skipped(kind, _CERT_CARRIER_SILENT, diagnostic=key.value)
+
+    outcome = _OUTCOME_FOR_STATUS[item.status]
+    if outcome is Outcome.PASS and item.detail_key in _PASSES_BUT_WORTH_SAYING:
+        outcome = Outcome.WARNING
+
+    diagnostics = {"diagnostic": key.value, "diagnostic_status": item.status.value}
+    if item.value is not None:
+        diagnostics["measured"] = item.value
+    if item.repair_action is not None:
+        diagnostics["repair_action"] = item.repair_action
+
+    return ScenarioResult(
+        kind=kind,
+        outcome=outcome,
+        # The diagnostic's own reason wherever it stated one — an inactive
+        # account, a callback pointing somewhere else, a number nobody on this
+        # account owns. Only a clean pass has no reason to give, and that is
+        # the one key this side has to supply.
+        detail_key=item.detail_key or (passed_key if outcome is Outcome.PASS else None),
+        params=dict(item.params),
+        diagnostics=diagnostics,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _Gateway:
     """One carrier, described from the wizard's side rather than the wire's.
@@ -920,6 +1271,14 @@ class _Gateway:
     diagnose: (
         Callable[[dict[str, Any], DeploymentContext], Awaitable[tuple[Diagnostic, ...]]] | None
     ) = None
+    #: How to demonstrate one real outbound message for this carrier, to a
+    #: target somebody typed on purpose. The fourth thing that moves per
+    #: gateway, and the only one that spends the customer's money. ``None``
+    #: means SEND_MESSAGE is skipped for that carrier rather than approximated
+    #: — a scenario reporting success without having sent anything is the one
+    #: failure this whole layer exists to prevent, and a carrier whose send
+    #: cannot be exercised here is better described as unproven than as fine.
+    certify_send: Callable[[dict[str, Any], str], Awaitable[ScenarioResult]] | None = None
 
 
 _TWILIO = _Gateway(
@@ -957,6 +1316,7 @@ _TWILIO = _Gateway(
     probe=_probe_twilio,
     register=_register_twilio,
     diagnose=_diagnose_twilio,
+    certify_send=_certify_send_twilio,
 )
 
 _GATEWAYS: dict[str, _Gateway] = {_TWILIO.name: _TWILIO}
@@ -1458,6 +1818,230 @@ class SmsConnector(Connector):
                 ),
             )
         return DiagnosticReport(channel_type=self.channel_type, items=items)
+
+    async def run_scenario(
+        self,
+        kind: ScenarioKind,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None = None,
+        webhook_secret: str | None = None,
+        callback_url: str | None = None,
+        external_id: str | None = None,
+        external_parent_id: str | None = None,
+    ) -> ScenarioResult:
+        """Demonstrate what an SMS channel can genuinely be made to demonstrate.
+
+        Three scenarios are executed against Twilio and five are declined by
+        name; the remaining three never arrive, because the runner has already
+        answered them from the manifest. MEDIA_UPLOAD is the one worth
+        confirming: the feature matrix declares Media ``INBOUND`` only, so
+        ``supports_scenario`` reports NOT_SUPPORTED and this method is never
+        called for it. That is the case ``Direction`` was added for, and it is
+        why there is no outbound-media code here to go stale — READ_RECEIPT and
+        TYPING_INDICATOR are absent from the matrix for the same reason and
+        arrive the same way.
+
+        Nothing here re-checks applicability or safety. A scenario the manifest
+        never claimed, and an emitting scenario with no target, are both decided
+        by the runner before this is reached — a connector that made either
+        judgement itself would be choosing its own denominator, and every
+        connector's score would be 100% within a release.
+
+        Nothing here raises. The runner scores an escaped exception as a
+        failure of that scenario, which is the right verdict for a connector
+        defect and is exactly what the catch below returns — under the runner's
+        own key, so a caught defect and an escaped one read identically. What
+        catching adds is the redacted exception as evidence, which the runner
+        cannot produce because it holds no credentials to redact against.
+        """
+        gateway = _chosen_gateway(credentials)
+        if gateway is None:
+            # Stored credentials naming a carrier this build cannot load — the
+            # same condition ``diagnose`` reports UNKNOWN rather than FAIL, and
+            # skipped here for the same reason. It is a fact about this build's
+            # packaging, not a demonstrated failure of the customer's channel:
+            # the identical channel on a build that ships that carrier would
+            # certify normally. A wrong skip costs coverage, a wrong failure
+            # costs an administrator a grade they will act on, so the doubt is
+            # spent on coverage.
+            return _skipped(kind, _CERT_GATEWAY_UNKNOWN, gateway=_text(credentials, _GATEWAY_FIELD))
+
+        try:
+            return await self._demonstrate(
+                kind, gateway, credentials=credentials, context=context, target=target
+            )
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            return ScenarioResult(
+                kind=kind,
+                outcome=Outcome.FAIL,
+                detail_key=_CERT_RAISED,
+                diagnostics={"detail": _redact(str(exc), credentials)},
+            )
+
+    async def _demonstrate(
+        self,
+        kind: ScenarioKind,
+        gateway: _Gateway,
+        *,
+        credentials: dict[str, Any],
+        context: DeploymentContext,
+        target: str | None,
+    ) -> ScenarioResult:
+        """One scenario, and a reason for every one that does not run.
+
+        The five skips are the substance of this method, so each says what
+        would have to be true for an answer to exist:
+
+        - **RECEIVE_MESSAGE** needs somebody to text this number. Certification
+          must not arrange that and cannot fake it. Twilio's inbound message
+          log is right there and proves the wrong thing — that *Twilio*
+          received something, never that this installation did — and parsing a
+          payload written here to prove ``parse_inbound`` can read it would be
+          a unit test wearing a certification's clothes.
+        - **MEDIA_DOWNLOAD** needs an inbound MMS, which has the same problem
+          and one of its own: the only media Twilio holds for this account is a
+          real customer's, and fetching one to prove the download path works
+          would spend their privacy on our score.
+        - **TOKEN_REFRESH** has nothing to refresh. A carrier auth token is a
+          static secret typed into a form — there is no consent screen behind
+          any of these carriers, which is why ``TOKEN_REFRESH`` is absent from
+          the capability set and why failing this would penalise the connector
+          for the medium's shape.
+        - **DISCONNECT** and **RECONNECT** have nothing to break. SMS holds no
+          session and no revocable grant; the only severable link is the
+          number's ``SmsUrl``, and it cannot be restored, because the callback
+          URL contains the channel id and this method is handed no channel.
+          Cutting it would leave a working channel deaf with no way back —
+          precisely what ``MUTATES_THE_CHANNEL`` is gated to prevent, and it
+          would be no less true for having been asked for by name.
+
+        Those five cost coverage, and they are supposed to. An unexecuted
+        scenario is an unanswered question; answering it with a green tick to
+        reach a threshold is the one thing certification cannot survive.
+        """
+        match kind:
+            case ScenarioKind.AUTHENTICATION:
+                return await self._certify_authentication(credentials, context)
+            case ScenarioKind.WEBHOOK_DELIVERY:
+                return await self._certify_webhook_delivery(credentials, context)
+            case ScenarioKind.SEND_MESSAGE:
+                return await self._certify_send(gateway, credentials, target)
+            case ScenarioKind.RECEIVE_MESSAGE:
+                return _skipped(kind, _CERT_INBOUND_NEEDS_A_REAL_MESSAGE)
+            case ScenarioKind.MEDIA_DOWNLOAD:
+                return _skipped(kind, _CERT_MEDIA_NEEDS_A_REAL_MMS)
+            case ScenarioKind.TOKEN_REFRESH:
+                return _skipped(kind, _CERT_NO_REFRESHABLE_CREDENTIAL)
+            case ScenarioKind.DISCONNECT | ScenarioKind.RECONNECT:
+                return _skipped(kind, _CERT_NOTHING_TO_DISCONNECT)
+            case _:
+                # MEDIA_UPLOAD, READ_RECEIPT and TYPING_INDICATOR, which the
+                # manifest does not claim and the runner therefore never sends.
+                # Not an applicability check — this method has to be total, and
+                # deferring to the contract's own default is the one branch that
+                # cannot drift from it.
+                return await super().run_scenario(
+                    kind, credentials=credentials, context=context, target=target
+                )
+
+    async def _certify_authentication(
+        self, credentials: dict[str, Any], context: DeploymentContext
+    ) -> ScenarioResult:
+        """The account fetch ``diagnose`` already makes, scored.
+
+        Not a second implementation of it. The AUTHENTICATION diagnostic answers
+        exactly the question this scenario asks — does the carrier still accept
+        these credentials — and writing it twice would produce two answers that
+        eventually disagree, with an administrator shown whichever ran last.
+
+        The one place the two deliberately differ in *weight* rather than in
+        fact is a trial account; see ``_PASSES_BUT_WORTH_SAYING``.
+        """
+        report = await self.diagnose(credentials=credentials, context=context)
+        return _scenario_from_diagnostic(
+            ScenarioKind.AUTHENTICATION,
+            report.get(DiagnosticKey.AUTHENTICATION),
+            key=DiagnosticKey.AUTHENTICATION,
+            passed_key=_CERT_AUTHENTICATED,
+        )
+
+    async def _certify_webhook_delivery(
+        self, credentials: dict[str, Any], context: DeploymentContext
+    ) -> ScenarioResult:
+        """Where the number's ``SmsUrl`` points, and whether we could read what
+        arrived there.
+
+        A pass here means the carrier is pointed at *this installation*, not at
+        this channel: the per-channel callback contains the channel id, and
+        ``run_scenario`` is handed credentials and a context and no channel. So
+        the comparison is a prefix, exactly as it is on the panel, and the
+        prefix it was made against is recorded in the evidence rather than left
+        for a reader to assume. Narrowing it further is not a matter of trying
+        harder — it needs the channel id this signature does not carry.
+
+        The API version rides along and can pull a clean pass down to a warning,
+        which is the one piece of judgement this scenario adds. A number left on
+        an older ``api_version`` delivers a request ``TwilioGateway.parse_inbound``
+        cannot read, so the callback is right and inbound still does not work —
+        the same silence, from one field further along. Reporting PASS on the URL
+        while holding a measurement that says the delivery will be unreadable
+        would be certifying a channel already known to be broken.
+        """
+        report = await self.diagnose(credentials=credentials, context=context)
+        result = _scenario_from_diagnostic(
+            ScenarioKind.WEBHOOK_DELIVERY,
+            report.get(DiagnosticKey.WEBHOOK_STATUS),
+            key=DiagnosticKey.WEBHOOK_STATUS,
+            passed_key=_CERT_WEBHOOK_POINTS_HERE,
+        )
+
+        base = context.public_base_url.strip().rstrip("/")
+        if base:
+            result = replace(
+                result, diagnostics={**result.diagnostics, "expected_prefix": f"{base}/"}
+            )
+
+        version = report.get(DiagnosticKey.API_VERSION)
+        if (
+            result.outcome is Outcome.PASS
+            and version is not None
+            and version.status is DiagnosticStatus.WARN
+        ):
+            return replace(
+                result,
+                outcome=Outcome.WARNING,
+                detail_key=version.detail_key,
+                params=dict(version.params),
+                diagnostics={**result.diagnostics, "api_version": version.value or ""},
+            )
+        return result
+
+    async def _certify_send(
+        self, gateway: _Gateway, credentials: dict[str, Any], target: str | None
+    ) -> ScenarioResult:
+        """Actually send, and say what it cost.
+
+        The ``target`` check is not a second safety gate — the runner has
+        already refused to call this without one, and re-deciding that here
+        would be this connector grading its own denominator. It is the
+        narrowing an optional parameter requires, returning the runner's own
+        key so the report reads identically either way.
+
+        A target that arrives is one somebody typed on purpose, and it is
+        treated that way: one message, one segment, billed to the account being
+        certified, to that number and to no other. Nothing here falls back to a
+        recent conversation, the sending number, or any other address that
+        could be guessed from stored state.
+        """
+        if not target:
+            return _skipped(ScenarioKind.SEND_MESSAGE, _CERT_NO_TARGET)
+        if gateway.certify_send is None:
+            # A carrier this build can send with, but whose send cannot be told
+            # apart from a customer's traffic from here. Unproven, and said so.
+            return _skipped(ScenarioKind.SEND_MESSAGE, _CERT_NO_SEND_PATH, gateway=gateway.name)
+        return await gateway.certify_send(credentials, target)
 
     async def repair(
         self,

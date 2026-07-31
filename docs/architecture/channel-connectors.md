@@ -1,5 +1,22 @@
 # The connector framework
 
+> **Status: the SDK is frozen.**
+>
+> The six surfaces below — manifest, validation, diagnostics, repair,
+> certification and the test suite — are the contract a connector implements,
+> and they change only for a critical architectural reason. New work extends
+> the SDK by adding *connectors*, not by changing it.
+>
+> The reason for freezing here rather than earlier: the contract was wrong
+> three separate times, and each time it was four independent implementations
+> hitting the *same* gap that proved it. That signal stopped. The last two
+> additions — lifecycle and certification — needed no contract change from
+> the connectors' side, which is the real test of whether an abstraction is
+> finished.
+>
+> Changing it now means changing every connector, including ones written
+> outside this repository. See **Extending, not changing** at the end.
+
 Blink Engage is a messaging platform. A channel is a transport adapter.
 
 That is a product principle, and this is where it stops being a slogan: a
@@ -419,3 +436,90 @@ The Verify step is `automatic`. Its checks run when the customer *lands* on
 it, not when they try to leave: running them on the way out would show an
 empty checklist and then move past it, so the one step whose whole job is
 saying what is wrong would be the one that never said anything.
+
+## Certification
+
+`POST /channel-connect/channels/{id}/certify` runs the connector's scenarios
+against a live channel and scores what came back.
+
+Eleven scenarios — authentication, send, receive, media up and down, read
+receipt, typing indicator, webhook delivery, token refresh, disconnect,
+reconnect — each returning **pass, fail, warning, skipped or not supported**,
+with its own execution time and diagnostics.
+
+### The three rules the score depends on
+
+**Not supported does not count against you.** SMS cannot send media. Scoring
+that as a failure would give every honest connector a worse score than a
+dishonest one, and within a week every manifest would claim everything. The
+denominator is what the connector *claimed* — which is the feature matrix
+that already exists, so the scenario list is **derived from the manifest**
+rather than declared a second time. Direction decides: a connector receiving
+media and not sending it gets `media_download` and not `media_upload`.
+
+**Not executed does not count for you.** Three passes out of eleven is not
+100%; it is 100% of very little. Certification carries **coverage** alongside
+the score, and withholds a grade below 60% coverage whatever the score says —
+otherwise "96%, Production Ready" is a sentence a suite can produce by running
+almost nothing.
+
+**One failure keeps it out of production.** Nine passes and a broken
+authentication is not a 90% channel, it is a channel that does not work. The
+arithmetic alone would have called it production ready.
+
+A warning is worth half a pass: it did the thing, with something worth saying.
+
+### The score cannot be assigned
+
+`Certification` is frozen and constructed only by `certify()`. There is no
+setter, no override, and no way to certify a connector except by running it.
+
+### Nothing messages a real customer
+
+A certification run against a live channel is a run against somebody's
+WhatsApp number. Scenarios that would put something in front of a person are
+listed in `EMITS_TO_A_CUSTOMER` and are **skipped without an explicit
+target** — never guessed at, never aimed at the last person who wrote in.
+
+`MUTATES_THE_CHANNEL` — disconnect, reconnect, token refresh — is off unless
+asked for by name, because a run that left a working channel in whatever
+state it finished in is a diagnostic worse than the problem.
+
+The runner enforces both, and decides applicability and timing too. **A
+connector demonstrates; it never grades.** A connector deciding its own
+scenario was not applicable is a connector deciding its own denominator.
+
+### Compatibility
+
+Platform version, connector version, provider API version, when the suite last
+actually ran, and when the provider retires the API version this connector
+speaks — `null` where no schedule is published, rather than a date nobody
+promised. An expiry inside ninety days is worth an administrator's attention,
+because a provider deprecation is a migration and finding out the week it
+happens is finding out too late.
+
+`last_verified: null` means never certified, which is a different state from
+certified long ago and needs a different next action.
+
+## Extending, not changing
+
+A new connector implements five things and nothing else:
+
+| Surface | What it is |
+|---|---|
+| **Connector** | `connect()`, and whatever of `authorize_url` / `discover` / `register_webhook` applies |
+| **Manifest** | Everything the console renders itself from |
+| **Validation** | `validate()` → structured codes from the closed set |
+| **Diagnostics** | `diagnose()` → what only this connector can measure |
+| **Repair** | Declared actions, and `repair()` to answer them |
+
+Certification comes free: the scenario list is derived from the manifest, and
+`run_scenario()` is optional — a connector that implements none of it scores
+`INCONCLUSIVE`, which is the honest answer rather than a failure.
+
+**What would justify unfreezing.** Not a connector needing a new field —
+that is what `params`, `diagnostics` and `model_params` are for. The bar is
+the one that was met three times before: *several independent connectors
+hitting the same wall*, where each has to work around the contract in a way
+that is individually reasonable and collectively a bug. One connector wanting
+something is a connector; three wanting the same thing is a contract.

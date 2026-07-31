@@ -34,6 +34,9 @@ from blinkengage.application.services.channel_diagnostics_service import (
 )
 from blinkengage.application.services.collections_service import CollectionsService
 from blinkengage.application.services.company_service import CompanyService
+from blinkengage.application.services.connector_certification_service import (
+    ConnectorCertificationService,
+)
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.customer_internal_rating_service import (
@@ -594,6 +597,14 @@ def _deployment_context(settings: Settings) -> DeploymentContext:
         configured_apps=frozenset(apps),
         platform_version=settings.platform_version,
     )
+
+
+def get_connector_certification_service(
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> ConnectorCertificationService:
+    """The certification runner. Needs no repository — it exercises a
+    connector against a provider and scores what came back."""
+    return ConnectorCertificationService(context=_deployment_context(settings))
 
 
 def get_channel_diagnostics_service(
