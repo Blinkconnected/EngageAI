@@ -9,6 +9,24 @@ This document describes the billing architecture as it is being built.
 It is deliberately staged, and each stage says plainly what exists today
 and what does not.
 
+## Status: feature-complete, in maintenance
+
+**The Billing domain is frozen.** The engine (metering, pricing,
+invoicing, payments, the ledger and collections), the Billing Console, the
+customer's own billing dashboard and Billing Operations are all complete,
+and the two customer-facing documents that closed it out — the invoice PDF
+and line-based credit notes — are in.
+
+From here billing is maintained, not developed. Bug fixes, security work
+and whatever a genuine new business requirement demands; nothing else.
+Engineering effort moves to the AI Platform, the Inbox experience, the
+Automation Builder, the mobile applications, and Reporting & Analytics.
+
+The "Not built yet" section near the end of this document is the honest
+list of what a future requirement would have to reopen this for. It is
+short on purpose: everything on it was a deliberate decision to stop, not
+something forgotten.
+
 ## What changed, and why the history matters
 
 An earlier release shipped a **subscription** model: `billing_plans`,
@@ -2023,6 +2041,117 @@ corrupt the figures the export exists to carry.
 There is no totals row: a column of amounts in two currencies has no honest
 sum.
 
+## The invoice document
+
+`GET /platform/invoices/{id}/pdf` (any company, for an operator) and
+`GET /billing/invoices/{id}/pdf` (their own, for a customer) render the
+document a customer files and pays against.
+
+**Assembled from frozen values only.** `InvoiceDocumentService` gathers the
+header and totals from the `invoices` row, the lines from `invoice_lines`, the
+tier that set each price from the `usage_period_lines` row the line links to,
+the credits from `credit_notes`, the money received from `payment_allocations`,
+and what is still owed from `domain.invoicing.amount_owed`. `domain/
+invoice_document.py` performs **no arithmetic at all** and
+`infrastructure/documents/invoice_pdf.py` performs none either — a renderer
+that computed even one of its own figures would be a second billing
+implementation, and the first time it disagreed nobody could say which document
+was real. A test proves it: change the rate tenfold after issuance and the PDF
+is byte-identical.
+
+A **draft has no PDF** (409). It carries no number and has been sent to nobody;
+a file that looks like an invoice but is not one is worse than an error.
+
+A **cancelled or written-off** invoice says so on its face, above the amounts.
+Its only other signal is a zero balance, which is exactly what a fully paid
+invoice shows — and a customer who cannot tell those apart pays a withdrawn
+bill.
+
+### Typography, and why a font is vendored
+
+DejaVu Sans ships beside the renderer and every invoice is set in it. Not a
+preference: reportlab's base-14 fonts are Latin-1, and a Jordanian company's
+legal name rendered in Helvetica comes out as one solid black rectangle per
+character — on paper, a redaction. The face covers Latin, Arabic (including all
+141 Arabic Presentation Forms), Cyrillic and Greek, and its licence permits
+embedding in documents. `BILLING_DOCUMENT_FONT` overrides it.
+
+`infrastructure/documents/arabic.py` shapes Arabic before it is drawn:
+contextual forms chosen from what each letter joins to, required lam-alef
+ligatures, then reversed into visual order with Latin and digit runs put back
+the way round they were written. It is not a general bidi implementation and
+does not pretend to be — it handles a company name or a description, which is
+what an invoice contains. Text with no Arabic in it is returned untouched.
+
+If a face somehow cannot render a name, the ASCII slug is printed instead and
+the substitution is logged. **Never a black box.**
+
+### What is on the page
+
+Issuer mark; invoice number, issue date, due date, currency; customer name and
+slug; billing period (stated half-open, because that is what the snapshot
+holds); line items with quantity, included, billable, unit price, tier where
+one applies, and amount; subtotal, total, credited, paid, amount outstanding;
+credit notes issued against it; payments applied to it; a QR document
+reference; and the registered legal entity in English and Arabic.
+
+The **QR is a document reference, not a payment instruction** —
+`BLINKENGAGE:INVOICE:1:<number>:<date>:<currency>:<total>` — and says so
+beside itself. There is no customer-facing payment page to point at, and a QR
+resolving to nothing is worse than none because somebody will scan it. The
+version field and a single `qr_payload()` mean a future payment link is one
+function body and a version bump.
+
+`POST /platform/invoices/{id}/email` sends it to the company's billing
+contacts — the same people a dunning notice reaches, defined once in
+`billing_contacts`. Each address is attempted individually; what was sent and
+what failed are both recorded on the audit event and both returned, because
+"sent to two of three" is a different fact from "sent".
+
+## Credit notes are made of invoice lines
+
+An operator selects **lines and quantities, never amounts**. Every description,
+unit and price on the resulting note is copied from the invoice line being
+credited, so every figure traces back to something that was actually billed.
+There is no free-amount path: one that existed for convenience would be the one
+used, and a credit nobody can trace to a charge is a number an auditor makes
+somebody explain.
+
+| Endpoint | |
+|---|---|
+| `GET /platform/invoices/{id}/creditable` | each line's billable quantity, what is already credited, what is left, and the two ceilings |
+| `POST /platform/invoices/{id}/credit-notes/preview` | what the note would say — run through the **write path's own** validation and arithmetic |
+| `POST /platform/invoices/{id}/credit-notes` | issues it |
+
+The preview and the save share one code path, so a total an operator approves
+is the total the document carries and a selection accepted by the preview
+cannot be refused a moment later. (`PricingService.validated_terms` exists
+because this repository already made the opposite mistake once.)
+
+`domain/credit_notes.py` holds the refusals as a closed set of codes —
+`unknown_line`, `line_not_on_invoice`, `line_selected_twice`,
+`quantity_exceeds_remainder`, `exceeds_invoice_remainder` and the rest — because
+a console has to *act* on the answer, and it cannot act on prose.
+
+**Two ceilings, not one.** A line's remainder is what it billed less what
+earlier notes took off it. The invoice's remainder is its total less everything
+credited — and it can be *smaller* than the line remainders add up to, when an
+older whole-invoice credit note consumed credit without naming a line. Both are
+returned, and the difference is reported as `unattributed_credited_amount`, so
+a console can explain the gap rather than let somebody fill in a form that is
+refused on submit.
+
+### The lock, and what it is for
+
+`issue_credit_note` takes `SELECT ... FOR UPDATE` on the invoice row **before**
+reading the remainders. Issuing is a check-then-write: read what is creditable,
+decide the selection fits, write the note and add to `amount_credited`. Without
+the lock, two requests interleave between the read and the write and both are
+told yes — eight concurrent notes against a $500 invoice each passed the check
+and each was written, leaving $4,000 credited against a $500 document. There is
+no database constraint on `amount_credited` to catch it, so the lock and the
+tests around it are the whole guarantee.
+
 ### Not built yet
 
 Stated explicitly so nobody looks for them:
@@ -2033,13 +2162,7 @@ Stated explicitly so nobody looks for them:
 - **A customer-facing payment page** — checkout is started through the
   platform API, so today an operator sends the approval link. The intent
   and return/cancel URLs are already modelled for a self-service page.
-- **Invoice PDF rendering** — the console shows an invoice's lines,
-  totals, credit notes and notice history on screen, and exports the
-  *list* as CSV. There is no per-document PDF yet.
-- **Partial credit notes from the console** — the API takes a line list
-  and supports them; the console's credit action currently offers the full
-  amount only, because a partial credit is a decision made against
-  specific lines and a single "amount" box would let somebody credit 40
-  against a line of 30.
+- **A credit note has no PDF of its own.** It is printed on the invoice it
+  corrects, which is where somebody reconciling the two looks.
 - **Contracts, taxes and discounts** — later phases.
 - **Partial-payment plans.**

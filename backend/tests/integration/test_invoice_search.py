@@ -313,14 +313,28 @@ class TestMoneyOnTheWire:
         detail = await issued_invoice(
             client, headers, await closed_period_with_usage(client, headers, app, own_company)
         )
-        await client.post(
+        creditable = (
+            await client.get(
+                f"/api/v1/platform/invoices/{detail['invoice']['id']}/creditable",
+                headers=headers,
+            )
+        ).json()
+        credited = await client.post(
             f"/api/v1/platform/invoices/{detail['invoice']['id']}/credit-notes",
             headers=headers,
             json={
-                "lines": [{"description": "Overcounted", "quantity": "1", "unit_amount": "0.05"}],
+                # One of the four billed conversations, at the price it was
+                # billed at — a credit note names lines, never amounts.
+                "lines": [
+                    {
+                        "invoice_line_id": creditable["lines"][0]["invoice_line_id"],
+                        "quantity": "1",
+                    }
+                ],
                 "reason": "Duplicate conversations counted after a meter fault",
             },
         )
+        assert credited.status_code == 201, credited.text
 
         group = group_for((await client.get(SEARCH, headers=headers)).json(), "USD")
 

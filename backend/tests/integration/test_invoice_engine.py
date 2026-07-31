@@ -99,6 +99,20 @@ async def issued_invoice(client: AsyncClient, headers: dict, period_id: str) -> 
     return response.json()
 
 
+async def first_creditable_line(client: AsyncClient, headers: dict, invoice_id: str) -> str:
+    """The id of the first line that can still be credited.
+
+    A credit note names lines and quantities, never amounts — every figure on
+    the resulting document has to trace back to something that was actually
+    billed. So a test crediting an invoice has to ask which lines it has.
+    """
+    response = await client.get(
+        f"/api/v1/platform/invoices/{invoice_id}/creditable", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    return str(response.json()["lines"][0]["invoice_line_id"])
+
+
 class TestGeneration:
     async def test_an_invoice_copies_the_frozen_snapshot(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -397,12 +411,11 @@ class TestCreditNotes:
         invoice_id = detail["invoice"]["id"]
         before = detail["invoice"]
 
+        line_id = await first_creditable_line(client, headers, invoice_id)
         note = await client.post(
             f"/api/v1/platform/invoices/{invoice_id}/credit-notes",
             json={
-                "lines": [
-                    {"description": "Overcounted conversations", "quantity": "1", "unit_amount": "0.05"}
-                ],
+                "lines": [{"invoice_line_id": line_id, "quantity": "1"}],
                 "reason": "Duplicate conversations counted after a meter fault",
             },
             headers=headers,
@@ -412,7 +425,9 @@ class TestCreditNotes:
         year = datetime.now(UTC).year
         assert note.json()["credit_note_number"] == f"CN-{year}-000001"
 
-        after = (await client.get(f"/api/v1/platform/invoices/{invoice_id}", headers=headers)).json()
+        after = (
+            await client.get(f"/api/v1/platform/invoices/{invoice_id}", headers=headers)
+        ).json()
         # Unchanged: total, subtotal, number, status.
         assert after["invoice"]["total_amount"] == before["total_amount"]
         assert after["invoice"]["invoice_number"] == before["invoice_number"]
@@ -434,7 +449,10 @@ class TestCreditNotes:
 
         response = await client.post(
             f"/api/v1/platform/invoices/{detail['invoice']['id']}/credit-notes",
-            json={"lines": [{"description": "x", "quantity": "1", "unit_amount": "0.01"}], "reason": "x"},
+            json={
+                "lines": [{"invoice_line_id": str(uuid4()), "quantity": "1"}],
+                "reason": "Crediting a draft",
+            },
             headers=headers,
         )
 
@@ -449,18 +467,25 @@ class TestCreditNotes:
         company_id = await company_id_of(client, owner_headers)
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice_id = (await issued_invoice(client, headers, period_id))["invoice"]["id"]
+        line_id = await first_creditable_line(client, headers, invoice_id)
 
         response = await client.post(
             f"/api/v1/platform/invoices/{invoice_id}/credit-notes",
             json={
-                "lines": [{"description": "Too much", "quantity": "100", "unit_amount": "1.00"}],
+                "lines": [{"invoice_line_id": line_id, "quantity": "1000000"}],
                 "reason": "Mistake",
             },
             headers=headers,
         )
 
         assert response.status_code == 409
-        assert "exceed the invoice total" in response.json()["detail"]
+        # The refusal names the line and what it has left, rather than the
+        # invoice total. With line-based credits that is the binding limit
+        # and the one an operator can act on: the quantity box is what they
+        # have to change.
+        detail = response.json()["detail"]
+        assert "still creditable" in detail
+        assert "1000000" in detail
 
     async def test_a_reason_is_required(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -472,10 +497,14 @@ class TestCreditNotes:
         company_id = await company_id_of(client, owner_headers)
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice_id = (await issued_invoice(client, headers, period_id))["invoice"]["id"]
+        line_id = await first_creditable_line(client, headers, invoice_id)
 
         response = await client.post(
             f"/api/v1/platform/invoices/{invoice_id}/credit-notes",
-            json={"lines": [{"description": "x", "quantity": "1", "unit_amount": "0.01"}], "reason": ""},
+            json={
+                "lines": [{"invoice_line_id": line_id, "quantity": "1"}],
+                "reason": "",
+            },
             headers=headers,
         )
 
@@ -491,17 +520,28 @@ class TestCreditNotes:
         company_id = await company_id_of(client, owner_headers)
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice_id = (await issued_invoice(client, headers, period_id))["invoice"]["id"]
+        creditable = (
+            await client.get(
+                f"/api/v1/platform/invoices/{invoice_id}/creditable", headers=headers
+            )
+        ).json()["lines"][0]
+        line_id = creditable["invoice_line_id"]
+        # Everything the line has left — a full credit, expressed the only
+        # way a credit note can be: as the quantity that was billed.
+        full_quantity = creditable["quantity_creditable"]
 
         await client.post(
             f"/api/v1/platform/invoices/{invoice_id}/credit-notes",
             json={
-                "lines": [{"description": "Full credit", "quantity": "4", "unit_amount": "0.05"}],
+                "lines": [{"invoice_line_id": line_id, "quantity": full_quantity}],
                 "reason": "Service credit agreed with the customer",
             },
             headers=headers,
         )
 
-        after = (await client.get(f"/api/v1/platform/invoices/{invoice_id}", headers=headers)).json()
+        after = (
+            await client.get(f"/api/v1/platform/invoices/{invoice_id}", headers=headers)
+        ).json()
         assert after["invoice"]["status"] == "paid"
         assert Decimal(after["amount_outstanding"]) == Decimal("0")
 
@@ -839,13 +879,14 @@ class TestCancellingAnIssuedInvoiceUnwindsTheLedger:
         company_id = await company_id_of(client, owner_headers)
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice = (await issued_invoice(client, headers, period_id))["invoice"]
+        line_id = await first_creditable_line(client, headers, invoice["id"])
         credited = await client.post(
             f"/api/v1/platform/invoices/{invoice['id']}/credit-notes",
             headers=headers,
             json={
                 "reason": "Two of the four conversations were ours, not theirs.",
                 "lines": [
-                    {"description": "Partial credit", "quantity": "1", "unit_amount": "0.10"}
+                    {"invoice_line_id": line_id, "quantity": "2"}
                 ],
             },
         )

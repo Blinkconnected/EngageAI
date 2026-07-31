@@ -61,6 +61,20 @@ async def record_payment(
     return str(response.json()["id"])
 
 
+async def creditable_line_id(client, headers: dict, invoice_id: str) -> str:
+    """The first line that can still be credited.
+
+    A credit note names lines and quantities, never amounts — every figure
+    on it has to trace back to something that was actually billed — so a
+    caller has to ask the invoice which lines it has.
+    """
+    response = await client.get(
+        f"/api/v1/platform/invoices/{invoice_id}/creditable", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    return str(response.json()["lines"][0]["invoice_line_id"])
+
+
 class TestPostings:
     async def test_a_draft_invoice_posts_nothing(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -147,7 +161,12 @@ class TestPostings:
             headers=headers,
             json={
                 "lines": [
-                    {"description": "Overcounted", "quantity": "1", "unit_amount": "0.05"}
+                    {
+                        "invoice_line_id": await creditable_line_id(
+                            client, headers, invoice["id"]
+                        ),
+                        "quantity": "1",
+                    }
                 ],
                 "reason": "Meter fault",
             },
@@ -200,7 +219,14 @@ class TestTheBooksBalance:
             f"/api/v1/platform/invoices/{invoice['id']}/credit-notes",
             headers=headers,
             json={
-                "lines": [{"description": "x", "quantity": "1", "unit_amount": "0.01"}],
+                "lines": [
+                    {
+                        "invoice_line_id": await creditable_line_id(
+                            client, headers, invoice["id"]
+                        ),
+                        "quantity": "1",
+                    }
+                ],
                 "reason": "Goodwill",
             },
         )

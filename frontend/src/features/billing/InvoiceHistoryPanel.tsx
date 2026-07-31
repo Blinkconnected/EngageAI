@@ -13,12 +13,14 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined'
 import { useTranslation } from 'react-i18next'
-import { useInvoiceDetailQuery } from './api'
+import { downloadOwnInvoicePdf, useInvoiceDetailQuery } from './api'
 import {
   formatDay,
   formatMoney,
@@ -106,10 +108,29 @@ export function InvoiceHistoryPanel({
 }) {
   const { t, i18n } = useTranslation('billing')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const download = async (invoice: InvoiceSummary) => {
+    setDownloading(invoice.id)
+    setFailed(false)
+    try {
+      await downloadOwnInvoicePdf(invoice.id, invoice.invoice_number)
+    } catch {
+      setFailed(true)
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   return (
     <Card variant="outlined">
       <CardContent>
+        {failed && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFailed(false)}>
+            {t('invoices.pdfFailed')}
+          </Alert>
+        )}
         <Stack spacing={0.5} sx={{ mb: 2 }}>
           <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
             {t('invoices.title')}
@@ -135,6 +156,7 @@ export function InvoiceHistoryPanel({
                   <TableCell>{t('invoices.due')}</TableCell>
                   <TableCell align="right">{t('invoices.total')}</TableCell>
                   <TableCell align="right">{t('invoices.outstanding')}</TableCell>
+                  <TableCell sx={{ width: 48 }} />
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -191,9 +213,28 @@ export function InvoiceHistoryPanel({
                         <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                           {formatMoney(invoice.amount_outstanding, format, i18n.language)}
                         </TableCell>
+                        <TableCell align="right">
+                          {/* Only an issued document has a PDF. A draft has
+                              no number and is not a customer's business —
+                              they never see one in this list. */}
+                          <Tooltip title={t('invoices.downloadPdf')}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={downloading === invoice.id}
+                                onClick={() => void download(invoice)}
+                                aria-label={t('invoices.downloadPdfFor', {
+                                  number: invoice.invoice_number ?? invoice.id,
+                                })}
+                              >
+                                <DownloadOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell colSpan={7} sx={{ py: 0, border: 0 }}>
+                        <TableCell colSpan={8} sx={{ py: 0, border: 0 }}>
                           <Collapse in={open} unmountOnExit>
                             {open ? <InvoiceLines invoiceId={invoice.id} format={format} /> : null}
                           </Collapse>

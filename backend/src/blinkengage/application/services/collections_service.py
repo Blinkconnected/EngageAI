@@ -38,6 +38,10 @@ from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.application.services.billing_contacts import (
+    BILLING_PERMISSION,
+    billing_contact_ids,
+)
 from blinkengage.application.services.financial_audit_service import (
     AuditActor,
     FinancialAuditRecorder,
@@ -70,8 +74,10 @@ NOTIFICATION_TYPE = "billing.dunning"
 
 #: Who hears about an unpaid invoice. Everybody who can act on it, and
 #: nobody who cannot: an agent handling conversations has no use for a
-#: payment reminder and no way to act on one.
-_BILLING_PERMISSION = "billing.read"
+#: payment reminder and no way to act on one. Defined once, in
+#: ``billing_contacts``, because everything billing sends a customer has to
+#: reach the same people.
+_BILLING_PERMISSION = BILLING_PERMISSION
 
 
 @dataclass(slots=True)
@@ -364,23 +370,14 @@ class CollectionsService:
         return True
 
     async def _billing_contacts(self, company_id: uuid.UUID) -> list[uuid.UUID]:
-        """Everybody at the company who can act on an unpaid invoice."""
-        from blinkengage.infrastructure.database.models.rbac import RolePermission, UserRole
-        from blinkengage.infrastructure.database.models.user import User
+        """Everybody at the company who can act on an unpaid invoice.
 
-        rows = await self._session.execute(
-            select(User.id)
-            .join(UserRole, UserRole.user_id == User.id)
-            .join(RolePermission, RolePermission.role_id == UserRole.role_id)
-            .where(
-                User.company_id == company_id,
-                User.is_active.is_(True),
-                User.deleted_at.is_(None),
-                RolePermission.permission_code == _BILLING_PERMISSION,
-            )
-            .distinct()
-        )
-        return list(rows.scalars().all())
+        Shared with every other thing billing sends a customer — see
+        ``billing_contacts``. A dunning notice and an emailed invoice
+        reaching different people is how each recipient comes to assume the
+        other got it.
+        """
+        return await billing_contact_ids(self._session, company_id)
 
     # --- suspension --------------------------------------------------
 

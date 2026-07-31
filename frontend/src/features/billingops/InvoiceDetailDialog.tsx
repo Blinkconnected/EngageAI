@@ -21,18 +21,20 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 
 import {
+  fetchInvoicePdf,
   useCancelInvoiceMutation,
-  useCreditNoteMutation,
+  useEmailInvoiceMutation,
   useInvoiceQuery,
   useIssueInvoiceMutation,
   useNoticesQuery,
   useWriteOffMutation,
 } from './api'
+import { CreditNoteDialog } from './CreditNoteDialog'
 import { formatDay, formatMoment, formatQuantity } from './format'
 import { Amount, InvoiceStatusChip } from './Money'
 import type { InvoiceDetail } from './types'
 
-type Intent = 'none' | 'cancel' | 'credit' | 'write_off'
+type Intent = 'none' | 'cancel' | 'write_off'
 
 /**
  * A reason, required before anything irreversible happens.
@@ -190,20 +192,21 @@ export function InvoiceDetailDialog({
 }) {
   const { t, i18n } = useTranslation('billingOps')
   const [intent, setIntent] = useState<Intent>('none')
+  const [crediting, setCrediting] = useState(false)
+  const [pdfFailed, setPdfFailed] = useState(false)
+  const [busy, setBusy] = useState<'download' | 'print' | null>(null)
   const query = useInvoiceQuery(invoiceId)
   const notices = useNoticesQuery(invoiceId)
   const issue = useIssueInvoiceMutation()
   const cancel = useCancelInvoiceMutation()
-  const credit = useCreditNoteMutation()
   const writeOff = useWriteOffMutation()
+  const email = useEmailInvoiceMutation()
 
   const detail = query.data
   const invoice = detail?.invoice
   const pending =
-    issue.isPending || cancel.isPending || credit.isPending || writeOff.isPending
-  const failure = errorText(
-    issue.error ?? cancel.error ?? credit.error ?? writeOff.error,
-  )
+    issue.isPending || cancel.isPending || writeOff.isPending
+  const failure = errorText(issue.error ?? cancel.error ?? writeOff.error)
 
   // What this document actually permits, mirroring the engine's own rules
   // (``domain/invoicing.py``: the transition table, ``is_frozen``, and the
@@ -232,11 +235,26 @@ export function InvoiceDetailDialog({
     cancel: Boolean(invoice && Number(invoice.amount_paid) === 0),
   }
 
+  const openPdf = async (mode: 'download' | 'print') => {
+    if (!invoice) return
+    setBusy(mode)
+    setPdfFailed(false)
+    try {
+      await fetchInvoicePdf(invoice.id, { open: mode === 'print' })
+    } catch {
+      setPdfFailed(true)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const close = () => {
     setIntent('none')
+    setCrediting(false)
+    setPdfFailed(false)
+    email.reset()
     issue.reset()
     cancel.reset()
-    credit.reset()
     writeOff.reset()
     onClose()
   }
@@ -371,6 +389,21 @@ export function InvoiceDetailDialog({
             )}
 
             {failure && intent === 'none' && <Alert severity="error">{failure}</Alert>}
+            {pdfFailed && (
+              <Alert severity="error" onClose={() => setPdfFailed(false)}>
+                {t('invoices.pdfFailed')}
+              </Alert>
+            )}
+            {email.data && (
+              <Alert severity="success" onClose={() => email.reset()}>
+                {t('invoices.emailSent', { recipients: email.data.sent_to.join(', ') })}
+              </Alert>
+            )}
+            {email.error && (
+              <Alert severity="error" onClose={() => email.reset()}>
+                {errorText(email.error) ?? t('invoices.emailFailed')}
+              </Alert>
+            )}
 
             {intent === 'cancel' && (
               <ReasonForm
@@ -384,41 +417,6 @@ export function InvoiceDetailDialog({
                 onConfirm={(reason) =>
                   cancel.mutate(
                     { invoiceId: invoice.id, reason },
-                    { onSuccess: () => setIntent('none') },
-                  )
-                }
-              />
-            )}
-
-            {intent === 'credit' && (
-              <ReasonForm
-                label={t('invoices.creditTitle')}
-                helper={t('invoices.creditHelp')}
-                confirmLabel={t('invoices.creditConfirm')}
-                pending={pending}
-                error={errorText(credit.error)}
-                onCancel={() => setIntent('none')}
-                onConfirm={(reason) =>
-                  credit.mutate(
-                    {
-                      invoiceId: invoice.id,
-                      // The whole invoice, as one line. A partial credit is
-                      // a different decision made against specific lines,
-                      // and pretending a single "amount" box covers both
-                      // would let somebody credit 40 of a 30 line.
-                      body: {
-                        reason,
-                        lines: [
-                          {
-                            description: t('invoices.creditLineDescription', {
-                              number: invoice.invoice_number ?? '',
-                            }),
-                            quantity: '1',
-                            unit_amount: invoice.total_amount,
-                          },
-                        ],
-                      },
-                    },
                     { onSuccess: () => setIntent('none') },
                   )
                 }
@@ -457,6 +455,27 @@ export function InvoiceDetailDialog({
             {t('invoices.openCompany')}
           </Button>
         )}
+        {/* Only an issued document has a PDF: a draft carries no number,
+            nothing has been sent to anybody, and a file that looks like an
+            invoice but is not one is the most confusing thing this dialog
+            could hand somebody. */}
+        {invoice && invoice.status !== 'draft' && (
+          <>
+            <Button size="small" disabled={busy !== null} onClick={() => void openPdf('print')}>
+              {t('invoices.printPdf')}
+            </Button>
+            <Button size="small" disabled={busy !== null} onClick={() => void openPdf('download')}>
+              {t('invoices.downloadPdf')}
+            </Button>
+            <Button
+              size="small"
+              disabled={email.isPending}
+              onClick={() => email.mutate(invoice.id)}
+            >
+              {t('invoices.emailInvoice')}
+            </Button>
+          </>
+        )}
         <Box sx={{ flexGrow: 1 }} />
         {invoice && intent === 'none' && (
           <>
@@ -471,7 +490,7 @@ export function InvoiceDetailDialog({
               </Button>
             )}
             {allowed.credit && (
-              <Button size="small" onClick={() => setIntent('credit')} disabled={pending}>
+              <Button size="small" onClick={() => setCrediting(true)} disabled={pending}>
                 {t('invoices.creditNote')}
               </Button>
             )}
@@ -507,6 +526,11 @@ export function InvoiceDetailDialog({
           {t('actions.close')}
         </Button>
       </DialogActions>
+
+      <CreditNoteDialog
+        invoiceId={crediting ? (invoice?.id ?? null) : null}
+        onClose={() => setCrediting(false)}
+      />
     </Dialog>
   )
 }

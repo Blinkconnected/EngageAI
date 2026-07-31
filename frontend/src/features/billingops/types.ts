@@ -152,15 +152,69 @@ export interface CreditNote {
   issued_at: string
 }
 
-export interface CreditNoteLineInput {
+/** One invoice line, and what is left to credit against it.
+ *
+ * Every figure is read from documents already written — the issued line and
+ * what earlier credit notes took off it. The console renders these; it never
+ * multiplies a quantity by a price to reach one of its own. */
+export interface CreditableLine {
+  invoice_line_id: string
   description: string
+  unit: string
+  /** The line's own price. Shown so a selected quantity has visible
+   * consequences — never sent back, because an amount a caller chooses is an
+   * amount that traces to nothing. */
+  unit_amount: string
+  currency: string
+  billable_quantity: string
+  quantity_credited: string
+  quantity_creditable: string
+  amount_creditable: string
+}
+
+export interface CreditableLines {
+  invoice_id: string
+  invoice_number: string | null
+  currency: string
+  total_amount: string
+  amount_credited: string
+  /** The invoice-level ceiling. Can be **less** than the line remainders add
+   * up to when an older whole-invoice credit note consumed credit without
+   * naming a line — the difference is `unattributed_credited_amount`. */
+  amount_creditable: string
+  unattributed_credited_amount: string
+  lines: CreditableLine[]
+}
+
+/** A line, and how much of it to credit. Deliberately carries no price. */
+export interface CreditNoteLineSelection {
+  invoice_line_id: string
+  quantity: string
+  reason?: string
+}
+
+export interface CreditNotePreviewLine {
+  invoice_line_id: string
+  description: string
+  unit: string
   quantity: string
   unit_amount: string
-  invoice_line_id?: string
+  currency: string
+  subtotal: string
+  reason: string | null
+}
+
+export interface CreditNotePreview {
+  currency: string
+  lines: CreditNotePreviewLine[]
+  subtotal_amount: string
+  /** Rounded to the currency once. This is what the document will say. */
+  total_amount: string
+  amount_creditable_after: string
 }
 
 export interface IssueCreditNoteInput {
-  lines: CreditNoteLineInput[]
+  lines: CreditNoteLineSelection[]
   reason: string
 }
 

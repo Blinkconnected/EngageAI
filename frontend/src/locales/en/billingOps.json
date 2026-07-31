@@ -169,7 +169,14 @@
     "writeOffTitle": "Write this debt off",
     "writeOffHelp": "We billed correctly and will not be paid. The invoice stays overdue and unpaid, which is true — what changes is that we stop chasing it, and the receivable becomes bad debt.",
     "writeOffConfirm": "Write off",
-    "matchedCount_one": "{{count}} invoice"
+    "matchedCount_one": "{{count}} invoice",
+    "downloadPdf": "Download PDF",
+    "printPdf": "Open for printing",
+    "emailInvoice": "Email to customer",
+    "emailSent": "Sent to {{recipients}}.",
+    "emailNoRecipients": "Nobody at this company has billing access, so there is nowhere to send it. Grant somebody the billing permission first.",
+    "emailFailed": "The invoice could not be emailed.",
+    "pdfFailed": "The PDF could not be produced."
   },
   "payments": {
     "title": "Payments",
@@ -296,5 +303,30 @@
     "rolling_7_day": "rolling 7-day average",
     "month_to_date": "month-to-date average",
     "same_period_last_month": "the same period last month"
+  },
+  "credit": {
+    "title": "Credit note",
+    "help": "Choose the lines that were billed wrongly and how much of each to credit. The invoice keeps saying what it said; the credit note says what was given back.",
+    "line": "Line",
+    "billed": "Billed",
+    "alreadyCredited": "Already credited",
+    "creditable": "Still creditable",
+    "creditQuantity": "Credit",
+    "unitPrice": "Unit price",
+    "lineAmount": "Amount",
+    "nothingCreditable": "Every line on this invoice has been credited in full.",
+    "selectSomething": "Choose at least one line to credit.",
+    "overRemainder": "More than this line has left",
+    "subtotal": "Credit subtotal",
+    "total": "Credit total",
+    "remainingAfter": "Outstanding after this credit",
+    "reason": "Reason",
+    "reasonHelp": "Recorded on the credit note and on the audit trail. Six months from now this sentence is the only explanation anybody has.",
+    "confirm": "Issue credit note",
+    "previewFailed": "The totals could not be previewed.",
+    "issueFailed": "The credit note could not be issued.",
+    "loadFailed": "This invoice’s lines could not be loaded.",
+    "ceiling": "At most {{amount}} can still be credited against this invoice.",
+    "wholeInvoiceCredited": "A credit note was issued against this invoice as a whole, so it is not attributed to any one line. {{amount}} of the invoice remains creditable."
   }
 }

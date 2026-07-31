@@ -6,6 +6,9 @@ import type {
   AllocationPage,
   CollectionsRunResult,
   CompanyStanding,
+  CreditableLines,
+  CreditNoteLineSelection,
+  CreditNotePreview,
   DunningNotice,
   ExemptionInput,
   Invoice,
@@ -119,6 +122,56 @@ export async function downloadInvoiceCsv(params: InvoiceSearchParams): Promise<v
   URL.revokeObjectURL(url)
 }
 
+/**
+ * Downloads an invoice as PDF, or opens it for printing.
+ *
+ * Fetched through the authenticated client rather than linked to directly: an
+ * `<a href>` sends the browser off without the bearer token, and the response
+ * would be a 403 rendered as a broken download.
+ *
+ * `open` puts the blob in a new tab, where the browser's own viewer gives the
+ * operator print, zoom and save for free — building a preview pane here would
+ * be a worse version of something every browser already has.
+ */
+export async function fetchInvoicePdf(
+  invoiceId: string,
+  { open = false }: { open?: boolean } = {},
+): Promise<void> {
+  const response = await apiClient.get(`/platform/invoices/${invoiceId}/pdf`, {
+    responseType: 'blob',
+  })
+  const disposition = String(response.headers['content-disposition'] ?? '')
+  const match = disposition.match(/filename="?([^";]+)"?/)
+  const url = URL.createObjectURL(response.data as Blob)
+  if (open) {
+    window.open(url, '_blank', 'noopener')
+    // Not revoked immediately: the new tab is still loading from this URL,
+    // and revoking it out from under the viewer shows a blank page. The
+    // browser releases it when the tab closes.
+    return
+  }
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = match?.[1] ?? `invoice-${invoiceId}.pdf`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+export function useEmailInvoiceMutation() {
+  const invalidate = useInvalidateBilling()
+  return useMutation({
+    mutationFn: async (invoiceId: string): Promise<{ sent_to: string[] }> => {
+      const { data } = await apiClient.post<{ sent_to: string[] }>(
+        `/platform/invoices/${invoiceId}/email`,
+      )
+      return data
+    },
+    onSuccess: invalidate,
+  })
+}
+
 export function useIssueInvoiceMutation() {
   const invalidate = useInvalidateBilling()
   return useMutation({
@@ -143,6 +196,53 @@ export function useCancelInvoiceMutation() {
       return data
     },
     onSuccess: invalidate,
+  })
+}
+
+export function useCreditableLinesQuery(invoiceId: string | null) {
+  return useQuery({
+    queryKey: [...INVOICES_KEY, invoiceId, 'creditable'],
+    enabled: Boolean(invoiceId),
+    queryFn: async (): Promise<CreditableLines> => {
+      const { data } = await apiClient.get<CreditableLines>(
+        `/platform/invoices/${invoiceId}/creditable`,
+      )
+      return data
+    },
+  })
+}
+
+/**
+ * What the credit note would say, worked out by the server.
+ *
+ * A query rather than a mutation despite being a POST — it writes nothing,
+ * and the selection is a list, which does not belong in a query string. It
+ * runs the write path's own validation, so a total shown here is the total
+ * the document will carry and a selection accepted here cannot be refused a
+ * moment later by the save.
+ *
+ * The console never multiplies a quantity by a price itself. That is the same
+ * rule the rest of this feature follows, and it is what makes the previewed
+ * figure the *actual* figure rather than a good guess at it.
+ */
+export function useCreditNotePreviewQuery(
+  invoiceId: string | null,
+  selections: CreditNoteLineSelection[],
+) {
+  return useQuery({
+    queryKey: [...INVOICES_KEY, invoiceId, 'credit-preview', selections],
+    enabled: Boolean(invoiceId) && selections.length > 0,
+    // A refused selection is an answer, not a transient failure: retrying a
+    // quantity the server has already rejected just delays telling the
+    // operator why.
+    retry: false,
+    queryFn: async (): Promise<CreditNotePreview> => {
+      const { data } = await apiClient.post<CreditNotePreview>(
+        `/platform/invoices/${invoiceId}/credit-notes/preview`,
+        { lines: selections },
+      )
+      return data
+    },
   })
 }
 

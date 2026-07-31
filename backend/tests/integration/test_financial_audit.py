@@ -41,6 +41,20 @@ async def audit_for(client: AsyncClient, headers: dict, entity_type: str, entity
     return response.json()
 
 
+async def creditable_line_id(client, headers: dict, invoice_id: str) -> str:
+    """The first line that can still be credited.
+
+    A credit note names lines and quantities, never amounts — every figure
+    on it has to trace back to something that was actually billed — so a
+    caller has to ask the invoice which lines it has.
+    """
+    response = await client.get(
+        f"/api/v1/platform/invoices/{invoice_id}/creditable", headers=headers
+    )
+    assert response.status_code == 200, response.text
+    return str(response.json()["lines"][0]["invoice_line_id"])
+
+
 class TestEveryActionIsRecorded:
     async def test_generating_an_invoice_is_recorded(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -115,7 +129,14 @@ class TestEveryActionIsRecorded:
         note = await client.post(
             f"/api/v1/platform/invoices/{detail['invoice']['id']}/credit-notes",
             json={
-                "lines": [{"description": "Overcount", "quantity": "1", "unit_amount": "0.05"}],
+                "lines": [
+                    {
+                        "invoice_line_id": await creditable_line_id(
+                            client, headers, detail["invoice"]["id"]
+                        ),
+                        "quantity": "1",
+                    }
+                ],
                 "reason": "Duplicate conversations after a meter fault",
             },
             headers=headers,

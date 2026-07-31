@@ -28,6 +28,7 @@ a payment with no rows against it.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -37,6 +38,13 @@ from blinkengage.application.services.financial_audit_service import (
     FinancialAuditRecorder,
 )
 from blinkengage.application.services.ledger_service import LedgerService
+from blinkengage.domain.credit_notes import (
+    CreditableLine,
+    CreditNoteSelectionError,
+    LineSelection,
+    ProposedCreditNote,
+    propose_credit_note,
+)
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.exceptions import (
     EntityNotFoundError,
@@ -89,11 +97,34 @@ from blinkengage.infrastructure.repositories.usage_repository import (
 
 
 @dataclass(frozen=True, slots=True)
-class CreditLineInput:
-    description: str
-    quantity: Decimal
-    unit_amount: Decimal
-    invoice_line_id: uuid.UUID | None = None
+class CreditableInvoice:
+    """What may still be credited on one invoice, line by line.
+
+    Two ceilings, and they are not the same number. Each line has its own
+    remainder — what it billed, less what earlier credit notes took off
+    *it* — and the invoice has one of its own: its total, less everything
+    credited against it by any note. The line remainders can add up to
+    more than the invoice's, and do exactly when an older whole-invoice
+    credit note consumed credit without naming a line (see
+    ``CreditNoteRepository.credited_by_invoice_line``). Returning both is
+    what lets a console explain that gap instead of an operator meeting it
+    as a refusal at the end of filling in a form.
+    """
+
+    invoice_id: uuid.UUID
+    invoice_number: str | None
+    currency: str
+    total_amount: Decimal
+    #: Everything credited so far, from the credit notes themselves.
+    amount_credited: Decimal
+    #: ``total_amount - amount_credited``. The ceiling the write path
+    #: checks, in the currency the documents are written in.
+    amount_creditable: Decimal
+    #: The part of ``amount_credited`` that names no line. Nothing can be
+    #: done with it except understand it: it is why the lines below may
+    #: offer more than ``amount_creditable`` allows.
+    unattributed_credited_amount: Decimal
+    lines: tuple[CreditableLine, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -666,11 +697,46 @@ class InvoiceService:
 
     # --- Credit notes -----------------------------------------------
 
+    async def creditable_lines(self, invoice_id: uuid.UUID) -> CreditableInvoice:
+        """What is still creditable on an invoice, line by line.
+
+        The read behind the credit dialog. It re-prices nothing: each
+        line's unit amount and billable quantity are what the issued
+        document says, and what has already been credited comes from the
+        credit notes themselves.
+
+        Refuses a draft or a cancelled invoice for the same reason issuing
+        does. A read that described a draft as creditable would be the
+        same lie as a preview that disagrees with the save — it would
+        offer an operator a form whose submit button cannot work.
+        """
+        invoice = await self._require(invoice_id)
+        self._assert_creditable(invoice)
+        return await self._creditable(invoice)
+
+    async def preview_credit_note(
+        self, *, invoice_id: uuid.UUID, selections: Sequence[LineSelection]
+    ) -> ProposedCreditNote:
+        """The totals a selection comes to, before anything is written.
+
+        Deliberately not its own arithmetic: it calls exactly what
+        ``issue_credit_note`` calls, so an operator who is shown 0.15 and
+        approves it gets a document that says 0.15, and a selection the
+        preview accepts cannot be refused a moment later by the save. The
+        two drifting apart is a bug this repository has already had once,
+        in pricing quotes — hence ``PricingService.validated_terms``.
+
+        Writes nothing, so it is safe for a read-only operator.
+        """
+        invoice = await self._require(invoice_id)
+        self._assert_creditable(invoice)
+        return await self._propose(invoice, selections)
+
     async def issue_credit_note(
         self,
         *,
         invoice_id: uuid.UUID,
-        lines: list[CreditLineInput],
+        selections: Sequence[LineSelection],
         reason: str,
         actor_user_id: uuid.UUID | None = None,
         actor: AuditActor | None = None,
@@ -681,29 +747,32 @@ class InvoiceService:
         issuance. The invoice keeps saying exactly what it said; the
         credit note says what was given back, and both documents exist
         for anybody reconciling them later.
+
+        **The caller names lines and quantities, never amounts.** Every
+        description, unit and price on the resulting note is copied from
+        the invoice line being credited, so every figure on the document
+        traces back to something that was actually billed. There is no
+        free-amount path, deliberately: one that existed for convenience
+        would be the one used, and a credit note nobody can trace to a
+        charge is a number an auditor makes somebody explain.
+
+        **Serialized on the invoice row.** Everything below is a
+        check-then-write: read what is still creditable, decide the
+        selection fits, write the note and add to ``amount_credited``.
+        Without the lock, two requests interleave between the read and the
+        write and both are told yes — eight concurrent notes against a $500
+        invoice each passed the check and each was written, leaving $4,000
+        credited against a $500 document. Every refusal
+        ``domain.credit_notes`` can raise is advisory until this line runs.
         """
-        invoice = await self._require(invoice_id)
-        if not is_frozen(invoice.status):
-            raise InvoiceStateError(
-                "This invoice is still a draft — change the draft rather than crediting it. "
-                "Credit notes exist to correct documents that have already been issued."
-            )
-        if invoice.status is InvoiceStatus.CANCELLED:
-            raise InvoiceStateError("This invoice was cancelled, so there is nothing to credit.")
-        if not lines:
-            raise InvoiceStateError("A credit note must credit at least one line.")
-
-        subtotals = [to_storage(line.quantity * line.unit_amount) for line in lines]
-        subtotal = to_storage(total(subtotals))
-        if subtotal <= 0:
-            raise InvoiceStateError("A credit note must be for a positive amount.")
-
-        already = await self._credit_notes.credited_total(invoice_id)
-        if to_storage(already + subtotal) > invoice.total_amount:
-            raise InvoiceStateError(
-                f"Crediting {subtotal} would exceed the invoice total "
-                f"({invoice.total_amount}, of which {already} is already credited)."
-            )
+        # Taken *before* the remainders are read, so what is validated is
+        # what is still true at the moment of writing.
+        locked = await self._invoices.lock(invoice_id)
+        if locked is None:
+            raise EntityNotFoundError("Invoice", invoice_id)
+        invoice = locked
+        self._assert_creditable(invoice)
+        proposal = await self._propose(invoice, selections)
 
         issued_at = datetime.now(UTC)
         sequence = await self._numbers.next_value(prefix=CREDIT_NOTE_PREFIX, year=issued_at.year)
@@ -713,14 +782,12 @@ class InvoiceService:
                 invoice_id=invoice_id,
                 credit_note_number=credit_note_number(issued_at.year, sequence),
                 customer_name=invoice.customer_name,
-                subtotal_amount=subtotal,
-                # The invoice's own currency, not the installation default:
-                # a credit note against a dinar invoice rounds to three
-                # places, the same as the document it corrects. Rounding
-                # the two differently would leave a residue nobody billed.
-                total_amount=to_storage(
-                    to_billable_amount(subtotal, currency=currency_for(invoice.currency))
-                ),
+                subtotal_amount=proposal.subtotal_amount,
+                # Rounded once, in the invoice's own currency — a credit
+                # note against a dinar invoice rounds to three places, the
+                # same as the document it corrects. Rounding the two
+                # differently would leave a residue nobody billed.
+                total_amount=proposal.total_amount,
                 currency=invoice.currency,
                 reason=reason,
                 issued_at=issued_at,
@@ -731,12 +798,12 @@ class InvoiceService:
                     credit_note_id=uuid.uuid4(),  # replaced by the repository
                     invoice_line_id=line.invoice_line_id,
                     description=line.description,
-                    quantity=to_storage(line.quantity),
-                    unit_amount=to_storage(line.unit_amount),
-                    currency=invoice.currency,
-                    subtotal=to_storage(line.quantity * line.unit_amount),
+                    quantity=line.quantity,
+                    unit_amount=line.unit_amount,
+                    currency=line.currency,
+                    subtotal=line.subtotal,
                 )
-                for line in lines
+                for line in proposal.lines
             ],
         )
         await self._invoices.apply_credit(invoice_id=invoice_id, amount=note.total_amount)
@@ -751,10 +818,26 @@ class InvoiceService:
             amount=note.total_amount,
             currency=note.currency,
             reason=reason,
+            # Which lines were credited, and by how much. Without this the
+            # trail says only that 0.15 was returned against an invoice —
+            # true, and useless to anybody asking *what* was refunded. The
+            # per-line reasons live here too: `credit_note_lines` has no
+            # column for them, and this is the record that answers "why".
             details={
                 "credit_note_number": note.credit_note_number,
                 "invoice_id": str(invoice_id),
                 "invoice_number": invoice.invoice_number,
+                "lines": [
+                    {
+                        "invoice_line_id": str(line.invoice_line_id),
+                        "description": line.description,
+                        "quantity": str(line.quantity),
+                        "unit_amount": str(line.unit_amount),
+                        "subtotal": str(line.subtotal),
+                        "reason": line.reason,
+                    }
+                    for line in proposal.lines
+                ],
             },
         )
         # Reduces what they owe at the cost of revenue. Contra-revenue,
@@ -834,6 +917,95 @@ class InvoiceService:
 
     # --- Internals --------------------------------------------------
 
+    @staticmethod
+    def _assert_creditable(invoice: Invoice) -> None:
+        """The two states in which a credit note makes no sense.
+
+        Checked in one place so the read, the preview and the write cannot
+        disagree about which documents can be corrected — three separate
+        status checks is how one of them ends up missing.
+        """
+        if not is_frozen(invoice.status):
+            raise InvoiceStateError(
+                "This invoice is still a draft — change the draft rather than crediting it. "
+                "Credit notes exist to correct documents that have already been issued."
+            )
+        if invoice.status is InvoiceStatus.CANCELLED:
+            raise InvoiceStateError("This invoice was cancelled, so there is nothing to credit.")
+
+    async def _creditable(self, invoice: Invoice) -> CreditableInvoice:
+        """Assembles the remainders, per line and for the invoice.
+
+        Two reads and no arithmetic on anything already billed: the lines
+        as issued, and what prior credit notes took off them.
+        """
+        lines = await self._lines.for_invoice(invoice.id)
+        credited = await self._credit_notes.credited_by_invoice_line(invoice.id)
+        # The ceiling comes from the notes' own totals rather than from
+        # the denormalized `amount_credited` column, which is a projection
+        # of them. Both are maintained here and agree; reading the source
+        # means the check cannot be fooled by a projection that has drifted.
+        already = await self._credit_notes.credited_total(invoice.id)
+        remaining = invoice.total_amount - already
+        unattributed = credited.get(None)
+        return CreditableInvoice(
+            invoice_id=invoice.id,
+            invoice_number=invoice.invoice_number,
+            currency=invoice.currency,
+            total_amount=invoice.total_amount,
+            amount_credited=to_storage(already),
+            amount_creditable=to_storage(remaining if remaining > 0 else zero()),
+            unattributed_credited_amount=unattributed.amount if unattributed else zero(),
+            lines=tuple(
+                CreditableLine(
+                    invoice_line_id=line.id,
+                    description=line.description,
+                    unit=line.unit,
+                    unit_amount=line.unit_amount,
+                    currency=line.currency,
+                    billable_quantity=line.billable_quantity,
+                    quantity_credited=(
+                        credited[line.id].quantity if line.id in credited else zero()
+                    ),
+                    amount_credited=credited[line.id].amount if line.id in credited else zero(),
+                )
+                for line in lines
+            ),
+        )
+
+    async def _propose(
+        self, invoice: Invoice, selections: Sequence[LineSelection]
+    ) -> ProposedCreditNote:
+        """The one path from a selection to the figures — preview and write.
+
+        The only thing done here that the domain cannot do is tell a line
+        that does not exist from one belonging to a different invoice. The
+        domain sees this invoice's lines and can only answer "not on this
+        invoice"; a stale console and an operator crediting the wrong
+        document are different problems, and the second is the dangerous
+        one, so it is worth the single lookup on a path that is already
+        failing.
+        """
+        creditable = await self._creditable(invoice)
+        known = {line.invoice_line_id for line in creditable.lines}
+        for selection in selections:
+            if selection.invoice_line_id in known:
+                continue
+            if await self._lines.get_by_id(selection.invoice_line_id) is None:
+                raise CreditNoteSelectionError.unknown_line(selection.invoice_line_id)
+            raise CreditNoteSelectionError.not_on_invoice(
+                selection.invoice_line_id, invoice_number=invoice.invoice_number
+            )
+        return propose_credit_note(
+            creditable=creditable.lines,
+            selections=selections,
+            # This company's currency, from the document itself. The
+            # rounding depends on it: three decimal places for a dinar,
+            # two for a dollar.
+            currency=currency_for(invoice.currency),
+            invoice_amount_creditable=creditable.amount_creditable,
+        )
+
     async def _require(self, invoice_id: uuid.UUID) -> Invoice:
         invoice = await self._invoices.get_by_id(invoice_id)
         if invoice is None:
@@ -864,4 +1036,4 @@ class InvoiceService:
         )
 
 
-__all__ = ["CreditLineInput", "InvoiceSearchResult", "InvoiceService"]
+__all__ = ["CreditableInvoice", "InvoiceSearchResult", "InvoiceService"]

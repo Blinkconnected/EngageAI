@@ -144,19 +144,135 @@ class CancelInvoiceRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
-class CreditNoteLineRequest(BaseModel):
-    description: str = Field(min_length=1, max_length=255)
+class InvoiceEmailResponse(BaseModel):
+    """Who the invoice was actually sent to.
+
+    The addresses, not a count: an operator telling a customer "we sent it"
+    needs to be able to say where, and "3 recipients" answers nothing when
+    the customer is standing on one of them.
+    """
+
+    invoice_id: uuid.UUID
+    sent_to: list[str]
+    #: Addresses the relay refused. Reported rather than swallowed: "sent to
+    #: two of three" is a different fact from "sent", and only one of them
+    #: means somebody still has to be told.
+    failed: list[str] = []
+
+
+class CreditableLineResponse(BaseModel):
+    """One invoice line, and what is left to credit against it.
+
+    Every figure is read from documents already written — the issued line,
+    and what earlier credit notes took off it. The console renders these;
+    it never multiplies a quantity by a price to reach one of its own.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_line_id: uuid.UUID
+    description: str
+    unit: str
+    #: The line's own price. Sent so the screen can show what a selected
+    #: quantity will come to — never so a caller can send one back.
+    unit_amount: Money
+    currency: str
+    #: What the line charged for. The allowance-covered part was never
+    #: billed, so there is nothing there to give back.
+    billable_quantity: Money
+    quantity_credited: Money
+    quantity_creditable: Money
+    amount_creditable: Money
+
+
+class CreditableLinesResponse(BaseModel):
+    """The credit dialog's whole input: the lines, and the two ceilings.
+
+    ``amount_creditable`` can be **less** than the line remainders add up
+    to, and the difference is ``unattributed_credited_amount`` — an older
+    whole-invoice credit note that consumed credit without naming a line.
+    Both are sent so a console can say so, rather than letting an operator
+    fill in a form that is refused when they submit it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_id: uuid.UUID
+    invoice_number: str | None
+    currency: str
+    total_amount: Money
+    amount_credited: Money
+    amount_creditable: Money
+    unattributed_credited_amount: Money
+    lines: list[CreditableLineResponse]
+
+
+class CreditNoteLineSelectionRequest(BaseModel):
+    """A line, and how much of it to credit.
+
+    Note what a caller cannot send: a description, a price or an amount.
+    Those come from the invoice line, which is what makes every figure on
+    a credit note traceable to something that was billed. An amount box
+    would let somebody credit 40 against a line of 30.
+    """
+
+    invoice_line_id: uuid.UUID
     quantity: MoneyIn
-    unit_amount: MoneyIn
-    #: The invoice line being corrected, when the credit is line-level.
-    invoice_line_id: uuid.UUID | None = None
+    #: Why this line specifically ("14 messages sent during the outage").
+    #: Recorded on the financial audit event; the note's own ``reason``
+    #: below is what the document says.
+    reason: str | None = Field(default=None, max_length=2000)
 
 
-class IssueCreditNoteRequest(BaseModel):
-    lines: list[CreditNoteLineRequest] = Field(min_length=1)
+class PreviewCreditNoteRequest(BaseModel):
+    lines: list[CreditNoteLineSelectionRequest] = Field(min_length=1)
+
+
+class IssueCreditNoteRequest(PreviewCreditNoteRequest):
+    """The same selection the preview took, plus the document's reason.
+
+    Inherited rather than restated so the two can never take different
+    selections — which would put the preview and the write one edit away
+    from disagreeing.
+    """
+
     #: Required. A credit note with no stated reason is unusable to
     #: whoever finds it later, which is the whole point of having one.
     reason: str = Field(min_length=1, max_length=2000)
+
+
+class CreditNotePreviewLineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_line_id: uuid.UUID
+    description: str
+    unit: str
+    quantity: Money
+    unit_amount: Money
+    currency: str
+    subtotal: Money
+    reason: str | None
+
+
+class CreditNotePreviewResponse(BaseModel):
+    """What the credit note would say, computed by the write path itself.
+
+    Not a second implementation for the screen: the same function issues
+    the note, so a preview an operator approves cannot be refused by the
+    save, and the figures shown are the figures stored.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    currency: str
+    lines: list[CreditNotePreviewLineResponse]
+    #: The sum of the lines, unrounded.
+    subtotal_amount: Money
+    #: Rounded to the currency once — three decimal places for a dinar,
+    #: two for a dollar. This is what the document will say.
+    total_amount: Money
+    #: What would still be creditable against the invoice afterwards.
+    amount_creditable_after: Money
 
 
 class CreditNoteLineResponse(BaseModel):

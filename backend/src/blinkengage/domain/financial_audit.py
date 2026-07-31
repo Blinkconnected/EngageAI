@@ -62,6 +62,10 @@ class FinancialEventType(StrEnum):
     INVOICE_PAID = "invoice.paid"
     INVOICE_OVERDUE = "invoice.overdue"
     INVOICE_CANCELLED = "invoice.cancelled"
+    #: The document was sent to the customer, and to whom. "Did we ever
+    #: send it?" is a question somebody asks months later, usually while a
+    #: customer insists they never received it.
+    INVOICE_EMAILED = "invoice.emailed"
     # Only reachable through an allocation reversal — a chargeback,
     # a bounced transfer, or money applied to the wrong document.
     INVOICE_REOPENED = "invoice.reopened"

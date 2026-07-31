@@ -51,10 +51,23 @@ dev = [
   "factory-boy==3.3.1",
   "faker==33.1.0",
   "fakeredis==2.26.2",
+  # Reads a rendered PDF back. A document feature whose tests only assert
+  # "these bytes start with %PDF" is a feature with no test at all — the
+  # invoice number, the totals and the currency's decimal places are the
+  # things that must be *in* the file, and only a reader can say so.
+  "pypdf==5.1.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The invoice document's font and the issuer's mark. Without this they are
+# left behind by `pip install .` — the production image builds that way —
+# and the renderer silently falls back to a Latin-1 face, which is how a
+# Jordanian customer's name becomes a row of black boxes on their invoice
+# in production and nowhere else.
+[tool.setuptools.package-data]
+"blinkengage.infrastructure.documents" = ["assets/*.ttf", "assets/*.png"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

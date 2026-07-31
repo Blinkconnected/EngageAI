@@ -62,6 +62,21 @@ class InvoiceSearchFilters:
 
 
 @dataclass(frozen=True, slots=True)
+class LineCreditTotals:
+    """How much one invoice line has already been credited.
+
+    Both figures, because they answer different questions: the quantity is
+    what bounds a further credit against that line, and the amount is what
+    a console shows beside it. Deriving one from the other would mean
+    multiplying by a price at read time, which is the recomputation the
+    whole snapshot design exists to avoid.
+    """
+
+    quantity: Decimal
+    amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class InvoiceCurrencySubtotal:
     """The billed, paid, credited and outstanding money for one currency.
 
@@ -333,6 +348,32 @@ class InvoiceRepository:
             .values(amount_paid=Invoice.amount_paid + amount)
         )
 
+    async def lock(self, invoice_id: uuid.UUID) -> Invoice | None:
+        """Takes the invoice's row until this transaction ends.
+
+        The guard for every check-then-write on an invoice's money. Reading
+        what is still creditable, deciding it is enough and then applying the
+        credit is three statements; without a lock, two requests interleave
+        between the read and the write and both are told yes.
+
+        That is not theoretical. Eight concurrent credit notes against a
+        $500 invoice — a double-clicked button, or a retrying client — each
+        passed the remainder check and each was written, leaving
+        ``amount_credited`` at $4,000 on a $500 document. Nothing downstream
+        catches it: there is no database constraint on ``amount_credited``,
+        and by the time a person notices, four credit notes have been issued
+        to a customer.
+
+        ``with_for_update`` is a no-op on SQLite, which is what the tests
+        run on. That is acceptable only because the property being protected
+        is concurrency, and the tests are serial — the guarantee lives on
+        PostgreSQL, where the product runs.
+        """
+        result = await self._session.execute(
+            select(Invoice).where(Invoice.id == invoice_id).with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def apply_credit(self, *, invoice_id: uuid.UUID, amount: Decimal) -> None:
         await self._session.execute(
             update(Invoice)
@@ -403,6 +444,58 @@ class CreditNoteRepository:
             )
         )
         return Decimal(str(result.scalar_one()))
+
+    async def credited_by_invoice_line(
+        self, invoice_id: uuid.UUID
+    ) -> dict[uuid.UUID | None, LineCreditTotals]:
+        """What every earlier credit note took off each of this invoice's
+        lines, grouped by ``credit_note_lines.invoice_line_id``.
+
+        **The ``None`` key is deliberate, and it is the interesting one.**
+        Credit notes written before credits were line-based credited the
+        invoice as a whole and carry ``invoice_line_id IS NULL``. Those
+        rows are returned under ``None`` rather than dropped or spread
+        across the lines, because both alternatives are wrong in a way
+        that costs money:
+
+        - Spreading them would attribute a credit to a line nobody
+          credited, and silently shrink that line's remainder — an
+          invented fact, on the one table whose value is that it invents
+          nothing.
+        - Dropping them would make an amount that was genuinely given back
+          invisible, and the same money could be credited a second time
+          line by line.
+
+        So an unattributed credit reduces nothing per line and everything
+        overall: it counts against the invoice-level ceiling (which is
+        computed from ``credited_total``, and already includes it), and
+        the caller surfaces it so a console can explain why the line
+        remainders add up to more than the invoice has left.
+
+        One query with a join, not a query per line: a credit dialog opens
+        on an invoice with every line at once.
+        """
+        result = await self._session.execute(
+            select(
+                CreditNoteLine.invoice_line_id,
+                func.coalesce(func.sum(CreditNoteLine.quantity), 0),
+                func.coalesce(func.sum(CreditNoteLine.subtotal), 0),
+            )
+            .join(CreditNote, CreditNote.id == CreditNoteLine.credit_note_id)
+            .where(CreditNote.invoice_id == invoice_id)
+            .group_by(CreditNoteLine.invoice_line_id)
+        )
+        # Through `str` and back, like every other SUM in this module:
+        # SQLite returns a float for SUM over NUMERIC, and feeding that
+        # into Decimal would carry binary drift into a remainder that
+        # decides what a customer is given back.
+        return {
+            line_id: LineCreditTotals(
+                quantity=to_storage(Decimal(str(quantity))),
+                amount=to_storage(Decimal(str(amount))),
+            )
+            for line_id, quantity, amount in result.all()
+        }
 
 
 class PaymentRepository:
@@ -516,5 +609,6 @@ __all__ = [
     "InvoiceLineRepository",
     "InvoiceRepository",
     "InvoiceSearchFilters",
+    "LineCreditTotals",
     "PaymentRepository",
 ]

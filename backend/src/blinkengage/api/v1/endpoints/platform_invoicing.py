@@ -23,41 +23,61 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
     deny_read_only_writes,
+    get_company_service,
     get_db_session,
     get_financial_audit_repository,
+    get_invoice_document_service,
     get_invoice_service,
     get_platform_auth,
+    get_settings_dep,
 )
 from blinkengage.api.schemas.invoicing import (
     AllocatePaymentRequest,
     CancelInvoiceRequest,
+    CreditableLinesResponse,
+    CreditNotePreviewResponse,
     CreditNoteResponse,
     FinancialAuditEventResponse,
     FinancialAuditPageResponse,
     InvoiceDetailResponse,
+    InvoiceEmailResponse,
     InvoiceLineResponse,
     InvoiceResponse,
     InvoiceSearchCurrencyGroup,
     InvoiceSearchResponse,
     IssueCreditNoteRequest,
     PaymentResponse,
+    PreviewCreditNoteRequest,
     RecordPaymentRequest,
 )
-from blinkengage.application.services.financial_audit_service import AuditActor
+from blinkengage.application.services.billing_contacts import billing_contact_emails
+from blinkengage.application.services.company_service import CompanyService
+from blinkengage.application.services.financial_audit_service import (
+    AuditActor,
+    FinancialAuditRecorder,
+)
+from blinkengage.application.services.invoice_document_service import InvoiceDocumentService
 from blinkengage.application.services.invoice_service import (
-    CreditLineInput,
     InvoiceSearchResult,
     InvoiceService,
 )
 from blinkengage.core.auth_context import PlatformContext
-from blinkengage.domain.financial_audit import FinancialEntityType
+from blinkengage.core.config import Settings
+from blinkengage.core.logging import get_logger
+from blinkengage.domain.credit_notes import LineSelection
+from blinkengage.domain.financial_audit import FinancialEntityType, FinancialEventType
 from blinkengage.domain.invoicing import InvoiceStatus, amount_owed
-from blinkengage.domain.money import currency_for
+from blinkengage.domain.money import currency_for, format_amount
+from blinkengage.infrastructure.database.models.invoicing import Invoice
+from blinkengage.infrastructure.documents.invoice_pdf import render_invoice_pdf
+from blinkengage.infrastructure.email.mailer import Attachment, send_plain_email
 from blinkengage.infrastructure.repositories.financial_audit_repository import (
     FinancialAuditRepository,
 )
 from blinkengage.infrastructure.repositories.invoicing_repository import InvoiceSearchFilters
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/platform/invoices",
@@ -563,6 +583,246 @@ async def cancel_invoice(
     return await _detail(service, invoice_id)
 
 
+# --- the printed document -------------------------------------------
+
+
+def _pdf_response(pdf: bytes, number: str) -> Response:
+    """One rendered invoice, as a download.
+
+    ``inline`` rather than ``attachment``: an operator on the phone with a
+    customer wants to *look* at the document, and every browser's own PDF
+    viewer gives them print, zoom and save for free. The filename is still
+    supplied, so saving it produces something recognisable rather than the
+    invoice id.
+    """
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{number}.pdf"'},
+    )
+
+
+async def _render(
+    invoice: Invoice,
+    documents: InvoiceDocumentService,
+    companies: CompanyService,
+) -> bytes:
+    """The document, with the customer's logo when there is one.
+
+    A logo that cannot be fetched is never a reason an invoice fails to
+    render — the storage backend being briefly unreachable must not stop a
+    customer downloading their bill. Same rule as every other export in
+    this codebase.
+    """
+    document = await documents.build(invoice)
+    try:
+        logo = await companies.get_logo(company_id=invoice.company_id)
+    except Exception:  # noqa: BLE001 — see the docstring: never fatal.
+        logo = None
+    return render_invoice_pdf(document, logo=logo)
+
+
+@router.get(
+    "/{invoice_id}/pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}, "description": "The invoice."}},
+)
+async def invoice_pdf(
+    invoice_id: uuid.UUID,
+    service: Annotated[InvoiceService, Depends(get_invoice_service)],
+    documents: Annotated[InvoiceDocumentService, Depends(get_invoice_document_service)],
+    companies: Annotated[CompanyService, Depends(get_company_service)],
+) -> Response:
+    """An issued invoice, rendered from its frozen snapshot.
+
+    **A draft has no PDF.** It carries no number, nothing has been sent to
+    anybody, and a document that looks like an invoice but is not one is
+    the single most confusing thing this endpoint could produce.
+
+    Nothing here is recalculated. Every figure — each line's price, the
+    tier that selected it, the totals — is read from what was written when
+    the invoice was issued, which is why this can be reprinted years later
+    and still say what the customer was charged.
+    """
+    invoice = await service.get(invoice_id)
+    if invoice.status is InvoiceStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This invoice is still a draft. Issue it first — a draft has no number.",
+        )
+    return _pdf_response(
+        await _render(invoice, documents, companies), invoice.invoice_number or str(invoice.id)
+    )
+
+
+@router.post("/{invoice_id}/email", response_model=InvoiceEmailResponse)
+async def email_invoice(
+    invoice_id: uuid.UUID,
+    platform: Annotated[PlatformContext, Depends(get_platform_auth)],
+    service: Annotated[InvoiceService, Depends(get_invoice_service)],
+    documents: Annotated[InvoiceDocumentService, Depends(get_invoice_document_service)],
+    companies: Annotated[CompanyService, Depends(get_company_service)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> InvoiceEmailResponse:
+    """Sends the invoice to the customer's billing contacts, as a PDF.
+
+    The same people a dunning notice reaches — see ``billing_contacts``. An
+    invoice going to one set of addresses and the overdue notice about it
+    going to another is how each recipient comes to assume the other was
+    told.
+
+    Refuses rather than half-succeeding when a company has nobody with
+    billing access: "sent to nobody" reported as success is the worst
+    possible answer, because the operator stops chasing it.
+
+    Audited, with the recipients recorded: six months later, "did we ever
+    send it?" is the question, and the audit trail is where it is answered.
+    """
+    invoice = await service.get(invoice_id)
+    if invoice.status is InvoiceStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This invoice is still a draft, so there is nothing to send.",
+        )
+
+    recipients = await billing_contact_emails(session, invoice.company_id)
+    if not recipients:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Nobody at this company has billing access, so there is nowhere to send it. "
+                "Grant somebody the billing permission first."
+            ),
+        )
+
+    number = invoice.invoice_number or str(invoice.id)
+    attachment = Attachment(
+        filename=f"{number}.pdf",
+        content_type="application/pdf",
+        data=await _render(invoice, documents, companies),
+    )
+    subject = f"{settings.app_name} invoice {number}"
+    body = (
+        f"Your {settings.app_name} invoice {number} is attached.\n\n"
+        f"Amount: {format_amount(invoice.total_amount, currency=currency_for(invoice.currency))} "
+        f"{invoice.currency}\n"
+        f"Due: {invoice.due_date.isoformat() if invoice.due_date else 'on receipt'}\n"
+    )
+    # Each address is attempted, and what happened to each is recorded —
+    # including when the relay fails partway. Letting the first failure
+    # propagate would leave earlier recipients holding the invoice, later
+    # ones with nothing, and no audit row at all: the operator would see a
+    # 500 and reasonably conclude nothing was sent.
+    sent: list[str] = []
+    failed: list[str] = []
+    for address in recipients:
+        try:
+            await send_plain_email(
+                settings,
+                to_address=address,
+                subject=subject,
+                body=body,
+                attachments=[attachment],
+            )
+        except Exception as error:  # noqa: BLE001 — recorded, then reported.
+            logger.warning(
+                "invoice_email.failed",
+                invoice_id=str(invoice.id),
+                recipient=address,
+                error=str(error),
+            )
+            failed.append(address)
+        else:
+            sent.append(address)
+
+    await FinancialAuditRecorder(FinancialAuditRepository(session)).record(
+        event_type=FinancialEventType.INVOICE_EMAILED,
+        entity_type=FinancialEntityType.INVOICE,
+        entity_id=invoice.id,
+        company_id=invoice.company_id,
+        actor=await _actor(platform, session),
+        previous_state=None,
+        new_state=None,
+        amount=invoice.total_amount,
+        currency=invoice.currency,
+        details={"invoice_number": number, "recipients": sent, "failed": failed},
+    )
+    if not sent:
+        # Every address failed. Reporting success here would be the worst
+        # possible answer, because the operator stops chasing it.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "The invoice could not be delivered to anybody. "
+                "Check the outbound mail settings and try again."
+            ),
+        )
+    return InvoiceEmailResponse(invoice_id=invoice.id, sent_to=sent, failed=failed)
+
+
+# --- credit notes ----------------------------------------------------
+
+
+def _selections(payload: PreviewCreditNoteRequest) -> list[LineSelection]:
+    """The wire form, as the domain wants it.
+
+    Note what does not appear: a description, a price or an amount. Those
+    come from the invoice line being credited, which is what makes every
+    figure on a credit note traceable to something that was actually
+    billed.
+    """
+    return [
+        LineSelection(
+            invoice_line_id=line.invoice_line_id,
+            quantity=line.quantity,
+            reason=line.reason,
+        )
+        for line in payload.lines
+    ]
+
+
+@router.get("/{invoice_id}/creditable", response_model=CreditableLinesResponse)
+async def creditable_lines(
+    invoice_id: uuid.UUID,
+    service: Annotated[InvoiceService, Depends(get_invoice_service)],
+) -> CreditableLinesResponse:
+    """What is still creditable on this invoice, line by line.
+
+    The read behind the credit dialog. Every figure comes from documents
+    already written — the issued line, and what earlier credit notes took
+    off it — so a screen can show a quantity field bounded by something
+    real instead of letting an operator discover the limit by being
+    refused.
+
+    Note the two ceilings. The line remainders can add up to more than
+    ``amount_creditable`` when an older whole-invoice credit note consumed
+    credit without naming a line; the difference is reported as
+    ``unattributed_credited_amount`` rather than silently shrinking the
+    lines, because a console that cannot explain the gap will be asked to.
+    """
+    return CreditableLinesResponse.model_validate(await service.creditable_lines(invoice_id))
+
+
+@router.post("/{invoice_id}/credit-notes/preview", response_model=CreditNotePreviewResponse)
+async def preview_credit_note(
+    invoice_id: uuid.UUID,
+    payload: PreviewCreditNoteRequest,
+    service: Annotated[InvoiceService, Depends(get_invoice_service)],
+) -> CreditNotePreviewResponse:
+    """What the credit note would say, before anything is written.
+
+    A POST that writes nothing — the selection is a list, which does not
+    belong in a query string. It runs the **write path's own** validation
+    and arithmetic, so a total an operator approves here is the total the
+    document will carry, and a selection accepted here cannot be refused a
+    moment later by the save.
+    """
+    return CreditNotePreviewResponse.model_validate(
+        await service.preview_credit_note(invoice_id=invoice_id, selections=_selections(payload))
+    )
+
+
 @router.post(
     "/{invoice_id}/credit-notes",
     response_model=CreditNoteResponse,
@@ -583,15 +843,7 @@ async def issue_credit_note(
     """
     note = await service.issue_credit_note(
         invoice_id=invoice_id,
-        lines=[
-            CreditLineInput(
-                description=line.description,
-                quantity=line.quantity,
-                unit_amount=line.unit_amount,
-                invoice_line_id=line.invoice_line_id,
-            )
-            for line in payload.lines
-        ],
+        selections=_selections(payload),
         reason=payload.reason,
         actor_user_id=platform.user_id,
         actor=await _actor(platform, session),

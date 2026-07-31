@@ -150,7 +150,10 @@
       "paid": "Paid",
       "overdue": "Overdue",
       "cancelled": "Cancelled"
-    }
+    },
+    "downloadPdf": "Download PDF",
+    "downloadPdfFor": "Download invoice {{number}} as PDF",
+    "pdfFailed": "That invoice could not be downloaded. Try again in a moment."
   },
   "prices": {
     "title": "Your rates",

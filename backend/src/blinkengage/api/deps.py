@@ -50,6 +50,7 @@ from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.feature_service import FeatureService
 from blinkengage.application.services.financial_audit_service import FinancialAuditRecorder
 from blinkengage.application.services.internal_note_service import InternalNoteService
+from blinkengage.application.services.invoice_document_service import InvoiceDocumentService
 from blinkengage.application.services.invoice_service import InvoiceService
 from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.ledger_service import (
@@ -1136,6 +1137,13 @@ def get_webhook_ingest_service(
     )
 
 
+def get_invoice_document_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> InvoiceDocumentService:
+    return InvoiceDocumentService(session, issuer_name=settings.app_name)
+
+
 def get_company_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
@@ -1387,6 +1395,11 @@ _READ_ONLY_SAFE_POSTS = frozenset(
     {
         "/api/v1/platform/pricing/resolve",
         "/api/v1/platform/pricing/quote",
+        # A POST only because the selection is a list, which does not belong
+        # in a query string. It writes nothing, and a read-only operator
+        # answering "how much would crediting these lines come to?" is
+        # exactly the reading this account exists for.
+        "/api/v1/platform/invoices/{invoice_id}/credit-notes/preview",
     }
 )
 

@@ -150,7 +150,10 @@
       "paid": "مدفوعة",
       "overdue": "متأخّرة",
       "cancelled": "ملغاة"
-    }
+    },
+    "downloadPdf": "تنزيل PDF",
+    "downloadPdfFor": "تنزيل الفاتورة {{number}} بصيغة PDF",
+    "pdfFailed": "تعذر تنزيل هذه الفاتورة. حاول مرة أخرى بعد قليل."
   },
   "prices": {
     "title": "أسعارك",

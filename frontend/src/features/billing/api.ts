@@ -96,6 +96,31 @@ async function fetchInvoice(invoiceId: string): Promise<InvoiceDetail> {
   return data
 }
 
+/**
+ * The customer's own invoice, as a PDF.
+ *
+ * Same authenticated client as every other call — a plain link would send the
+ * browser without the bearer token and the download would be a 403. The route
+ * is scoped to the caller's company server-side, so this can only ever fetch
+ * an invoice that belongs to them.
+ */
+export async function downloadOwnInvoicePdf(
+  invoiceId: string,
+  invoiceNumber: string | null,
+): Promise<void> {
+  const response = await apiClient.get(`/billing/invoices/${invoiceId}/pdf`, {
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(response.data as Blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${invoiceNumber ?? 'invoice'}.pdf`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function useInvoiceDetailQuery(invoiceId: string | null) {
   return useQuery({
     queryKey: ['billing', 'invoice', invoiceId],

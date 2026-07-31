@@ -22,9 +22,15 @@ with a monthly refresh rate.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
-from blinkengage.api.deps import get_billing_dashboard_service, require_permission
+from blinkengage.api.deps import (
+    get_billing_dashboard_service,
+    get_company_service,
+    get_invoice_document_service,
+    get_invoice_service,
+    require_permission,
+)
 from blinkengage.api.schemas.billing import (
     BillingDashboardResponse,
     DailySeriesResponse,
@@ -37,8 +43,13 @@ from blinkengage.application.services.billing_dashboard_service import (
     BillingDashboardService,
     ChartWindow,
 )
+from blinkengage.application.services.company_service import CompanyService
+from blinkengage.application.services.invoice_document_service import InvoiceDocumentService
+from blinkengage.application.services.invoice_service import InvoiceService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.projection import ProjectionStrategy
+from blinkengage.infrastructure.database.models.invoicing import Invoice
+from blinkengage.infrastructure.documents.invoice_pdf import render_invoice_pdf
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -115,6 +126,57 @@ async def invoice_detail(
         invoice=InvoiceSummaryResponse.model_validate(summary),
         lines=[InvoiceLineResponse.model_validate(line) for line in lines],
     )
+
+
+@router.get(
+    "/invoices/{invoice_id}/pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}, "description": "The invoice."}},
+)
+async def invoice_pdf(
+    invoice_id: uuid.UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("billing.read"))],
+    service: Annotated[BillingDashboardService, Depends(get_billing_dashboard_service)],
+    documents: Annotated[InvoiceDocumentService, Depends(get_invoice_document_service)],
+    companies: Annotated[CompanyService, Depends(get_company_service)],
+    invoices: Annotated[InvoiceService, Depends(get_invoice_service)],
+) -> Response:
+    """The customer's own invoice, as a PDF.
+
+    Scoped through ``invoice_detail``, which is where the ownership check
+    lives — a wrong company or a draft raises *not found* rather than
+    *forbidden*, because distinguishing the two would confirm that an
+    invoice id exists, and that is itself a leak across tenants. Calling it
+    here rather than re-checking means this route cannot be the one that
+    forgets.
+
+    Rendered from the frozen snapshot, so what a customer downloads today
+    and what they downloaded a year ago are the same document.
+    """
+    await service.invoice_detail(auth.company_id, invoice_id)
+    invoice = await invoices.get(invoice_id)
+    document_bytes = await _render_own_invoice(invoice, documents, companies)
+    number = invoice.invoice_number or str(invoice.id)
+    return Response(
+        content=document_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{number}.pdf"'},
+    )
+
+
+async def _render_own_invoice(
+    invoice: Invoice,
+    documents: InvoiceDocumentService,
+    companies: CompanyService,
+) -> bytes:
+    """A logo that will not load is never a reason a customer cannot get
+    their bill."""
+    document = await documents.build(invoice)
+    try:
+        logo = await companies.get_logo(company_id=invoice.company_id)
+    except Exception:  # noqa: BLE001 — see the docstring: never fatal.
+        logo = None
+    return render_invoice_pdf(document, logo=logo)
 
 
 __all__ = ["router"]

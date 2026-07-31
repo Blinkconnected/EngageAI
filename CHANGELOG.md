@@ -16,6 +16,64 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Every issued invoice now has a proper PDF.** Download it, open it for
+  printing, or send it to the customer by email — from the Billing Console,
+  or by the customer themselves from their own billing page.
+
+  It carries the Blink Engage mark, the invoice number, issue and due
+  dates, the billing period, who it is billed to, the currency, every line
+  with what was used, what was included, what was billable, the unit price
+  and the tier that set it where one applies, then the subtotal, credits,
+  payments and the outstanding balance. Credit notes issued against it and
+  payments applied to it are listed. At the foot is our registered legal
+  entity in English and Arabic, and beside the totals a QR code that
+  identifies the document.
+
+  It is A4, black on white, and made to be printed and filed.
+
+  **Nothing on it is recalculated.** Every figure is read from what was
+  written when the invoice was issued, so the same invoice reprinted years
+  later says exactly what it said the day it was sent — even if the price
+  has changed three times since.
+
+  A draft has no PDF: it carries no number and has been sent to nobody. An
+  invoice that was withdrawn or written off says so plainly at the top, so
+  it can never be mistaken for one that is still payable.
+
+- **Invoices in Arabic now read as Arabic.** The document is set in a font
+  that carries the script, and Arabic is joined and laid out right to left
+  rather than printed as disconnected letters. Company names in Arabic
+  appear as names.
+
+- **Credit notes are now made from invoice lines.** Choose the lines that
+  were billed wrongly and how much of each to credit; the price comes from
+  the line that was billed. The totals are shown before anything is
+  issued, and they are worked out by the same code that writes the
+  document — so what you approve is what the credit note says.
+
+  You can no longer type an arbitrary amount. Every figure on a credit
+  note traces back to a charge, which is what makes one explainable to an
+  auditor six months later. Each line shows what was billed, what has
+  already been credited and what is left, and a quantity larger than that
+  is refused with the reason.
+
+### Fixed
+
+- **Two credit notes issued at the same moment could credit the same
+  money twice.** A double-clicked button, or a client retrying, could put
+  several credit notes through against one invoice — in testing, eight
+  simultaneous requests credited $4,000 against a $500 invoice. Issuing a
+  credit note now holds the invoice while it checks and writes, so only
+  what genuinely fits can land.
+
+- **Emailing an invoice to several people no longer fails silently.** If
+  the mail server refused one address, the whole request failed, some
+  people had already received it, and nothing was recorded. Each address
+  is now attempted on its own, and what was sent and what failed are both
+  reported and both written to the audit trail.
+
+### Added
+
 - **The Billing Console is now a finance workspace, not a settings page.**
   It opens on what the business earned rather than on a rate editor, and
   it has six sections that follow the way a finance day actually runs:
