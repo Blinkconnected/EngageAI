@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends
 
 from blinkengage.api.deps import (
     get_conversation_service,
+    get_ownership_service,
     get_routing_decision_repository,
     get_sla_engine,
     require_permission,
@@ -28,9 +29,17 @@ from blinkengage.api.schemas.sla import (
     SlaEventResponse,
 )
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.core.auth_context import AuthContext
-from blinkengage.domain.sla import PAUSE_TEXT, QUESTION, Clock, SlaState
+from blinkengage.domain.sla import (
+    HEALTH_ORDER,
+    PAUSE_TEXT,
+    QUESTION,
+    Clock,
+    SlaHealth,
+    SlaState,
+)
 from blinkengage.infrastructure.database.models.routing_decision import RoutingDecisionRecord
 from blinkengage.infrastructure.repositories.routing_decision_repository import (
     RoutingDecisionRepository,
@@ -65,7 +74,9 @@ def _explain(clock: Clock, *, now: datetime) -> str:
     return f"Running, {minutes} minutes left. ({question})"
 
 
-def _clock(clock: Clock, *, now: datetime, note: str | None) -> ClockResponse:
+def _clock(
+    clock: Clock, *, now: datetime, note: str | None, owner_label: str
+) -> ClockResponse:
     remaining = clock.remaining(now=now)
     return ClockResponse(
         timer=clock.timer.value,
@@ -82,7 +93,8 @@ def _clock(clock: Clock, *, now: datetime, note: str | None) -> ClockResponse:
         pause_note=note,
         started_at=None,
         settled_at=clock.settled_at,
-        urgency=clock.urgency(now=now).value,
+        health=clock.health(now=now).value,
+        responsible=clock.responsible(owner_label=owner_label),
         explanation=_explain(clock, now=now),
     )
 
@@ -108,6 +120,7 @@ async def read_sla(
     auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
     conversations: Annotated[ConversationService, Depends(get_conversation_service)],
     engine: Annotated[SlaEngine, Depends(get_sla_engine)],
+    ownership: Annotated[OwnershipService, Depends(get_ownership_service)],
     decisions: Annotated[RoutingDecisionRepository, Depends(get_routing_decision_repository)],
 ) -> ConversationSlaResponse:
     """Every clock, what it means, and how it got there.
@@ -123,11 +136,25 @@ async def read_sla(
     notes = await engine.pause_notes(conversation_id)
     timeline = await decisions.sla_events(conversation_id=conversation_id)
 
+    # Who the conversation is with, as the SLA's fallback answer to "waiting
+    # on whom". A clock paused for the customer overrides it — see
+    # ``Clock.responsible`` — but everything else is waiting on whoever
+    # holds the conversation, which is the ownership model's job to say.
+    current = await ownership.current(conversation_id)
+    owner_label = current.owner.describe().capitalize() if current else "Nobody"
+
+    clocks = [
+        _clock(clock, now=now, note=notes.get(clock.timer), owner_label=owner_label)
+        for clock in sla.clocks
+    ]
+    # The worst clock decides, and it is also the one somebody would act on
+    # — so it is the one whose responsible party is worth surfacing.
+    worst = min(clocks, key=lambda c: HEALTH_ORDER.index(SlaHealth(c.health)), default=None)
+
     return ConversationSlaResponse(
-        urgency=sla.urgency.value,
-        clocks=[
-            _clock(clock, now=now, note=notes.get(clock.timer)) for clock in sla.clocks
-        ],
+        health=sla.health.value,
+        responsible=worst.responsible if worst else owner_label,
+        clocks=clocks,
         timeline=[_event(row) for row in timeline],
     )
 

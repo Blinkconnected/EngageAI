@@ -282,10 +282,16 @@ consumer crashes or restarts.
 fixed catalog (`NOTIFICATION_TYPES`, `NotificationChannel`) covering only
 the built-in rules' notification types (not the open-ended
 `workflow.notification` type a company can trigger arbitrarily — there's
-no fixed list to render a toggle for those). Three channels:
-`email`, `browser`, `sound` — the in-app notification itself (the badge,
-the history list) is always delivered and isn't a toggleable channel,
-since disabling it would mean the notification never existed at all.
+no fixed list to render a toggle for those). Four channels:
+`email`, `browser`, `sound`, `push` — the in-app notification itself (the
+badge, the history list) is always delivered and isn't a toggleable
+channel, since disabling it would mean the notification never existed at
+all.
+
+`push` is deliberately *not* a variant of `browser`. A browser
+notification only reaches somebody who has the app open; a push reaches a
+phone in a pocket at 3am. Wanting the first and not the second is a
+common, reasonable preference, and it needs two toggles to express.
 
 `NotificationPreference` (`infrastructure/database/models/
 notification_preference.py`): one row per explicit override
@@ -310,6 +316,133 @@ re-checked forever), just without a real SMTP send.
 **Browser/sound honor it too, client-side**: see the frontend section
 below for how `RealtimeProvider` reads this same matrix to gate the
 live delivery effects.
+
+**Push honors it** the same way email does — see the next section.
+
+## Mobile push notifications (added 2026-07-30)
+
+**The gap this closes**: realtime delivery was a WebSocket and nothing
+else, and a WebSocket is exactly what a mobile operating system suspends
+seconds after the app is backgrounded. An agent app built on the existing
+API went silent in the user's pocket — the one situation a notification is
+for. Push is the transport that survives it.
+
+### One transport, behind a seam
+
+`domain/push.py` is the contract (`PushSender`, `PushMessage`,
+`PushResult`), framework-free like `domain/channel_provider.py` and an
+ABC for the same reason: the dispatch sweep resolves *the configured
+sender* rather than importing a concrete class.
+
+`infrastructure/push/fcm.py` is the first and only implementation —
+**FCM HTTP v1**, which reaches Android, iOS and web because Firebase
+relays to APNs itself. Adding APNs directly was considered and deferred:
+it means a second credential type (a `.p8` key, ES256-signed JWTs) and an
+HTTP/2 client dependency for the same delivered notification. The seam is
+there so that stays an addition rather than a redesign.
+
+`infrastructure/push/service_account.py` does FCM v1's OAuth exchange —
+sign a JWT assertion with the service account's key, trade it for an
+access token — in ~60 lines rather than by adding `google-auth`, whose
+transport stack and credential-discovery machinery are far wider than the
+one call needed. `python-jose` already signs every session token in this
+codebase. The access token is cached in-process until shortly before it
+expires, because a sweep sends many messages per run and re-minting per
+message would make the RSA signature the dominant cost of a push.
+
+`build_push_sender()` returns `None` when unconfigured, rather than a
+no-op sender that silently accepts everything — so "push isn't set up"
+and "push is set up and failing" can never look alike in the logs.
+
+### Outcomes, and why there are exactly three
+
+FCM distinguishes a dead token from a throttle, and the two need opposite
+responses. Conflating them gives you either a transport that pushes at
+uninstalled apps forever, or one that drops notifications during a Google
+incident:
+
+| Outcome | Cause | What the sweep does |
+|---|---|---|
+| `DELIVERED` | provider accepted it | mark `push_dispatched_at` |
+| `RETRY` | 5xx, 429, network, bad credentials | leave unmarked for the next sweep |
+| `DEVICE_GONE` | `UNREGISTERED`, `SENDER_ID_MISMATCH`, 404 | **delete the token row**, mark the notification |
+
+A sender never raises for a rejection the provider can be expected to
+produce — a rejection is an answer, not a fault. An exception escaping
+one anyway is treated as `RETRY`, because losing a notification to a bug
+in a transport is the worse failure.
+
+Dead tokens are deleted rather than flagged: a token the provider calls
+unregistered fails identically forever, a reinstalled app arrives with a
+brand-new token regardless, and a `revoked_at` column would grow without
+bound while making every dispatch query filter on it. The pruning is
+logged (`push_device_token_pruned`), so the trail lives in the logs.
+
+### The dispatch sweep, and the stale window
+
+`notification_push_dispatch_task.py` is the email dispatcher's sibling and
+deliberately the same shape — claim rows with no `push_dispatched_at`,
+consult the preference, mark the row, let failures wait for the next
+sweep. It runs every **10 seconds** rather than email's 30: an email that
+lands half a minute late is still an email, while a push is an
+interruption whose entire value is being current. The query is the same
+shape and cost as the outbox relay's (one limited SELECT against a
+partial index), which runs at 5s for exactly this reason.
+
+The one genuinely new rule is **`push_stale_after_minutes` (default 15)**,
+and it does three jobs with one mechanism:
+
+1. **No late interruptions.** "A customer is waiting" arriving forty
+   minutes afterwards is worse than not arriving; the conversation has
+   moved on.
+2. **Retries are bounded.** `RETRY` leaves a row unmarked, so without a
+   window a permanently failing configuration would retry forever.
+   Outside the window the row is marked as decided-upon and skipped.
+3. **No backlog flood.** Switching push on for the first time, or
+   recovering from a provider outage, does not fire every historical
+   notification at once — which is the classic way a new push integration
+   makes itself hated on day one.
+
+Fan-out differs from email too: an email goes to one address, a push goes
+to every device the user has registered, and outcomes can differ across
+them. A notification is settled if it reached **at least one** device, or
+if every failure was terminal; it is retried only when something failed
+transiently *and* nothing got through.
+
+### Device registration
+
+`device_tokens` — and the design decision worth knowing is that
+**`token` is globally unique, not unique per user**. A push token
+identifies an app install on a physical device, which the operating system
+hands to whoever is signed in at the time. When a second person signs into
+a shared phone, the row must *change hands* rather than duplicate, or the
+provider keeps delivering the first person's conversations to a device
+they no longer hold — a confidentiality failure, not a glitch.
+Registration therefore upserts on the token, and the unique constraint is
+what makes the rule enforceable rather than merely intended.
+
+```
+POST   /api/v1/notifications/devices        { token, platform, device_name? }  -> 200
+GET    /api/v1/notifications/devices
+DELETE /api/v1/notifications/devices/{id}                                      -> 204
+```
+
+Under `/notifications`, auth-only, no RBAC permission — managing which of
+your own phones buzz is not a role-based access question, the same
+reasoning as the inbox and the preferences above.
+
+`POST` answers **200, not 201**, deliberately: a mobile client
+re-registers on every launch because the OS can rotate its token at any
+time and the only way to find out is to send the current one, so "a
+resource was just created" would be wrong far more often than right. The
+response never echoes the token back — the client supplied it, and
+repeating a credential that can address somebody's lock screen only widens
+where it can leak.
+
+Signing out should call `DELETE`. Nothing else would clean it up: a
+signed-out phone holds a perfectly valid token, so the provider never
+reports it, and the next notification would arrive for somebody who has
+left.
 
 ## Cross-tab/cross-device consistency
 
@@ -418,6 +551,21 @@ personal and functional, not a record that must outlive its owner.
 `email_dispatched_at` follows the same "null = pending, partial index on
 the null case" shape as `EventOutbox.dispatched_at`. No new permissions
 (see above).
+
+**Push (2026-07-30)** added `notifications.push_dispatched_at` and a new
+`device_tokens` table (`company_id`, `user_id`, `token` **unique**,
+`platform`, `device_name`, `last_registered_at`) — migration
+`c4b81e6f209d`.
+
+`push_dispatched_at` is a *second* watermark rather than a widening of
+`email_dispatched_at`: the two transports succeed and fail
+independently, and an email that went out while a push is still being
+retried is an ordinary state one column could not represent. Each gets
+its own partial index on its null case, because each sweep claims its
+own pending set and both sets are a tiny fraction of the table.
+Backfilled as NULL — "not yet pushed" — which is safe only because the
+sweep is bounded by the stale window; without it, enabling push would
+have pushed the entire history.
 
 **Sprint 2 Item 5** added `notifications.source_event_id` (nullable
 UUID) + `UNIQUE(source_event_id, user_id, notification_type)`, and a new

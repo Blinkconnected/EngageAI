@@ -27,11 +27,19 @@ class NotificationChannel(StrEnum):
     badge, the history list) is always delivered and is not a toggleable
     channel: disabling it would mean the notification never existed at
     all, contradicting "notification history" always being available.
-    These three are the tunable *delivery* channels layered on top."""
+    These four are the tunable *delivery* channels layered on top.
+
+    ``PUSH`` is deliberately its own channel rather than a variant of
+    ``BROWSER``: a browser notification only reaches somebody who has the
+    app open, while a push reaches a phone in a pocket at 3am. Somebody
+    who wants the first and not the second — a common, reasonable
+    preference — needs two toggles to say so.
+    """
 
     EMAIL = "email"
     BROWSER = "browser"
     SOUND = "sound"
+    PUSH = "push"
 
 
 @dataclass(frozen=True, slots=True)

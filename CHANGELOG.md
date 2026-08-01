@@ -34,11 +34,22 @@ for more detail on how this page is put together.
   deadline moves out by exactly that much and no more. A note can add
   detail; it can never replace the reason.
 
-  Every conversation now shows what needs attention: **breached**, **at
-  risk**, **on track**, or **resting**. Resting is the useful one — it means
-  this can safely wait. The worst clock decides, never an average: a
-  conversation twenty minutes overdue on its first reply is not "mostly
-  fine" because its resolution target is generous.
+  Every conversation shows a single **SLA health** indicator — healthy,
+  attention, at risk, or breached — rather than four timers to interpret.
+  Four timers is a report; one indicator is a decision, and the timers stay
+  available underneath. A conversation waiting on the customer is *healthy*,
+  not neglected: an agent needs to be able to skip it without wondering
+  whether they should. The worst clock decides, never an average.
+
+  Each timer also says **who it is waiting on** — the queue, an agent, AI, a
+  supervisor, or the customer. The customer never owns a conversation and is
+  still the honest answer while the ball is with them; saying otherwise
+  blames an agent for a delay that is not theirs.
+
+  The clocks now run from real events: they start when a conversation is
+  queued, the queue clock is answered the moment somebody takes
+  responsibility, a reply settles what the customer was waiting for, and
+  marking a conversation as waiting on the customer pauses them.
 
   A missed target stays missed. A late reply does not erase the lateness,
   and a conversation that ended before a clock could be met or missed is

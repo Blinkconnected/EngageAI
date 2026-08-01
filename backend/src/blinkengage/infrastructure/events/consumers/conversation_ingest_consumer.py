@@ -30,6 +30,8 @@ from blinkengage.application.services.policy_recorder import RecordingPolicyEngi
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.resolution_strategies import default_stages
 from blinkengage.application.services.routing_engine import RoutingEngine
+from blinkengage.application.services.sla_engine import SlaEngine
+from blinkengage.application.services.sla_lifecycle import SlaLifecycle
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.company_settings import (
@@ -53,7 +55,7 @@ from blinkengage.domain.routing_decisions import (
     queue_unavailable_decision,
     service_decision,
 )
-from blinkengage.domain.service_context import ContextBindingReason, ServiceContext
+from blinkengage.domain.service_context import ContextBindingReason, ServiceContext, SlaTargets
 from blinkengage.domain.service_resolution import ResolutionRequest, resolve_service
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
@@ -641,6 +643,45 @@ async def _customer_version_id(
     return version.id
 
 
+async def _start_clocks(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    company_id: UUID,
+    targets: SlaTargets | None,
+) -> None:
+    """Starts the clocks a queued conversation gets, and never costs it.
+
+    Same tradeoff as every other recorder here. A clock that would not
+    start must not stop a customer being answered — an SLA is a promise
+    about the answer, not a precondition for it.
+    """
+    if targets is None:
+        return
+    try:
+        await SlaLifecycle(SlaEngine(session, RoutingDecisionRepository(session))).queued(
+            conversation_id=conversation.id, company_id=company_id, targets=targets
+        )
+    except Exception:  # noqa: BLE001 — see the docstring: never fatal.
+        logger.warning(
+            "sla_clocks_not_started", conversation_id=str(conversation.id), exc_info=True
+        )
+
+
+async def _accepted(session: AsyncSession, *, conversation: Conversation) -> None:
+    """Somebody took responsibility, so the queue clock is answered."""
+    try:
+        await SlaLifecycle(
+            SlaEngine(session, RoutingDecisionRepository(session))
+        ).owner_accepted(conversation_id=conversation.id)
+    except Exception:  # noqa: BLE001 — never fatal, as above.
+        logger.warning(
+            "sla_queue_clock_not_settled",
+            conversation_id=str(conversation.id),
+            exc_info=True,
+        )
+
+
 async def _own(
     session: AsyncSession,
     *,
@@ -796,6 +837,19 @@ async def _route_and_assign(
 
     queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
 
+    # Three clocks start with the queue: the customer is now waiting for
+    # somebody to take it, for a first reply, and for the whole thing to be
+    # over — all true at once, which is why they are separate clocks.
+    #
+    # Targets come from the *service*, which owns them. A company with no
+    # service directory measures nothing, exactly as before this shipped.
+    await _start_clocks(
+        session,
+        conversation=conversation,
+        company_id=company_id,
+        targets=service.sla if service is not None else None,
+    )
+
     # The queue becomes answerable the moment the conversation enters it.
     # Not "unassigned" — *owned by the queue*, which is the distinction the
     # ownership model exists to make: a conversation nobody has picked up
@@ -868,6 +922,10 @@ async def _route_and_assign(
         ):
             conversation.autopilot_active = True
             conversation.status = ConversationStatus.IN_PROGRESS
+            # The queue clock is answered on *acceptance*, not on reply.
+            # "How long has this customer been waiting for ownership?" is
+            # answered the moment somebody owns it.
+            await _accepted(session, conversation=conversation)
             # AI is an owner, not an absence. "Nobody has it" would be
             # false, and the moment AI hands back would have nothing to be
             # a transition *from*.
@@ -905,6 +963,7 @@ async def _route_and_assign(
     if agent_id is not None:
         conversation.assigned_agent_id = agent_id
         conversation.status = ConversationStatus.IN_PROGRESS
+        await _accepted(session, conversation=conversation)
         await _own(
             session,
             conversation=conversation,

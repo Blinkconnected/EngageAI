@@ -19,6 +19,8 @@ from uuid import UUID, uuid4
 from blinkengage.application.services.assignment_engine import filter_by_required_skills
 from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
+from blinkengage.application.services.sla_engine import SlaEngine
+from blinkengage.application.services.sla_lifecycle import SlaLifecycle
 from blinkengage.core.config import Settings
 from blinkengage.domain.channels import AttachmentRef, OutboundMessage
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
@@ -123,6 +125,7 @@ class ConversationService:
         attachment_store: AttachmentStore,
         provider_factory: ChannelProviderFactory,
         events: DomainEventPublisher,
+        sla: SlaEngine | None = None,
         settings: Settings,
         transfers: ConversationTransferRepository,
         agents: AgentRepository,
@@ -140,6 +143,11 @@ class ConversationService:
         self._attachment_store = attachment_store
         self._provider_factory = provider_factory
         self._events = events
+        #: Optional so the ~25 tests that construct this service directly
+        #: keep working untouched. Wired in production through ``deps``;
+        #: absent, every SLA call below is a no-op and the service behaves
+        #: exactly as it did before the clocks existed.
+        self._sla = SlaLifecycle(sla)
         self._settings = settings
         self._transfers = transfers
         self._agents = agents
@@ -221,6 +229,11 @@ class ConversationService:
                 )
             conversation.status = status
             status_transitioned = True
+            # Translated into what it means for the clocks — see
+            # ``SlaLifecycle``. A status change is not an SLA event; it is
+            # a fact the SLA reads, which is why the translation lives in
+            # one table rather than in this branch.
+            await self._sla.status_changed(conversation_id=conversation.id, status=status)
             if status in (ConversationStatus.CLOSED, ConversationStatus.RESOLVED):
                 # Also refreshed on entering RESOLVED, not just CLOSED —
                 # ReportingRepository.queue_metrics()'s abandoned_count_24h
@@ -973,8 +986,11 @@ class ConversationService:
 
         now = datetime.now(UTC)
         conversation.last_message_at = now
-        if conversation.first_response_at is None:
+        was_first = conversation.first_response_at is None
+        if was_first:
             conversation.first_response_at = now
+        # A reply answers whatever the customer was last waiting for.
+        await self._sla.replied(conversation_id=conversation.id, was_first=was_first, now=now)
 
         await self._events.publish(
             DomainEvent(

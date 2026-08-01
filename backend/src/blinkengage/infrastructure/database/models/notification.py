@@ -37,6 +37,16 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             postgresql_where=text("email_dispatched_at IS NULL"),
             sqlite_where=text("email_dispatched_at IS NULL"),
         ),
+        # Its own partial index rather than widening the one above: the two
+        # sweeps run at different cadences and claim different rows, so a
+        # composite index would serve neither well, and the pending set for
+        # each is a tiny fraction of the table.
+        Index(
+            "ix_notifications_unpushed",
+            "push_dispatched_at",
+            postgresql_where=text("push_dispatched_at IS NULL"),
+            sqlite_where=text("push_dispatched_at IS NULL"),
+        ),
         # Standard SQL treats NULL as distinct from NULL for uniqueness,
         # so any number of rows with source_event_id=NULL (a notification
         # with no triggering event, e.g. a hypothetical future direct
@@ -90,5 +100,15 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # rather than a fire-and-forget task enqueue (no precedent for that
     # pattern elsewhere in this codebase; this stays consistent with it).
     email_dispatched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    # Null = not yet pushed, with exactly the same "we decided what to do
+    # with it" meaning as email above — a user with no registered device,
+    # or who turned push off for this type, gets marked without anything
+    # being sent. Its own column rather than one shared dispatch
+    # watermark: email and push succeed and fail independently, and a
+    # single column could not record that the email went out while the
+    # push is still being retried.
+    push_dispatched_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )

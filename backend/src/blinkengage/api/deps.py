@@ -672,6 +672,10 @@ def get_conversation_service(
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
 ) -> ConversationService:
     return ConversationService(
+        # Wired here rather than made a required constructor argument: the
+        # ~25 tests that build this service directly keep working, and
+        # production gets the clocks.
+        sla=SlaEngine(session, RoutingDecisionRepository(session)),
         conversations=ConversationRepository(session),
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
@@ -700,6 +704,10 @@ def get_conversation_service_ws(
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
 ) -> ConversationService:
     return ConversationService(
+        # Wired here rather than made a required constructor argument: the
+        # ~25 tests that build this service directly keep working, and
+        # production gets the clocks.
+        sla=SlaEngine(session, RoutingDecisionRepository(session)),
         conversations=ConversationRepository(session),
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),

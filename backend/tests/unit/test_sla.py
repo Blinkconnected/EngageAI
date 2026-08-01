@@ -20,12 +20,12 @@ from blinkengage.domain.sla import (
     PAUSE_TEXT,
     QUESTION,
     RECORDED_AS,
-    URGENCY_ORDER,
+    HEALTH_ORDER,
     Clock,
     PauseReason,
     SlaState,
     SlaTimer,
-    Urgency,
+    SlaHealth,
     as_routing_decision,
     overall,
 )
@@ -103,23 +103,23 @@ class TestEachClockAnswersACustomerQuestion:
         assert len(SlaTimer) == 4
 
 
-class TestUrgencyIsWhatAnAgentSees:
+class TestHealthIsWhatAnAgentSees:
     def test_a_breach_stays_breached(self) -> None:
         """A fact about what happened. A clock that could un-breach would
         let a late reply erase the lateness."""
         breached = a_clock(state=SlaState.BREACHED, settled_at=NOW)
 
-        assert breached.urgency(now=NOW + timedelta(days=1)) is Urgency.BREACHED
+        assert breached.health(now=NOW + timedelta(days=1)) is SlaHealth.BREACHED
 
     def test_eighty_percent_through_is_at_risk(self) -> None:
         clock = a_clock(elapsed=timedelta(minutes=48), running_since=None, state=SlaState.RUNNING)
 
-        assert clock.urgency(now=NOW) is Urgency.AT_RISK
+        assert clock.health(now=NOW) is SlaHealth.AT_RISK
 
     def test_early_is_on_track(self) -> None:
         clock = a_clock(elapsed=timedelta(minutes=10), running_since=None)
 
-        assert clock.urgency(now=NOW) is Urgency.ON_TRACK
+        assert clock.health(now=NOW) is SlaHealth.HEALTHY
 
     def test_a_paused_clock_can_safely_wait(self) -> None:
         """The band that lets an agent ignore something without wondering
@@ -131,15 +131,15 @@ class TestUrgencyIsWhatAnAgentSees:
             pause_reason=PauseReason.WAITING_FOR_CUSTOMER,
         )
 
-        assert paused.urgency(now=NOW) is Urgency.RESTING
+        assert paused.health(now=NOW) is SlaHealth.HEALTHY
 
     def test_an_unmeasured_clock_is_not_urgent(self) -> None:
-        assert a_clock(target_minutes=None).urgency(now=NOW) is Urgency.RESTING
+        assert a_clock(target_minutes=None).health(now=NOW) is SlaHealth.HEALTHY
 
     def test_a_zero_target_is_late_immediately_and_does_not_divide(self) -> None:
         """A configuration an administrator is allowed to save. Reported
         rather than crashed on."""
-        assert a_clock(target_minutes=0).urgency(now=NOW) is Urgency.BREACHED
+        assert a_clock(target_minutes=0).health(now=NOW) is SlaHealth.BREACHED
 
     def test_the_worst_clock_decides_the_conversation(self) -> None:
         """Never an average. A conversation whose first response is twenty
@@ -150,18 +150,25 @@ class TestUrgencyIsWhatAnAgentSees:
             a_clock(timer=SlaTimer.FIRST_RESPONSE, state=SlaState.BREACHED),
         ]
 
-        assert overall(clocks, now=NOW) is Urgency.BREACHED
+        assert overall(clocks, now=NOW) is SlaHealth.BREACHED
 
     def test_nothing_measured_rests(self) -> None:
-        assert overall([], now=NOW) is Urgency.RESTING
+        assert overall([], now=NOW) is SlaHealth.HEALTHY
+
+    def test_sixty_percent_through_is_worth_a_look(self) -> None:
+        """The band between "fine" and "urgent". Without it an agent gets
+        no warning until a conversation is already nearly late."""
+        clock = a_clock(elapsed=timedelta(minutes=36), running_since=None)
+
+        assert clock.health(now=NOW) is SlaHealth.ATTENTION
 
     def test_the_bands_are_ordered_worst_first(self) -> None:
-        """Sorting an inbox by urgency is sorting by what needs doing."""
-        assert URGENCY_ORDER == (
-            Urgency.BREACHED,
-            Urgency.AT_RISK,
-            Urgency.ON_TRACK,
-            Urgency.RESTING,
+        """Sorting an inbox by health is sorting by what needs doing."""
+        assert HEALTH_ORDER == (
+            SlaHealth.BREACHED,
+            SlaHealth.AT_RISK,
+            SlaHealth.ATTENTION,
+            SlaHealth.HEALTHY,
         )
 
 
@@ -237,3 +244,34 @@ class TestTheTimelineGoesInTheSameLog:
 
         assert kind is RoutingDecisionKind.SLA_STOPPED
         assert reason is RoutingDecisionReason.SLA_CLOCK_STOPPED
+
+
+class TestWhoTheSlaIsWaitingOn:
+    def test_a_customer_pause_names_the_customer(self) -> None:
+        """Not the same as who owns the conversation. Reporting the agent
+        for time the customer spent thinking blames somebody for a delay
+        that is not theirs — the most common way an SLA report loses an
+        agent's trust."""
+        paused = a_clock(
+            state=SlaState.PAUSED,
+            running_since=None,
+            pause_reason=PauseReason.WAITING_FOR_CUSTOMER,
+        )
+
+        assert paused.responsible(owner_label="Sara") == "Customer"
+
+    def test_anything_else_is_whoever_holds_the_conversation(self) -> None:
+        """The ownership model's job to say — the SLA does not have a second
+        opinion about who has it."""
+        assert a_clock().responsible(owner_label="Sara") == "Sara"
+        assert a_clock().responsible(owner_label="Support") == "Support"
+
+    def test_a_pause_for_another_reason_stays_with_the_owner(self) -> None:
+        """Outside business hours is our delay, not the customer's."""
+        paused = a_clock(
+            state=SlaState.PAUSED,
+            running_since=None,
+            pause_reason=PauseReason.OUTSIDE_BUSINESS_HOURS,
+        )
+
+        assert paused.responsible(owner_label="Sara") == "Sara"

@@ -21,7 +21,7 @@ from sqlalchemy import select
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.domain.lifecycle import ConversationStatus
 from blinkengage.domain.service_context import SlaTargets
-from blinkengage.domain.sla import PauseReason, SlaState, SlaTimer, Urgency
+from blinkengage.domain.sla import PauseReason, SlaHealth, SlaState, SlaTimer
 from blinkengage.infrastructure.database.models.routing_decision import RoutingDecisionRecord
 from blinkengage.infrastructure.repositories.routing_decision_repository import (
     RoutingDecisionRepository,
@@ -249,7 +249,7 @@ class TestTheServiceOwnsTheTargets:
             sla = await engine.read(conversation_id, now=NOW)
 
         assert {clock.timer for clock in sla.clocks} == set(SlaTimer)
-        assert sla.urgency is Urgency.ON_TRACK
+        assert sla.health is SlaHealth.HEALTHY
 
 
 class TestABreachIsTerminal:
@@ -286,7 +286,7 @@ class TestABreachIsTerminal:
         clock = sla.clock(SlaTimer.FIRST_RESPONSE)
         assert clock is not None
         assert clock.state is SlaState.BREACHED
-        assert sla.urgency is Urgency.BREACHED
+        assert sla.health is SlaHealth.BREACHED
 
     async def test_stopping_is_not_achieving(self, app: Any) -> None:
         """The conversation ended before the clock could be met or missed.
@@ -385,7 +385,7 @@ class TestEveryMovementIsInTheTimeline:
 
             rows = await sla_rows(session)
 
-        assert rows[0].sla_detail["question"].startswith("How long is the customer waiting")
+        assert rows[0].sla_detail["question"].startswith("How long has the customer been waiting")
 
 
 class TestTheInspectorAnswersTheSixQuestions:
@@ -395,13 +395,13 @@ class TestTheInspectorAnswersTheSixQuestions:
         """One sentence per clock, before anybody expands anything. Built
         from the structured fields, so two conversations paused for the same
         reason read alike and group together."""
+        from blinkengage.infrastructure.database.models.conversation import Conversation
         from tests.integration.test_routing_explainability import (
             _ingest,
             _queue,
             _routing_rule,
             _web_chat_session,
         )
-        from blinkengage.infrastructure.database.models.conversation import Conversation
 
         chat = await _web_chat_session(client, owner_headers)
         queue_id = await _queue(client, owner_headers, name="Support")
@@ -444,23 +444,23 @@ class TestTheInspectorAnswersTheSixQuestions:
         assert clock["pause_note"] == "Waiting on the warehouse to confirm stock"
         assert "deadline moves out" in clock["explanation"]
         # The customer question, so "first_response" is not the only label.
-        assert clock["question"].startswith("How long until the customer received")
+        assert clock["question"].startswith("How long until the customer receives")
         # And a paused clock can safely wait.
-        assert clock["urgency"] == "resting"
-        assert body["urgency"] == "resting"
+        assert clock["health"] == "healthy"
+        assert body["health"] == "healthy"
 
     async def test_the_timeline_shows_why_the_deadline_changed(
         self, client: Any, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
         """Answered by comparing two rows, which is why every one carries
         the deadline as it then stood."""
+        from blinkengage.infrastructure.database.models.conversation import Conversation
         from tests.integration.test_routing_explainability import (
             _ingest,
             _queue,
             _routing_rule,
             _web_chat_session,
         )
-        from blinkengage.infrastructure.database.models.conversation import Conversation
 
         chat = await _web_chat_session(client, owner_headers)
         queue_id = await _queue(client, owner_headers, name="Support")
@@ -516,3 +516,133 @@ class TestTheInspectorAnswersTheSixQuestions:
         )
 
         assert response.status_code == 404
+
+
+class TestTheClocksRunFromRealEvents:
+    async def test_a_queued_conversation_starts_three_clocks(
+        self, client: Any, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """The customer is now waiting for somebody to take it, for a first
+        reply, and for the whole thing to be over — all true at once, which
+        is why they are three clocks and not one.
+
+        Not the next-response clock: nobody is waiting for a *next* reply
+        before the first one has happened, and starting it would show every
+        new conversation as overdue on a promise not yet made.
+        """
+        from blinkengage.infrastructure.database.models.conversation import Conversation
+        from tests.integration.test_routing_explainability import (
+            _ingest,
+            _queue,
+            _routing_rule,
+            _web_chat_session,
+        )
+        from tests.integration.test_service_resolution_ingest import a_service
+
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+        company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            # The *service* owns the targets, so one has to exist.
+            await a_service(session, company_id, "Support")
+            await session.commit()
+            await _ingest(session, company_id=str(company_id), chat=chat)
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            sla = await engine_for(session).read(conversation.id)
+
+        started = {clock.timer for clock in sla.clocks if clock.state is not SlaState.NOT_MEASURED}
+        assert SlaTimer.FIRST_RESPONSE in started
+        assert SlaTimer.NEXT_RESPONSE not in started
+
+    async def test_a_company_with_no_services_measures_nothing(
+        self, client: Any, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """Targets come from the service. A company that has not set one up
+        behaves exactly as it did before the clocks existed."""
+        from blinkengage.infrastructure.database.models.conversation import Conversation
+        from tests.integration.test_routing_explainability import (
+            _ingest,
+            _queue,
+            _routing_rule,
+            _web_chat_session,
+        )
+
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(
+                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
+            )
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            sla = await engine_for(session).read(conversation.id)
+
+        assert sla.clocks == []
+        assert sla.health.value == "healthy"
+
+    async def test_marking_it_waiting_on_the_customer_pauses_the_clocks(
+        self, client: Any, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """The status change is translated into what it means for the
+        clocks. Time the customer spends thinking is not time the business
+        was late — and the Inspector then says the customer is the one it
+        is waiting on."""
+        from blinkengage.infrastructure.database.models.conversation import Conversation
+        from tests.integration.test_routing_explainability import (
+            _ingest,
+            _queue,
+            _routing_rule,
+            _web_chat_session,
+        )
+        from tests.integration.test_service_resolution_ingest import a_service
+
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+        company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await a_service(session, company_id, "Support")
+            await session.commit()
+            await _ingest(session, company_id=str(company_id), chat=chat)
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+
+        # Through in-progress first. A conversation nobody has picked up
+        # cannot be waiting on the customer — we have not replied yet — and
+        # the lifecycle refuses the shortcut, which is the transition table
+        # doing its job.
+        taken = await client.patch(
+            f"/api/v1/conversations/{conversation.id}",
+            json={"status": "in_progress"},
+            headers=owner_headers,
+        )
+        assert taken.status_code == 200
+        waiting = await client.patch(
+            f"/api/v1/conversations/{conversation.id}",
+            json={"status": "waiting_customer"},
+            headers=owner_headers,
+        )
+        assert waiting.status_code == 200
+
+        body = (
+            await client.get(
+                f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers
+            )
+        ).json()
+
+        first = next(c for c in body["clocks"] if c["timer"] == "first_response")
+        assert first["state"] == "paused"
+        assert first["pause_reason"] == "waiting_for_customer"
+        assert first["responsible"] == "Customer"
+        # Paused is healthy: an agent has to be able to skip this without
+        # wondering whether they should.
+        assert first["health"] == "healthy"

@@ -146,6 +146,51 @@ to private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
 loopback) with `deny all` otherwise. Left open in `nginx.dev.conf`,
 where it's a local-only concern.
 
+## Request latency: two timings in the access log, and per-query stats
+
+Both nginx configs previously logged with the stock `main` format, which
+records that a request happened but not how long it took. Combined with
+`pg_stat_statements` not being loaded, that left no server-side evidence
+for a latency complaint — the access log could not distinguish a slow
+endpoint from a fast one, and the database could not name its slowest
+query. Diagnosing "the app feels slow" meant reasoning from request
+counts alone.
+
+`docker/nginx/logging.conf` now defines a `timed` format, used by every
+server block in both configs, appending two fields:
+
+- `rt=$request_time` — wall-clock time nginx spent on the request, from
+  the first client byte read to the last byte written. This is what the
+  user actually waited.
+- `urt=$upstream_response_time` — time the backend alone took, excluding
+  nginx overhead and transfer over the client's link.
+
+Logging both is the point: a large `rt` beside a small `urt` means the
+application is fine and the client link (or a slow upload) is the cost,
+while the two rising together means the backend is genuinely slow. One
+number cannot separate those cases, and picking only `$request_time`
+would have made every mobile-network user look like a backend problem.
+
+The filename prefix is load-bearing. The stock `nginx.conf` pulls in
+`conf.d/*.conf` as a sorted glob, so the file is mounted (dev) and
+`COPY`d (prod) as `00-logging.conf` — it must be parsed before
+`default.conf`, or the server blocks reference an undefined `log_format`
+and nginx refuses to start. The prod overlay clears the nginx service's
+volumes (`!override []`), which is why the prod path uses a `COPY` in
+`docker/nginx/Dockerfile` rather than relying on the compose mount.
+
+On the database side, `shared_preload_libraries=pg_stat_statements` is
+set on the `postgres` service with `track=all` (so statements inside
+PL/pgSQL functions are counted too, not just top-level ones) and
+`max=5000`. This cannot be enabled at runtime — `shared_preload_libraries`
+is read only at server start — so it lives in the compose command rather
+than a migration, and **enabling it requires a PostgreSQL restart**, which
+drops every open connection. The extension itself is then created once
+with `CREATE EXTENSION IF NOT EXISTS pg_stat_statements`.
+
+Both changes are measurement only: no request is served differently, and
+the cost is a few MB of shared memory plus per-statement bookkeeping.
+
 ## Automated backups + a real restore drill
 
 `scripts/backup_postgres.sh` — `pg_dump` (plain SQL, gzip-compressed,

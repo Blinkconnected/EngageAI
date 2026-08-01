@@ -59,15 +59,37 @@ accurate to the real API rather than normalized to match WhatsApp.
   Attachments arrive as a direct, pre-authenticated CDN `url` (no
   media-id-then-fetch indirection WhatsApp needs) — one `GET`, then
   re-uploaded into our own `AttachmentStorage`.
-- **No sender display name**: unlike WhatsApp's webhook (which inlines a
-  `contacts[].profile.name`), Messenger/Instagram webhooks carry no name
-  at all — fetching one costs a separate Graph API profile call per new
-  contact and isn't built here (`external_customer_name=None`). The
-  generic `CustomerChannelIdentity` resolution path (M16) already handles
-  a missing name by falling back to the external id as the new
-  `Customer.full_name`, so this isn't a gap, just a deferred enrichment
-  that can be added later inside `_parse_messaging_item` alone, with zero
-  architecture change.
+- **Sender display name costs an extra call**: unlike WhatsApp's webhook
+  (which inlines a `contacts[].profile.name`), Messenger/Instagram
+  webhooks carry no name at all — only a sender id. `_fetch_sender_name`
+  resolves it with a Graph User Profile call
+  (`GET /{sender_id}?fields=first_name,last_name`), landing exactly where
+  this document originally predicted the enrichment would go: inside
+  `_parse_messaging_item` alone, with zero architecture change. It
+  addresses the *sender's* node rather than the channel's own, which is
+  why `_graph_root` (versioned base, no node id) was split out of
+  `_api_base`.
+
+  Two properties matter more than the call itself:
+
+  - **Every failure degrades to `None`, never to an error.** The lookup
+    legitimately fails — for a sender whose profile the app can't read,
+    and for essentially every sender while the app is still in
+    development mode. A name is an enrichment, not something the
+    conversation needs in order to exist, so a failed lookup must not
+    fail the webhook: doing so would make Meta retry a delivery that
+    could never succeed, and lose a real customer message over a missing
+    nicety. The generic `CustomerChannelIdentity` path (M16) then falls
+    back to the external id as `Customer.full_name`, exactly as it did
+    before this lookup existed. A blank or whitespace-only profile is
+    treated as no name for the same reason — a blank customer record is
+    worse than the id.
+  - **Memoised per webhook batch, not per instance.** One batch routinely
+    carries several messages from the same sender, and each lookup is its
+    own round-trip. The cache is a local passed down from
+    `receive_message`, not instance state: a provider is built per
+    request, and a longer-lived cache would need invalidation rules for a
+    value that is only ever read when a customer is first created.
 - **No reply-context field**: the Send API has no parameter to make a
   business-sent message quote/reference a specific prior customer
   message the way WhatsApp's `context.message_id` does — sending still

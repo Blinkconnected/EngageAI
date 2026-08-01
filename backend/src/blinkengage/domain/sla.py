@@ -60,10 +60,10 @@ class SlaTimer(StrEnum):
 #: as data because the Inspector shows it: a timer labelled "first_response"
 #: explains nothing to somebody asking why a conversation is red.
 QUESTION: Final[dict[SlaTimer, str]] = {
-    SlaTimer.QUEUE: "How long did the customer wait before someone accepted responsibility?",
-    SlaTimer.FIRST_RESPONSE: "How long until the customer received the first meaningful response?",
-    SlaTimer.NEXT_RESPONSE: "How long is the customer waiting for the next response?",
-    SlaTimer.RESOLUTION: "How long until the issue is solved?",
+    SlaTimer.QUEUE: "How long has this customer been waiting for ownership?",
+    SlaTimer.FIRST_RESPONSE: "How long until the customer receives the first meaningful reply?",
+    SlaTimer.NEXT_RESPONSE: "How long has the customer been waiting for the next reply?",
+    SlaTimer.RESOLUTION: "How long until the customer's issue is resolved?",
 }
 
 
@@ -126,42 +126,45 @@ PAUSE_TEXT: Final[dict[PauseReason, str]] = {
 }
 
 
-class Urgency(StrEnum):
-    """What an agent needs to understand at a glance.
+class SlaHealth(StrEnum):
+    """How a conversation is doing, as one thing an agent can act on.
+
+    **The primary SLA visualisation.** Four timers side by side is a report;
+    one health indicator is a decision. The timers stay available underneath
+    for anybody who needs them, but the first thing an agent sees is this.
 
     Four bands rather than a percentage, because a list sorted by a number
     still has to be read one row at a time. These are the four answers to
-    "what do I do next", and they are ordered so a sort on them is the
-    triage order.
+    "what do I do next".
     """
 
+    #: Nothing to do. Includes paused and unmeasured clocks — a conversation
+    #: waiting on the customer is healthy, not neglected, and an agent has to
+    #: be able to skip it without wondering whether they should.
+    HEALTHY = "healthy"
+    #: Worth a look before it becomes urgent.
+    ATTENTION = "attention"
+    #: Close enough to the deadline to need doing now.
+    AT_RISK = "at_risk"
     #: Already missed. Nothing here gets better by waiting.
     BREACHED = "breached"
-    #: Close enough to the deadline to need attention now.
-    AT_RISK = "at_risk"
-    #: Running, with room.
-    ON_TRACK = "on_track"
-    #: Paused, or not measured. Can safely wait — and *safely* is the word:
-    #: this is the band that lets an agent ignore something without
-    #: wondering whether they should.
-    RESTING = "resting"
 
 
-#: Ordered worst-first, so sorting an inbox by urgency is sorting by what
-#: needs doing. A list rather than relying on enum declaration order, because
+#: Ordered worst-first, so sorting an inbox by health is sorting by what needs
+#: doing. A list rather than relying on enum declaration order, because
 #: somebody reordering the enum for tidiness must not silently reorder every
 #: agent's day.
-URGENCY_ORDER: Final[tuple[Urgency, ...]] = (
-    Urgency.BREACHED,
-    Urgency.AT_RISK,
-    Urgency.ON_TRACK,
-    Urgency.RESTING,
+HEALTH_ORDER: Final[tuple[SlaHealth, ...]] = (
+    SlaHealth.BREACHED,
+    SlaHealth.AT_RISK,
+    SlaHealth.ATTENTION,
+    SlaHealth.HEALTHY,
 )
 
-#: How close to the deadline counts as at risk. A proportion of the target
-#: rather than a fixed number of minutes: five minutes left on a fifteen
-#: minute target is nearly out of time, and on a two day target it is
+#: Proportions of the target, not fixed minutes: five minutes left on a
+#: fifteen-minute target is nearly out of time, and on a two-day target it is
 #: nothing.
+ATTENTION_FRACTION: Final[float] = 0.6
 AT_RISK_FRACTION: Final[float] = 0.8
 
 
@@ -214,21 +217,40 @@ class Clock:
             return None
         return timedelta(minutes=self.target_minutes) - self.counted(now=now)
 
-    def urgency(self, *, now: datetime) -> Urgency:
+    def health(self, *, now: datetime) -> SlaHealth:
         if self.state is SlaState.BREACHED:
-            return Urgency.BREACHED
+            return SlaHealth.BREACHED
         if self.state is not SlaState.RUNNING or self.target_minutes is None:
-            # Paused, unmeasured, achieved, stopped. Nothing to chase.
-            return Urgency.RESTING
+            # Paused, unmeasured, achieved, stopped. A conversation waiting
+            # on the customer is healthy, not neglected — and an agent has
+            # to be able to skip it without wondering whether they should.
+            return SlaHealth.HEALTHY
         target = timedelta(minutes=self.target_minutes)
         if target <= timedelta():
             # A zero target is late the instant it starts. Reported rather
             # than divided by, which would be a crash on a configuration an
             # administrator is allowed to save.
-            return Urgency.BREACHED
-        if self.counted(now=now) >= target * AT_RISK_FRACTION:
-            return Urgency.AT_RISK
-        return Urgency.ON_TRACK
+            return SlaHealth.BREACHED
+        counted = self.counted(now=now)
+        if counted >= target * AT_RISK_FRACTION:
+            return SlaHealth.AT_RISK
+        if counted >= target * ATTENTION_FRACTION:
+            return SlaHealth.ATTENTION
+        return SlaHealth.HEALTHY
+
+    def responsible(self, *, owner_label: str) -> str:
+        """Who the SLA is currently waiting on.
+
+        **Not the same as who owns the conversation.** A clock paused
+        because the customer has not replied is waiting on the *customer* —
+        who never owns a conversation and is nevertheless the honest answer
+        to "who is this waiting for". Reporting the agent there would blame
+        somebody for a delay that is not theirs, which is the most common
+        way an SLA report loses an agent's trust.
+        """
+        if self.state is SlaState.PAUSED and self.pause_reason is PauseReason.WAITING_FOR_CUSTOMER:
+            return "Customer"
+        return owner_label
 
 
 _SETTLED: Final[frozenset[SlaState]] = frozenset(
@@ -236,18 +258,18 @@ _SETTLED: Final[frozenset[SlaState]] = frozenset(
 )
 
 
-def overall(clocks: list[Clock], *, now: datetime) -> Urgency:
+def overall(clocks: list[Clock], *, now: datetime) -> SlaHealth:
     """The worst of them — what the Inbox sorts and colours by.
 
     Never an average. A conversation whose first response is twenty minutes
     overdue is not "mostly fine" because its resolution target is generous,
     and an agent scanning a list has to see the worst thing about each row.
     """
-    found = {clock.urgency(now=now) for clock in clocks}
-    for urgency in URGENCY_ORDER:
-        if urgency in found:
-            return urgency
-    return Urgency.RESTING
+    found = {clock.health(now=now) for clock in clocks}
+    for health in HEALTH_ORDER:
+        if health in found:
+            return health
+    return SlaHealth.HEALTHY
 
 
 
@@ -323,12 +345,13 @@ __all__ = [
     "RECORDED_AS",
     "PAUSE_TEXT",
     "QUESTION",
-    "URGENCY_ORDER",
+    "ATTENTION_FRACTION",
+    "HEALTH_ORDER",
     "Clock",
     "PauseReason",
     "SlaState",
     "SlaTimer",
-    "Urgency",
+    "SlaHealth",
     "as_routing_decision",
     "overall",
 ]

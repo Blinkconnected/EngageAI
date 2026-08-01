@@ -40,8 +40,14 @@ class ClockResponse(BaseModel):
     pause_note: str | None
     started_at: datetime | None
     settled_at: datetime | None
-    #: ``breached`` / ``at_risk`` / ``on_track`` / ``resting``.
-    urgency: str
+    #: ``healthy`` / ``attention`` / ``at_risk`` / ``breached``.
+    health: str
+    #: Who this clock is currently waiting on — Queue, an agent's name,
+    #: Customer, AI, or a supervisor. **Not** always the conversation's
+    #: owner: a clock paused because the customer has not replied is
+    #: waiting on the customer, and saying otherwise blames somebody for a
+    #: delay that is not theirs.
+    responsible: str
     #: One sentence answering "why is this clock where it is". What the
     #: Inspector shows before anybody expands anything.
     explanation: str
@@ -65,10 +71,14 @@ class SlaEventResponse(BaseModel):
 
 
 class ConversationSlaResponse(BaseModel):
-    #: The worst clock — what the Inbox sorts and colours by. Never an
-    #: average: a conversation twenty minutes overdue on first response is
-    #: not "mostly fine" because its resolution target is generous.
-    urgency: str
+    #: The primary SLA reading, and what the Inbox sorts and colours by.
+    #: The worst clock decides — never an average: a conversation twenty
+    #: minutes overdue on first response is not "mostly fine" because its
+    #: resolution target is generous.
+    health: str
+    #: Who the conversation's SLA is waiting on overall — taken from the
+    #: worst clock, since that is the one somebody would act on.
+    responsible: str
     clocks: list[ClockResponse]
     #: Oldest first — the order a story is read in.
     timeline: list[SlaEventResponse]

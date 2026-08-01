@@ -538,24 +538,68 @@ is bound to — not read through it on every check. A conversation's targets are
 frozen at its start, so an administrator halving a target at noon does not move
 the deadline of everything already running.
 
-## Urgency
+## SLA Health
 
-Four bands, not a percentage: a list sorted by a number still has to be read
-one row at a time.
+**The primary SLA visualisation.** Four timers side by side is a report; one
+health indicator is a decision. The timers stay available underneath.
 
-| Band | Means |
+| Health | Means |
 |---|---|
-| `breached` | Already missed. Nothing gets better by waiting |
-| `at_risk` | Past 80% of the target |
-| `on_track` | Running, with room |
-| `resting` | Paused or not measured — **can safely wait** |
+| 🟢 `healthy` | Nothing to do — including paused and unmeasured |
+| 🟡 `attention` | Past 60% of the target; worth a look |
+| 🟠 `at_risk` | Past 80%; needs doing now |
+| 🔴 `breached` | Already missed. Nothing gets better by waiting |
 
-`resting` is the one that matters most: it lets an agent ignore something
-without wondering whether they should.
+A paused conversation is **healthy**, not neglected. An agent has to be able
+to skip it without wondering whether they should.
 
 The **worst** clock decides the conversation, never an average. One whose first
 response is twenty minutes overdue is not "mostly fine" because its resolution
 target is generous.
+
+## Who the SLA is waiting on
+
+Every clock names its **responsible party** — and it is not always the
+conversation's owner:
+
+| Situation | Responsible |
+|---|---|
+| Waiting in a queue | The queue |
+| An agent has it | That agent |
+| AI has it | AI |
+| **Paused for the customer** | **The customer** |
+| Escalated | The supervisor |
+
+The customer never *owns* a conversation, and is nevertheless the honest answer
+to "who is this waiting for" while the ball is with them. Reporting the agent
+there would blame somebody for a delay that is not theirs — the most common way
+an SLA report loses an agent's trust.
+
+## Where the clocks are driven from
+
+`SlaEngine` is the mechanism — start, pause, resume, settle. `SlaLifecycle` is
+the policy: when each of those is right. Keeping them apart lets the mechanism
+be tested exhaustively without a conversation, and the policy be read in one
+page rather than reconstructed from two modules.
+
+| Event | What happens |
+|---|---|
+| Conversation queued | Queue, first-response and resolution clocks start |
+| An owner accepts (agent or AI) | Queue clock **achieved** — on acceptance, not on reply |
+| A reply goes out | First response achieved if it is the first; next response always |
+| The customer replies | Next-response clock starts; paused clocks resume |
+| Status → waiting for customer | Response and resolution clocks pause |
+| Status → waiting internally | Response clocks pause; resolution keeps running — still our delay |
+| Status → resolved | Resolution achieved |
+| Status → closed | Everything still running is **stopped**, not achieved |
+
+The next-response clock deliberately does **not** start when a conversation is
+queued: nobody is waiting for a *next* reply before the first one has happened,
+and starting it there would show every new conversation as overdue on a promise
+nobody had made.
+
+Targets come from the **service**. A company with no service directory measures
+nothing and behaves exactly as it did before the clocks existed.
 
 A zero target reports as breached rather than dividing by zero — it is a
 configuration an administrator is allowed to save, so it must not be a crash.

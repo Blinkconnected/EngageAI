@@ -33,9 +33,9 @@ from blinkengage.domain.sla import (
     RECORDED_AS,
     Clock,
     PauseReason,
+    SlaHealth,
     SlaState,
     SlaTimer,
-    Urgency,
     as_routing_decision,
     overall,
 )
@@ -59,10 +59,15 @@ _TARGET: dict[SlaTimer, str] = {
 
 @dataclass(frozen=True, slots=True)
 class ConversationSla:
-    """Every clock on one conversation, and the worst of them."""
+    """Every clock on one conversation, and the one thing to act on.
+
+    ``health`` is the primary reading. Four timers side by side is a report;
+    one indicator is a decision. The clocks stay available underneath for
+    anybody who needs them.
+    """
 
     clocks: list[Clock]
-    urgency: Urgency
+    health: SlaHealth
 
     def clock(self, timer: SlaTimer) -> Clock | None:
         return next((c for c in self.clocks if c.timer is timer), None)
@@ -239,7 +244,7 @@ class SlaEngine:
             )
         )
         clocks = [_to_clock(row) for row in result.scalars().all()]
-        return ConversationSla(clocks=clocks, urgency=overall(clocks, now=moment))
+        return ConversationSla(clocks=clocks, health=overall(clocks, now=moment))
 
     async def pause_notes(self, conversation_id: uuid.UUID) -> dict[SlaTimer, str | None]:
         """The free-text note beside each pause, keyed by clock.
