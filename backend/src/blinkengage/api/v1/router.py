@@ -44,6 +44,7 @@ from blinkengage.api.v1.endpoints import (
     search,
     services,
     sla,
+    sla_clocks,
     teams,
     version,
     web_chat,
@@ -69,7 +70,7 @@ api_router.include_router(platform_pricing.router)
 api_router.include_router(platform_usage.router)
 api_router.include_router(platform_billing.router)
 api_router.include_router(ownership.router)
-api_router.include_router(sla.router)
+api_router.include_router(sla_clocks.router)
 api_router.include_router(platform_health.router)
 api_router.include_router(platform_invoicing.router)
 api_router.include_router(platform_ledger.router)
