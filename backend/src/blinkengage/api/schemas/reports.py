@@ -46,8 +46,15 @@ class LiveAgentCountsResponse(BaseModel):
 
 
 class LiveConversationCountsResponse(BaseModel):
+    #: Alive and not waiting on the customer. Spans four statuses now, which
+    #: is why the two new fields below exist — this one can no longer tell
+    #: "nobody has picked it up" from "somebody is on it".
     open: int
     pending: int
+    #: In a queue, nobody working it. What a supervisor means by "waiting".
+    waiting: int = 0
+    #: Somebody is working it right now.
+    in_progress: int = 0
     resolved: int
     closed: int
     unassigned: int

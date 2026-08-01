@@ -18,6 +18,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.domain.lifecycle import ACTIVE, AWAITING_OTHERS
 from blinkengage.domain.routing_decisions import (
     AgentAssignment,
     CandidateRejection,
@@ -27,14 +28,15 @@ from blinkengage.domain.routing_decisions import (
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
-    ConversationStatus,
 )
 from blinkengage.infrastructure.database.models.queue import Queue, QueueAssignmentStrategy
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 
-_OPEN_STATUSES = (ConversationStatus.OPEN, ConversationStatus.PENDING)
+#: What counts against an agent's workload. From the lifecycle's own sets,
+#: so a new status cannot silently stop counting.
+_OPEN_STATUSES = tuple(ACTIVE | AWAITING_OTHERS)
 
 
 class AssignmentStrategy(ABC):

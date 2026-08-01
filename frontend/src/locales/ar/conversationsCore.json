@@ -29,6 +29,7 @@
     "emptyValue": "—",
     "unassignedValue": "غير مُسندة",
     "unknownValue": "غير معروف",
+    "unknownChannelValue": "قناة غير معروفة",
     "departmentSuffixLabel": "{{departmentName}} (قسم)",
     "actionPick": "استلام",
     "pickErrorFallback": "تعذر استلام هذه المحادثة.",
@@ -72,8 +73,6 @@
     "summarizingButton": "جارٍ التلخيص…",
     "generateSummaryButton": "إنشاء ملخص",
     "statusLabel": "الحالة",
-    "statusOpen": "مفتوحة",
-    "statusPending": "قيد الانتظار",
     "statusResolved": "تم الحل",
     "statusClosed": "مغلقة",
     "assignedToLabel": "مُسندة إلى",
@@ -94,7 +93,13 @@
     "noQueueOption": "بدون قائمة انتظار",
     "autopilotTakeOverButton": "استلام المحادثة من الذكاء الاصطناعي",
     "autopilotTakingOverButton": "جارٍ الاستلام…",
-    "autopilotTakeOverErrorFallback": "تعذّر استرجاع هذه المحادثة من الطيار الآلي."
+    "autopilotTakeOverErrorFallback": "تعذّر استرجاع هذه المحادثة من الطيار الآلي.",
+    "statusNew": "لم يُوجَّه بعد",
+    "statusWaiting": "في قائمة الانتظار",
+    "statusInProgress": "قيد المعالجة",
+    "statusWaitingCustomer": "بانتظار العميل",
+    "statusWaitingAgent": "بانتظار جهة داخلية",
+    "statusCustomerFeedback": "بانتظار التقييم"
   },
   "MessageThread": {
     "senderAgent": "أنت",

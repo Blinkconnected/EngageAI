@@ -34,7 +34,7 @@ import { useAllQueuesQuery } from '../queues/api'
 import { useCurrentUserQuery } from '../session/api'
 import {
   AutopilotBadge,
-  ChannelIcon,
+  ChannelCell,
   CustomerIdentityCell,
   PriorityBadge,
   SlaIndicator,
@@ -183,11 +183,19 @@ export function InboxPage() {
       {
         field: 'channel_config_id',
         headerName: t('InboxPage.columnChannel'),
-        width: 56,
+        flex: 1,
+        minWidth: 170,
         sortable: false,
-        renderCell: (params) => (
-          <ChannelIcon channelType={channelById.get(params.row.channel_config_id)?.channelType ?? ''} />
-        ),
+        renderCell: (params) => {
+          const channel = channelById.get(params.row.channel_config_id)
+          return (
+            <ChannelCell
+              channelType={channel?.channelType ?? null}
+              displayName={channel?.displayName ?? null}
+              isPending={channelsQuery.isPending}
+            />
+          )
+        },
       },
       {
         field: 'customer_id',
@@ -291,7 +299,7 @@ export function InboxPage() {
     // mutate/refetch functions), so it's intentionally left off this list
     // rather than churning column identity every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [channelById, agentById, departmentById, canPick, t, i18n.language],
+    [channelById, channelsQuery.isPending, agentById, departmentById, canPick, t, i18n.language],
   )
 
   // Gmail-style j/k row navigation, additive to the grid's own native

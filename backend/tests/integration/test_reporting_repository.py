@@ -233,7 +233,7 @@ class TestLiveDashboardQueries:
                         customer_id=customer_id,
                         channel_config_id=config_id,
                         external_thread_id="assigned-open",
-                        status=ConversationStatus.OPEN,
+                        status=ConversationStatus.WAITING,
                         assigned_agent_id=agent_id,
                     ),
                     Conversation(
@@ -241,14 +241,14 @@ class TestLiveDashboardQueries:
                         customer_id=customer_id,
                         channel_config_id=config_id,
                         external_thread_id="unassigned-open",
-                        status=ConversationStatus.OPEN,
+                        status=ConversationStatus.WAITING,
                     ),
                     Conversation(
                         company_id=company_id,
                         customer_id=customer_id,
                         channel_config_id=config_id,
                         external_thread_id="unassigned-pending",
-                        status=ConversationStatus.PENDING,
+                        status=ConversationStatus.WAITING_CUSTOMER,
                     ),
                     Conversation(
                         company_id=company_id,
@@ -293,7 +293,7 @@ class TestLiveDashboardQueries:
                         customer_id=customer_id,
                         channel_config_id=config_id,
                         external_thread_id="busy-open",
-                        status=ConversationStatus.OPEN,
+                        status=ConversationStatus.WAITING,
                         assigned_agent_id=busy_agent_id,
                     ),
                     Conversation(
@@ -301,7 +301,7 @@ class TestLiveDashboardQueries:
                         customer_id=customer_id,
                         channel_config_id=config_id,
                         external_thread_id="busy-pending",
-                        status=ConversationStatus.PENDING,
+                        status=ConversationStatus.WAITING_CUSTOMER,
                         assigned_agent_id=busy_agent_id,
                     ),
                     # Resolved work no longer counts toward this agent's

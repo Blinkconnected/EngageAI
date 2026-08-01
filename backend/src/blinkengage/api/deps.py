@@ -61,6 +61,7 @@ from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
 )
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.application.services.payment_service import PaymentService
 from blinkengage.application.services.platform_service import PlatformService
 from blinkengage.application.services.platform_settings_service import (
@@ -177,6 +178,7 @@ from blinkengage.infrastructure.repositories.notification_preference_repository 
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from blinkengage.infrastructure.repositories.payments_repository import (
     AllocationReversalRepository,
     PaymentIntentRepository,
@@ -711,6 +713,12 @@ def get_conversation_service_ws(
         agent_skills=AgentSkillRepository(session),
         realtime=realtime,
     )
+
+
+def get_ownership_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> OwnershipService:
+    return OwnershipService(OwnershipRepository(session))
 
 
 def get_scheduler_health_service(

@@ -68,6 +68,7 @@ from blinkengage.infrastructure.database.models.notification import Notification
 from blinkengage.infrastructure.database.models.notification_preference import (
     NotificationPreference,
 )
+from blinkengage.infrastructure.database.models.ownership import ConversationOwnership
 from blinkengage.infrastructure.database.models.payments import (
     PaymentIntent,
     PaymentRefund,
@@ -198,6 +199,7 @@ __all__ = [
     "Permission",
     "Queue",
     "ConversationContextBinding",
+    "ConversationOwnership",
     "CustomerContextVersion",
     "QueueAssignmentStrategy",
     "QueueDailyStats",

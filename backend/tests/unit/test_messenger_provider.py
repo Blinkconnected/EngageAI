@@ -137,9 +137,7 @@ class TestSendMessage:
         assert result.external_message_id == "mid.attachment"
 
 
-def _profile_only_handler(
-    profile: dict[str, Any] | None = None, *, status: int = 200
-) -> Any:
+def _profile_only_handler(profile: dict[str, Any] | None = None, *, status: int = 200) -> Any:
     """Handler for a receive test whose only Graph call is the sender-name
     lookup. Defaults to a successful two-part name; pass ``status=400`` to
     exercise the degrade-to-``None`` path."""

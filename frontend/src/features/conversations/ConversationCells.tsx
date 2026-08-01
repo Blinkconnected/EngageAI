@@ -32,9 +32,15 @@ const CHANNEL_ICONS: Record<string, { icon: ReactNode; color: string }> = {
 }
 
 export function ChannelIcon({ channelType }: { channelType: string }) {
+  const { t } = useTranslation('conversationsCore')
   const entry = CHANNEL_ICONS[channelType]
+  // An empty type means the conversation's channel config couldn't be
+  // resolved at all (see ChannelCell) — the badge still renders, but
+  // labelling it with the empty string would leave it with no accessible
+  // name whatsoever.
+  const label = channelType ? channelTypeLabel(channelType) : t('InboxPage.unknownChannelValue')
   return (
-    <Tooltip title={channelTypeLabel(channelType)}>
+    <Tooltip title={label}>
       <Box
         sx={{
           display: 'inline-flex',
@@ -47,11 +53,54 @@ export function ChannelIcon({ channelType }: { channelType: string }) {
           color: entry?.color ?? 'text.secondary',
           flexShrink: 0,
         }}
-        aria-label={channelTypeLabel(channelType)}
+        aria-label={label}
       >
         {entry?.icon ?? <ExtensionOutlinedIcon fontSize="small" />}
       </Box>
     </Tooltip>
+  )
+}
+
+/** The channel badge plus the channel's own name. The icon carries the
+ * *type* at a glance, but a company routinely runs several channels of
+ * the same type (two WhatsApp numbers, a support and a sales inbox), so
+ * the brand mark alone never says which line a conversation actually
+ * arrived on — the label does, using the same `display_name` the
+ * conversation detail sidebar shows. */
+export function ChannelCell({
+  channelType,
+  displayName,
+  isPending = false,
+}: {
+  channelType: string | null
+  displayName: string | null
+  isPending?: boolean
+}) {
+  const { t } = useTranslation('conversationsCore')
+
+  // The channel list is a separate request from the conversation list, so
+  // rows routinely render before it lands — a skeleton avoids flashing
+  // "Unknown channel" on every row for the width of that round trip.
+  if (isPending) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+        <Skeleton variant="circular" width={28} height={28} />
+        <Skeleton width={110} />
+      </Box>
+    )
+  }
+
+  // Deleting a channel is a soft delete and keeps its conversations, so an
+  // id that resolves to nothing is a real state to render, not an error.
+  const label = displayName ?? t('InboxPage.unknownChannelValue')
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+      <ChannelIcon channelType={channelType ?? ''} />
+      <Typography variant="body2" noWrap sx={{ minWidth: 0 }} title={label}>
+        {label}
+      </Typography>
+    </Box>
   )
 }
 

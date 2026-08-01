@@ -328,7 +328,7 @@ async def test_new_message_on_a_closed_conversation_reopens_it_and_clears_closed
 
         await db_session.refresh(conversation)
 
-    assert conversation.status == ConversationStatus.OPEN
+    assert conversation.status == ConversationStatus.WAITING
     assert conversation.closed_at is None
 
 

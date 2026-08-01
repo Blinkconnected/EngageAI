@@ -414,7 +414,7 @@ async def a_conversation(session: Any, company_id: uuid.UUID) -> uuid.UUID:
         company_id=company_id,
         customer_id=await a_customer(session, company_id),
         channel_config_id=channel.id,
-        status=ConversationStatus.OPEN,
+        status=ConversationStatus.WAITING,
     )
     session.add(conversation)
     await session.flush()

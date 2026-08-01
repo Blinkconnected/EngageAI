@@ -83,7 +83,7 @@ async def test_list_and_get_conversation(
         f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
     )
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "open"
+    assert get_response.json()["status"] == "new"
 
 
 async def test_new_conversation_defaults_to_normal_priority(
@@ -240,17 +240,17 @@ async def test_list_conversations_filters_by_status(
     conversation = await _create_conversation(client, owner_headers, registered_owner, app)
     await client.patch(
         f"/api/v1/conversations/{conversation['id']}",
-        json={"status": "pending"},
+        json={"status": "waiting_customer"},
         headers=owner_headers,
     )
 
     open_response = await client.get(
-        "/api/v1/conversations", params={"status_filter": "open"}, headers=owner_headers
+        "/api/v1/conversations", params={"status_filter": "waiting"}, headers=owner_headers
     )
     assert open_response.json()["total"] == 0
 
     pending_response = await client.get(
-        "/api/v1/conversations", params={"status_filter": "pending"}, headers=owner_headers
+        "/api/v1/conversations", params={"status_filter": "waiting_customer"}, headers=owner_headers
     )
     assert pending_response.json()["total"] == 1
 
@@ -281,7 +281,7 @@ async def test_illegal_status_transition_is_rejected(
 
     response = await client.patch(
         f"/api/v1/conversations/{conversation['id']}",
-        json={"status": "pending"},
+        json={"status": "waiting_customer"},
         headers=owner_headers,
     )
     assert response.status_code == 400
@@ -307,7 +307,7 @@ async def test_resolving_a_conversation_publishes_a_dedicated_event(
         events = list(result.scalars().all())
     assert len(events) == 1
     assert events[0].payload["conversation_id"] == conversation["id"]
-    assert events[0].payload["previous_status"] == "open"
+    assert events[0].payload["previous_status"] == "new"
 
 
 async def test_closing_a_conversation_publishes_a_dedicated_event(
@@ -330,7 +330,7 @@ async def test_closing_a_conversation_publishes_a_dedicated_event(
         events = list(result.scalars().all())
     assert len(events) == 1
     assert events[0].payload["conversation_id"] == conversation["id"]
-    assert events[0].payload["previous_status"] == "open"
+    assert events[0].payload["previous_status"] == "new"
 
 
 async def test_reassigning_an_already_resolved_conversation_does_not_republish_resolved(
@@ -375,11 +375,11 @@ async def test_reopening_a_closed_conversation_is_allowed(
 
     response = await client.patch(
         f"/api/v1/conversations/{conversation['id']}",
-        json={"status": "open"},
+        json={"status": "waiting"},
         headers=owner_headers,
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "open"
+    assert response.json()["status"] == "waiting"
 
 
 async def test_closed_at_is_set_on_close_and_cleared_on_reopen(
@@ -398,7 +398,7 @@ async def test_closed_at_is_set_on_close_and_cleared_on_reopen(
 
     reopened_response = await client.patch(
         f"/api/v1/conversations/{conversation['id']}",
-        json={"status": "open"},
+        json={"status": "waiting"},
         headers=owner_headers,
     )
     assert reopened_response.status_code == 200

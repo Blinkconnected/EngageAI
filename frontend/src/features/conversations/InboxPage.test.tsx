@@ -21,12 +21,29 @@ describe('InboxPage', () => {
   it('lists conversations with resolved customer and channel names', async () => {
     renderAuthenticated(<InboxPage />)
     expect(await screen.findByText('Grace Blake')).toBeInTheDocument()
-    // The channel column shows an icon, not the channel's display name —
-    // its accessible name is the channel *type* label (see
-    // ConversationCells.tsx's ChannelIcon), matching the seeded
-    // conversation's channel_config_id ("c1" -> channel_type "telegram").
+    // The channel column shows the configured channel's own name next to
+    // the type icon — the seeded conversation's channel_config_id ("c1")
+    // resolves to display_name "Support Telegram", channel_type
+    // "telegram" (the icon's accessible name).
+    expect(await screen.findByText('Support Telegram')).toBeInTheDocument()
     expect(screen.getByLabelText('Telegram')).toBeInTheDocument()
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
+  })
+
+  it('falls back to a labelled placeholder when the channel config no longer resolves', async () => {
+    // Channels are soft-deleted and their conversations survive, so the
+    // list can legitimately carry an id the channel list no longer
+    // returns — that row must still say *something* in the Channel
+    // column rather than rendering a bare, unexplained icon.
+    server.use(
+      http.get(`${API_BASE_URL}/channel-configs`, () =>
+        HttpResponse.json({ items: [], total: 0, page: 1, page_size: 100 }),
+      ),
+    )
+    queryClient.clear()
+    renderAuthenticated(<InboxPage />)
+
+    expect(await screen.findByText('Unknown channel')).toBeInTheDocument()
   })
 
   it('has no detectable accessibility violations', async () => {

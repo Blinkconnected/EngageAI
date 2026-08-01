@@ -29,6 +29,7 @@
     "emptyValue": "—",
     "unassignedValue": "Unassigned",
     "unknownValue": "Unknown",
+    "unknownChannelValue": "Unknown channel",
     "departmentSuffixLabel": "{{departmentName}} (department)",
     "actionPick": "Pick",
     "pickErrorFallback": "Could not pick up this conversation.",
@@ -72,8 +73,6 @@
     "summarizingButton": "Summarizing…",
     "generateSummaryButton": "Generate summary",
     "statusLabel": "Status",
-    "statusOpen": "Open",
-    "statusPending": "Pending",
     "statusResolved": "Resolved",
     "statusClosed": "Closed",
     "assignedToLabel": "Assigned to",
@@ -94,7 +93,13 @@
     "noQueueOption": "No queue",
     "autopilotTakeOverButton": "Take over from AI",
     "autopilotTakingOverButton": "Taking over…",
-    "autopilotTakeOverErrorFallback": "Could not take this conversation back from AI Autopilot."
+    "autopilotTakeOverErrorFallback": "Could not take this conversation back from AI Autopilot.",
+    "statusNew": "Not yet routed",
+    "statusWaiting": "Waiting in queue",
+    "statusInProgress": "Being handled",
+    "statusWaitingCustomer": "Waiting for customer",
+    "statusWaitingAgent": "Waiting internally",
+    "statusCustomerFeedback": "Awaiting rating"
   },
   "MessageThread": {
     "senderAgent": "You",

@@ -17,6 +17,7 @@ from blinkengage.domain.ai_operations import (
     AUTOPILOT_AGENT_REQUEST_OPERATION,
     AUTOPILOT_SLA_OPERATION,
 )
+from blinkengage.domain.lifecycle import ACTIVE, AWAITING_OTHERS
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -132,10 +133,24 @@ class LiveAgentCounts:
     offline: int
 
 
+_LIVE = tuple(ACTIVE | AWAITING_OTHERS)
+_ACTIVE = tuple(ACTIVE)
+
+
 @dataclass(frozen=True, slots=True)
 class LiveConversationCounts:
+    #: Everything alive and not waiting on the customer — the old ``open``,
+    #: kept as a name because the dashboard reads it. It now spans four
+    #: statuses rather than one, which is why the two below exist.
     open: int
+    #: Waiting on the customer. The old ``pending``.
     pending: int
+    #: **In a queue, nobody working it.** The number a supervisor means by
+    #: "how many are waiting", and the one ``open`` used to hide by counting
+    #: it together with conversations somebody was actively handling.
+    waiting: int
+    #: Somebody is working it right now.
+    in_progress: int
     resolved: int
     closed: int
     #: Active (open/pending) conversations with no ``assigned_agent_id`` —
@@ -572,7 +587,7 @@ class ReportingRepository:
                 Conversation.company_id == company_id,
                 Conversation.deleted_at.is_(None),
                 Conversation.assigned_agent_id.is_(None),
-                Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
+                Conversation.status.in_(_LIVE),
             )
         )
 
@@ -585,14 +600,16 @@ class ReportingRepository:
             select(func.count(Conversation.id)).where(
                 Conversation.company_id == company_id,
                 Conversation.deleted_at.is_(None),
-                Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
+                Conversation.status.in_(_LIVE),
                 Conversation.sla_first_response_breached_at.is_not(None)
                 | Conversation.sla_resolution_breached_at.is_not(None),
             )
         )
         return LiveConversationCounts(
-            open=counts[ConversationStatus.OPEN],
-            pending=counts[ConversationStatus.PENDING],
+            open=sum(counts[status] for status in ACTIVE),
+            pending=counts[ConversationStatus.WAITING_CUSTOMER],
+            waiting=counts[ConversationStatus.WAITING],
+            in_progress=counts[ConversationStatus.IN_PROGRESS],
             resolved=counts[ConversationStatus.RESOLVED],
             closed=counts[ConversationStatus.CLOSED],
             unassigned=unassigned_result.scalar_one(),
@@ -600,8 +617,8 @@ class ReportingRepository:
         )
 
     async def agent_workload(self, *, company_id: UUID) -> list[AgentWorkload]:
-        is_open = Conversation.status == ConversationStatus.OPEN
-        is_pending = Conversation.status == ConversationStatus.PENDING
+        is_open = Conversation.status.in_(_ACTIVE)
+        is_pending = Conversation.status == ConversationStatus.WAITING_CUSTOMER
 
         result = await self._session.execute(
             select(
@@ -620,7 +637,7 @@ class ReportingRepository:
                 # but this predicate guards the aggregate itself against
                 # a row that violates that invariant.
                 & (Conversation.company_id == company_id)
-                & (Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]))
+                & (Conversation.status.in_(_LIVE))
                 & Conversation.deleted_at.is_(None),
                 isouter=True,
             )
@@ -652,7 +669,7 @@ class ReportingRepository:
                 # tenant's conversation into this company's Live Dashboard
                 # count.
                 & (Conversation.company_id == company_id)
-                & (Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]))
+                & (Conversation.status.in_(_LIVE))
                 & Conversation.deleted_at.is_(None),
                 isouter=True,
             )
@@ -757,7 +774,7 @@ class ReportingRepository:
                 # company's Queue but who itself belongs to another
                 # company must not be aggregated in here.
                 & (Conversation.company_id == company_id)
-                & (Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]))
+                & (Conversation.status.in_(_LIVE))
                 & Conversation.deleted_at.is_(None),
                 isouter=True,
             )
@@ -771,7 +788,7 @@ class ReportingRepository:
             select(Conversation.queue_id, Conversation.queue_entered_at).where(
                 Conversation.company_id == company_id,
                 Conversation.deleted_at.is_(None),
-                Conversation.status.in_([ConversationStatus.OPEN, ConversationStatus.PENDING]),
+                Conversation.status.in_(_LIVE),
                 Conversation.assigned_agent_id.is_(None),
             )
         )

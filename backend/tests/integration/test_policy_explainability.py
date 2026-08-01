@@ -128,7 +128,7 @@ async def a_conversation_row(app: Any, session: Any) -> None:
             company_id=COMPANY,
             customer_id=customer.id,
             channel_config_id=channel.id,
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
         )
     )
     await session.flush()

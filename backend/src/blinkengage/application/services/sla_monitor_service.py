@@ -37,17 +37,24 @@ from blinkengage.domain.business_hours import (
     resolve_schedule,
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
+from blinkengage.domain.lifecycle import ACTIVE, AWAITING_OTHERS
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
-    ConversationStatus,
 )
 from blinkengage.infrastructure.database.models.queue import Queue
 from blinkengage.infrastructure.database.models.sla import Holiday, SlaPolicy
 
 logger = get_logger(__name__)
 
-_OPEN_STATUSES = (ConversationStatus.OPEN, ConversationStatus.PENDING)
+#: The statuses in which an SLA clock is still running. Built from the
+#: lifecycle's own sets rather than listed here, so a status added later
+#: cannot quietly fall outside every SLA — the failure mode of a hand-kept
+#: tuple, which looks correct right up until somebody adds the ninth state.
+#:
+#: ``WAITING_CUSTOMER`` is included, exactly as ``pending`` was: waiting on
+#: the customer has never paused the clock (see docs/architecture/sla.md).
+_OPEN_STATUSES = tuple(ACTIVE | AWAITING_OTHERS)
 
 
 class _EffectivePolicy:

@@ -41,9 +41,13 @@ import { CONVERSATION_STATUSES, type Conversation, type ConversationStatus } fro
 // itself can't live in this module-scope map since translation requires
 // the `t` function, which is only available inside the component.
 const STATUS_OPTION_KEY: Record<ConversationStatus, string> = {
-  open: 'statusOpen',
-  pending: 'statusPending',
+  new: 'statusNew',
+  waiting: 'statusWaiting',
+  in_progress: 'statusInProgress',
+  waiting_customer: 'statusWaitingCustomer',
+  waiting_agent: 'statusWaitingAgent',
   resolved: 'statusResolved',
+  customer_feedback: 'statusCustomerFeedback',
   closed: 'statusClosed',
 }
 

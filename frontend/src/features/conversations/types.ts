@@ -1,4 +1,17 @@
-export type ConversationStatus = 'open' | 'pending' | 'resolved' | 'closed'
+/** The eight states of a conversation's life.
+ *
+ * `status`, the queue it is in, and who owns it are three independent
+ * facts — a conversation can be `in_progress` and owned by nobody, or
+ * `waiting` and owned by its queue. None of those are contradictions. */
+export type ConversationStatus =
+  | 'new'
+  | 'waiting'
+  | 'in_progress'
+  | 'waiting_customer'
+  | 'waiting_agent'
+  | 'resolved'
+  | 'customer_feedback'
+  | 'closed'
 
 /** A triage signal, independent of SLA policy targets — drives the
  * Inbox's default sort order and visual urgency only. Ordered low to
@@ -150,4 +163,17 @@ export interface InternalNote {
   updated_at: string
 }
 
-export const CONVERSATION_STATUSES: ConversationStatus[] = ['open', 'pending', 'resolved', 'closed']
+/** Offered as filters, in the order somebody works through them: what is
+ * waiting, what is being handled, what is blocked, what is done.
+ *
+ * `new` is deliberately absent — a conversation routing failed to place is
+ * an anomaly to be surfaced on the queue screens, not a filter people are
+ * meant to browse. */
+export const CONVERSATION_STATUSES: ConversationStatus[] = [
+  'waiting',
+  'in_progress',
+  'waiting_customer',
+  'waiting_agent',
+  'resolved',
+  'closed',
+]

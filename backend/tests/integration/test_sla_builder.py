@@ -112,7 +112,7 @@ async def test_policy_assigned_queue_uses_business_hours_aware_deadline(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime(2026, 1, 3, 12, 0, tzinfo=UTC),  # a Saturday
         )
@@ -174,7 +174,7 @@ async def test_legacy_queue_without_a_policy_is_unaffected_by_business_hours(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime.now(UTC) - timedelta(minutes=30),
         )
@@ -224,7 +224,7 @@ async def test_warning_threshold_fires_before_breach_exactly_once(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime.now(UTC) - timedelta(minutes=50),
         )
@@ -269,7 +269,7 @@ async def test_breached_event_payload_includes_conversation_id(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime.now(UTC) - timedelta(minutes=30),
         )
@@ -330,7 +330,7 @@ async def test_escalation_rule_reassigns_to_another_queue_on_breach(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=source_queue_id,
             created_at=datetime.now(UTC) - timedelta(minutes=30),
         )
@@ -385,7 +385,7 @@ async def test_escalation_rule_notifies_a_user_on_warning(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime.now(UTC) - timedelta(minutes=50),
         )
@@ -463,7 +463,7 @@ async def test_a_holiday_delays_a_business_hours_aware_deadline(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime(2026, 1, 2, 16, 45, tzinfo=UTC),  # Friday 4:45pm
         )

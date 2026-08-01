@@ -34,6 +34,7 @@ from blinkengage.domain.exceptions import (
     EntityNotFoundError,
     InvalidConversationStatusTransitionError,
 )
+from blinkengage.domain.lifecycle import can_move
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.database.models.agent import AgentStatus
@@ -81,16 +82,10 @@ from blinkengage.infrastructure.repositories.message_repository import MessageRe
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 
-_ALLOWED_TRANSITIONS: dict[ConversationStatus, frozenset[ConversationStatus]] = {
-    ConversationStatus.OPEN: frozenset(
-        {ConversationStatus.PENDING, ConversationStatus.RESOLVED, ConversationStatus.CLOSED}
-    ),
-    ConversationStatus.PENDING: frozenset(
-        {ConversationStatus.OPEN, ConversationStatus.RESOLVED, ConversationStatus.CLOSED}
-    ),
-    ConversationStatus.RESOLVED: frozenset({ConversationStatus.OPEN, ConversationStatus.CLOSED}),
-    ConversationStatus.CLOSED: frozenset({ConversationStatus.OPEN}),
-}
+#: Which transitions are allowed now lives in ``domain/lifecycle.py``,
+#: beside the statuses themselves. Two tables — one here and one there —
+#: would be two answers to "can this move", and the one that disagreed
+#: would be whichever a reader found first.
 
 
 def _reply_metadata(*, is_ai_generated: bool, is_ai_assisted: bool) -> dict[str, bool]:
@@ -220,8 +215,7 @@ class ConversationService:
             conversation.priority = priority
         status_transitioned = False
         if status is not None and status != conversation.status:
-            allowed = _ALLOWED_TRANSITIONS.get(conversation.status, frozenset())
-            if status not in allowed:
+            if not can_move(conversation.status, status):
                 raise InvalidConversationStatusTransitionError(
                     conversation.status.value, status.value
                 )

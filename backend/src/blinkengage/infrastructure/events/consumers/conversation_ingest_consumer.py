@@ -20,6 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.ownership_service import (
+    AI_OWNER,
+    OwnershipService,
+    agent_owner,
+    queue_owner,
+)
 from blinkengage.application.services.policy_recorder import RecordingPolicyEngine
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.resolution_strategies import default_stages
@@ -33,6 +39,8 @@ from blinkengage.domain.company_settings import (
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.execution_context import ConversationFacts, ExecutionContext
+from blinkengage.domain.lifecycle import FINISHED
+from blinkengage.domain.ownership import Owner, OwnershipReason
 from blinkengage.domain.policies import Policy, PolicyEngine
 from blinkengage.domain.routing_decisions import (
     QueueRouting,
@@ -88,6 +96,7 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.routing_decision_repository import (
     RoutingDecisionRepository,
@@ -106,7 +115,11 @@ logger = get_logger(__name__)
 QUEUE_NAME = "conversation-ingest"
 ROUTING_KEYS = ["message.received"]
 
-_REOPEN_ON_NEW_MESSAGE = frozenset({ConversationStatus.RESOLVED, ConversationStatus.CLOSED})
+#: A customer message on one of these continues the same conversation
+#: rather than starting a new one that has lost its history. Taken from the
+#: lifecycle's own set, so ``customer_feedback`` — which did not exist when
+#: this was written — reopens too rather than silently not.
+_REOPEN_ON_NEW_MESSAGE = FINISHED
 
 
 class _NoopRealtimePublisher:
@@ -381,7 +394,11 @@ async def handle_message_received(
 
     conversation.last_message_at = datetime.now(UTC)
     if conversation.status in _REOPEN_ON_NEW_MESSAGE:
-        conversation.status = ConversationStatus.OPEN
+        # Back to the queue, never straight to whoever used to have it.
+        # Whether the previous owner gets it again is the ownership rules'
+        # decision — see ``domain/ownership.py`` — and deciding it here
+        # would re-couple status to owner, which is what M3 split apart.
+        conversation.status = ConversationStatus.WAITING
         conversation.closed_at = None
 
     await events.publish(
@@ -624,6 +641,41 @@ async def _customer_version_id(
     return version.id
 
 
+async def _own(
+    session: AsyncSession,
+    *,
+    conversation: Conversation,
+    company_id: UUID,
+    owner: Owner,
+    reason: OwnershipReason,
+) -> None:
+    """Records an ownership transition, and never costs the conversation.
+
+    Same tradeoff as ``_record_decision``: routing is the product, the
+    timeline is evidence about it, and an ownership row that would not
+    write must not stop a customer being answered.
+
+    Deliberately touches neither the status nor the queue. Those are two of
+    the three independent concepts, and a helper that quietly set one while
+    recording the other is how they get coupled again — in the place
+    nobody thinks to look.
+    """
+    try:
+        await OwnershipService(OwnershipRepository(session)).transfer(
+            conversation_id=conversation.id,
+            company_id=company_id,
+            to=owner,
+            reason=reason,
+        )
+    except Exception:  # noqa: BLE001 — see the docstring: never fatal.
+        logger.warning(
+            "ownership_not_recorded",
+            conversation_id=str(conversation.id),
+            owner=owner.describe(),
+            exc_info=True,
+        )
+
+
 async def _route_and_assign(
     conversation: Conversation,
     *,
@@ -724,6 +776,10 @@ async def _route_and_assign(
     queue_id = routing.queue_id
     conversation.queue_id = queue_id
     conversation.queue_entered_at = datetime.now(UTC)
+    # Queue-first, made real: being in a queue and being WAITING are the
+    # same fact stated twice, and a conversation left at NEW after routing
+    # placed it would be the status lying about the queue.
+    conversation.status = ConversationStatus.WAITING
     # Fires unconditionally on entering a queue, whether or not
     # auto-assignment below then also succeeds — the sole "this
     # conversation is now waiting in a queue" signal (see
@@ -739,6 +795,19 @@ async def _route_and_assign(
     )
 
     queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
+
+    # The queue becomes answerable the moment the conversation enters it.
+    # Not "unassigned" — *owned by the queue*, which is the distinction the
+    # ownership model exists to make: a conversation nobody has picked up
+    # is still somebody's problem, findable and escalatable.
+    await _own(
+        session,
+        conversation=conversation,
+        company_id=company_id,
+        owner=queue_owner(queue_id, None if queue is None else queue.name),
+        reason=OwnershipReason.ENTERED_QUEUE,
+    )
+
     # Recorded after the lookup rather than before it purely so the
     # decision can carry the queue's *name* — a decision that said
     # "routed to 4f2a…" would be unreadable the moment somebody renames
@@ -798,6 +867,17 @@ async def _route_and_assign(
             and is_ai_available_for_company(settings, company.ai_config)
         ):
             conversation.autopilot_active = True
+            conversation.status = ConversationStatus.IN_PROGRESS
+            # AI is an owner, not an absence. "Nobody has it" would be
+            # false, and the moment AI hands back would have nothing to be
+            # a transition *from*.
+            await _own(
+                session,
+                conversation=conversation,
+                company_id=company_id,
+                owner=AI_OWNER,
+                reason=OwnershipReason.AI_ENGAGED,
+            )
             # The answer to both "why did AI respond" and "why was nobody
             # assigned" — one conversation has exactly one owner, and this
             # is the decision that made it AI. Without the row, an
@@ -824,6 +904,14 @@ async def _route_and_assign(
     agent_id = assignment.agent_id
     if agent_id is not None:
         conversation.assigned_agent_id = agent_id
+        conversation.status = ConversationStatus.IN_PROGRESS
+        await _own(
+            session,
+            conversation=conversation,
+            company_id=company_id,
+            owner=agent_owner(agent_id, assignment.agent_name),
+            reason=OwnershipReason.ASSIGNED_BY_STRATEGY,
+        )
         conversation.picked_up_at = datetime.now(UTC)
         # first_picked_up_at must also be stamped here, not only inside
         # ConversationRepository.claim() (used by pick()) — this direct

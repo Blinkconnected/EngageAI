@@ -14,7 +14,51 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Changed
+
+- **A conversation's status now says one thing.** There were four statuses
+  and "open" meant two different things — waiting in a queue for somebody
+  to pick up, and being actively worked by somebody. Those need different
+  responses from a supervisor, so they are now different statuses.
+
+  Eight states: **not yet routed**, **waiting in queue**, **being
+  handled**, **waiting for customer**, **waiting internally**,
+  **resolved**, **awaiting rating**, **closed**.
+
+  Existing conversations were migrated. Anything that was "open" became
+  *being handled* if somebody was assigned to it and *waiting in queue*
+  otherwise; "pending" became *waiting for customer*.
+
+  Queue counts get more honest as a result. "How many are waiting" now
+  means conversations nobody has picked up, and no longer includes ones
+  where the business is waiting on the customer to reply — those made
+  queues look like they were drowning when they were idle.
+
 ### Added
+
+- **Every conversation now has an owner, and the platform records every
+  time it changes hands.** Ownership is who holds responsibility, which is
+  not the same as who it is assigned to:
+
+  - A conversation waiting in a queue is owned by **the queue** — nobody
+    is assigned, but it is not nobody's problem.
+  - One AI is handling is owned by **AI**, not by nobody.
+  - An agent who goes offline mid-conversation may keep owning it, so a
+    customer who replies twenty minutes later reaches the person who
+    already knows them.
+
+  You can see the whole history: who has it, why, since when, who had it
+  before, and why it moved. "Support queue → AI → Support queue → John"
+  reads as what actually happened.
+
+  Ownership rules are configurable — an owner can keep a conversation for
+  a window after they stop working it (24 hours by default), release it
+  the moment they stop, release on resolve, or hold it through to close.
+
+  Status, queue and owner are now three independent things. A conversation
+  can be resolved and still owned, waiting and owned by its queue, being
+  handled and owned by nobody. None of those are contradictions, and
+  treating them as one fact is what made the old statuses ambiguous.
 
 - **The billing scheduler is now visible.** A new **Health** page in the
   Platform Console shows each background billing job — closing each month,

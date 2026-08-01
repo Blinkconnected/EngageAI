@@ -396,7 +396,7 @@ async def test_least_load_strategy_prefers_the_less_loaded_agent(
                     customer_id=customer_id,
                     channel_config_id=config_id,
                     external_thread_id=f"busy-thread-{i}",
-                    status=ConversationStatus.OPEN,
+                    status=ConversationStatus.WAITING,
                     assigned_agent_id=busy_agent_id,
                 )
             )
@@ -753,7 +753,7 @@ async def test_sla_breach_is_published_exactly_once(
             customer_id=customer_id,
             channel_config_id=config_id,
             external_thread_id="thread-1",
-            status=ConversationStatus.OPEN,
+            status=ConversationStatus.WAITING,
             queue_id=queue_id,
             created_at=datetime.now(UTC) - timedelta(minutes=30),
         )

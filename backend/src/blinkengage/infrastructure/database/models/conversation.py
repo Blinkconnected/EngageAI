@@ -14,6 +14,7 @@ from enum import StrEnum
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from blinkengage.domain.lifecycle import ConversationStatus as LifecycleStatus
 from blinkengage.infrastructure.database.base import (
     GUID,
     Base,
@@ -22,12 +23,11 @@ from blinkengage.infrastructure.database.base import (
     UUIDPrimaryKeyMixin,
 )
 
-
-class ConversationStatus(StrEnum):
-    OPEN = "open"
-    PENDING = "pending"
-    RESOLVED = "resolved"
-    CLOSED = "closed"
+#: Re-exported from ``domain/lifecycle.py``, which owns the lifecycle and its
+#: transitions. Kept as a name here because every existing import points at
+#: it, and moving those in the same change as splitting four statuses into
+#: eight would make the diff impossible to review.
+ConversationStatus = LifecycleStatus
 
 
 class ConversationPriority(StrEnum):
@@ -98,7 +98,11 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     status: Mapped[ConversationStatus] = mapped_column(
         Enum(ConversationStatus, native_enum=False, length=20),
         nullable=False,
-        default=ConversationStatus.OPEN,
+        # NEW, not WAITING: a conversation exists for the instant between
+        # its first message being stored and routing placing it, and a row
+        # found sitting in NEW is a routing failure worth being able to
+        # find. Ingest sets WAITING (or IN_PROGRESS) immediately after.
+        default=ConversationStatus.NEW,
     )
     # Inbox triage signal (see docs/architecture/queues-routing.md) —
     # deliberately independent of Queue/SlaPolicy: it never changes an
