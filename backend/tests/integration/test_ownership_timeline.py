@@ -383,3 +383,115 @@ class TestTheOwnershipApi:
         )
 
         assert response.status_code == 404
+
+
+class TestTheStickySweep:
+    async def test_a_lapsed_hold_goes_back_to_the_queue(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """Back to the *queue*, never to nobody. A conversation owned by
+        nobody is one nothing will pick up and no escalation can find.
+
+        The timeline is built at realistic moments — the queue owned it 26
+        hours ago, John took it 25 hours ago — because the sweep only
+        considers the *newest* row per conversation. Backdating a hold
+        underneath a later row would make it correctly invisible, which is
+        the sweep working rather than a scenario worth asserting.
+        """
+        from blinkengage.infrastructure.tasks import ownership_sweep_task
+
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        from tests.integration.test_routing_explainability import _routing_rule
+
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(
+                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
+            )
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            status_before = conversation.status
+            # A realistic timeline: the queue owned it 26 hours ago, John
+            # took it 25 hours ago, and the window has since run out. Aged
+            # backwards rather than forwards, because the sweep writes its
+            # release at the real clock and a future-dated hold would sort
+            # *after* it — a scenario production cannot produce.
+            queued = await OwnershipRepository(session).current(conversation.id)
+            assert queued is not None
+            queued.owned_from = datetime.now(UTC) - timedelta(hours=26)
+            await session.flush()
+
+            await service_for(session).transfer(
+                conversation_id=conversation.id,
+                company_id=conversation.company_id,
+                to=agent_owner(uuid.uuid4(), "John"),
+                reason=OwnershipReason.PICKED_UP,
+                now=datetime.now(UTC) - timedelta(hours=25),
+            )
+            await session.commit()
+
+        original = ownership_sweep_task._get_session_factory
+        ownership_sweep_task._get_session_factory = lambda _s: factory  # type: ignore[assignment]
+        try:
+            released = await ownership_sweep_task._release_expired_async()
+        finally:
+            ownership_sweep_task._get_session_factory = original  # type: ignore[assignment]
+
+        async with factory() as session:
+            current = await service_for(session).current(conversation.id)
+            after = await session.get(Conversation, conversation.id)
+
+        assert released == 1
+        assert current is not None
+        assert current.owner.kind is OwnerKind.QUEUE
+        assert current.reason is OwnershipReason.STICKY_WINDOW_EXPIRED
+        # And it touched nothing else. A sweep that quietly changed a status
+        # while releasing a hold would re-couple the two concepts M3 split,
+        # and would do it where nobody looks — a conversation an agent
+        # resolved would silently reopen at midnight.
+        assert after is not None
+        assert after.status is status_before
+        assert str(after.queue_id) == queue_id
+
+    async def test_a_hold_that_has_not_lapsed_is_left_alone(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        from blinkengage.infrastructure.tasks import ownership_sweep_task
+
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        from tests.integration.test_routing_explainability import _routing_rule
+
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(
+                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
+            )
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            await service_for(session).transfer(
+                conversation_id=conversation.id,
+                company_id=conversation.company_id,
+                to=agent_owner(uuid.uuid4(), "John"),
+                reason=OwnershipReason.PICKED_UP,
+            )
+            await session.commit()
+
+        original = ownership_sweep_task._get_session_factory
+        ownership_sweep_task._get_session_factory = lambda _s: factory  # type: ignore[assignment]
+        try:
+            released = await ownership_sweep_task._release_expired_async()
+        finally:
+            ownership_sweep_task._get_session_factory = original  # type: ignore[assignment]
+
+        async with factory() as session:
+            current = await service_for(session).current(conversation.id)
+
+        assert released == 0
+        assert current is not None
+        assert current.owner.describe() == "John"

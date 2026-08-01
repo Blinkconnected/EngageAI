@@ -24,6 +24,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.sla_sweep_task",
         "blinkengage.infrastructure.tasks.billing_period_close_task",
         "blinkengage.infrastructure.tasks.invoice_run_task",
+        "blinkengage.infrastructure.tasks.ownership_sweep_task",
         "blinkengage.infrastructure.tasks.billing_summary_sweep_task",
         "blinkengage.infrastructure.tasks.collections_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
@@ -112,6 +113,19 @@ celery_app.conf.update(
         "collections-sweep": {
             "task": "blinkengage.billing.collections_sweep",
             "schedule": 3600.0,
+        },
+        # Releases ownership whose sticky window has run out — see
+        # docs/architecture/queue-lifecycle.md. A lapsed hold does not
+        # release itself: the timeline is append-only, so something has to
+        # notice and write the next row.
+        #
+        # Every five minutes. A window measured in hours does not need a
+        # tighter sweep, and a lapsed hold costing a customer a few extra
+        # minutes in a queue is a far smaller problem than a sweep
+        # hammering the table.
+        "release-expired-ownership": {
+            "task": "blinkengage.conversations.release_expired_ownership",
+            "schedule": 300.0,
         },
         # See docs/architecture/email-channel.md — polls every active
         # email ChannelConfig's IMAP mailbox for UNSEEN messages.

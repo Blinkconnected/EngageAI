@@ -1,9 +1,17 @@
 """The ownership timeline. See ``docs/architecture/queue-lifecycle.md``.
 
-**Append-only.** Every transition is a row, and a row is never edited: "Sara
-took it from the queue at 09:14, the window ran out at 09:14 the next day, it
-went back to the queue" is a history, and an UPDATE would collapse it into
-whatever happened last.
+**Append-only, enforced by the repository.** Every transition is a row, and a
+row is never edited: "Sara took it from the queue at 09:14, the window ran out
+at 09:14 the next day, it went back to the queue" is a history, and an UPDATE
+would collapse it into whatever happened last.
+
+Enforced by ``OwnershipRepository`` exposing no way to change a row — and
+deliberately *not* by a PostgreSQL trigger, unlike ``routing_decisions``,
+``service_versions`` and the financial tables. Those hold evidence somebody
+might be motivated to alter; this holds an operational history whose worst
+case is a confusing timeline rather than a disputed invoice. Stated plainly
+so nobody reads "append-only" here and assumes the database is stopping
+them.
 
 Which is the whole point. The model has to answer *who owns this, why, since
 when, who owned it before, and why it changed* — and the last two are only

@@ -54,6 +54,9 @@ for more detail on how this page is put together.
   Ownership rules are configurable — an owner can keep a conversation for
   a window after they stop working it (24 hours by default), release it
   the moment they stop, release on resolve, or hold it through to close.
+  When a window runs out the conversation goes back to its queue
+  automatically, and the history records that it was the window and not a
+  person who let it go.
 
   Status, queue and owner are now three independent things. A conversation
   can be resolved and still owned, waiting and owned by its queue, being
