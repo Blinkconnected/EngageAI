@@ -107,6 +107,13 @@ from blinkengage.infrastructure.database.models.reporting import (
 from blinkengage.infrastructure.database.models.routing_decision import (
     RoutingDecisionRecord,
 )
+from blinkengage.infrastructure.database.models.service_directory import (
+    ConversationContextBinding,
+    CustomerContextVersion,
+    RuntimeQueue,
+    Service,
+    ServiceVersion,
+)
 from blinkengage.infrastructure.database.models.sla import Holiday, SlaPolicy
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.database.models.usage import (
@@ -189,6 +196,8 @@ __all__ = [
     "NotificationPreference",
     "Permission",
     "Queue",
+    "ConversationContextBinding",
+    "CustomerContextVersion",
     "QueueAssignmentStrategy",
     "QueueDailyStats",
     "QueueRequiredSkill",
@@ -197,7 +206,10 @@ __all__ = [
     "Role",
     "RolePermission",
     "RoutingDecisionRecord",
+    "RuntimeQueue",
     "RoutingRule",
+    "Service",
+    "ServiceVersion",
     "SlaPolicy",
     "Tag",
     "Team",

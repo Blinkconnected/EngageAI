@@ -176,6 +176,58 @@ Routing Inspector. A test asserts it cannot come back.
 
 ---
 
+## Storage
+
+Migration `8c3d9a4e7b21`. Five tables, and the layout follows the ideas above
+exactly.
+
+| Table | Holds | Mutable? |
+|---|---|---|
+| `services` | The identity — code, name, active, current version pointer | Yes |
+| `service_versions` | One frozen configuration | **Append-only** |
+| `customer_context_versions` | One frozen set of routing-relevant attributes | **Append-only** |
+| `runtime_queues` | The lanes inside a logical queue | Yes |
+| `conversation_context_bindings` | Which versions a conversation runs inside, and why | **Append-only** |
+
+The three append-only tables carry a PostgreSQL trigger that refuses UPDATE
+and DELETE, so the guarantee survives a `psql` session and not merely
+repository discipline. The repositories expose no method that changes a row:
+editing a service means minting a version, rebinding a conversation means
+writing a binding.
+
+`services.current_version_id` is a pointer rather than an `is_current` flag on
+the version, because "the current one" is a single fact and two rows both
+claiming it is a state no query can resolve. Minting a version and promoting
+it are separate steps — a draft written but not yet promoted is something an
+operator will eventually want.
+
+Version numbers are allocated read-then-write, guarded by
+`uq_service_versions_service_version`. Two concurrent edits can pick the same
+number; the loser gets an integrity error and retries, rather than quietly
+creating a second "version 4". A counter table would serialise every edit on
+the installation to avoid a collision that happens when two people edit one
+service in the same second.
+
+### Foreign keys, and why each one differs
+
+- `service_versions.logical_queue_id` → **SET NULL**. Deleting a queue must
+  not delete the history of every service that once fed it. A version whose
+  queue is gone is reported by the Policy Engine as `NO_QUEUE_CONFIGURED`
+  rather than crashing on a null.
+- `conversation_context_bindings.service_version_id` → **RESTRICT**, the only
+  one. Deleting a version a conversation is bound to would leave it unable to
+  say what rules it ran under, which is the single thing this design exists to
+  guarantee.
+- `customer_context_versions.contract_id` → **no foreign key at all**. Billing
+  owns those objects; a live reference here would be a second place billing
+  configuration could be read from.
+
+### No backfill
+
+Existing conversations have no service and no binding. Inventing one would be
+a guess presented as a record — the same reasoning as `routing_decisions`. A
+conversation without a binding behaves exactly as it does today.
+
 ## See also
 
 - [Policy Engine](./policy-engine.md)

@@ -16,6 +16,30 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Groundwork for the Service Directory.** New storage for *services* — the
+  things a customer can be helped with — and for the frozen configuration a
+  conversation runs inside.
+
+  A conversation now has somewhere to record which rules it started under.
+  When an administrator edits a service, the old settings are kept rather
+  than overwritten, so a change made at noon cannot rewrite the deadline of
+  a conversation opened that morning — an agent watching a countdown would
+  otherwise see it jump. The same applies to the customer: their tier,
+  language and contract are captured as they were when the conversation
+  began.
+
+  Customer details are only re-captured when something that actually changes
+  how a conversation is handled changes. Correcting a customer's name does
+  not create a new record; promoting them to VIP does.
+
+  A conversation moved from one service to another keeps its full history,
+  so "why did this end up with the wrong team?" remains answerable
+  afterwards.
+
+  Nothing is switched on yet: existing conversations are unaffected and
+  behave exactly as before. The routing engine starts using this in a
+  following release.
+
 - **Payment providers can now be set up from the Platform Console.** A new
   **Payments** screen lists every scheme the product supports, including
   the Jordanian ones — **eFAWATEERcom, CliQ, MEPS and Network
