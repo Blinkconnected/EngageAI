@@ -646,3 +646,148 @@ class TestTheClocksRunFromRealEvents:
         # Paused is healthy: an agent has to be able to skip this without
         # wondering whether they should.
         assert first["health"] == "healthy"
+
+
+class TestBreachingIsSwept:
+    async def test_a_clock_past_its_deadline_is_breached(self, app: Any) -> None:
+        """Running out of time is the one thing that is not an event —
+        nothing happens, which is exactly the problem. Without the sweep the
+        engine measures and records but never concludes, and "how many did
+        we miss" is zero forever."""
+        from blinkengage.infrastructure.tasks import sla_breach_sweep_task
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            conversation_id, company_id = await a_conversation(session)
+            await engine_for(session).start(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                timer=SlaTimer.FIRST_RESPONSE,
+                targets=SlaTargets(first_response_minutes=60),
+                now=datetime.now(UTC) - timedelta(minutes=61),
+            )
+            await session.commit()
+
+        original = sla_breach_sweep_task._get_session_factory
+        sla_breach_sweep_task._get_session_factory = lambda _s: factory  # type: ignore[assignment]
+        try:
+            breached = await sla_breach_sweep_task._sweep_async()
+        finally:
+            sla_breach_sweep_task._get_session_factory = original  # type: ignore[assignment]
+
+        async with factory() as session:
+            sla = await engine_for(session).read(conversation_id)
+            rows = await sla_rows(session)
+
+        assert breached == 1
+        clock = sla.clock(SlaTimer.FIRST_RESPONSE)
+        assert clock is not None
+        assert clock.state is SlaState.BREACHED
+        assert sla.health is SlaHealth.BREACHED
+        # And the breach is in the timeline, not merely in the clock's state.
+        assert rows[-1].kind.value == "sla_breached"
+
+    async def test_a_paused_clock_is_not_in_the_sweep_at_all(self, app: Any) -> None:
+        """``due_at`` is cleared on pause, so a paused clock is not merely
+        filtered out of the query — it is not in the index. A conversation
+        waiting on the customer cannot be breached for the customer's
+        silence."""
+        from blinkengage.infrastructure.tasks import sla_breach_sweep_task
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            conversation_id, company_id = await a_conversation(session)
+            engine = engine_for(session)
+            await engine.start(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                timer=SlaTimer.FIRST_RESPONSE,
+                targets=SlaTargets(first_response_minutes=60),
+                now=datetime.now(UTC) - timedelta(minutes=61),
+            )
+            await engine.pause(
+                conversation_id=conversation_id,
+                timer=SlaTimer.FIRST_RESPONSE,
+                reason=PauseReason.WAITING_FOR_CUSTOMER,
+                now=datetime.now(UTC) - timedelta(minutes=30),
+            )
+            await session.commit()
+
+        original = sla_breach_sweep_task._get_session_factory
+        sla_breach_sweep_task._get_session_factory = lambda _s: factory  # type: ignore[assignment]
+        try:
+            breached = await sla_breach_sweep_task._sweep_async()
+        finally:
+            sla_breach_sweep_task._get_session_factory = original  # type: ignore[assignment]
+
+        async with factory() as session:
+            sla = await engine_for(session).read(conversation_id)
+
+        assert breached == 0
+        clock = sla.clock(SlaTimer.FIRST_RESPONSE)
+        assert clock is not None
+        assert clock.state is SlaState.PAUSED
+
+    async def test_the_sweep_touches_nothing_but_the_clock(self, app: Any) -> None:
+        """A breach is an SLA fact. A sweep that also reassigned or
+        reopened would be three independent concepts moving at once, at
+        3am, with nobody watching."""
+        from blinkengage.infrastructure.database.models.conversation import Conversation
+        from blinkengage.infrastructure.tasks import sla_breach_sweep_task
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            conversation_id, company_id = await a_conversation(session)
+            before = await session.get(Conversation, conversation_id)
+            assert before is not None
+            status_before, queue_before = before.status, before.queue_id
+            await engine_for(session).start(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                timer=SlaTimer.RESOLUTION,
+                targets=SlaTargets(resolution_minutes=1),
+                now=datetime.now(UTC) - timedelta(minutes=5),
+            )
+            await session.commit()
+
+        original = sla_breach_sweep_task._get_session_factory
+        sla_breach_sweep_task._get_session_factory = lambda _s: factory  # type: ignore[assignment]
+        try:
+            await sla_breach_sweep_task._sweep_async()
+        finally:
+            sla_breach_sweep_task._get_session_factory = original  # type: ignore[assignment]
+
+        async with factory() as session:
+            after = await session.get(Conversation, conversation_id)
+
+        assert after is not None
+        assert after.status is status_before
+        assert after.queue_id == queue_before
+        assert after.assigned_agent_id is None
+
+    async def test_a_breach_is_not_swept_twice(self, app: Any) -> None:
+        """Terminal, and the sweep runs every minute. A clock that could be
+        re-breached would write a row a minute forever."""
+        from blinkengage.infrastructure.tasks import sla_breach_sweep_task
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            conversation_id, company_id = await a_conversation(session)
+            await engine_for(session).start(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                timer=SlaTimer.FIRST_RESPONSE,
+                targets=SlaTargets(first_response_minutes=1),
+                now=datetime.now(UTC) - timedelta(minutes=5),
+            )
+            await session.commit()
+
+        original = sla_breach_sweep_task._get_session_factory
+        sla_breach_sweep_task._get_session_factory = lambda _s: factory  # type: ignore[assignment]
+        try:
+            first = await sla_breach_sweep_task._sweep_async()
+            second = await sla_breach_sweep_task._sweep_async()
+        finally:
+            sla_breach_sweep_task._get_session_factory = original  # type: ignore[assignment]
+
+        assert (first, second) == (1, 0)

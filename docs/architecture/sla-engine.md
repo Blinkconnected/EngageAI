@@ -625,6 +625,31 @@ SLA transition *is* a decision the platform made about a conversation, and a
 conversation is explained by reading one history in order rather than
 interleaving three by timestamp and hoping the clocks agree.
 
+## Breaching
+
+A clock does not breach itself. It starts, pauses and settles from the events
+of the conversation — and running out of time is the one thing that is **not**
+an event: nothing happens, which is exactly the problem.
+
+`breach-overdue-sla-clocks` runs every minute and marks what has run out.
+Without it the engine measures and records but never *concludes*: a
+conversation twenty minutes past its first-response target would still read
+`running`, and "how many did we miss" would be zero forever.
+
+One indexed range scan finds the work. Because `due_at` is cleared on pause, a
+paused clock is not merely filtered out of the query — it is not in the index
+at all, so a conversation waiting on the customer cannot be breached for the
+customer's silence.
+
+The sweep touches **only the clock**. Not the status, not the owner, not the
+queue. A breach is an SLA fact, and a sweep that also reassigned or reopened
+would be three independent concepts moving at once, at 3am, with nobody
+watching.
+
+Batched at 500 per run: a company that has just switched on a tight target
+across a large backlog would otherwise breach thousands in one transaction, and
+the next sweep is a minute away.
+
 ## The Inspector
 
 `GET /api/v1/conversations/{id}/sla` answers all six questions: why each clock

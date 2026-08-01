@@ -25,6 +25,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.billing_period_close_task",
         "blinkengage.infrastructure.tasks.invoice_run_task",
         "blinkengage.infrastructure.tasks.ownership_sweep_task",
+        "blinkengage.infrastructure.tasks.sla_breach_sweep_task",
         "blinkengage.infrastructure.tasks.billing_summary_sweep_task",
         "blinkengage.infrastructure.tasks.collections_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
@@ -113,6 +114,18 @@ celery_app.conf.update(
         "collections-sweep": {
             "task": "blinkengage.billing.collections_sweep",
             "schedule": 3600.0,
+        },
+        # Marks SLA clocks that have run out of time — see
+        # docs/architecture/sla-engine.md. Running out is the one thing
+        # that is not an event: nothing happens, which is exactly the
+        # problem, so something has to notice.
+        #
+        # Every minute, like the SLA sweep beside it. A target measured in
+        # minutes deserves a sweep measured in minutes, and a breach
+        # reported fifty seconds late is still reported.
+        "breach-overdue-sla-clocks": {
+            "task": "blinkengage.sla.breach_overdue_clocks",
+            "schedule": 60.0,
         },
         # Releases ownership whose sticky window has run out — see
         # docs/architecture/queue-lifecycle.md. A lapsed hold does not

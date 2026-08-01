@@ -106,6 +106,10 @@ BILLING_TASKS: Final[tuple[ScheduledTask, ...]] = (
 #: translation key — so an unknown key is shown humanised rather than hidden,
 #: and adding one here is how it gets a proper name.
 METRIC_LABELS: Final[dict[str, str]] = {
+    "clocks_overdue": "SLA clocks overdue",
+    "clocks_breached": "SLA clocks breached",
+    "holds_expired": "Ownership windows expired",
+    "released_to_queue": "Returned to their queue",
     "companies_processed": "Companies processed",
     "periods_closed": "Periods closed",
     "periods_backfilled": "Periods created",

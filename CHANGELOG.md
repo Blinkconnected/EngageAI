@@ -72,6 +72,11 @@ for more detail on how this page is put together.
   and a conversation that ended before a clock could be met or missed is
   recorded as exactly that rather than counted as a success.
 
+  A target that runs out is now marked as missed within a minute, and
+  appears in the conversation's history like every other change. A
+  conversation paused waiting on the customer is never marked missed for
+  the customer's silence.
+
   Every start, pause, resume, achievement and breach is recorded in the same
   history as the routing decisions, so a conversation can be explained by
   reading one story in order — including why a deadline moved.
