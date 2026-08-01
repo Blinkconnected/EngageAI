@@ -16,6 +16,29 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The billing scheduler is now visible.** A new **Health** page in the
+  Platform Console shows each background billing job — closing each month,
+  billing it, chasing what is unpaid, keeping the figures current — with
+  when it last succeeded, when it runs next, how long it took, how many
+  companies it processed, how many invoices it generated, and anything it
+  could not process.
+
+  This exists because of a real failure: three of those jobs were failing on
+  roughly every other run for months. Nothing looked wrong, because every
+  one of them is safe to repeat — a failed run simply left its work for the
+  next one. The only evidence was in the logs.
+
+  A job is flagged as **failing** when it has not succeeded within three of
+  its scheduled runs, not merely when one errors. A single missed run is
+  normal — a deployment, a restart — and an alert that fires on one is an
+  alert people learn to ignore. A job that succeeded but could not process
+  some of what it found is shown as **needs attention**, because "thirty
+  companies billed and one not" is a real problem the word "succeeded" would
+  otherwise hide.
+
+  The installation's overall state is the worst of its jobs, never an
+  average.
+
 - **Services can now be created and edited from a new Services screen.**
   A service is a thing customers can be helped with — Billing, Technical
   Support, Sales — and it decides which queue a conversation goes to, which

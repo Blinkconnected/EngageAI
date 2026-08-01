@@ -6,7 +6,8 @@
     "companies": "Companies",
     "mail": "Email",
     "billingConsole": "Billing Console",
-    "payments": "Payments"
+    "payments": "Payments",
+    "health": "Health"
   },
   "BillingConsole": {
     "title": "Billing Console",
@@ -407,6 +408,37 @@
       "active": "Active",
       "not_configured": "Not set up",
       "awaiting_integration": "Awaiting integration"
+    }
+  },
+  "scheduler": {
+    "title": "Billing scheduler",
+    "subtitle": "The background jobs that close each month, bill it, chase what is unpaid, and keep the figures current. Every one is safe to repeat — which is exactly why a failure can go unnoticed.",
+    "loadFailed": "Could not load scheduler health.",
+    "neverRunHint": "No runs recorded yet. On a new installation that is expected. If this persists after a deployment, the scheduler is not reaching the workers.",
+    "lastSuccess": "Last succeeded",
+    "nextRun": "Next run",
+    "duration": "Took",
+    "consecutiveFailures": "Failures in a row",
+    "retry": "Retry",
+    "attemptNumber": "Attempt {{count}}",
+    "itemsFailed_one": "{{count}} item could not be processed in this run.",
+    "itemsFailed_other": "{{count}} items could not be processed in this run.",
+    "evaluatedAt": "Checked at {{at}}",
+    "never": "Never",
+    "justNow": "Just now",
+    "minutesAgo_one": "{{count}} minute ago",
+    "minutesAgo_other": "{{count}} minutes ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "ms_one": "{{count}} ms",
+    "ms_other": "{{count}} ms",
+    "health": {
+      "healthy": "Healthy",
+      "degraded": "Needs attention",
+      "failing": "Failing",
+      "never_run": "Never run"
     }
   }
 }

@@ -72,6 +72,7 @@ from blinkengage.infrastructure.repositories.usage_repository import (
     BillingPeriodRepository,
     UsagePeriodLineRepository,
 )
+from blinkengage.infrastructure.tasks.run_recorder import record_run
 
 logger = get_logger(__name__)
 
@@ -125,49 +126,58 @@ async def _run_async() -> tuple[int, str]:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
     try:
-        providers = PaymentProviderRegistry.from_settings(settings)
+        # Recorded, so a failure is visible rather than merely logged.
+        # See ``run_recorder`` — these sweeps are idempotent, which is
+        # exactly why one failing leaves nothing looking wrong.
+        async with record_run(
+            session_factory, task_name="blinkengage.billing.collections_sweep"
+        ) as report:
+            providers = PaymentProviderRegistry.from_settings(settings)
 
-        async with session_scope(session_factory) as session:
-            invoice_service = build_invoice_service(session)
-            audit = FinancialAuditRecorder(FinancialAuditRepository(session))
+            async with session_scope(session_factory) as session:
+                invoice_service = build_invoice_service(session)
+                audit = FinancialAuditRecorder(FinancialAuditRepository(session))
 
-            reconciled = await PaymentService(
-                intents=PaymentIntentRepository(session),
-                refunds=PaymentRefundRepository(session),
-                reversals=AllocationReversalRepository(session),
-                payments=PaymentRepository(session),
-                invoices=InvoiceRepository(session),
-                invoice_service=invoice_service,
-                providers=providers,
-                audit=audit,
-                ledger=LedgerService(
-                    entries=LedgerRepository(session),
-                    numbers=DocumentNumberRepository(session),
-                ),
-                settings=settings,
-            ).reconcile_pending(older_than=datetime.now(UTC) - _RECONCILE_AFTER)
+                reconciled = await PaymentService(
+                    intents=PaymentIntentRepository(session),
+                    refunds=PaymentRefundRepository(session),
+                    reversals=AllocationReversalRepository(session),
+                    payments=PaymentRepository(session),
+                    invoices=InvoiceRepository(session),
+                    invoice_service=invoice_service,
+                    providers=providers,
+                    audit=audit,
+                    ledger=LedgerService(
+                        entries=LedgerRepository(session),
+                        numbers=DocumentNumberRepository(session),
+                    ),
+                    settings=settings,
+                ).reconcile_pending(older_than=datetime.now(UTC) - _RECONCILE_AFTER)
 
-            run = await CollectionsService(
-                session=session,
-                invoice_service=invoice_service,
-                notifications=NotificationService(
-                    notifications=NotificationRepository(session),
-                    companies=CompanyRepository(session),
-                    realtime=_get_realtime_publisher(settings),
-                ),
-                audit=audit,
-            ).run()
+                run = await CollectionsService(
+                    session=session,
+                    invoice_service=invoice_service,
+                    notifications=NotificationService(
+                        notifications=NotificationRepository(session),
+                        companies=CompanyRepository(session),
+                        realtime=_get_realtime_publisher(settings),
+                    ),
+                    audit=audit,
+                ).run()
 
-        if reconciled or run.notices_sent or run.suspended or run.reinstated:
-            logger.info(
-                "collections_sweep",
-                reconciled=reconciled,
-                marked_overdue=run.marked_overdue,
-                notices_sent=run.notices_sent,
-                suspended=[str(company_id) for company_id in run.suspended],
-                reinstated=[str(company_id) for company_id in run.reinstated],
-            )
-        return reconciled, run.summary()
+            if reconciled or run.notices_sent or run.suspended or run.reinstated:
+                logger.info(
+                    "collections_sweep",
+                    reconciled=reconciled,
+                    marked_overdue=run.marked_overdue,
+                    notices_sent=run.notices_sent,
+                    suspended=[str(company_id) for company_id in run.suspended],
+                    reinstated=[str(company_id) for company_id in run.reinstated],
+                )
+            report.count("payments_reconciled", reconciled)
+            report.count("notices_sent", run.notices_sent)
+            report.count("companies_suspended", len(run.suspended))
+            return reconciled, run.summary()
     finally:
         # Required, not tidiness — see ``events/relay.py``. The engine is
         # cached across invocations but each gets its own ``asyncio.run``

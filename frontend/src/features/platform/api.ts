@@ -25,6 +25,7 @@ import type {
   PaymentProvider,
   PaymentProviderInput,
   PaymentProvidersResponse,
+  SchedulerHealth,
   TestMailResult,
 } from './types'
 
@@ -565,6 +566,19 @@ export function useSavePaymentProviderMutation() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PAYMENT_PROVIDERS_KEY })
+    },
+  })
+}
+
+/** Polled: this page is left open, and a stale "healthy" is the one reading
+ * nobody should ever get. */
+export function useSchedulerHealthQuery() {
+  return useQuery({
+    queryKey: ['platform', 'health', 'scheduler'],
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<SchedulerHealth> => {
+      const { data } = await apiClient.get<SchedulerHealth>('/platform/health/scheduler')
+      return data
     },
   })
 }

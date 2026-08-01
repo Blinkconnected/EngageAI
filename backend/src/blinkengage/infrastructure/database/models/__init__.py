@@ -107,6 +107,7 @@ from blinkengage.infrastructure.database.models.reporting import (
 from blinkengage.infrastructure.database.models.routing_decision import (
     RoutingDecisionRecord,
 )
+from blinkengage.infrastructure.database.models.scheduler_run import SchedulerRun
 from blinkengage.infrastructure.database.models.service_directory import (
     ConversationContextBinding,
     CustomerContextVersion,
@@ -207,6 +208,7 @@ __all__ = [
     "RolePermission",
     "RoutingDecisionRecord",
     "RuntimeQueue",
+    "SchedulerRun",
     "RoutingRule",
     "Service",
     "ServiceVersion",

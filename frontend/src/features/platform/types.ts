@@ -373,3 +373,42 @@ export interface PaymentProviderInput {
    * screen is never given a stored secret, so it must not send one back. */
   values: Record<string, unknown>
 }
+
+export interface SchedulerMetric {
+  key: string
+  /** The human name, sent by the backend so a counter added to a task shows
+   * with a proper name rather than as a raw key. */
+  label: string
+  value: number
+}
+
+export interface SchedulerRun {
+  status: string
+  started_at: string
+  finished_at: string | null
+  duration_ms: number | null
+  metrics: SchedulerMetric[]
+  /** Items this run could not process — distinct from the run failing. */
+  failures: number
+  error: string | null
+  attempt: number
+}
+
+export interface SchedulerTaskHealth {
+  name: string
+  label: string
+  description: string
+  /** `healthy` | `degraded` | `failing` | `never_run`. */
+  health: string
+  interval_seconds: number
+  last_run: SchedulerRun | null
+  last_success: SchedulerRun | null
+  next_run_at: string | null
+  consecutive_failures: number
+}
+
+export interface SchedulerHealth {
+  health: string
+  tasks: SchedulerTaskHealth[]
+  evaluated_at: string
+}

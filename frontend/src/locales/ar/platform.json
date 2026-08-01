@@ -6,7 +6,8 @@
     "companies": "الشركات",
     "mail": "البريد",
     "billingConsole": "وحدة تحكم الفوترة",
-    "payments": "المدفوعات"
+    "payments": "المدفوعات",
+    "health": "الحالة"
   },
   "BillingConsole": {
     "title": "وحدة تحكم الفوترة",
@@ -407,6 +408,37 @@
       "active": "نشط",
       "not_configured": "غير مُعد",
       "awaiting_integration": "بانتظار الربط"
+    }
+  },
+  "scheduler": {
+    "title": "مُجدوِل الفوترة",
+    "subtitle": "المهام الخلفية التي تُغلق كل شهر وتُصدر فواتيره وتتابع غير المدفوع وتُحدّث الأرقام. جميعها آمنة للتكرار — ولهذا تحديدًا قد يمر الفشل دون ملاحظة.",
+    "loadFailed": "تعذّر تحميل حالة المُجدوِل.",
+    "neverRunHint": "لم تُسجَّل أي عمليات بعد. هذا متوقع في نظام جديد. إذا استمر بعد النشر، فإن المُجدوِل لا يصل إلى العاملين.",
+    "lastSuccess": "آخر نجاح",
+    "nextRun": "التشغيل التالي",
+    "duration": "استغرقت",
+    "consecutiveFailures": "إخفاقات متتالية",
+    "retry": "إعادة المحاولة",
+    "attemptNumber": "المحاولة {{count}}",
+    "itemsFailed_one": "تعذّرت معالجة عنصر واحد في هذه العملية.",
+    "itemsFailed_other": "تعذّرت معالجة {{count}} عناصر في هذه العملية.",
+    "evaluatedAt": "تم الفحص في {{at}}",
+    "never": "أبدًا",
+    "justNow": "الآن",
+    "minutesAgo_one": "قبل دقيقة",
+    "minutesAgo_other": "قبل {{count}} دقيقة",
+    "hoursAgo_one": "قبل ساعة",
+    "hoursAgo_other": "قبل {{count}} ساعة",
+    "daysAgo_one": "قبل يوم",
+    "daysAgo_other": "قبل {{count}} يوم",
+    "ms_one": "{{count}} مللي ثانية",
+    "ms_other": "{{count}} مللي ثانية",
+    "health": {
+      "healthy": "سليم",
+      "degraded": "يحتاج انتباهًا",
+      "failing": "متعثّر",
+      "never_run": "لم يُشغَّل"
     }
   }
 }

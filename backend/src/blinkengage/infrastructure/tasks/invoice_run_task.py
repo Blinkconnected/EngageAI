@@ -63,6 +63,7 @@ from blinkengage.infrastructure.repositories.usage_repository import BillingPeri
 # The same builder the collections sweep uses. Assembling a second copy here
 # would be a second place the invoice service's wiring could drift.
 from blinkengage.infrastructure.tasks.collections_sweep_task import build_invoice_service
+from blinkengage.infrastructure.tasks.run_recorder import RunReport, record_run
 
 logger = get_logger(__name__)
 
@@ -122,74 +123,13 @@ async def _generate_pending_invoices_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
     try:
-        await _backfill_missing_periods(session_factory, now=datetime.now(UTC))
-
-        async with session_scope(session_factory) as session:
-            pending = [
-                (period.id, period.company_id)
-                for period in await BillingPeriodRepository(session).closed_needing_invoice()
-            ]
-
-        generated = 0
-        for period_id, company_id in pending:
-            # A transaction per period. One company's bad snapshot fails alone
-            # rather than rolling back the invoices already written for the
-            # companies before it in the list.
-            try:
-                async with session_scope(session_factory) as session:
-                    service = build_invoice_service(session)
-                    invoice = await service.generate_for_period(
-                        period_id, actor=AuditActor.system_actor()
-                    )
-                    # Issued, not left as a draft. A draft is an internal
-                    # document: it carries no invoice number, so a customer
-                    # has nothing to quote, nothing to pay against, and the
-                    # payment clock never starts. The run bills the month;
-                    # leaving that half-done is what produced a console full
-                    # of unnumbered drafts nobody was chasing.
-                    #
-                    # Guarded on DRAFT because generation is idempotent and
-                    # returns the *existing* invoice on a re-run: issuing an
-                    # already-issued invoice would raise, and a run that
-                    # raises on everything it has already done is a run that
-                    # never finishes its backlog.
-                    if invoice.status is InvoiceStatus.DRAFT:
-                        invoice = await service.issue(
-                            invoice_id=invoice.id, actor=AuditActor.system_actor()
-                        )
-                    # Re-read: ``issue`` transitions with a bulk UPDATE, so
-                    # the instance in this session's identity map still holds
-                    # the pre-issue values and would log a number of None for
-                    # an invoice that has one.
-                    await session.refresh(invoice)
-                    number, total, currency, status_name = (
-                        invoice.invoice_number,
-                        str(invoice.total_amount),
-                        invoice.currency,
-                        invoice.status.value,
-                    )
-            except Exception:  # noqa: BLE001
-                # Logged with the company, because "the invoice run failed" is
-                # not actionable and "Acme's July invoice failed" is.
-                logger.exception(
-                    "invoice_run_failed",
-                    period_id=str(period_id),
-                    company_id=str(company_id),
-                )
-                continue
-
-            generated += 1
-            logger.info(
-                "invoice_generated",
-                period_id=str(period_id),
-                company_id=str(company_id),
-                invoice_number=number,
-                total_amount=total,
-                currency=currency,
-                status=status_name,
-            )
-
-        return generated
+        # Every run writes down what it did — see ``run_recorder``. Billing
+        # is idempotent, which is exactly why a failure here is invisible:
+        # the next run picks the work up and nothing looks wrong.
+        async with record_run(
+            session_factory, task_name="blinkengage.billing.generate_pending_invoices"
+        ) as report:
+            return await _run(session_factory, report)
     finally:
         # Required, not tidiness — see ``events/relay.py``. The engine is
         # cached across invocations but each gets its own ``asyncio.run``
@@ -198,6 +138,87 @@ async def _generate_pending_invoices_async() -> int:
         # to a different loop".
         if _engine is not None:
             await _engine.dispose()
+
+
+async def _run(
+    session_factory: async_sessionmaker[AsyncSession], report: RunReport
+) -> int:
+    backfilled = await _backfill_missing_periods(session_factory, now=datetime.now(UTC))
+    report.count("periods_backfilled", backfilled)
+
+    async with session_scope(session_factory) as session:
+        pending = [
+            (period.id, period.company_id)
+            for period in await BillingPeriodRepository(session).closed_needing_invoice()
+        ]
+
+    generated = 0
+    for period_id, company_id in pending:
+        # A transaction per period. One company's bad snapshot fails alone
+        # rather than rolling back the invoices already written for the
+        # companies before it in the list.
+        try:
+            async with session_scope(session_factory) as session:
+                service = build_invoice_service(session)
+                invoice = await service.generate_for_period(
+                    period_id, actor=AuditActor.system_actor()
+                )
+                # Issued, not left as a draft. A draft is an internal
+                # document: it carries no invoice number, so a customer
+                # has nothing to quote, nothing to pay against, and the
+                # payment clock never starts. The run bills the month;
+                # leaving that half-done is what produced a console full
+                # of unnumbered drafts nobody was chasing.
+                #
+                # Guarded on DRAFT because generation is idempotent and
+                # returns the *existing* invoice on a re-run: issuing an
+                # already-issued invoice would raise, and a run that
+                # raises on everything it has already done is a run that
+                # never finishes its backlog.
+                if invoice.status is InvoiceStatus.DRAFT:
+                    invoice = await service.issue(
+                        invoice_id=invoice.id, actor=AuditActor.system_actor()
+                    )
+                # Re-read: ``issue`` transitions with a bulk UPDATE, so
+                # the instance in this session's identity map still holds
+                # the pre-issue values and would log a number of None for
+                # an invoice that has one.
+                await session.refresh(invoice)
+                number, total, currency, status_name = (
+                    invoice.invoice_number,
+                    str(invoice.total_amount),
+                    invoice.currency,
+                    invoice.status.value,
+                )
+        except Exception:  # noqa: BLE001
+            # Logged with the company, because "the invoice run failed" is
+            # not actionable and "Acme's July invoice failed" is.
+            # Counted, not merely logged: a run that billed thirty
+            # companies and could not bill one is a different problem
+            # from a run that never started, and calling both "failed"
+            # hides the first.
+            report.record_failure()
+            logger.exception(
+                "invoice_run_failed",
+                period_id=str(period_id),
+                company_id=str(company_id),
+            )
+            continue
+
+        generated += 1
+        logger.info(
+            "invoice_generated",
+            period_id=str(period_id),
+            company_id=str(company_id),
+            invoice_number=number,
+            total_amount=total,
+            currency=currency,
+            status=status_name,
+        )
+
+    report.count("companies_processed", len(pending))
+    report.count("invoices_generated", generated)
+    return generated
 
 @celery_app.task(name="blinkengage.billing.generate_pending_invoices")  # type: ignore[misc]
 def generate_pending_invoices() -> int:

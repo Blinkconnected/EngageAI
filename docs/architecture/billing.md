@@ -605,6 +605,54 @@ clock change — leaves every company's month unclosed until somebody
 notices. An hourly sweep that finds nothing costs one indexed query and
 self-heals, and each close being idempotent makes running it often free.
 
+### The scheduler monitor
+
+`/platform/health/scheduler`, in the Platform Console under **Health**.
+
+Every billing run writes a row: when it started, how long it took, what it
+counted, and whether it failed. That exists because of the failure described
+below — three sweeps failing on alternate runs for months, invisible because
+every one of them is idempotent, evidenced only by stack traces nobody read.
+
+**A monitor that records only successes goes quiet exactly when something is
+wrong**, so a failed run is recorded and *then* re-raised: Celery still
+retries, alerting still fires, and the counters the run managed before it died
+are kept.
+
+**The recording uses its own session.** The load-bearing decision: writing the
+failure inside the transaction that just failed would roll the record back
+along with the work, so the run most needing explanation would be the one
+leaving no trace. It also never breaks the task — evidence about billing must
+not be able to stop billing, the same tradeoff as the routing decision log.
+
+The row is written when the run *starts*, so a worker killed mid-sweep leaves
+a `RUNNING` row that ages visibly. Recording only on completion would leave
+nothing, and "no row" is indistinguishable from "never scheduled".
+
+Four states rather than up/down, because the interesting failure is not "it
+errored" — every job here is safe to repeat — but "it has not succeeded
+recently and nobody noticed":
+
+| State | Means |
+|---|---|
+| `healthy` | Succeeded within the window its schedule promises |
+| `degraded` | Succeeded, but some items in it could not be processed |
+| `failing` | The last run failed, **or nothing has succeeded in three intervals** |
+| `never_run` | Nothing recorded — expected on day one, an outage after a deploy |
+
+The three-interval window is deliberate. One missed run is normal — a deploy,
+a restart, a sweep that overran — and a monitor that cries after one is a
+monitor people learn to ignore. Three consecutive misses is not noise, and it
+is exactly what the real bug looked like.
+
+An installation's health is the **worst** of its tasks, never an average: one
+whose invoice run has not succeeded in a day is not "mostly healthy".
+
+`next_run_at` is derived from the last run rather than read from Celery, which
+keeps that state in its own beat file — inaccessible to the API and reset on
+restart. Derived is approximate and honest; reading a number that resets would
+be precise and wrong.
+
 ### Every sweep must dispose its connection pool
 
 A hazard shared by all the billing tasks, worth stating once because it

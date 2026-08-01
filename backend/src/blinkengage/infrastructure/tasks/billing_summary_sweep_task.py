@@ -58,6 +58,7 @@ from blinkengage.infrastructure.repositories.usage_repository import (
     UsageRecordRepository,
 )
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+from blinkengage.infrastructure.tasks.run_recorder import record_run
 
 logger = get_logger(__name__)
 
@@ -95,26 +96,34 @@ async def _refresh_daily_summaries_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
     try:
-        async with session_scope(session_factory) as session:
-            outcomes = await build_billing_summary_service(session).refresh_open_periods()
+        # Recorded, so a failure is visible rather than merely logged.
+        # See ``run_recorder`` — these sweeps are idempotent, which is
+        # exactly why one failing leaves nothing looking wrong.
+        async with record_run(
+            session_factory, task_name="blinkengage.billing.refresh_daily_summaries"
+        ) as report:
+            async with session_scope(session_factory) as session:
+                outcomes = await build_billing_summary_service(session).refresh_open_periods()
 
-        finalized = sum(outcome.days_finalized for outcome in outcomes)
-        unpriced = {
-            metric for outcome in outcomes for metric in outcome.unpriced_metrics
-        }
-        logger.info(
-            "billing_daily_summaries_refreshed",
-            periods=len(outcomes),
-            days_written=sum(outcome.days_written for outcome in outcomes),
-            days_refreshed=sum(outcome.days_refreshed for outcome in outcomes),
-            days_finalized=finalized,
-        )
-        if unpriced:
-            # Reported at WARNING, not swallowed: usage with no price charts as
-            # zero, which reads as free rather than as unpriced, and the operator
-            # needs to know before the customer notices the gap.
-            logger.warning("billing_daily_summaries_unpriced_metrics", metrics=sorted(unpriced))
-        return finalized
+            finalized = sum(outcome.days_finalized for outcome in outcomes)
+            report.count("companies_processed", len(outcomes))
+            report.count("days_refreshed", sum(o.days_refreshed for o in outcomes))
+            unpriced = {
+                metric for outcome in outcomes for metric in outcome.unpriced_metrics
+            }
+            logger.info(
+                "billing_daily_summaries_refreshed",
+                periods=len(outcomes),
+                days_written=sum(outcome.days_written for outcome in outcomes),
+                days_refreshed=sum(outcome.days_refreshed for outcome in outcomes),
+                days_finalized=finalized,
+            )
+            if unpriced:
+                # Reported at WARNING, not swallowed: usage with no price charts as
+                # zero, which reads as free rather than as unpriced, and the operator
+                # needs to know before the customer notices the gap.
+                logger.warning("billing_daily_summaries_unpriced_metrics", metrics=sorted(unpriced))
+            return finalized
     finally:
         # Required, not tidiness — see ``events/relay.py``. The engine is
         # cached across invocations but each gets its own ``asyncio.run``

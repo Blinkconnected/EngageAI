@@ -20,6 +20,7 @@ export function PlatformLayout() {
         { to: '/platform', label: t('PlatformLayout.companies'), end: true },
         { to: '/platform/mail', label: t('PlatformLayout.mail') },
         { to: '/platform/payments', label: t('PlatformLayout.payments') },
+        { to: '/platform/health', label: t('PlatformLayout.health') },
       ]}
       sibling={{ to: '/platform/billing', label: t('PlatformLayout.billingConsole') }}
     />

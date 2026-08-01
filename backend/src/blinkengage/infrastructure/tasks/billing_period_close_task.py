@@ -54,6 +54,7 @@ from blinkengage.infrastructure.repositories.user_repository import UserReposito
 from blinkengage.infrastructure.tasks.billing_summary_sweep_task import (
     build_billing_summary_service,
 )
+from blinkengage.infrastructure.tasks.run_recorder import record_run
 
 logger = get_logger(__name__)
 
@@ -92,25 +93,38 @@ async def _close_due_periods_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
     try:
-        async with session_scope(session_factory) as session:
-            summaries = build_billing_summary_service(session)
+        # Recorded, so a failure is visible rather than merely logged.
+        # See ``run_recorder`` — these sweeps are idempotent, which is
+        # exactly why one failing leaves nothing looking wrong.
+        async with record_run(
+            session_factory, task_name="blinkengage.billing.close_due_periods"
+        ) as report:
+            async with session_scope(session_factory) as session:
+                summaries = build_billing_summary_service(session)
 
-            # Price the period's final day *before* closing it. Afterwards the
-            # period is settled and its aggregates are deliberately frozen, so a
-            # last day that was never aggregated would stay missing from the chart
-            # of a month that has already been invoiced.
-            now = datetime.now(UTC)
-            for period in await BillingPeriodRepository(session).due_for_close(now=now):
-                await summaries.refresh_period(period_id=period.id, now=now)
+                # Price the period's final day *before* closing it. Afterwards the
+                # period is settled and its aggregates are deliberately frozen, so a
+                # last day that was never aggregated would stay missing from the chart
+                # of a month that has already been invoiced.
+                now = datetime.now(UTC)
+                for period in await BillingPeriodRepository(session).due_for_close(now=now):
+                    await summaries.refresh_period(period_id=period.id, now=now)
 
-            outcomes = await build_usage_service(session).close_due_periods(now=now)
+                outcomes = await build_usage_service(session).close_due_periods(now=now)
 
-            # Freeze every day of what just closed. `finalize_days_before` leaves
-            # the current day open, which is right while a period is running and
-            # wrong the moment its invoice exists.
-            for outcome in outcomes:
-                if not outcome.already_closed:
-                    await summaries.finalize_closed_period(period_id=outcome.period_id, now=now)
+                # Freeze every day of what just closed. `finalize_days_before` leaves
+                # the current day open, which is right while a period is running and
+                # wrong the moment its invoice exists.
+                closed = 0
+                for outcome in outcomes:
+                    if not outcome.already_closed:
+                        await summaries.finalize_closed_period(
+                            period_id=outcome.period_id, now=now
+                        )
+                        closed += 1
+
+            report.count("companies_processed", len(outcomes))
+            report.count("periods_closed", closed)
     finally:
         # Required, not tidiness — see ``events/relay.py`` for the full
         # explanation. The engine is cached across invocations but each

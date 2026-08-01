@@ -74,6 +74,7 @@ from blinkengage.application.services.reporting_service import ReportingService
 from blinkengage.application.services.revenue_service import RevenueService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
+from blinkengage.application.services.scheduler_health_service import SchedulerHealthService
 from blinkengage.application.services.search_service import SearchService
 from blinkengage.application.services.service_directory_service import ServiceDirectoryService
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
@@ -198,6 +199,9 @@ from blinkengage.infrastructure.repositories.reporting_repository import Reporti
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
+)
+from blinkengage.infrastructure.repositories.scheduler_run_repository import (
+    SchedulerRunRepository,
 )
 from blinkengage.infrastructure.repositories.search_repository import SearchRepository
 from blinkengage.infrastructure.repositories.service_directory_repository import (
@@ -707,6 +711,12 @@ def get_conversation_service_ws(
         agent_skills=AgentSkillRepository(session),
         realtime=realtime,
     )
+
+
+def get_scheduler_health_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SchedulerHealthService:
+    return SchedulerHealthService(SchedulerRunRepository(session))
 
 
 def get_service_directory_service(
