@@ -16,6 +16,46 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **AI now waits, so your agents get first refusal.** When a conversation
+  arrives on an Autopilot queue, AI no longer answers instantly. The
+  conversation sits in its queue for the service's pickup delay — 30 seconds
+  by default — where an agent can see it and take it. AI picks it up only if
+  nobody does.
+
+  This is what the "AI pickup delay" setting always said it did. Nothing was
+  reading it, so AI replied the moment a message landed and the chance it
+  describes was never actually offered.
+
+  Set the delay to zero on queues where waiting only makes the customer wait —
+  an FAQ line, or an after-hours line with nobody behind it — and AI answers
+  immediately, exactly as before.
+
+  Every outcome is on the conversation's timeline in plain language: that AI
+  is waiting and for how long, that it took the conversation because no agent
+  did, or that it stood down because somebody got there first. A conversation
+  where nothing has visibly happened can now say why.
+
+  The decision is re-checked when the delay runs out, not made in advance. If
+  AI is switched off during those thirty seconds, AI does not answer.
+
+  The delay and the confidence threshold are now editable per service, under
+  Services → AI. Both governed real behaviour and neither could be reached
+  from any screen — a setting the platform obeys and nobody can change is a
+  setting nobody can trust.
+
+  AI also only takes a conversation once it actually has an answer to give.
+  If the model is unavailable or unsure, the conversation stays in the queue
+  for a human instead of being taken away from the people who could help.
+
+### Fixed
+
+- **AI now shows as handing a conversation back.** When Autopilot hands off to
+  a human — because it is not confident enough, or no AI provider is
+  available — the conversation's history now records it returning to its
+  queue. Previously the history showed AI taking conversations and never
+  letting go: "who is responsible for this?" answered "AI", about a
+  conversation AI had explicitly given up on.
+
 - **The Inbox now opens on the work that needs doing.** Every conversation
   carries an SLA health reading — 🟢 healthy, 🟡 attention, 🟠 at risk,
   🔴 breached — and the list is sorted by it, worst first, before priority.

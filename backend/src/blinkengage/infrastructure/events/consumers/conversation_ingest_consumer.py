@@ -8,7 +8,7 @@ published. This module only persists.
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -50,6 +50,7 @@ from blinkengage.domain.routing_decisions import (
     ResolutionStageRecord,
     RoutingDecision,
     RoutingDecisionReason,
+    ai_deferred_decision,
     assignment_decision,
     autopilot_decision,
     queue_decision,
@@ -949,6 +950,34 @@ async def _route_and_assign(
                 and is_autopilot_new_conversation_mode_enabled(company.settings)
                 and is_ai_available_for_company(settings, company.ai_config)
             )
+
+        # The delay is what makes AI a queue worker rather than a first
+        # responder. AI is allowed to answer, and deliberately does not yet:
+        # the conversation stays in its queue, visible, where an agent can
+        # take it. Only if nobody does — see ``ai_pickup_sweep_task`` — does
+        # AI pick it up when the delay runs out.
+        #
+        # Read from the service, so a company can tune it per service:
+        # thirty seconds on a support queue where a human should get first
+        # refusal, zero on an FAQ queue where waiting only makes the
+        # customer wait. Zero means engage now, which is the behaviour
+        # everything had before this existed.
+        delay = service.ai.pickup_delay_seconds if service is not None else 0
+        if engaged and delay > 0:
+            conversation.ai_pickup_eligible_at = datetime.now(UTC) + timedelta(seconds=delay)
+            # Recorded, because a conversation sitting untouched for thirty
+            # seconds is indistinguishable from AI being switched off — and
+            # "why did nothing happen" is the first question anybody asks.
+            await _record_decision(
+                session,
+                decisions,
+                company_id=company_id,
+                conversation_id=conversation.id,
+                decision=ai_deferred_decision(
+                    queue_id=queue.id, queue_name=queue.name, delay_seconds=delay
+                ),
+            )
+            engaged = False
 
         if engaged:
             conversation.autopilot_active = True

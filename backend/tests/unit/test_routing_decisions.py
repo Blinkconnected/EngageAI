@@ -34,6 +34,9 @@ from blinkengage.domain.routing_decisions import (
     RoutingDecisionKind,
     RoutingDecisionOutcome,
     RoutingDecisionReason,
+    ai_deferred_decision,
+    ai_pickup_decision,
+    ai_stood_down_decision,
     assignment_decision,
     autopilot_decision,
     describe_conditions,
@@ -355,6 +358,15 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
             deciding_reason=None,
             stages=(),
         ),
+        RoutingDecisionReason.PICKUP_DELAY_RUNNING: ai_deferred_decision(
+            queue_id=queue_id, queue_name="Support", delay_seconds=30
+        ),
+        RoutingDecisionReason.PICKUP_DELAY_ELAPSED: ai_pickup_decision(
+            queue_id=queue_id, queue_name="Support", delay_seconds=30
+        ),
+        RoutingDecisionReason.HUMAN_ARRIVED_FIRST: ai_stood_down_decision(
+            queue_id=queue_id, queue_name="Support"
+        ),
     }
 
 
@@ -454,6 +466,10 @@ def test_each_decision_kind_matches_its_outcome() -> None:
                 RoutingDecisionKind.SERVICE_RESOLVED,
                 RoutingDecisionKind.LEFT_UNROUTED,
                 RoutingDecisionKind.LEFT_UNASSIGNED,
+                # AI deliberately not taking a conversation is an outcome of
+                # nothing — nothing was chosen — and that is the point of
+                # the row rather than a gap in it.
+                RoutingDecisionKind.AI_DEFERRED,
             )
 
 

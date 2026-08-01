@@ -126,6 +126,7 @@ class RoutingDecisionRepository:
                 for candidate in decision.rejected_candidates
             ],
             rejections_omitted=decision.rejections_omitted,
+            ai_pickup_delay_seconds=decision.ai_pickup_delay_seconds,
             sentence=decision.sentence,
             details={} if rule is None else {"rule_conditions": dict(rule.conditions)},
         )

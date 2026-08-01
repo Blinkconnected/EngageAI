@@ -46,6 +46,17 @@ function minutesText(value: number | null | undefined): string {
   return value === null || value === undefined ? '' : String(value)
 }
 
+/** Zero is a real, meaningful value here — "answer immediately" — so it must
+ * survive a round trip through the field rather than being read as empty. */
+function toSeconds(value: string): number {
+  const parsed = Number(value.trim())
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+}
+
+function aiText(value: number | null | undefined): string {
+  return value === null || value === undefined ? '' : String(value)
+}
+
 function ServiceEditor({
   service,
   canManage,
@@ -78,6 +89,14 @@ function ServiceEditor({
     next_response_minutes: version?.sla_next_response_minutes ?? null,
     resolution_minutes: version?.sla_resolution_minutes ?? null,
     ...(edits.sla ?? {}),
+  }
+
+  const ai = {
+    enabled: version?.ai_enabled ?? false,
+    pickup_delay_seconds: version?.ai_pickup_delay_seconds ?? 30,
+    resume_delay_seconds: version?.ai_resume_delay_seconds ?? 900,
+    confidence_threshold: version?.ai_confidence_threshold ?? '0.75',
+    ...(edits.ai ?? {}),
   }
 
   const handleSave = () => {
@@ -194,26 +213,44 @@ function ServiceEditor({
       <FormControlLabel
         control={
           <Switch
-            checked={edits.ai?.enabled ?? version?.ai_enabled ?? false}
-            onChange={(e) =>
-              setEdits((c) => ({
-                ...c,
-                ai: {
-                  enabled: e.target.checked,
-                  pickup_delay_seconds:
-                    c.ai?.pickup_delay_seconds ?? version?.ai_pickup_delay_seconds ?? 30,
-                  resume_delay_seconds:
-                    c.ai?.resume_delay_seconds ?? version?.ai_resume_delay_seconds ?? 900,
-                  confidence_threshold:
-                    c.ai?.confidence_threshold ?? version?.ai_confidence_threshold ?? '0.75',
-                },
-              }))
-            }
+            checked={ai.enabled}
+            onChange={(e) => setEdits((c) => ({ ...c, ai: { ...ai, enabled: e.target.checked } }))}
             disabled={!canManage}
           />
         }
         label={t('field.aiEnabled')}
       />
+      {/* The pickup delay governs real behaviour — AI waits this long before
+          taking a conversation, so an agent gets first refusal — and until
+          now there was no way to set it. A setting the platform obeys and
+          nobody can reach is the same as a setting nobody can trust. */}
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <TextField
+          label={t('field.aiPickupDelay')}
+          value={aiText(ai.pickup_delay_seconds)}
+          onChange={(e) =>
+            setEdits((c) => ({
+              ...c,
+              ai: { ...ai, pickup_delay_seconds: toSeconds(e.target.value) },
+            }))
+          }
+          disabled={!canManage || !ai.enabled}
+          helperText={t('field.aiPickupDelayHelp')}
+          size="small"
+          fullWidth
+        />
+        <TextField
+          label={t('field.aiConfidence')}
+          value={ai.confidence_threshold}
+          onChange={(e) =>
+            setEdits((c) => ({ ...c, ai: { ...ai, confidence_threshold: e.target.value } }))
+          }
+          disabled={!canManage || !ai.enabled}
+          helperText={t('field.aiConfidenceHelp')}
+          size="small"
+          fullWidth
+        />
+      </Stack>
 
       <Divider />
       <TextField

@@ -26,6 +26,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.invoice_run_task",
         "blinkengage.infrastructure.tasks.ownership_sweep_task",
         "blinkengage.infrastructure.tasks.sla_breach_sweep_task",
+        "blinkengage.infrastructure.tasks.ai_pickup_sweep_task",
         "blinkengage.infrastructure.tasks.billing_summary_sweep_task",
         "blinkengage.infrastructure.tasks.collections_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
@@ -126,6 +127,22 @@ celery_app.conf.update(
         "breach-overdue-sla-clocks": {
             "task": "blinkengage.sla.breach_overdue_clocks",
             "schedule": 60.0,
+        },
+        # Hands AI the conversations nobody picked up — see
+        # docs/architecture/ai-engine.md. AI is a queue worker, not a first
+        # responder: it waits out the service's pickup delay so an agent has
+        # the first chance, and this is what happens when nobody takes it.
+        #
+        # Every ten seconds, matching the push dispatcher above rather than
+        # the minute-long sweeps. The delay defaults to thirty seconds, and
+        # a sweep coarser than the thing it is waiting for would turn that
+        # into anything up to ninety — a different promise than the one an
+        # administrator typed into the box. The query is the same shape and
+        # cost as the outbox relay's: one indexed, limited SELECT against a
+        # partial index, and a run with nothing due costs exactly that.
+        "ai-pickup-waiting-conversations": {
+            "task": "blinkengage.ai.pickup_waiting_conversations",
+            "schedule": 10.0,
         },
         # Releases ownership whose sticky window has run out — see
         # docs/architecture/queue-lifecycle.md. A lapsed hold does not

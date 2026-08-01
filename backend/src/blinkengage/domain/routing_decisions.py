@@ -109,6 +109,11 @@ class RoutingDecisionKind(StrEnum):
     # have to widen this enum (and every console switch over it) under
     # themselves.
 
+    #: AI was allowed to answer and is deliberately holding off, so a human
+    #: has the first chance at the conversation. "Why has nothing happened
+    #: yet" — and the answer is that something did: a decision to wait.
+    AI_DEFERRED = "ai_deferred"
+
     #: AI handed the conversation back to humans. "Why did AI stop".
     AI_RELEASED = "ai_released"
     #: A conversation was kept with an agent by the 24h ownership window
@@ -280,6 +285,19 @@ class RoutingDecisionReason(StrEnum):
     #: so AI took the conversation and human assignment never ran. See
     #: ``docs/architecture/queues-routing.md`` decision #11.
     AUTOPILOT_QUEUE = "autopilot_queue"
+    #: AI was allowed to take it and deliberately did not, yet. The
+    #: service's pickup delay is running, and the conversation is sitting
+    #: in its queue where a human can see it and take it first.
+    PICKUP_DELAY_RUNNING = "pickup_delay_running"
+    #: The pickup delay ran out with the conversation still unclaimed, so
+    #: AI took it. Distinct from ``AUTOPILOT_QUEUE``, which is AI taking a
+    #: conversation nobody was ever offered.
+    PICKUP_DELAY_ELAPSED = "pickup_delay_elapsed"
+    #: A human claimed it while the pickup delay was running, so AI stood
+    #: down. The record of the delay doing its job — without it, an
+    #: agent-handled conversation is indistinguishable from one AI was
+    #: never allowed to touch.
+    HUMAN_ARRIVED_FIRST = "human_arrived_first"
 
     # --- Choosing an agent -------------------------------------------
 
@@ -585,6 +603,12 @@ class RoutingDecision:
     #: Set on the ``SLA_*`` decisions. See ``domain/sla.py``.
     sla: SlaEvent | None = None
 
+    #: Set on ``AI_DEFERRED`` and on an ``AI_ENGAGED`` that followed a
+    #: delay: how long AI was told to hold off for. Carried on the decision
+    #: rather than read back from the service, because a service's delay is
+    #: editable and the row has to keep saying what was true at the time.
+    ai_pickup_delay_seconds: int | None = None
+
     matched_rule: MatchedRule | None = None
     rules_evaluated: int = 0
 
@@ -655,6 +679,17 @@ def _queue_phrase(decision: RoutingDecision) -> str:
     if decision.selected_queue_id is not None:
         return f"queue {decision.selected_queue_id}"
     return "no queue"
+
+
+def _seconds_phrase(decision: RoutingDecision) -> str:
+    """A delay as a person would say it, never as a bare number of seconds."""
+    seconds = decision.ai_pickup_delay_seconds
+    if seconds is None:
+        return "a moment"
+    if seconds < 60:
+        return f"{seconds} seconds"
+    minutes = round(seconds / 60)
+    return "a minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def _agent_phrase(decision: RoutingDecision) -> str:
@@ -743,6 +778,21 @@ def _headline(decision: RoutingDecision) -> str:
         return f"Left unassigned: {queue} is deactivated, so nobody was assigned."
     if reason is RoutingDecisionReason.AUTOPILOT_QUEUE:
         return f"AI Autopilot took the conversation because {queue} has Autopilot enabled."
+    if reason is RoutingDecisionReason.PICKUP_DELAY_RUNNING:
+        return (
+            f"AI Autopilot is allowed to answer and is waiting {_seconds_phrase(decision)} "
+            f"first, so an agent has the chance to take this from {queue} before it does."
+        )
+    if reason is RoutingDecisionReason.PICKUP_DELAY_ELAPSED:
+        return (
+            f"AI Autopilot took the conversation: it waited {_seconds_phrase(decision)} "
+            "in the queue and no agent picked it up."
+        )
+    if reason is RoutingDecisionReason.HUMAN_ARRIVED_FIRST:
+        return (
+            "AI Autopilot stood down: an agent took the conversation while its "
+            "pickup delay was still running."
+        )
     if reason is RoutingDecisionReason.STRATEGY_SELECTED:
         return (
             f"Assigned to {_agent_phrase(decision)} by {queue}'s {decision.strategy} "
@@ -865,6 +915,66 @@ def autopilot_decision(*, queue_id: uuid.UUID, queue_name: str | None) -> Routin
         kind=RoutingDecisionKind.AI_ENGAGED,
         outcome=RoutingDecisionOutcome.AUTOPILOT,
         reason=RoutingDecisionReason.AUTOPILOT_QUEUE,
+        selected_queue_id=queue_id,
+        selected_queue_name=queue_name,
+    )
+
+
+def ai_deferred_decision(
+    *, queue_id: uuid.UUID, queue_name: str | None, delay_seconds: int
+) -> RoutingDecision:
+    """The record of "AI could have answered and is waiting on purpose".
+
+    Written the moment a conversation arrives on an Autopilot queue whose
+    service sets a pickup delay. Without it, the delay is indistinguishable
+    from AI being switched off — the conversation simply sits there, and the
+    first question anybody asks is why nothing happened.
+    """
+    return RoutingDecision(
+        kind=RoutingDecisionKind.AI_DEFERRED,
+        outcome=RoutingDecisionOutcome.NOTHING,
+        reason=RoutingDecisionReason.PICKUP_DELAY_RUNNING,
+        selected_queue_id=queue_id,
+        selected_queue_name=queue_name,
+        ai_pickup_delay_seconds=delay_seconds,
+    )
+
+
+def ai_pickup_decision(
+    *, queue_id: uuid.UUID | None, queue_name: str | None, delay_seconds: int
+) -> RoutingDecision:
+    """AI took a conversation the delay had offered to humans first."""
+    return RoutingDecision(
+        kind=RoutingDecisionKind.AI_ENGAGED,
+        outcome=RoutingDecisionOutcome.AUTOPILOT,
+        reason=RoutingDecisionReason.PICKUP_DELAY_ELAPSED,
+        selected_queue_id=queue_id,
+        selected_queue_name=queue_name,
+        ai_pickup_delay_seconds=delay_seconds,
+    )
+
+
+def ai_stood_down_decision(
+    *, queue_id: uuid.UUID | None, queue_name: str | None
+) -> RoutingDecision:
+    """A human got there first, which is the delay working as intended.
+
+    Recorded by the sweep rather than by the claim, deliberately. Claiming a
+    conversation is on the path an agent waits for; writing an explanation of
+    what AI decided not to do is not worth a millisecond of it. The sweep
+    finds the conversation a moment later, sees a human holding it, and
+    writes the row then.
+
+    Deliberately does **not** name the agent who took it, even though the
+    sweep knows. ``selected_agent_id`` means "the agent this decision chose",
+    and this decision chose nobody — filling it in would make "which decision
+    assigned Ada?" return a row that assigned no one. Who took it is on the
+    assignment decision, where it belongs.
+    """
+    return RoutingDecision(
+        kind=RoutingDecisionKind.AI_DEFERRED,
+        outcome=RoutingDecisionOutcome.NOTHING,
+        reason=RoutingDecisionReason.HUMAN_ARRIVED_FIRST,
         selected_queue_id=queue_id,
         selected_queue_name=queue_name,
     )

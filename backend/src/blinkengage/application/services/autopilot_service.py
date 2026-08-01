@@ -30,14 +30,21 @@ from uuid import UUID
 
 from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.ownership_service import (
+    OwnershipService,
+    queue_owner,
+)
+from blinkengage.core.logging import get_logger
 from blinkengage.domain.company_settings import (
     autopilot_confidence_threshold,
     is_ai_enabled,
     is_autopilot_agent_request_mode_enabled,
     is_autopilot_enabled,
+    is_autopilot_new_conversation_mode_enabled,
     is_autopilot_sla_mode_enabled,
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
+from blinkengage.domain.ownership import OwnershipReason
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.message import Message, MessageDirection
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
@@ -45,6 +52,9 @@ from blinkengage.infrastructure.repositories.conversation_repository import Conv
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 
 _HISTORY_MESSAGE_LIMIT = 50
+
+
+logger = get_logger(__name__)
 
 
 class AutopilotTrigger(StrEnum):
@@ -56,6 +66,11 @@ class AutopilotTrigger(StrEnum):
     NEW_MESSAGE = "new_message"
     SLA = "sla"
     AGENT_REQUEST = "agent_request"
+    #: The service's pickup delay ran out with the conversation still
+    #: unclaimed, so AI takes it off the queue. An *activation* event like
+    #: SLA and AGENT_REQUEST — the conversation is currently owned by its
+    #: queue, and this is what hands it over.
+    QUEUE_PICKUP = "queue_pickup"
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,12 +103,17 @@ class AutopilotService:
         companies: CompanyRepository,
         events: DomainEventPublisher,
         conversation_service: ConversationService,
+        ownership: OwnershipService | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
         self._companies = companies
         self._events = events
         self._conversation_service = conversation_service
+        # Optional so the ~30 existing callers that construct this service
+        # directly keep working. A missing one costs the ownership row, not
+        # the reply — see ``_release_ownership``.
+        self._ownership = ownership
 
     async def run(
         self,
@@ -188,8 +208,13 @@ class AutopilotService:
         # `autopilot_last_handled_message_id`: replying *adds* a message,
         # so after the first run the newest id is Autopilot's own reply
         # and an id comparison would never match again.
-        if trigger is AutopilotTrigger.SLA and (
-            newest_message is None or newest_message.direction is not MessageDirection.INBOUND
+        if (
+            trigger in (AutopilotTrigger.SLA, AutopilotTrigger.QUEUE_PICKUP)
+            # The same rule, for the same reason: only step in when the
+            # customer is the one waiting. A conversation somebody has
+            # already answered does not need AI to answer it again, and a
+            # pickup that fired regardless would talk over them.
+            and (newest_message is None or newest_message.direction is not MessageDirection.INBOUND)
         ):
             return AutopilotOutcome(replied=False, reason="skipped_already_handled")
 
@@ -277,8 +302,50 @@ class AutopilotService:
         )
         return AutopilotOutcome(replied=True, confidence=result.confidence)
 
+    async def _release_ownership(
+        self, *, conversation: Conversation, company_id: UUID, conversation_id: UUID
+    ) -> None:
+        """AI gives the conversation back, and the timeline says so.
+
+        Without this the ownership history showed AI *taking* a conversation
+        and never letting go — every hand-off left AI as the recorded owner
+        of something a human was now expected to answer. "Who is responsible
+        for this?" answered "AI", about a conversation AI had explicitly
+        given up on, which is the one answer that could not be true.
+
+        Back to the **queue**, never to nobody: a conversation owned by
+        nobody is one nothing picks up and no escalation can find. If the
+        conversation has no queue there is nothing honest to hand it to, so
+        the release is skipped rather than invented.
+
+        Never fatal. The reply — or the hand-off notification that replaces
+        it — is the product; the ownership row is the record of it, and a
+        record that would not write must not cost a customer their answer.
+        """
+        if self._ownership is None or conversation.queue_id is None:
+            return
+        try:
+            await self._ownership.release_to_queue(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                queue=queue_owner(conversation.queue_id, None),
+                reason=OwnershipReason.AI_RELEASED,
+            )
+        except Exception:  # noqa: BLE001 — see the docstring.
+            logger.warning(
+                "autopilot_release_not_recorded",
+                conversation_id=str(conversation_id),
+                exc_info=True,
+            )
+
     @staticmethod
     def _is_mode_enabled(trigger: AutopilotTrigger, settings: dict[str, Any]) -> bool:
+        if trigger is AutopilotTrigger.QUEUE_PICKUP:
+            # The same activation mode as a brand-new conversation, because
+            # it is the same situation: AI answering something no human has
+            # touched. A company that switched that mode off must not get AI
+            # answering by the back door thirty seconds later.
+            return is_autopilot_new_conversation_mode_enabled(settings)
         if trigger is AutopilotTrigger.SLA:
             return is_autopilot_sla_mode_enabled(settings)
         if trigger is AutopilotTrigger.AGENT_REQUEST:
@@ -301,6 +368,9 @@ class AutopilotService:
         conversation.autopilot_active = False
         if handled_message_id is not None:
             conversation.autopilot_last_handled_message_id = handled_message_id
+        await self._release_ownership(
+            conversation=conversation, company_id=company_id, conversation_id=conversation_id
+        )
         await self._events.publish(
             DomainEvent(
                 event_type="conversation.autopilot_handoff_needed",

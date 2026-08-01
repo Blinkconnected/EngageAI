@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.core.config import Settings
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -44,6 +45,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.ownership_repository import (
+    OwnershipRepository,
+)
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 from blinkengage.infrastructure.storage.s3_client import create_minio_client
@@ -103,4 +107,9 @@ def build_autopilot_service(*, session: AsyncSession, settings: Settings) -> Aut
         companies=CompanyRepository(session),
         events=events,
         conversation_service=conversation_service,
+        # So a hand-off writes the ownership row that gives the conversation
+        # back to its queue. Supplied here rather than defaulted inside the
+        # service, because a service that built its own repository would be
+        # reaching around the session this factory owns.
+        ownership=OwnershipService(OwnershipRepository(session)),
     )

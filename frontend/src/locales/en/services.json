@@ -24,7 +24,11 @@
     "notMeasured": "Not measured",
     "aiEnabled": "AI may answer conversations in this service",
     "changeNote": "Why are you changing this?",
-    "changeNoteHelp": "Saved alongside the change, so this edit can be explained later."
+    "changeNoteHelp": "Saved alongside the change, so this edit can be explained later.",
+    "aiPickupDelay": "AI pickup delay (seconds)",
+    "aiPickupDelayHelp": "How long AI waits before taking a conversation, so an agent can take it first. 0 means AI answers immediately.",
+    "aiConfidence": "AI confidence threshold",
+    "aiConfidenceHelp": "Below this, AI hands the conversation to a human instead of answering. Between 0 and 1."
   },
   "editor": {
     "versionChip": "Version {{version}}",

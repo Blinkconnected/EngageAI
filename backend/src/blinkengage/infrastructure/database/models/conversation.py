@@ -75,6 +75,16 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         # ``postgresql_where``/``sqlite_where`` below) uses the more
         # precise ``DESC NULLS LAST`` to exactly match the query's ORDER
         # BY and avoid Postgres's own residual sort step.
+        # The AI pickup sweep's query: conversations AI is waiting to take,
+        # soonest first. Partial, because the column is null for almost
+        # every row in the table — a conversation is only in this index for
+        # the few seconds between arriving and being settled either way.
+        Index(
+            "ix_conversations_ai_pickup",
+            "ai_pickup_eligible_at",
+            postgresql_where=text("ai_pickup_eligible_at IS NOT NULL"),
+            sqlite_where=text("ai_pickup_eligible_at IS NOT NULL"),
+        ),
         Index(
             "ix_conversations_company_last_message",
             "company_id",
@@ -170,6 +180,22 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     # unowned wait, was last claimed, and was last closed, since that
     # cannot be recovered from queue_id/assigned_agent_id's current values
     # alone once a conversation cycles through pick/release more than once.
+    #: When AI Autopilot may take this conversation, if nobody else has.
+    #:
+    #: Materialised rather than derived from ``queue_entered_at`` plus the
+    #: service's delay, so the sweep is one indexed range scan instead of a
+    #: join to a version table per row — the same reasoning as
+    #: ``ConversationSlaClock.due_at``.
+    #:
+    #: ``None`` means AI is not waiting on this conversation: either it was
+    #: never eligible, or it has already been taken, or the sweep has
+    #: settled it one way or the other. A row keeps its value while a human
+    #: holds the conversation, deliberately — that is how the sweep learns
+    #: an agent got there first and can say so.
+    ai_pickup_eligible_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+
     queue_entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

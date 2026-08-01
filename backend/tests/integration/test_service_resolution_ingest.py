@@ -52,6 +52,8 @@ async def a_service(
     rules: list[dict[str, Any]] | None = None,
     order: int = 0,
     queue_id: uuid.UUID | None = None,
+    ai_pickup_delay_seconds: int | None = None,
+    ai_enabled: bool = False,
 ) -> Service:
     services = ServiceRepository(session)
     service = await services.add(
@@ -70,6 +72,12 @@ async def a_service(
             name=name,
             logical_queue_id=queue_id,
             sla_first_response_minutes=15,
+            ai_enabled=ai_enabled,
+            **(
+                {}
+                if ai_pickup_delay_seconds is None
+                else {"ai_pickup_delay_seconds": ai_pickup_delay_seconds}
+            ),
             extras={RULES_NAMESPACE: {"rules": rules}} if rules else {},
         )
     )

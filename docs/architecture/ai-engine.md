@@ -235,6 +235,75 @@ an unvalidated free-text action string.
 
 ## AI Autopilot (P4.18)
 
+### AI is a queue worker, not a first responder
+
+Autopilot does not take a conversation the moment one arrives. When every gate
+below is open, ingest stamps `conversations.ai_pickup_eligible_at` and leaves
+the conversation **in its queue**, where an agent can see it and take it.
+`ai_pickup_sweep_task` hands it to AI only if nobody has, once the service's
+`ai.pickup_delay_seconds` (default 30) has run out.
+
+This is what the setting always described — *"a human picking up within a few
+seconds should get there first"* — and until this existed it was configuration
+nothing read: AI answered instantly, so that chance was never offered.
+
+Zero means engage immediately, which is the behaviour that predates this and
+is right for a queue where waiting only makes the customer wait: an FAQ line,
+an after-hours line with nobody behind it.
+
+**Three outcomes, all recorded**, because a conversation sitting untouched for
+thirty seconds is otherwise indistinguishable from AI being switched off:
+
+| Outcome | Decision | Reason |
+|---|---|---|
+| AI is waiting | `AI_DEFERRED` | `pickup_delay_running` |
+| Nobody came, AI took it | `AI_ENGAGED` | `pickup_delay_elapsed` |
+| An agent took it first | `AI_DEFERRED` | `human_arrived_first` |
+
+The stand-down deliberately does **not** name the agent who took it.
+`selected_agent_id` means *the agent this decision chose*, and this decision
+chose nobody; filling it in would make "which decision assigned Ada?" return a
+row that assigned no one.
+
+**The policy is asked again at pickup**, not carried forward from arrival.
+Thirty seconds is long enough for a compliance officer to switch AI off, for a
+service to be archived, or for the conversation to be resolved. Re-evaluating
+is the difference between a delay and a queued instruction that fires whatever
+has happened since — and it is why the refusal stays explainable, since the
+second evaluation is recorded like any other.
+
+It re-reads the **service version the conversation is bound to**, not the
+service's current one: a delay edited while this conversation waited must not
+change the answer it gets.
+
+The sweep runs every ten seconds. A minute-long sweep would turn a
+thirty-second delay into anything up to ninety, which is a different promise
+than the one an administrator typed into the box. The query is one indexed
+range scan against a partial index — the column is null for almost every row,
+so a conversation is in the index only for the seconds between arriving and
+being settled.
+
+### AI gives the conversation back
+
+Every hand-off — low confidence, the model asking for a human, no usable
+provider — now writes an ownership transition returning the conversation to
+its **queue**, with reason `ai_released`.
+
+Until this existed, ownership recorded AI *taking* a conversation and never
+letting go. A hand-off cleared `autopilot_active` and notified the queue's
+department, but the ownership timeline still named AI as the owner of
+something a human was now expected to answer. "Who is responsible for this?"
+answered "AI", about a conversation AI had explicitly given up on.
+
+Back to the queue, never to nobody: a conversation owned by nobody is one
+nothing picks up and no escalation can find. A conversation with no queue has
+nothing honest to be handed back to, so the row is skipped rather than
+invented — and the hand-off itself still happens either way. The reply, or the
+notification that replaces it, is the product; the ownership row is the record
+of it, and a record that would not write must not cost a customer their answer.
+
+### The gates
+
 Autopilot is the one place in this system where AI output reaches a
 customer **without a human reviewing it first** — every other AI feature
 (reply suggestions, next best action) is explicitly advisory-only, per

@@ -225,6 +225,13 @@ class RoutingDecisionRecord(UUIDPrimaryKeyMixin, Base):
     #: rendered from the rule's conditions (``RoutingRule`` has no name
     #: column) and frozen here, so editing a rule never rewrites the
     #: history of what it once matched.
+    #: How long AI was told to hold off for, on the decisions where that
+    #: is the point. A column rather than a JSON key for the same reason as
+    #: the policy ones above: "show me everything AI deferred for more than
+    #: a minute" is an operator's question, and a filter over JSON is a
+    #: table scan and a footnote.
+    ai_pickup_delay_seconds: Mapped[int | None] = mapped_column(Integer, default=None)
+
     matched_rule_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
     #: Width matches ``domain.routing_decisions.MAX_RULE_NAME``, which is
     #: where the clip is applied — nothing caps the length of a rule's
