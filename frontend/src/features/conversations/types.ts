@@ -19,6 +19,9 @@ export type ConversationStatus =
 export type ConversationPriority = 'low' | 'normal' | 'high' | 'urgent'
 
 /** Matches the backend's `ConversationResponse`. */
+/** Ordered worst-first, matching the backend's HEALTH_ORDER. */
+export type SlaHealth = 'breached' | 'at_risk' | 'attention' | 'healthy'
+
 export interface Conversation {
   id: string
   customer_id: string
@@ -31,6 +34,16 @@ export interface Conversation {
   department_id: string | null
   last_message_at: string | null
   first_response_at: string | null
+  /** The primary SLA reading: the worst of this conversation's four
+   * clocks, as one of four bands. Derived server-side and returned on
+   * every conversation — the Inbox is also *sorted* by it, worst first,
+   * so an agent's first screen is the work that needs doing now.
+   *
+   * Supersedes the sla_*_breached_at / sla_*_warned_at pairs below for
+   * display. Those remain because they are the SLA Builder's own policy
+   * timestamps and answer a different question — *when* a specific
+   * target was missed, not how the conversation is doing overall. */
+  sla_health: SlaHealth
   sla_first_response_breached_at: string | null
   sla_resolution_breached_at: string | null
   /** Set once a conversation crosses its SLA policy's warning threshold

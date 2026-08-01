@@ -11,9 +11,13 @@ import { useConversationsQuery } from '../conversations/api'
 import type { ConversationStatus } from '../conversations/types'
 
 const STATUS_COLOR: Record<ConversationStatus, 'info' | 'warning' | 'success' | 'default'> = {
-  open: 'info',
-  pending: 'warning',
+  new: 'info',
+  waiting: 'warning',
+  in_progress: 'info',
+  waiting_customer: 'default',
+  waiting_agent: 'warning',
   resolved: 'success',
+  customer_feedback: 'info',
   closed: 'default',
 }
 

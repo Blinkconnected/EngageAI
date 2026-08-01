@@ -6,10 +6,6 @@
     "statusFilterOption": "الحالة",
     "queueFilterOption": "قائمة الانتظار",
     "tabAll": "الكل",
-    "tabOpen": "مفتوحة",
-    "tabPending": "قيد الانتظار",
-    "tabResolved": "تم الحل",
-    "tabClosed": "مغلقة",
     "queueFieldLabel": "قائمة الانتظار",
     "allQueuesOption": "جميع قوائم الانتظار",
     "myConversationsOnlyLabel": "محادثاتي فقط",
@@ -40,14 +36,38 @@
       "urgent": "عاجلة"
     },
     "unreadBadgeAriaLabel": "{{count}} رسائل غير مقروءة",
-    "slaBreachedLabel": "تم تجاوز اتفاقية مستوى الخدمة",
-    "slaBreachedShort": "تم التجاوز",
-    "slaWarningLabel": "يقترب من هدف اتفاقية مستوى الخدمة",
-    "slaWarningShort": "في خطر",
     "autopilotActiveTooltip": "الطيار الآلي للذكاء الاصطناعي يقوم حاليًا بالرد على هذه المحادثة",
     "autopilotActiveShort": "ذكاء اصطناعي",
     "keyboardShortcutsHint": "j/k للتنقل، Enter للفتح",
-    "keyboardShortcutsTooltip": "استخدم j أو k لتحريك التركيز بين المحادثات، وEnter لفتح المحادثة التي تم التركيز عليها."
+    "keyboardShortcutsTooltip": "استخدم j أو k لتحريك التركيز بين المحادثات، وEnter لفتح المحادثة التي تم التركيز عليها.",
+    "slaHealth": {
+      "breached": {
+        "label": "تم تجاوز اتفاقية مستوى الخدمة — فات هدف هذه المحادثة بالفعل",
+        "short": "تم التجاوز"
+      },
+      "at_risk": {
+        "label": "في خطر — لم يتبقّ سوى وقت قليل جدًا قبل تجاوز الهدف",
+        "short": "في خطر"
+      },
+      "attention": {
+        "label": "تحتاج إلى انتباه قبل أن تصبح عاجلة",
+        "short": "انتباه"
+      },
+      "healthy": {
+        "label": "ضمن المسار",
+        "short": "سليمة"
+      }
+    },
+    "statusLabel": {
+      "new": "جديدة",
+      "waiting": "في الانتظار",
+      "in_progress": "قيد المعالجة",
+      "waiting_customer": "بانتظار العميل",
+      "waiting_agent": "بانتظار الموظف",
+      "resolved": "تم الحل",
+      "customer_feedback": "تقييم العميل",
+      "closed": "مغلقة"
+    }
   },
   "ConversationViewPage": {
     "loadingLabel": "جارٍ تحميل المحادثة…",

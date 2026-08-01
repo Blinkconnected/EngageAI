@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from blinkengage.domain.media import MediaKind
+from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
     ConversationPriority,
     ConversationStatus,
@@ -60,6 +61,17 @@ class ConversationResponse(BaseModel):
     # in (there is no such caller today, but the field must still degrade
     # safely) never reports a false-unread state.
     unread_count: int = 0
+    # The primary SLA reading (see domain/sla.py) — the worst of the
+    # conversation's four clocks, as one of four bands rather than four
+    # timers. NOT an ORM column: derived from the clocks and computed by
+    # the same query that sorts the Inbox by it, then threaded in per-row
+    # like unread_count above.
+    #
+    # Defaults to HEALTHY so a caller that doesn't thread it in never
+    # invents an emergency. The failure directions are not symmetric: a
+    # missing value shown as breached would send agents to a conversation
+    # that is fine, and after the second time nobody trusts the colour.
+    sla_health: SlaHealth = SlaHealth.HEALTHY
 
     model_config = {"from_attributes": True}
 

@@ -52,6 +52,7 @@ from blinkengage.domain.media import (
     kind_for,
     may_need_fallback,
 )
+from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationPriority,
@@ -87,9 +88,7 @@ def attachment_response(
 
     media_url: str | None = None
     if inline:
-        token = sign(
-            attachment_id=attachment.id, company_id=company_id, settings=settings
-        )
+        token = sign(attachment_id=attachment.id, company_id=company_id, settings=settings)
         media_url = (
             f"{settings.api_v1_prefix}/conversations/{conversation_id}"
             f"/attachments/{attachment.id}/media"
@@ -137,10 +136,30 @@ def _to_message_response(
 
 
 def _to_conversation_response(
-    conversation: Conversation, unread_count: int = 0
+    conversation: Conversation,
+    unread_count: int = 0,
+    sla_health: SlaHealth = SlaHealth.HEALTHY,
 ) -> ConversationResponse:
     response = ConversationResponse.model_validate(conversation)
-    return response.model_copy(update={"unread_count": unread_count})
+    return response.model_copy(update={"unread_count": unread_count, "sla_health": sla_health})
+
+
+async def _one(service: ConversationService, conversation: Conversation) -> ConversationResponse:
+    """One conversation with the two things that are not on its row.
+
+    Every endpoint here that returns a single conversation returns exactly
+    this — so a field derived rather than stored (SLA health, unread count)
+    is added in one place and cannot be forgotten by the next endpoint.
+    """
+    unread = await service.unread_counts(conversation_ids=[conversation.id])
+    health = await service.sla_health(
+        company_id=conversation.company_id, conversation_ids=[conversation.id]
+    )
+    return _to_conversation_response(
+        conversation,
+        unread.get(conversation.id, 0),
+        health.get(conversation.id, SlaHealth.HEALTHY),
+    )
 
 
 @router.get("", response_model=Page[ConversationResponse])
@@ -155,7 +174,7 @@ async def list_conversations(
     priority: ConversationPriority | None = None,
     unassigned_only: bool = False,
 ) -> Page[ConversationResponse]:
-    items, total = await service.list_conversations(
+    items, total, health = await service.list_conversations(
         company_id=auth.company_id,
         offset=page_params.offset,
         limit=page_params.page_size,
@@ -168,7 +187,12 @@ async def list_conversations(
     )
     unread_counts = await service.unread_counts(conversation_ids=[item.id for item in items])
     return Page(
-        items=[_to_conversation_response(item, unread_counts.get(item.id, 0)) for item in items],
+        items=[
+            _to_conversation_response(
+                item, unread_counts.get(item.id, 0), health.get(item.id, SlaHealth.HEALTHY)
+            )
+            for item in items
+        ],
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
@@ -182,8 +206,7 @@ async def get_conversation(
     service: Annotated[ConversationService, Depends(get_conversation_service)],
 ) -> ConversationResponse:
     conversation = await service.get(company_id=auth.company_id, conversation_id=conversation_id)
-    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
-    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+    return await _one(service, conversation)
 
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
@@ -202,8 +225,7 @@ async def update_conversation(
         queue_id=payload.queue_id,
         actor_user_id=auth.user_id,
     )
-    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
-    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+    return await _one(service, conversation)
 
 
 @router.post(
@@ -240,8 +262,7 @@ async def pick_conversation(
         conversation_id=conversation_id,
         actor_user_id=auth.user_id,
     )
-    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
-    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+    return await _one(service, conversation)
 
 
 @router.post("/{conversation_id}/autopilot", response_model=ConversationResponse)
@@ -287,8 +308,7 @@ async def request_autopilot(
         )
 
     conversation = await service.get(company_id=auth.company_id, conversation_id=conversation_id)
-    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
-    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+    return await _one(service, conversation)
 
 
 @router.delete("/{conversation_id}/autopilot", response_model=ConversationResponse)
@@ -312,8 +332,7 @@ async def stop_autopilot(
         conversation_id=conversation_id,
         actor_user_id=auth.user_id,
     )
-    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
-    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+    return await _one(service, conversation)
 
 
 @router.post("/{conversation_id}/release", response_model=ConversationResponse)
@@ -328,8 +347,7 @@ async def release_conversation(
         actor_user_id=auth.user_id,
         actor_has_transfer_permission=auth.has_permission("conversations.transfer"),
     )
-    unread_counts = await service.unread_counts(conversation_ids=[conversation.id])
-    return _to_conversation_response(conversation, unread_counts.get(conversation.id, 0))
+    return await _one(service, conversation)
 
 
 @router.get("/{conversation_id}/transfers", response_model=Page[ConversationTransferResponse])

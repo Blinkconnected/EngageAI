@@ -18,15 +18,15 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
 
-from sqlalchemy import Float, and_, case, cast, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from blinkengage.domain.ownership import OwnerKind
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.ownership import ConversationOwnership
+from blinkengage.infrastructure.database.sql_time import seconds_between
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +91,7 @@ class OwnershipMetricsService:
             .subquery()
         )
 
-        seconds = _seconds_between(
+        seconds = seconds_between(
             self._session, later=spans.c.held_until, earlier=spans.c.owned_from
         )
 
@@ -168,7 +168,7 @@ class OwnershipMetricsService:
         result = await self._session.execute(
             select(
                 func.avg(
-                    _seconds_between(
+                    seconds_between(
                         self._session,
                         later=first.c.first_at,
                         earlier=Conversation.created_at,
@@ -177,27 +177,6 @@ class OwnershipMetricsService:
             ).select_from(first.join(Conversation, Conversation.id == first.c.conversation_id))
         )
         return _float(result.scalar_one_or_none())
-
-
-def _seconds_between(
-    session: AsyncSession, *, later: Any, earlier: Any
-) -> ColumnElement[float]:
-    """Seconds between two timestamps, on either database.
-
-    Dialect-aware and deliberately not hidden behind a helper that "just
-    works": PostgreSQL subtracts timestamps into an interval that
-    ``EXTRACT(EPOCH …)`` reads, and SQLite has neither — it would subtract
-    the two as numbers and return a figure that is wrong by a factor of
-    billions rather than raising.
-
-    That is exactly what happened while writing this, and it is why the
-    metrics have a test rather than a claim: a duration that silently
-    computes nonsense is worse than one that fails, because a report with
-    plausible-looking numbers in it does not get checked.
-    """
-    if session.get_bind().dialect.name == "sqlite":
-        return cast((func.julianday(later) - func.julianday(earlier)) * 86400.0, Float)
-    return cast(func.extract("epoch", later - earlier), Float)
 
 
 def _float(value: float | Decimal | None) -> float | None:

@@ -101,7 +101,7 @@ function ServiceEditor({
 
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           {service.name}
         </Typography>
@@ -264,8 +264,8 @@ function ServiceEditor({
 
 export function ServicesPage() {
   const { t } = useTranslation('services')
-  const { has } = usePermissions()
-  const canManage = has('queues.manage')
+  const { hasPermission } = usePermissions()
+  const canManage = hasPermission('queues.manage')
 
   const services = useServicesQuery()
   const create = useCreateServiceMutation()
@@ -276,7 +276,8 @@ export function ServicesPage() {
   const [newName, setNewName] = useState('')
 
   if (services.isLoading) return <LoadingState />
-  if (services.isError) return <ErrorState onRetry={() => void services.refetch()} />
+  if (services.isError)
+    return <ErrorState error={services.error} onRetry={() => void services.refetch()} />
 
   const items = services.data ?? []
 
@@ -288,10 +289,19 @@ export function ServicesPage() {
         name,
         // Derived from the name, lowercased and punctuation-stripped, so an
         // operator is not asked for two things when they are thinking of one.
-        code: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64),
+        code: name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 64),
         display_order: items.length + 1,
       },
-      { onSuccess: (saved) => { setNewName(''); setSelected(saved.service) } },
+      {
+        onSuccess: (saved) => {
+          setNewName('')
+          setSelected(saved.service)
+        },
+      },
     )
   }
 
@@ -300,7 +310,7 @@ export function ServicesPage() {
       <PageHeader title={t('title')} description={t('subtitle')} />
 
       {canManage ? (
-        <Stack direction="row" spacing={1} alignItems="flex-start">
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
           <TextField
             label={t('create.name')}
             value={newName}
@@ -323,7 +333,11 @@ export function ServicesPage() {
       {items.length === 0 ? (
         <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="flex-start">
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={3}
+          sx={{ alignItems: 'flex-start' }}
+        >
           <Stack spacing={1} sx={{ minWidth: 240 }}>
             {items.map((item) => (
               <Button

@@ -98,11 +98,7 @@ export function ConversationViewPage() {
         >
           <MoreVertIcon />
         </IconButton>
-        <Menu
-          anchorEl={menuAnchor}
-          open={menuAnchor !== null}
-          onClose={() => setMenuAnchor(null)}
-        >
+        <Menu anchorEl={menuAnchor} open={menuAnchor !== null} onClose={() => setMenuAnchor(null)}>
           <MenuItem
             onClick={() => {
               setMenuAnchor(null)
@@ -173,7 +169,6 @@ export function ConversationViewPage() {
           {tab === 'notes' && <NotesPanel conversationId={conversation.id} />}
           {tab === 'transfers' && <TransferHistoryPanel conversationId={conversation.id} />}
         </Box>
-
       </Stack>
 
       {/* On demand, never permanent. The details panel used to be a

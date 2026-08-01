@@ -402,7 +402,12 @@ export function ChangelogPanel() {
     // newly expanded, measured its now-taller height) before the browser
     // is asked to scroll to it.
     const frame = requestAnimationFrame(() => {
-      document.getElementById(releaseAnchorId(deepLinkedVersion))?.scrollIntoView({ block: 'start' })
+      // Optional-called: jsdom does not implement scrollIntoView, and a
+      // test environment throwing here made every single test run report
+      // an uncaught exception — noise that hides a real one.
+      document
+        .getElementById(releaseAnchorId(deepLinkedVersion))
+        ?.scrollIntoView?.({ block: 'start' })
     })
     return () => cancelAnimationFrame(frame)
   }, [deepLinkedVersion])

@@ -161,6 +161,17 @@ HEALTH_ORDER: Final[tuple[SlaHealth, ...]] = (
     SlaHealth.HEALTHY,
 )
 
+#: How bad each band is, as a number a database can sort by — the Inbox has
+#: to order by health across the whole company, not just the page in hand, so
+#: the ranking has to survive being expressed in SQL.
+#:
+#: Derived from ``HEALTH_ORDER`` rather than written out again, so the two
+#: cannot disagree. Higher is worse, because "order by severity descending"
+#: is the query anybody writing one will reach for first.
+SEVERITY: Final[dict[SlaHealth, int]] = {
+    health: len(HEALTH_ORDER) - 1 - index for index, health in enumerate(HEALTH_ORDER)
+}
+
 #: Proportions of the target, not fixed minutes: five minutes left on a
 #: fifteen-minute target is nearly out of time, and on a two-day target it is
 #: nothing.
@@ -232,6 +243,14 @@ class Clock:
             # administrator is allowed to save.
             return SlaHealth.BREACHED
         counted = self.counted(now=now)
+        if counted >= target:
+            # Out of time. Reported the moment it becomes true rather than
+            # when the breach sweep next gets to the row: the sweep *records*
+            # a breach — writes the settlement, the decision and the timeline
+            # entry — but it does not decide one. A reading that waited for it
+            # would tell an agent a conversation was merely at risk for up to
+            # a minute after it had already missed its target.
+            return SlaHealth.BREACHED
         if counted >= target * AT_RISK_FRACTION:
             return SlaHealth.AT_RISK
         if counted >= target * ATTENTION_FRACTION:
@@ -270,8 +289,6 @@ def overall(clocks: list[Clock], *, now: datetime) -> SlaHealth:
         if health in found:
             return health
     return SlaHealth.HEALTHY
-
-
 
 
 def as_routing_decision(

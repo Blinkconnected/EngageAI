@@ -557,6 +557,49 @@ The **worst** clock decides the conversation, never an average. One whose first
 response is twenty minutes overdue is not "mostly fine" because its resolution
 target is generous.
 
+A clock reads `breached` the moment its target passes, not when the breach
+sweep next runs. The sweep *records* a breach — the settlement, the decision
+row, the timeline entry — but it does not decide one. A reading that waited
+for it would tell an agent a conversation was merely at risk for up to a
+minute after it had already missed.
+
+### Sorting the Inbox by it
+
+`GET /conversations` returns `sla_health` on every row and **orders by it
+first**, ahead of priority. The two answer different questions and both
+belong: health is *is this running out of time*, priority is *does this matter
+more*. A breached NORMAL conversation outranks a healthy URGENT one — the
+urgent one still has time to be handled and the other does not.
+
+The ranking is computed **in SQL**, in
+`infrastructure/repositories/sla_health_rank.py`, not in Python over the page.
+Sorting a page would sort the fifty rows some other ordering already chose,
+putting the worst of an arbitrary fifty on top and leaving a breached
+conversation on page four.
+
+That means the rule exists twice — `Clock.health` for one conversation, the
+SQL rank for sorting thousands — so they are held together deliberately:
+
+- both read `ATTENTION_FRACTION` / `AT_RISK_FRACTION` / `SEVERITY` from
+  `domain/sla.py`, so moving a threshold moves both;
+- `tests/integration/test_inbox_sla_order.py` runs every band through both
+  paths on the same rows and asserts they agree, including on the exact band
+  edges;
+- the SQL side carries a one-millisecond edge tolerance, because SQLite
+  computes durations through `julianday` and returns 2400.0000001 seconds
+  where PostgreSQL returns 2400. It absorbs representation error and nothing
+  larger — a tolerance big enough to hide a real difference would defeat the
+  test above.
+
+The rank subquery is scoped by `company_id`, which is required rather than
+optional: without it, one company opening its Inbox aggregates every other
+tenant's clocks.
+
+Conversations with **no clocks** — a service that measures nothing, anything
+predating the SLA engine — are left-joined, not inner-joined, and read
+`healthy`. An inner join would have removed them from the Inbox while leaving
+the list looking correct.
+
 ## Who the SLA is waiting on
 
 Every clock names its **responsible party** — and it is not always the

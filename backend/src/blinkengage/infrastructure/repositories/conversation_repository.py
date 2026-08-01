@@ -4,10 +4,15 @@ from uuid import UUID
 from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.domain.sla import SEVERITY, SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationPriority,
     ConversationStatus,
+)
+from blinkengage.infrastructure.repositories.sla_health_rank import (
+    conversation_ranks,
+    health_of,
 )
 
 # ConversationPriority's stored strings ("LOW"/"NORMAL"/"HIGH"/"URGENT"
@@ -79,7 +84,16 @@ class ConversationRepository:
         queue_id: UUID | None = None,
         priority: ConversationPriority | None = None,
         unassigned_only: bool = False,
-    ) -> tuple[list[Conversation], int]:
+        now: datetime | None = None,
+    ) -> tuple[list[Conversation], int, dict[UUID, SlaHealth]]:
+        """A page of the Inbox, worst SLA health first.
+
+        Returns the health alongside the rows rather than leaving the caller
+        to ask for it, because it has already been computed to sort by — and
+        a caller that asked separately would issue one query per row to learn
+        something this one already knows.
+        """
+        moment = now or datetime.now(UTC)
         base = select(Conversation).where(
             Conversation.company_id == company_id, Conversation.deleted_at.is_(None)
         )
@@ -100,9 +114,19 @@ class ConversationRepository:
                 select(func.count()).select_from(base.with_only_columns(Conversation.id).subquery())
             )
         ).scalar_one()
+        # SLA health leads the ordering, ahead of priority. The two answer
+        # different questions and both belong: health is "is this one running
+        # out of time", priority is "does this one matter more". A breached
+        # NORMAL conversation outranks a healthy URGENT one, because the
+        # urgent one still has time to be handled and the other does not.
+        ranks = conversation_ranks(self._session, now=moment, company_id=company_id)
+        health_rank = func.coalesce(ranks.c.rank, SEVERITY[SlaHealth.HEALTHY])
         result = await self._session.execute(
-            base.order_by(
-                # Urgent-first, then most-recently-active within a
+            base.add_columns(ranks.c.rank)
+            .outerjoin(ranks, ranks.c.conversation_id == Conversation.id)
+            .order_by(
+                health_rank.desc(),
+                # Then urgent-first, then most-recently-active within a
                 # priority tier — every conversation defaults to NORMAL,
                 # so this is a strict no-op change in ordering until
                 # priorities actually diverge.
@@ -113,7 +137,35 @@ class ConversationRepository:
             .offset(offset)
             .limit(limit)
         )
-        return list(result.scalars().all()), total
+        rows = result.all()
+        return (
+            [row[0] for row in rows],
+            total,
+            {row[0].id: health_of(row[1]) for row in rows},
+        )
+
+    async def health_for(
+        self, *, company_id: UUID, conversation_ids: list[UUID], now: datetime | None = None
+    ) -> dict[UUID, SlaHealth]:
+        """SLA health for conversations already in hand, in one query.
+
+        For the endpoints that return a single conversation. ``list_for_company``
+        does not use this — it gets health from the query that sorted by it,
+        rather than asking twice.
+
+        A conversation absent from the result has no clocks, and the caller's
+        ``.get(id, HEALTHY)`` is the right answer for it.
+        """
+        if not conversation_ids:
+            return {}
+        ranks = conversation_ranks(
+            self._session,
+            now=now or datetime.now(UTC),
+            company_id=company_id,
+            conversation_ids=conversation_ids,
+        )
+        result = await self._session.execute(select(ranks.c.conversation_id, ranks.c.rank))
+        return {row[0]: health_of(row[1]) for row in result.all()}
 
     async def claim(self, *, conversation_id: UUID, agent_id: UUID, now: datetime) -> bool:
         """Atomically assigns an unassigned conversation to ``agent_id``

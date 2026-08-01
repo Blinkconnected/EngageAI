@@ -42,21 +42,26 @@ import {
 import { usePickConversationMutation, useConversationsQuery } from './api'
 import { CONVERSATION_STATUSES, type Conversation, type ConversationStatus } from './types'
 
+// One colour per lifecycle state. `waiting_customer` is deliberately
+// neutral rather than amber: the ball is with the customer, so the row is
+// not something an agent has to act on — the same reasoning that makes a
+// paused SLA clock read healthy.
 const STATUS_COLOR: Record<ConversationStatus, 'info' | 'warning' | 'success' | 'default'> = {
-  open: 'info',
-  pending: 'warning',
+  new: 'info',
+  waiting: 'warning',
+  in_progress: 'info',
+  waiting_customer: 'default',
+  waiting_agent: 'warning',
   resolved: 'success',
+  customer_feedback: 'info',
   closed: 'default',
 }
 
-// Maps each status to the i18n key holding its tab label — the label
-// itself can't live in this module-scope map since translation requires
-// the `t` function, which is only available inside the component.
-const STATUS_TAB_KEY: Record<ConversationStatus, string> = {
-  open: 'tabOpen',
-  pending: 'tabPending',
-  resolved: 'tabResolved',
-  closed: 'tabClosed',
+// Labels come from `InboxPage.statusLabel.<status>` — one key per
+// lifecycle state, so a state added to the domain that nobody translates
+// shows up as a missing key in review rather than as a blank chip.
+function statusLabelKey(status: ConversationStatus): string {
+  return `InboxPage.statusLabel.${status}`
 }
 
 type FilterMode = 'status' | 'queue'
@@ -77,7 +82,7 @@ export function InboxPage() {
   const tabs: { label: string; value: ConversationStatus | 'all' }[] = [
     { label: t('InboxPage.tabAll'), value: 'all' },
     ...CONVERSATION_STATUSES.map((status) => ({
-      label: t(`InboxPage.${STATUS_TAB_KEY[status]}`),
+      label: t(statusLabelKey(status)),
       value: status,
     })),
   ]
@@ -104,7 +109,13 @@ export function InboxPage() {
   }
 
   const filterMode: FilterMode = searchParams.get('mode') === 'queue' ? 'queue' : 'status'
-  const statusTab = (searchParams.get('status') as ConversationStatus | 'all' | null) ?? 'open'
+  // Defaults to 'all', not to a single status. It used to default to
+  // 'open', which stopped being a status when the lifecycle became eight
+  // states — the API rejected it and the Inbox's own default view returned
+  // 422. 'all' is also the better default now that the list is sorted by
+  // SLA health: the top of it is the work that needs doing, whatever state
+  // those conversations happen to be in.
+  const statusTab = (searchParams.get('status') as ConversationStatus | 'all' | null) ?? 'all'
   const myConversationsOnly = searchParams.get('mine') === '1'
   const queueFilterId = searchParams.get('queue') ?? ''
   const unassignedOnly = searchParams.get('unassigned') === '1'
@@ -210,7 +221,11 @@ export function InboxPage() {
         width: 200,
         sortable: false,
         renderCell: (params) => (
-          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', py: 0.5 }}>
+          <Stack
+            direction="row"
+            spacing={0.75}
+            sx={{ alignItems: 'center', flexWrap: 'wrap', py: 0.5 }}
+          >
             <PriorityBadge priority={params.row.priority} />
             <SlaIndicator conversation={params.row} />
           </Stack>
@@ -222,7 +237,7 @@ export function InboxPage() {
         width: 110,
         renderCell: (params) => (
           <Chip
-            label={t(`InboxPage.${STATUS_TAB_KEY[params.value as ConversationStatus]}`)}
+            label={t(statusLabelKey(params.value as ConversationStatus))}
             size="small"
             color={STATUS_COLOR[params.value as ConversationStatus]}
             variant="outlined"
@@ -480,9 +495,14 @@ export function InboxPage() {
             rowCount={conversationsQuery.data?.total ?? 0}
             page={page}
             pageSize={pageSize}
-            onPageChange={(newPage) => updateParams({ page: newPage === 0 ? null : String(newPage) })}
+            onPageChange={(newPage) =>
+              updateParams({ page: newPage === 0 ? null : String(newPage) })
+            }
             onPageSizeChange={(newPageSize) =>
-              updateParams({ pageSize: newPageSize === 20 ? null : String(newPageSize), page: null })
+              updateParams({
+                pageSize: newPageSize === 20 ? null : String(newPageSize),
+                page: null,
+              })
             }
             loading={conversationsQuery.isFetching}
             onRowClick={(row) => navigate(`/conversations/${row.id}`)}

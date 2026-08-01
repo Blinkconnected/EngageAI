@@ -98,9 +98,7 @@ describe('PlatformPaymentProvidersPage', () => {
     // with the blank it was shown — silently, with no error, and nothing
     // visibly wrong until a customer tried to pay.
     vi.spyOn(apiClient, 'get').mockResolvedValue({ data: PROVIDERS })
-    const put = vi
-      .spyOn(apiClient, 'put')
-      .mockResolvedValue({ data: PROVIDERS.providers[0] })
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: PROVIDERS.providers[0] })
 
     renderPage()
 
@@ -117,9 +115,7 @@ describe('PlatformPaymentProvidersPage', () => {
 
   it('sends a secret the operator did retype', async () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue({ data: PROVIDERS })
-    const put = vi
-      .spyOn(apiClient, 'put')
-      .mockResolvedValue({ data: PROVIDERS.providers[0] })
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: PROVIDERS.providers[0] })
 
     renderPage()
 

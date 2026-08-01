@@ -62,22 +62,23 @@ function ProviderCard({ provider }: { provider: PaymentProvider }) {
     }
     save.mutate(
       { kind: provider.kind, input: { enabled: isEnabled, values } },
-      { onSuccess: () => { setEdits({}); setEnabled(null) } },
+      {
+        onSuccess: () => {
+          setEdits({})
+          setEnabled(null)
+        },
+      },
     )
   }
 
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             {provider.label}
           </Typography>
-          <Chip
-            size="small"
-            label={t(`payments.flow.${provider.flow}`)}
-            variant="outlined"
-          />
+          <Chip size="small" label={t(`payments.flow.${provider.flow}`)} variant="outlined" />
           <Chip
             size="small"
             color={READINESS_COLOUR[provider.readiness]}
@@ -143,9 +144,7 @@ function ProviderCard({ provider }: { provider: PaymentProvider }) {
                        box is empty for a credential that exists. Saying so
                        stops an operator retyping a working password merely
                        because the field looks blank. */
-                    placeholder={
-                      field.secret && isSet ? t('payments.secretSet') : undefined
-                    }
+                    placeholder={field.secret && isSet ? t('payments.secretSet') : undefined}
                     helperText={
                       field.secret && isSet
                         ? t('payments.secretKeepHint')
@@ -173,22 +172,15 @@ function ProviderCard({ provider }: { provider: PaymentProvider }) {
         )}
 
         <Divider sx={{ my: 2 }} />
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <FormControlLabel
             control={
-              <Switch
-                checked={isEnabled}
-                onChange={(event) => setEnabled(event.target.checked)}
-              />
+              <Switch checked={isEnabled} onChange={(event) => setEnabled(event.target.checked)} />
             }
             label={t('payments.enabled')}
           />
           <Box sx={{ flexGrow: 1 }} />
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={!dirty || save.isPending}
-          >
+          <Button variant="contained" onClick={handleSave} disabled={!dirty || save.isPending}>
             {t('payments.save')}
           </Button>
         </Stack>

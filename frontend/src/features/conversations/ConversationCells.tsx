@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { Avatar, Badge, Box, Chip, Skeleton, Tooltip, Typography } from '@mui/material'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import TelegramIcon from '@mui/icons-material/Telegram'
@@ -10,11 +10,12 @@ import ChatBubbleOutlinedIcon from '@mui/icons-material/ChatBubbleOutlined'
 import ExtensionOutlinedIcon from '@mui/icons-material/ExtensionOutlined'
 import ErrorOutlineOutlinedIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
 import { useTranslation } from 'react-i18next'
 import { useCustomerQuery } from '../customers/api'
 import { channelTypeLabel } from '../channels/types'
-import type { Conversation, ConversationPriority } from './types'
+import type { Conversation, ConversationPriority, SlaHealth } from './types'
 
 /** One brand color + icon per registered channel type (see
  * channels/types.ts's CHANNEL_TYPES) — lets an agent recognize the
@@ -208,43 +209,59 @@ export function PriorityBadge({ priority }: { priority: ConversationPriority }) 
   )
 }
 
-type SlaState = 'breached' | 'warned' | 'ok'
-
-function slaStateFor(conversation: Conversation): SlaState {
-  if (conversation.sla_first_response_breached_at || conversation.sla_resolution_breached_at) {
-    return 'breached'
-  }
-  if (conversation.sla_first_response_warned_at || conversation.sla_resolution_warned_at) {
-    return 'warned'
-  }
-  return 'ok'
+/** Colour, icon and severity for each band. The three that show a chip
+ * are deliberately distinguishable by icon as well as colour: an Inbox
+ * whose only urgency signal is red/amber is unreadable to the ~8% of men
+ * with a red-green deficiency, and this is the one column they most need
+ * to read. */
+const HEALTH_STYLE: Record<
+  Exclude<SlaHealth, 'healthy'>,
+  { color: 'error' | 'warning'; variant: 'filled' | 'outlined'; icon: ReactElement }
+> = {
+  breached: {
+    color: 'error',
+    variant: 'filled',
+    icon: <ErrorOutlineOutlinedIcon fontSize="small" />,
+  },
+  at_risk: {
+    color: 'warning',
+    variant: 'filled',
+    icon: <ReportProblemOutlinedIcon fontSize="small" />,
+  },
+  attention: {
+    color: 'warning',
+    variant: 'outlined',
+    icon: <ScheduleOutlinedIcon fontSize="small" />,
+  },
 }
 
-/** Shows nothing for the common "on track" case — only surfaces once a
- * conversation is approaching or has breached its SLA policy target, so
- * the signal stands out instead of competing with a badge on every row. */
+/** The primary SLA visualisation: one reading per conversation, not four
+ * timers. Four timers side by side is a report; one band is a decision.
+ *
+ * Shows nothing at all for `healthy`, which is most rows most of the
+ * time. That includes a conversation paused waiting on the customer — the
+ * business is not late while the ball is with them, and an Inbox that
+ * reddened those rows would teach agents to ignore red.
+ *
+ * Replaces an earlier indicator that read the SLA Builder's
+ * breached_at/warned_at columns directly. Those columns describe one
+ * policy target each; this describes the conversation. */
 export function SlaIndicator({ conversation }: { conversation: Conversation }) {
   const { t } = useTranslation('conversationsCore')
-  const state = slaStateFor(conversation)
-  if (state === 'ok') return null
+  const health = conversation.sla_health
+  if (!health || health === 'healthy') return null
 
-  const label =
-    state === 'breached' ? t('InboxPage.slaBreachedLabel') : t('InboxPage.slaWarningLabel')
+  const style = HEALTH_STYLE[health]
+  if (!style) return null
 
   return (
-    <Tooltip title={label}>
+    <Tooltip title={t(`InboxPage.slaHealth.${health}.label`)}>
       <Chip
         size="small"
-        icon={
-          state === 'breached' ? (
-            <ErrorOutlineOutlinedIcon fontSize="small" />
-          ) : (
-            <ScheduleOutlinedIcon fontSize="small" />
-          )
-        }
-        label={state === 'breached' ? t('InboxPage.slaBreachedShort') : t('InboxPage.slaWarningShort')}
-        color={state === 'breached' ? 'error' : 'warning'}
-        variant={state === 'breached' ? 'filled' : 'outlined'}
+        icon={style.icon}
+        label={t(`InboxPage.slaHealth.${health}.short`)}
+        color={style.color}
+        variant={style.variant}
       />
     </Tooltip>
   )

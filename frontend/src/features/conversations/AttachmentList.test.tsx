@@ -53,9 +53,7 @@ const DOCUMENT = attachment({
 })
 
 function renderList(attachments: Attachment[]) {
-  return renderAuthenticated(
-    <AttachmentList conversationId="conv-1" attachments={attachments} />,
-  )
+  return renderAuthenticated(<AttachmentList conversationId="conv-1" attachments={attachments} />)
 }
 
 /** The thread's real wrapper, so clicking an image opens the viewer. */

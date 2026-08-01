@@ -14,7 +14,44 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **The Inbox now opens on the work that needs doing.** Every conversation
+  carries an SLA health reading — 🟢 healthy, 🟡 attention, 🟠 at risk,
+  🔴 breached — and the list is sorted by it, worst first, before priority.
+
+  A breached ordinary conversation now sits above a healthy urgent one. The
+  urgent one still has time to be handled; the other has already run out, and
+  only one of the two can be fixed by acting now.
+
+  The health badge appears only on the three bands that need action. Most
+  rows, most of the time, show nothing — including a conversation paused
+  waiting for the customer to reply, which is healthy rather than neglected. A
+  badge on every row is the same as a badge on none.
+
+  The ordering is across the whole company, not the page being viewed. A
+  breached conversation cannot be sitting quietly on page four.
+
 ### Changed
+
+- **A conversation is reported as breached the moment its target passes**,
+  rather than when the background sweep next runs. The sweep still records the
+  breach; it no longer decides it. Previously a conversation could show as
+  merely "at risk" for up to a minute after it had already missed its target.
+
+### Fixed
+
+- **The checks that guard code quality can now pass.** Two of the project's
+  automated gates — code formatting and linting — had been failing for some
+  time across 134 backend files, which meant nobody could tell a new problem
+  from the existing noise. The formatting is behaviour-neutral and was
+  verified file by file to change nothing but layout. Two genuine lint
+  findings were fixed alongside it.
+
+  The migration scripts still fail both gates and were deliberately left
+  alone; several of them have uncommitted edits in progress, and reformatting
+  work someone is in the middle of is not a fair trade for a green check.
+
 
 - **When AI does not answer, the platform now says which setting stopped
   it.** The decision is recorded with the exact switch and the screen it

@@ -48,7 +48,6 @@ async function openDetails() {
   return screen.findByLabelText(/^status/i)
 }
 
-
 describe('ConversationViewPage', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
@@ -204,9 +203,9 @@ describe('ConversationViewPage', () => {
     // its full height with MessageThread absorbing the remaining space.
     renderConversationView()
     await openDetails()
-    const composerRoot = screen.getByPlaceholderText(/write a reply/i).closest(
-      '.MuiBox-root',
-    ) as HTMLElement
+    const composerRoot = screen
+      .getByPlaceholderText(/write a reply/i)
+      .closest('.MuiBox-root') as HTMLElement
 
     expect(composerRoot).toHaveStyle({ flexShrink: '0' })
   })
@@ -375,13 +374,14 @@ describe('ConversationViewPage', () => {
             customer_id: MOCK_CUSTOMER.id,
             channel_config_id: 'c1',
             external_thread_id: 'ext-thread-1',
-            status: 'open',
+            status: 'waiting',
             priority: 'normal',
             queue_id: 'q1',
             assigned_agent_id: 'a1',
             department_id: null,
             last_message_at: '2026-01-01T00:05:00Z',
             first_response_at: null,
+            sla_health: 'healthy',
             sla_first_response_breached_at: null,
             sla_resolution_breached_at: null,
             sla_first_response_warned_at: null,
@@ -430,13 +430,14 @@ describe('ConversationViewPage', () => {
             customer_id: MOCK_CUSTOMER.id,
             channel_config_id: 'c1',
             external_thread_id: 'ext-thread-1',
-            status: 'open',
+            status: 'waiting',
             priority: 'normal',
             queue_id: 'q1',
             assigned_agent_id: null,
             department_id: null,
             last_message_at: '2026-01-01T00:05:00Z',
             first_response_at: null,
+            sla_health: 'healthy',
             sla_first_response_breached_at: null,
             sla_resolution_breached_at: null,
             sla_first_response_warned_at: null,

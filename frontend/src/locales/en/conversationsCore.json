@@ -6,10 +6,6 @@
     "statusFilterOption": "Status",
     "queueFilterOption": "Queue",
     "tabAll": "All",
-    "tabOpen": "Open",
-    "tabPending": "Pending",
-    "tabResolved": "Resolved",
-    "tabClosed": "Closed",
     "queueFieldLabel": "Queue",
     "allQueuesOption": "All queues",
     "myConversationsOnlyLabel": "My conversations only",
@@ -40,14 +36,38 @@
       "urgent": "Urgent"
     },
     "unreadBadgeAriaLabel": "{{count}} unread messages",
-    "slaBreachedLabel": "SLA breached",
-    "slaBreachedShort": "Breached",
-    "slaWarningLabel": "Approaching SLA target",
-    "slaWarningShort": "At risk",
     "autopilotActiveTooltip": "AI Autopilot is currently replying to this conversation",
     "autopilotActiveShort": "AI",
     "keyboardShortcutsHint": "j/k to move, Enter to open",
-    "keyboardShortcutsTooltip": "Use j or k to move focus between conversations, and Enter to open the focused one."
+    "keyboardShortcutsTooltip": "Use j or k to move focus between conversations, and Enter to open the focused one.",
+    "slaHealth": {
+      "breached": {
+        "label": "SLA breached — this conversation has already missed its target",
+        "short": "Breached"
+      },
+      "at_risk": {
+        "label": "At risk — very little time left before the target is missed",
+        "short": "At risk"
+      },
+      "attention": {
+        "label": "Needs attention before it becomes urgent",
+        "short": "Attention"
+      },
+      "healthy": {
+        "label": "On track",
+        "short": "Healthy"
+      }
+    },
+    "statusLabel": {
+      "new": "New",
+      "waiting": "Waiting",
+      "in_progress": "In progress",
+      "waiting_customer": "Waiting on customer",
+      "waiting_agent": "Waiting on agent",
+      "resolved": "Resolved",
+      "customer_feedback": "Feedback",
+      "closed": "Closed"
+    }
   },
   "ConversationViewPage": {
     "loadingLabel": "Loading conversation…",

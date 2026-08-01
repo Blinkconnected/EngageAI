@@ -37,6 +37,7 @@ from blinkengage.domain.exceptions import (
     InvalidConversationStatusTransitionError,
 )
 from blinkengage.domain.lifecycle import can_move
+from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.database.models.agent import AgentStatus
@@ -176,7 +177,7 @@ class ConversationService:
         queue_id: UUID | None = None,
         priority: ConversationPriority | None = None,
         unassigned_only: bool = False,
-    ) -> tuple[list[Conversation], int]:
+    ) -> tuple[list[Conversation], int, dict[UUID, SlaHealth]]:
         return await self._conversations.list_for_company(
             company_id=company_id,
             offset=offset,
@@ -187,6 +188,17 @@ class ConversationService:
             queue_id=queue_id,
             priority=priority,
             unassigned_only=unassigned_only,
+        )
+
+    async def sla_health(
+        self, *, company_id: UUID, conversation_ids: list[UUID]
+    ) -> dict[UUID, SlaHealth]:
+        """Batch SLA health for a set of conversations — see
+        ConversationRepository.health_for. Same passthrough shape as
+        unread_counts below, and here for the same reason: an endpoint
+        returning a conversation depends on this service alone."""
+        return await self._conversations.health_for(
+            company_id=company_id, conversation_ids=conversation_ids
         )
 
     async def unread_counts(self, *, conversation_ids: list[UUID]) -> dict[UUID, int]:

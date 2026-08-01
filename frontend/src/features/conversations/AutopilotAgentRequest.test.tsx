@@ -43,29 +43,30 @@ async function waitForLoaded() {
  * shape the "on agent request" mode produces, which `pick` cannot
  * resolve. */
 const CONV_ASSIGNED_AUTOPILOT = {
-          id: 'conv-1',
-          customer_id: '33333333-3333-3333-3333-333333333333',
-          channel_config_id: 'c1',
-          external_thread_id: 'ext-thread-1',
-          status: 'open',
-          priority: 'normal',
-          queue_id: 'q1',
-          assigned_agent_id: 'a-self',
-          department_id: null,
-          last_message_at: '2026-01-01T00:05:00Z',
-          first_response_at: null,
-          sla_first_response_breached_at: null,
-          sla_resolution_breached_at: null,
-          sla_first_response_warned_at: null,
-          sla_resolution_warned_at: null,
-          queue_entered_at: '2026-01-01T00:00:00Z',
-          picked_up_at: null,
-          closed_at: null,
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-01-01T00:00:00Z',
-          autopilot_active: true,
-          unread_count: 0,
-        }
+  id: 'conv-1',
+  customer_id: '33333333-3333-3333-3333-333333333333',
+  channel_config_id: 'c1',
+  external_thread_id: 'ext-thread-1',
+  status: 'open',
+  priority: 'normal',
+  queue_id: 'q1',
+  assigned_agent_id: 'a-self',
+  department_id: null,
+  last_message_at: '2026-01-01T00:05:00Z',
+  first_response_at: null,
+  sla_health: 'healthy',
+  sla_first_response_breached_at: null,
+  sla_resolution_breached_at: null,
+  sla_first_response_warned_at: null,
+  sla_resolution_warned_at: null,
+  queue_entered_at: '2026-01-01T00:00:00Z',
+  picked_up_at: null,
+  closed_at: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  autopilot_active: true,
+  unread_count: 0,
+}
 
 describe('AI Autopilot — On Agent Request', () => {
   afterEach(() => {
@@ -99,6 +100,7 @@ describe('AI Autopilot — On Agent Request', () => {
           department_id: null,
           last_message_at: '2026-01-01T00:05:00Z',
           first_response_at: null,
+          sla_health: 'healthy',
           sla_first_response_breached_at: null,
           sla_resolution_breached_at: null,
           sla_first_response_warned_at: null,
@@ -405,9 +407,9 @@ describe('AI provenance indicators in the thread', () => {
     ) as HTMLElement
     expect(within(aiBubble).getByText('AI')).toBeInTheDocument()
 
-    const humanBubble = screen.getByText('A human wrote this one.').closest(
-      '.MuiPaper-root',
-    ) as HTMLElement
+    const humanBubble = screen
+      .getByText('A human wrote this one.')
+      .closest('.MuiPaper-root') as HTMLElement
     expect(within(humanBubble).queryByText('AI')).not.toBeInTheDocument()
   })
 })

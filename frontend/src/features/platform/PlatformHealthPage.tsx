@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
@@ -26,7 +27,7 @@ function when(value: string | null): string | null {
 
 /** Relative, because "40 minutes ago" answers "is this working?" and a
  * timestamp makes the reader do the arithmetic. */
-function ago(value: string | null, t: (k: string, o?: object) => string): string {
+function ago(value: string | null, t: TFunction<'platform'>): string {
   if (!value) return t('scheduler.never')
   const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60000)
   if (minutes < 1) return t('scheduler.justNow')
@@ -44,7 +45,7 @@ function TaskCard({ task }: { task: SchedulerTaskHealth }) {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             {task.label}
           </Typography>
@@ -61,23 +62,21 @@ function TaskCard({ task }: { task: SchedulerTaskHealth }) {
         {/* The question this page exists to answer. Every billing job is
             safe to repeat, so a single failure is survivable and invisible —
             what matters is whether it has succeeded *recently*. */}
-        <Stack direction="row" spacing={4} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+        <Stack direction="row" spacing={4} sx={{ mt: 2, flexWrap: 'wrap' }}>
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
               {t('scheduler.lastSuccess')}
             </Typography>
-            <Typography variant="body2">
-              {ago(task.last_success?.started_at ?? null, t)}
-            </Typography>
+            <Typography variant="body2">{ago(task.last_success?.started_at ?? null, t)}</Typography>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
               {t('scheduler.nextRun')}
             </Typography>
             <Typography variant="body2">{when(task.next_run_at) ?? '—'}</Typography>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block">
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
               {t('scheduler.duration')}
             </Typography>
             <Typography variant="body2">
@@ -86,7 +85,7 @@ function TaskCard({ task }: { task: SchedulerTaskHealth }) {
           </Box>
           {task.consecutive_failures > 0 ? (
             <Box>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 {t('scheduler.consecutiveFailures')}
               </Typography>
               <Typography variant="body2" color="error">
@@ -96,7 +95,7 @@ function TaskCard({ task }: { task: SchedulerTaskHealth }) {
           ) : null}
           {run && run.attempt > 0 ? (
             <Box>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                 {t('scheduler.retry')}
               </Typography>
               <Typography variant="body2">
@@ -109,10 +108,10 @@ function TaskCard({ task }: { task: SchedulerTaskHealth }) {
         {run && run.metrics.length > 0 ? (
           <>
             <Divider sx={{ my: 2 }} />
-            <Stack direction="row" spacing={4} flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={4} sx={{ flexWrap: 'wrap' }}>
               {run.metrics.map((metric) => (
                 <Box key={metric.key}>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                     {metric.label}
                   </Typography>
                   <Typography variant="body2">{metric.value}</Typography>
@@ -161,7 +160,7 @@ export function PlatformHealthPage() {
   return (
     <Stack spacing={3}>
       <Box>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <Typography variant="h5" sx={{ flexGrow: 1 }}>
             {t('scheduler.title')}
           </Typography>

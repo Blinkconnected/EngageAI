@@ -92,17 +92,14 @@ function mock({
         minimum_applied: false,
       })
     }),
-    http.put(
-      `${API_BASE_URL}/platform/pricing/global/metrics/:metric`,
-      async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>
-        onSave(body)
-        if (saveStatus !== 201) {
-          return HttpResponse.json({ detail: saveDetail }, { status: saveStatus })
-        }
-        return HttpResponse.json({ rate: {}, resolved: null }, { status: 201 })
-      },
-    ),
+    http.put(`${API_BASE_URL}/platform/pricing/global/metrics/:metric`, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>
+      onSave(body)
+      if (saveStatus !== 201) {
+        return HttpResponse.json({ detail: saveDetail }, { status: saveStatus })
+      }
+      return HttpResponse.json({ rate: {}, resolved: null }, { status: 201 })
+    }),
   )
 }
 
