@@ -16,6 +16,32 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Services can now be created and edited from a new Services screen.**
+  A service is a thing customers can be helped with — Billing, Technical
+  Support, Sales — and it decides which queue a conversation goes to, which
+  response times are measured, and whether AI may answer.
+
+  **Editing a service never changes conversations already in progress.**
+  When you change something a live conversation depends on — a response
+  time, the queue, the AI setting, or the name — the platform keeps the
+  previous settings and starts using the new ones for conversations that
+  begin afterwards. The screen tells you which it did: "Saved as version 3.
+  Conversations already in progress keep the settings they started with."
+  Purely administrative changes — reordering the list, switching a service
+  off, editing its description — do not create a version, because no live
+  conversation depends on them.
+
+  You can add a note explaining any change, and see the history of earlier
+  settings, which are kept because conversations are still running on them.
+
+  Archiving a service removes it from the directory and stops new
+  conversations reaching it. Conversations already running keep working and
+  can still say which service they belong to.
+
+  Response-time targets can be left blank for anything you do not want
+  measured. Blank is not the same as 0 — 0 means the target is missed the
+  moment the clock starts.
+
 - **Conversations are now matched to a service, and the platform records
   why.** A *service* is a thing a customer can be helped with — Billing,
   Technical Support, Sales. When a message arrives, the platform works out

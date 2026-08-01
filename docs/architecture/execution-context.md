@@ -228,6 +228,45 @@ Existing conversations have no service and no binding. Inventing one would be
 a guess presented as a record — the same reasoning as `routing_decisions`. A
 conversation without a binding behaves exactly as it does today.
 
+## Managing services
+
+`/api/v1/services`, gated on `queues.read` / `queues.manage` — not a new
+permission pair. Services *are* the routing configuration (that permission
+already covers "queues, required skills, and routing rules"), and a new
+permission would be denied to every company that has customised its roles,
+silently locking their administrators out of a feature they can see in the
+navigation.
+
+**Which edits mint a version** is the decision an administrator has to be
+able to predict, so it is drawn field by field in `VERSIONED_FIELDS` rather
+than left to whoever writes the next endpoint:
+
+| Edit | Mints a version? | Why |
+|---|---|---|
+| SLA target, AI policy, queue binding | **Yes** | A running conversation reads them |
+| Name | **Yes** | Carried by value on the version; without minting, conversations starting *after* a rename would keep reporting the old name |
+| Code, description, active, display order | No | No conversation reads them |
+
+Minting on every save fills the history with entries identical to their
+predecessors and buries the ones that matter. Minting on none of them means
+an edit silently rewrites the rules of conversations already running.
+
+The response carries `version_minted` rather than leaving it to be inferred,
+so the console can say "saved" for a reordering and "version 4 created" for a
+change to the SLA.
+
+**An omitted field means unchanged, never cleared.** The update endpoint
+sends only `model_dump(exclude_unset=True)`, and the new version starts as a
+copy of the one it supersedes. Building it from the submitted fields alone
+would reset everything the caller did not mention — an absent SLA target read
+as `None` would silently stop measuring it, and the version recording that
+would look like somebody's deliberate decision. Clearing is still possible,
+by sending `null` explicitly.
+
+Archiving soft-deletes the service and leaves every version in place. A
+conversation that cannot say what it ran in is the failure this design exists
+to prevent, so nothing here is ever hard-deleted.
+
 ## See also
 
 - [Policy Engine](./policy-engine.md)

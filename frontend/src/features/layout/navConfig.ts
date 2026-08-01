@@ -83,6 +83,12 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'channels.read',
   },
   {
+    label: 'SideNav.navServices',
+    path: '/services',
+    icon: AltRouteOutlinedIcon,
+    permission: 'queues.read',
+  },
+  {
     label: 'SideNav.navQueues',
     path: '/queues',
     icon: AltRouteOutlinedIcon,

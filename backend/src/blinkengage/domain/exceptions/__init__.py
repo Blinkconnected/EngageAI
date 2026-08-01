@@ -336,6 +336,15 @@ class EmailNotVerifiedError(DomainError):
         )
 
 
+class InvalidServiceConfigurationError(DomainError):
+    """Raised when a service's configuration cannot be stored as given — a
+    duplicate code, a queue that does not exist, a confidence threshold
+    outside 0..1. A precondition failure rather than a missing resource,
+    so — like ``AttachmentValidationError`` — it falls through to the
+    generic 400 in ``core/exceptions.py`` rather than getting its own
+    mapping."""
+
+
 class ConversationNotInQueueError(DomainError):
     """Raised when ``ConversationService.pick()`` is called on a
     conversation with no ``queue_id`` — picking only makes sense for a

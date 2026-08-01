@@ -58,6 +58,9 @@ const StatusPage = lazy(() =>
 const QueuesPage = lazy(() =>
   import('../features/queues/QueuesPage').then((m) => ({ default: m.QueuesPage })),
 )
+const ServicesPage = lazy(() =>
+  import('../features/services/ServicesPage').then((m) => ({ default: m.ServicesPage })),
+)
 const RolesPage = lazy(() =>
   import('../features/roles/RolesPage').then((m) => ({ default: m.RolesPage })),
 )
@@ -293,6 +296,14 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="queues.read">
                 <QueuesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="services"
+            element={
+              <RequirePermission permission="queues.read">
+                <ServicesPage />
               </RequirePermission>
             }
           />

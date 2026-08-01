@@ -23,6 +23,7 @@ import enNotifications from '../locales/en/notifications.json'
 import enOnboarding from '../locales/en/onboarding.json'
 import enProfile from '../locales/en/profile.json'
 import enQueues from '../locales/en/queues.json'
+import enServices from '../locales/en/services.json'
 import enReportsCore from '../locales/en/reportsCore.json'
 import enReportsPanels from '../locales/en/reportsPanels.json'
 import enRoles from '../locales/en/roles.json'
@@ -55,6 +56,7 @@ import arNotifications from '../locales/ar/notifications.json'
 import arOnboarding from '../locales/ar/onboarding.json'
 import arProfile from '../locales/ar/profile.json'
 import arQueues from '../locales/ar/queues.json'
+import arServices from '../locales/ar/services.json'
 import arReportsCore from '../locales/ar/reportsCore.json'
 import arReportsPanels from '../locales/ar/reportsPanels.json'
 import arRoles from '../locales/ar/roles.json'
@@ -95,6 +97,7 @@ export const NAMESPACES = [
   'onboarding',
   'profile',
   'queues',
+  'services',
   'reportsCore',
   'reportsPanels',
   'roles',
@@ -158,6 +161,7 @@ void i18n.use(initReactI18next).init({
       onboarding: enOnboarding,
       profile: enProfile,
       queues: enQueues,
+      services: enServices,
       reportsCore: enReportsCore,
       reportsPanels: enReportsPanels,
       roles: enRoles,
@@ -191,6 +195,7 @@ void i18n.use(initReactI18next).init({
       onboarding: arOnboarding,
       profile: arProfile,
       queues: arQueues,
+      services: arServices,
       reportsCore: arReportsCore,
       reportsPanels: arReportsPanels,
       roles: arRoles,

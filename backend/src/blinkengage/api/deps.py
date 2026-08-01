@@ -75,6 +75,7 @@ from blinkengage.application.services.revenue_service import RevenueService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.search_service import SearchService
+from blinkengage.application.services.service_directory_service import ServiceDirectoryService
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.usage_service import UsageService
@@ -199,6 +200,9 @@ from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
 )
 from blinkengage.infrastructure.repositories.search_repository import SearchRepository
+from blinkengage.infrastructure.repositories.service_directory_repository import (
+    ServiceRepository,
+)
 from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
@@ -702,6 +706,14 @@ def get_conversation_service_ws(
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
         realtime=realtime,
+    )
+
+
+def get_service_directory_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ServiceDirectoryService:
+    return ServiceDirectoryService(
+        services=ServiceRepository(session), queues=QueueRepository(session)
     )
 
 

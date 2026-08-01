@@ -1,0 +1,51 @@
+{
+  "title": "Services",
+  "subtitle": "What customers can be helped with. Each service decides which queue a conversation goes to, what response times are measured, and whether AI may answer.",
+  "selectPrompt": "Select a service to view or edit it.",
+  "create": {
+    "name": "New service name",
+    "submit": "Add service",
+    "failed": "Could not create that service. The name may already be in use."
+  },
+  "empty": {
+    "title": "No services yet",
+    "description": "Add one to start routing conversations by what the customer needs."
+  },
+  "field": {
+    "name": "Name",
+    "description": "Description",
+    "queue": "Queue",
+    "queueHelp": "Where conversations for this service wait to be answered.",
+    "noQueue": "No queue",
+    "slaQueue": "Time in queue (min)",
+    "slaFirstResponse": "First response (min)",
+    "slaNextResponse": "Next response (min)",
+    "slaResolution": "Resolution (min)",
+    "notMeasured": "Not measured",
+    "aiEnabled": "AI may answer conversations in this service",
+    "changeNote": "Why are you changing this?",
+    "changeNoteHelp": "Saved alongside the change, so this edit can be explained later."
+  },
+  "editor": {
+    "versionChip": "Version {{version}}",
+    "inactive": "Switched off",
+    "versionCreated": "Saved as version {{version}}. Conversations already in progress keep the settings they started with.",
+    "saveFailed": "Could not save those changes.",
+    "slaHeading": "Response times",
+    "slaHelp": "Leave blank for anything you do not want measured. Blank is not the same as 0 — 0 means the target is missed the moment the clock starts.",
+    "aiHeading": "AI",
+    "historyHeading": "History",
+    "historyHelp": "Earlier settings are kept because conversations are still running on them.",
+    "historyLine": "Version {{version}} — {{note}}",
+    "noNote": "no note"
+  },
+  "action": {
+    "save": "Save",
+    "close": "Close",
+    "archive": "Archive service"
+  },
+  "archive": {
+    "title": "Archive this service?",
+    "description": "It will no longer appear in the directory and no new conversations will be routed to it. Conversations already running keep working, and can still say which service they belong to."
+  }
+}

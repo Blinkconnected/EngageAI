@@ -40,6 +40,7 @@ from blinkengage.api.v1.endpoints import (
     roles,
     routing_rules,
     search,
+    services,
     sla,
     teams,
     version,
@@ -84,6 +85,7 @@ api_router.include_router(webhooks.router)
 api_router.include_router(web_chat.router)
 api_router.include_router(conversations.router)
 api_router.include_router(queues.router)
+api_router.include_router(services.router)
 api_router.include_router(routing_rules.router)
 api_router.include_router(roles.router)
 api_router.include_router(sla.router, dependencies=[Depends(require_feature("sla"))])

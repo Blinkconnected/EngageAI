@@ -38,6 +38,7 @@
     "navBilling": "Billing",
     "navReports": "Reports",
     "navErpNext": "ERPNext",
-    "navSettings": "Settings"
+    "navSettings": "Settings",
+    "navServices": "Services"
   }
 }
