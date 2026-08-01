@@ -34,7 +34,12 @@ from blinkengage.infrastructure.database.models.service_directory import (
 from blinkengage.infrastructure.repositories.service_directory_repository import (
     ServiceRepository,
 )
-from tests.integration.test_routing_explainability import _ingest, _web_chat_session
+from tests.integration.test_routing_explainability import (
+    _ingest,
+    _queue,
+    _routing_rule,
+    _web_chat_session,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -46,6 +51,7 @@ async def a_service(
     *,
     rules: list[dict[str, Any]] | None = None,
     order: int = 0,
+    queue_id: uuid.UUID | None = None,
 ) -> Service:
     services = ServiceRepository(session)
     service = await services.add(
@@ -62,6 +68,7 @@ async def a_service(
             company_id=company_id,
             version=1,
             name=name,
+            logical_queue_id=queue_id,
             sla_first_response_minutes=15,
             extras={RULES_NAMESPACE: {"rules": rules}} if rules else {},
         )
@@ -258,3 +265,109 @@ class TestACompanyWithADirectory:
 
         assert len(list(conversations)) == 1
         assert len(list(bindings)) == 1
+
+
+class TestTheServiceOwnsQueueSelection:
+    """Customer → Service → Logical Queue → Runtime Queue → Agent.
+
+    The directory is where a company says which team handles what. A routing
+    rule that disagreed with it would be a second answer to a question that
+    has one, so where a service names a queue, the service wins.
+
+    Rules are not a legacy path: they remain how a conversation reaches a
+    queue when no service claimed it — every company with an empty directory,
+    and every service that deliberately defines none.
+    """
+
+    async def test_the_services_queue_is_used(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        chat = await _web_chat_session(client, owner_headers)
+        company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
+        queue_id = await _queue(client, owner_headers, name="Billing queue")
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await a_service(session, company_id, "Billing", queue_id=uuid.UUID(queue_id))
+            await session.commit()
+
+            await _ingest(session, company_id=str(company_id), chat=chat)
+            await session.commit()
+            recorded = await decisions(session)
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+
+        queue_choice = next(
+            d for d in recorded if d.kind is RoutingDecisionKind.QUEUE_SELECTED
+        )
+        assert str(conversation.queue_id) == queue_id
+        assert queue_choice.reason is RoutingDecisionReason.SERVICE_OWNS_QUEUE
+        assert queue_choice.selected_queue_name == "Billing queue"
+
+    async def test_the_services_queue_beats_a_routing_rule(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """The point of the change. With both configured, the directory is
+        the answer — a rule disagreeing with it is the second answer to a
+        question that has one."""
+        chat = await _web_chat_session(client, owner_headers)
+        company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
+        service_queue = await _queue(client, owner_headers, name="Service queue")
+        rule_queue = await _queue(client, owner_headers, name="Rule queue")
+        await _routing_rule(client, owner_headers, queue_id=rule_queue)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await a_service(session, company_id, "Support", queue_id=uuid.UUID(service_queue))
+            await session.commit()
+
+            await _ingest(session, company_id=str(company_id), chat=chat)
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+
+        assert str(conversation.queue_id) == service_queue
+
+    async def test_a_service_with_no_queue_falls_back_to_the_rules(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """Not a legacy path. A service that deliberately names no queue
+        still needs its conversations to reach one."""
+        chat = await _web_chat_session(client, owner_headers)
+        company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
+        rule_queue = await _queue(client, owner_headers, name="Rule queue")
+        await _routing_rule(client, owner_headers, queue_id=rule_queue)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await a_service(session, company_id, "Support")
+            await session.commit()
+
+            await _ingest(session, company_id=str(company_id), chat=chat)
+            await session.commit()
+            recorded = await decisions(session)
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+
+        queue_choice = next(
+            d for d in recorded if d.kind is RoutingDecisionKind.QUEUE_SELECTED
+        )
+        assert str(conversation.queue_id) == rule_queue
+        assert queue_choice.reason is RoutingDecisionReason.RULE_MATCHED
+
+    async def test_a_company_with_no_services_is_unchanged(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """Every company on the installation today. Their routing must not
+        move because a feature they have not configured exists."""
+        chat = await _web_chat_session(client, owner_headers)
+        company_id = registered_owner["user"]["company"]["id"]
+        rule_queue = await _queue(client, owner_headers, name="Rule queue")
+        await _routing_rule(client, owner_headers, queue_id=rule_queue)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(session, company_id=company_id, chat=chat)
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            recorded = await decisions(session)
+
+        assert str(conversation.queue_id) == rule_queue
+        assert all(d.kind is not RoutingDecisionKind.SERVICE_RESOLVED for d in recorded)

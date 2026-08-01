@@ -170,6 +170,26 @@ Service rules take two conditions only — `channels` and `keywords` —
 deliberately, and not a general expression language. Every condition added is
 one an administrator has to understand before they can trust the routing.
 
+### The service owns queue selection
+
+```
+Customer → Service → Logical Queue → Runtime Queue → Agent
+```
+
+Where a service names a queue, **the service decides**, and the decision is
+recorded with reason `SERVICE_OWNS_QUEUE`. The directory is where a company
+says which team handles what; a routing rule disagreeing with it would be a
+second answer to a question that has one.
+
+Queue routing rules are the **fallback, not a legacy path**. They remain how a
+conversation reaches a queue when no service claimed it — every company with
+an empty directory, and every service that deliberately defines no queue of
+its own. Reported as `RULE_MATCHED`, distinct from `SERVICE_OWNS_QUEUE`
+because the fix is a different screen: the service, not the rule.
+
+Runtime lane selection (VIP, priority, overflow) is storage and domain logic
+today; nothing creates lanes yet. It is wired with the lifecycle milestone.
+
 ### What gets recorded
 
 A `SERVICE_RESOLVED` decision, before any queue decision, carrying the

@@ -171,6 +171,14 @@ class RoutingDecisionReason(StrEnum):
     #: company hits on day one.
     NO_RULES_CONFIGURED = "no_rules_configured"
 
+    #: The **service** named the queue. The Service Directory owns queue
+    #: selection where a service defines one — Customer → Service → Logical
+    #: Queue → Runtime Queue → Agent — and routing rules are the fallback
+    #: for conversations no service claimed. Reported separately from
+    #: ``RULE_MATCHED`` because the fix is a different screen: the service,
+    #: not the rule.
+    SERVICE_OWNS_QUEUE = "service_owns_queue"
+
     # --- The chosen queue turned out unusable ------------------------
 
     #: The rule points at a queue that no longer exists (deleted since the
@@ -571,6 +579,8 @@ def _headline(decision: RoutingDecision) -> str:
     if reason is RoutingDecisionReason.SERVICE_NOT_CONFIGURED:
         return "No service: this company has none configured, so nothing was bound."
 
+    if reason is RoutingDecisionReason.SERVICE_OWNS_QUEUE:
+        return f"Routed to {queue} because the service sends its conversations there."
     if reason is RoutingDecisionReason.RULE_MATCHED:
         return f"Routed to {queue} because {_rule_phrase(decision)} matched."
     if reason is RoutingDecisionReason.NO_RULE_MATCHED:

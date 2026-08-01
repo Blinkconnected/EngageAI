@@ -65,6 +65,18 @@ for more detail on how this page is put together.
   measured. Blank is not the same as 0 — 0 means the target is missed the
   moment the clock starts.
 
+- **A service now decides which queue its conversations go to.** If a
+  service names a queue, conversations for that service go there, and the
+  record says so: "Routed to Billing queue because the service sends its
+  conversations there."
+
+  The service directory is where you say which team handles what, so a
+  routing rule pointing somewhere else would be a second answer to the same
+  question. Routing rules still apply everywhere a service has not
+  answered — companies with no services, and services that deliberately
+  name no queue of their own — and are unchanged for everybody who has not
+  set services up.
+
 - **Conversations are now matched to a service, and the platform records
   why.** A *service* is a thing a customer can be helped with — Billing,
   Technical Support, Sales. When a message arrives, the platform works out

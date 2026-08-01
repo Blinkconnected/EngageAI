@@ -32,15 +32,17 @@ from blinkengage.domain.company_settings import (
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.routing_decisions import (
+    QueueRouting,
     ResolutionStageRecord,
     RoutingDecision,
+    RoutingDecisionReason,
     assignment_decision,
     autopilot_decision,
     queue_decision,
     queue_unavailable_decision,
     service_decision,
 )
-from blinkengage.domain.service_context import ContextBindingReason
+from blinkengage.domain.service_context import ContextBindingReason, ServiceContext
 from blinkengage.domain.service_resolution import ResolutionRequest, resolve_service
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
@@ -492,7 +494,7 @@ async def _resolve_service(
     body: str | None,
     session: AsyncSession,
     decisions: RoutingDecisionRepository,
-) -> None:
+) -> ServiceContext | None:
     """Resolves the service this conversation runs inside, and binds it.
 
     Runs **before** queue selection, because the service is what supplies
@@ -525,7 +527,7 @@ async def _resolve_service(
         # was never asked for. Once a directory exists, a conversation it
         # fails to cover is recorded, because then the gap is real.
         if not await services.active_for_company(company_id):
-            return
+            return None
 
         resolved = await resolve_service(
             default_stages(services),
@@ -568,7 +570,7 @@ async def _resolve_service(
         )
 
         if context is None:
-            return
+            return None
 
         # The binding is what makes the version *stick*. Without it the
         # conversation would re-resolve on every read and quietly follow the
@@ -585,6 +587,7 @@ async def _resolve_service(
                 reason=ContextBindingReason.BOUND_AT_START,
             )
         )
+        return context
     except Exception:  # noqa: BLE001 — see the docstring: never fatal.
         logger.warning(
             "service_resolution_failed",
@@ -592,6 +595,7 @@ async def _resolve_service(
             company_id=str(company_id),
             exc_info=True,
         )
+        return None
 
 
 async def _customer_version_id(
@@ -642,12 +646,10 @@ async def _route_and_assign(
     agent_skills = AgentSkillRepository(session)
     decisions = RoutingDecisionRepository(session)
 
-    # First: which service is this conversation in? Everything below reads
-    # from what that decides once the queue binding moves onto the service
-    # version. Today it records the decision and binds the context; queue
-    # selection still runs from the routing rules exactly as before, so no
-    # existing company's routing changes.
-    await _resolve_service(
+    # First: which service is this conversation in? Everything after this
+    # reads from what it decides — the service supplies the queue, the SLA
+    # targets and the AI policy.
+    service = await _resolve_service(
         conversation,
         company_id=company_id,
         channel_type=channel_type,
@@ -656,10 +658,26 @@ async def _route_and_assign(
         decisions=decisions,
     )
 
-    routing_engine = RoutingEngine(routing_rules=routing_rules)
-    routing = await routing_engine.select_queue(
-        company_id=company_id, channel_type=channel_type, body=body
-    )
+    # **The service owns queue selection where it names a queue.**
+    # Customer → Service → Logical Queue → Runtime Queue → Agent: the
+    # directory is where a company says which team handles what, and a
+    # routing rule that disagreed with it would be a second answer to a
+    # question that has one.
+    #
+    # Routing rules remain the fallback, not a legacy path — they are how a
+    # conversation reaches a queue when no service claimed it, which is
+    # every company with an empty directory and every service that
+    # deliberately defines no queue of its own.
+    if service is not None and service.queue is not None:
+        routing = QueueRouting(
+            queue_id=service.queue.logical_queue_id,
+            reason=RoutingDecisionReason.SERVICE_OWNS_QUEUE,
+        )
+    else:
+        routing_engine = RoutingEngine(routing_rules=routing_rules)
+        routing = await routing_engine.select_queue(
+            company_id=company_id, channel_type=channel_type, body=body
+        )
     if routing.queue_id is None:
         # Recorded, not silent. A conversation nobody routed is exactly
         # the case somebody asks about, and "there is no row" is

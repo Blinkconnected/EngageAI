@@ -205,6 +205,12 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
             queue_id=queue_id,
             queue_name="Spanish Support",
         ),
+        RoutingDecisionReason.SERVICE_OWNS_QUEUE: queue_decision(
+            QueueRouting(
+                queue_id=queue_id, reason=RoutingDecisionReason.SERVICE_OWNS_QUEUE
+            ),
+            queue_name="Billing queue",
+        ),
         # --- Service resolution ---------------------------------------
         #
         # Built through ``service_decision`` like the rest, so the sentence
