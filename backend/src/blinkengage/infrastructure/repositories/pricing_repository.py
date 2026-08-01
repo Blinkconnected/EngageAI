@@ -41,9 +41,7 @@ from blinkengage.infrastructure.database.models.pricing import (
 )
 
 
-def _to_candidate(
-    rate: PricingRate, tiers: Sequence[PricingRateTier] = ()
-) -> RateCandidate:
+def _to_candidate(rate: PricingRate, tiers: Sequence[PricingRateTier] = ()) -> RateCandidate:
     return RateCandidate(
         rate_id=rate.id,
         scope=rate.scope,
@@ -453,9 +451,7 @@ class PricingCompanyLookup:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def billing_currencies(
-        self, company_ids: Sequence[uuid.UUID]
-    ) -> dict[uuid.UUID, str]:
+    async def billing_currencies(self, company_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
         """Each company's billing currency.
 
         Resolution needs this because a rate is priced in a currency, and
@@ -483,9 +479,7 @@ class PricingCompanyLookup:
         is the failure this exists to catch.
         """
         result = await self._session.execute(
-            select(Company.billing_currency)
-            .where(Company.deleted_at.is_(None))
-            .distinct()
+            select(Company.billing_currency).where(Company.deleted_at.is_(None)).distinct()
         )
         return {row for row in result.scalars().all() if row}
 

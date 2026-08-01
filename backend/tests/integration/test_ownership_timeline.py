@@ -131,7 +131,7 @@ class TestTheTimeline:
         ]
 
     async def test_every_row_carries_who_it_came_from(self, app: Any) -> None:
-        """"Who owns it now" answers "who owns this" and not "why did it
+        """ "Who owns it now" answers "who owns this" and not "why did it
         leave me" — and the second is the question that gets asked."""
         factory = app.state.container.session_factory()
         async with factory() as session:
@@ -188,9 +188,7 @@ class TestTheTimeline:
         assert current.owner.describe() == "John"
         assert current.reason is OwnershipReason.PICKED_BY_AGENT
 
-    async def test_handing_it_to_whoever_already_has_it_writes_nothing(
-        self, app: Any
-    ) -> None:
+    async def test_handing_it_to_whoever_already_has_it_writes_nothing(self, app: Any) -> None:
         """A timeline with "John took over from John" in it is one people
         stop reading, and the retry that produces it is ordinary."""
         factory = app.state.container.session_factory()
@@ -317,7 +315,7 @@ class TestOwnershipStartsAtIngest:
     async def test_a_queued_conversation_is_owned_by_its_queue(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """"Unassigned" and "unowned" are different words, and this is where
+        """ "Unassigned" and "unowned" are different words, and this is where
         the difference starts."""
         chat = await _web_chat_session(client, owner_headers)
         queue_id = await _queue(client, owner_headers, name="Support")
@@ -327,13 +325,9 @@ class TestOwnershipStartsAtIngest:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
-            rows = (
-                (await session.execute(select(ConversationOwnership))).scalars().all()
-            )
+            rows = (await session.execute(select(ConversationOwnership))).scalars().all()
 
         assert [row.owner_kind for row in rows][0] is OwnerKind.QUEUE
         assert rows[0].owner_name == "Support"
@@ -354,9 +348,7 @@ class TestTheOwnershipApi:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
 
@@ -416,9 +408,7 @@ class TestTheStickySweep:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             status_before = conversation.status
@@ -477,9 +467,7 @@ class TestTheStickySweep:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             await service_for(session).transfer(
@@ -509,7 +497,7 @@ class TestTheInspectorAnswersWithoutReadingTheList:
     async def test_previous_owner_and_transfer_count_are_lifted_out(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """"Who had this before me" is a question asked on its own. Making
+        """ "Who had this before me" is a question asked on its own. Making
         somebody read a timeline to answer it is the difference between an
         inspector and a dump."""
         chat = await _web_chat_session(client, owner_headers)
@@ -520,9 +508,7 @@ class TestTheInspectorAnswersWithoutReadingTheList:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             await service_for(session).transfer(
@@ -560,9 +546,7 @@ class TestTheInspectorAnswersWithoutReadingTheList:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             await service_for(session).transfer(

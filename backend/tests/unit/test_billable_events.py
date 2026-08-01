@@ -37,9 +37,7 @@ class TestWhatCounts:
 
     def test_an_outbound_agent_reply_counts(self) -> None:
         assert (
-            is_billable(
-                message(direction=MessageDirection.OUTBOUND, origin=MessageOrigin.AGENT)
-            )
+            is_billable(message(direction=MessageDirection.OUTBOUND, origin=MessageOrigin.AGENT))
             is True
         )
 
@@ -47,9 +45,7 @@ class TestWhatCounts:
         """One charge per message. The AI writing it is an analytics fact, not
         a pricing one."""
         human = message(direction=MessageDirection.OUTBOUND, origin=MessageOrigin.AGENT)
-        autopilot = message(
-            direction=MessageDirection.OUTBOUND, origin=MessageOrigin.AI_AUTOPILOT
-        )
+        autopilot = message(direction=MessageDirection.OUTBOUND, origin=MessageOrigin.AI_AUTOPILOT)
 
         assert is_billable(human) == is_billable(autopilot) is True
 

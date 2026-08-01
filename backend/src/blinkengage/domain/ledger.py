@@ -215,9 +215,7 @@ def posting_for(entry_type: LedgerEntryType) -> Posting:
         ) from None
 
 
-def balance_of(
-    account: LedgerAccount, *, debits: Decimal, credits: Decimal
-) -> Decimal:
+def balance_of(account: LedgerAccount, *, debits: Decimal, credits: Decimal) -> Decimal:
     """An account's balance, in its own natural direction.
 
     Returns a positive number when the account holds what it normally

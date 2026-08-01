@@ -44,9 +44,7 @@ async def entries_for(client: AsyncClient, headers: dict, company_id: str) -> li
     return list(reversed(response.json()))
 
 
-async def record_payment(
-    client: AsyncClient, headers: dict, company_id: str, amount: str
-) -> str:
+async def record_payment(client: AsyncClient, headers: dict, company_id: str, amount: str) -> str:
     response = await client.post(
         "/api/v1/platform/invoices/payments",
         headers=headers,
@@ -162,9 +160,7 @@ class TestPostings:
             json={
                 "lines": [
                     {
-                        "invoice_line_id": await creditable_line_id(
-                            client, headers, invoice["id"]
-                        ),
+                        "invoice_line_id": await creditable_line_id(client, headers, invoice["id"]),
                         "quantity": "1",
                     }
                 ],
@@ -221,9 +217,7 @@ class TestTheBooksBalance:
             json={
                 "lines": [
                     {
-                        "invoice_line_id": await creditable_line_id(
-                            client, headers, invoice["id"]
-                        ),
+                        "invoice_line_id": await creditable_line_id(client, headers, invoice["id"]),
                         "quantity": "1",
                     }
                 ],
@@ -318,9 +312,7 @@ class TestWriteOffAndChargeback:
         assert written.status_code == 200, written.text
         position = (await client.get(f"{LEDGER}/{company_id}", headers=headers)).json()
         assert Decimal(position["outstanding"]) == Decimal("0")
-        bad_debt = next(
-            row for row in position["accounts"] if row["account"] == "bad_debt"
-        )
+        bad_debt = next(row for row in position["accounts"] if row["account"] == "bad_debt")
         assert Decimal(bad_debt["balance"]) == Decimal(invoice["total_amount"])
 
     async def test_the_invoice_status_is_left_alone_by_a_write_off(
@@ -341,9 +333,7 @@ class TestWriteOffAndChargeback:
             json={"reason": "Uncollectable"},
         )
 
-        after = await client.get(
-            f"/api/v1/platform/invoices/{invoice['id']}", headers=headers
-        )
+        after = await client.get(f"/api/v1/platform/invoices/{invoice['id']}", headers=headers)
         assert after.json()["invoice"]["status"] == "issued"
 
     async def test_writing_off_twice_is_refused(
@@ -475,10 +465,14 @@ class TestImmutability:
 
         async with app.state.container.session_factory()() as session:
             numbers = (
-                await session.execute(
-                    select(LedgerEntry.entry_number).order_by(LedgerEntry.entry_number)
+                (
+                    await session.execute(
+                        select(LedgerEntry.entry_number).order_by(LedgerEntry.entry_number)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         assert list(numbers) == list(range(1, len(numbers) + 1))
 

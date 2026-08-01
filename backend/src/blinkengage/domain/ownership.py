@@ -371,9 +371,7 @@ class Ownership:
         return now - self.since
 
 
-def hold_until(
-    rules: OwnershipRules, *, owner: Owner, from_moment: datetime
-) -> datetime | None:
+def hold_until(rules: OwnershipRules, *, owner: Owner, from_moment: datetime) -> datetime | None:
     """When this owner's claim lapses, if it lapses at all.
 
     Only a *person* can hold stickily. A queue owning a conversation is not

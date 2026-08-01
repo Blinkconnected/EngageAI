@@ -255,9 +255,7 @@ async def seed_usage(
 async def refresh(app: Any, period_id: uuid.UUID, *, now: datetime) -> Any:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
-        outcome = await build_summary_service(session).refresh_period(
-            period_id=period_id, now=now
-        )
+        outcome = await build_summary_service(session).refresh_period(period_id=period_id, now=now)
         await session.commit()
         return outcome
 
@@ -454,9 +452,7 @@ class TestProjection:
         """The requirement is explicit: fewer than 7 complete days means
         Current Daily Average, and the customer is told which method ran."""
         headers = await platform_headers(client, app)
-        await seed_price_before_the_period(
-            client, headers, amount="1.000000"
-        )
+        await seed_price_before_the_period(client, headers, amount="1.000000")
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
 
@@ -473,9 +469,7 @@ class TestProjection:
 
         session_factory = app.state.container.session_factory()
         async with session_factory() as session:
-            result = await build_dashboard_service(session).estimate(
-                uuid.UUID(company_id), now=now
-            )
+            result = await build_dashboard_service(session).estimate(uuid.UUID(company_id), now=now)
 
         projection = result.projection
         assert projection.strategy is ProjectionStrategy.ROLLING_7_DAY
@@ -492,9 +486,7 @@ class TestProjection:
         self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         headers = await platform_headers(client, app)
-        await seed_price_before_the_period(
-            client, headers, amount="1.000000"
-        )
+        await seed_price_before_the_period(client, headers, amount="1.000000")
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
 
@@ -511,9 +503,7 @@ class TestProjection:
 
         session_factory = app.state.container.session_factory()
         async with session_factory() as session:
-            result = await build_dashboard_service(session).estimate(
-                uuid.UUID(company_id), now=now
-            )
+            result = await build_dashboard_service(session).estimate(uuid.UUID(company_id), now=now)
 
         assert result.projection.effective_strategy is ProjectionStrategy.ROLLING_7_DAY
         assert result.projection.fell_back is False
@@ -527,9 +517,7 @@ class TestProjection:
         day. Frozen with the row, it answers "what did you tell me on the
         12th?" after the invoice arrives."""
         headers = await platform_headers(client, app)
-        await seed_price_before_the_period(
-            client, headers, amount="1.000000"
-        )
+        await seed_price_before_the_period(client, headers, amount="1.000000")
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
 
@@ -551,9 +539,7 @@ class TestProjection:
         self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         headers = await platform_headers(client, app)
-        await seed_price_before_the_period(
-            client, headers, amount="1.000000"
-        )
+        await seed_price_before_the_period(client, headers, amount="1.000000")
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
         await seed_usage(
@@ -567,9 +553,7 @@ class TestProjection:
 
         session_factory = app.state.container.session_factory()
         async with session_factory() as session:
-            result = await build_dashboard_service(session).estimate(
-                uuid.UUID(company_id), now=now
-            )
+            result = await build_dashboard_service(session).estimate(uuid.UUID(company_id), now=now)
 
         assert result.projection.projected_total is None
         assert result.projection.unavailable_reason is not None
@@ -653,9 +637,7 @@ class TestDashboardApi:
         headers = await platform_headers(client, app)
         await seed_global(client, headers, amount="0.050000")
 
-        body = (
-            await client.get("/api/v1/billing/daily?window=7d", headers=owner_headers)
-        ).json()
+        body = (await client.get("/api/v1/billing/daily?window=7d", headers=owner_headers)).json()
 
         days = [day["day"] for day in body["days"]]
         assert len(days) == len(set(days)) == 7
@@ -695,9 +677,7 @@ class TestDashboardApi:
         from tests.integration.test_usage_engine import conversation_created, meter
 
         assert (
-            await meter(
-                app, conversation_created(company_id, str(uuid.uuid4()), datetime.now(UTC))
-            )
+            await meter(app, conversation_created(company_id, str(uuid.uuid4()), datetime.now(UTC)))
             == "recorded"
         )
 
@@ -740,9 +720,7 @@ class TestFreeAllowance:
 
         session_factory = app.state.container.session_factory()
         async with session_factory() as session:
-            result = await build_dashboard_service(session).estimate(
-                uuid.UUID(company_id), now=now
-            )
+            result = await build_dashboard_service(session).estimate(uuid.UUID(company_id), now=now)
 
         line = result.month_to_date[0]
         assert line.quantity == Decimal("120.000000")
@@ -811,9 +789,9 @@ class TestFreeAllowance:
         # them are past the allowance, so 6 x 20 — *not* a second allowance
         # starting at the window's edge, which would have shown 100 less.
         assert week.total_estimated_cost == Decimal("120.000000")
-        assert [day.estimated_cost for day in week.days] == [
-            Decimal("20.000000")
-        ] * 6 + [Decimal("0.000000")]
+        assert [day.estimated_cost for day in week.days] == [Decimal("20.000000")] * 6 + [
+            Decimal("0.000000")
+        ]
 
 
 class TestEstimatesAreNotInvoices:
@@ -850,23 +828,17 @@ class TestEstimatesAreNotInvoices:
         assert listed.status_code == 200, listed.text
         assert listed.json() == []
 
-        detail = await client.get(
-            f"/api/v1/billing/invoices/{invoice_id}", headers=owner_headers
-        )
+        detail = await client.get(f"/api/v1/billing/invoices/{invoice_id}", headers=owner_headers)
         assert detail.status_code == 404
 
-        issued = await client.post(
-            f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers
-        )
+        issued = await client.post(f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers)
         assert issued.status_code == 200, issued.text
 
         listed = await client.get("/api/v1/billing/invoices", headers=owner_headers)
         assert [item["status"] for item in listed.json()] == ["issued"]
         assert listed.json()[0]["invoice_number"]
 
-        detail = await client.get(
-            f"/api/v1/billing/invoices/{invoice_id}", headers=owner_headers
-        )
+        detail = await client.get(f"/api/v1/billing/invoices/{invoice_id}", headers=owner_headers)
         assert detail.status_code == 200, detail.text
         assert detail.json()["lines"][0]["metric_code"] == BILLABLE_MESSAGE
 
@@ -889,9 +861,7 @@ class TestAccess:
                 f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
             )
         ).json()["period"]
-        await client.post(
-            f"/api/v1/platform/usage/periods/{period['id']}/close", headers=headers
-        )
+        await client.post(f"/api/v1/platform/usage/periods/{period['id']}/close", headers=headers)
         generated = await client.post(
             f"/api/v1/platform/invoices/generate/{period['id']}", headers=headers
         )
@@ -908,13 +878,9 @@ class TestAccess:
             },
         )
         assert other.status_code == 201, other.text
-        rival_headers = {
-            "Authorization": f"Bearer {other.json()['tokens']['access_token']}"
-        }
+        rival_headers = {"Authorization": f"Bearer {other.json()['tokens']['access_token']}"}
 
-        response = await client.get(
-            f"/api/v1/billing/invoices/{invoice_id}", headers=rival_headers
-        )
+        response = await client.get(f"/api/v1/billing/invoices/{invoice_id}", headers=rival_headers)
         assert response.status_code == 404
 
         # And their own dashboard shows their own (empty) position.
@@ -1017,9 +983,7 @@ class TestConcurrentRefreshes:
         self, client: AsyncClient, owner_headers: dict, app: Any, no_allowance: None
     ) -> None:
         headers = await platform_headers(client, app)
-        await seed_price_before_the_period(
-            client, headers, amount="1.000000"
-        )
+        await seed_price_before_the_period(client, headers, amount="1.000000")
         company_id = await company_id_of(client, owner_headers)
         period_id = await seed_period(app, company_id)
         now = PERIOD_START + timedelta(days=2, hours=12)

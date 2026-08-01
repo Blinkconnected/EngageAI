@@ -632,9 +632,7 @@ def service_decision(
     return RoutingDecision(
         kind=RoutingDecisionKind.SERVICE_RESOLVED,
         outcome=RoutingDecisionOutcome.SERVICE,
-        reason=_SERVICE_REASONS.get(
-            deciding_reason or "", RoutingDecisionReason.SERVICE_FALLBACK
-        ),
+        reason=_SERVICE_REASONS.get(deciding_reason or "", RoutingDecisionReason.SERVICE_FALLBACK),
         selected_service_id=service_id,
         selected_service_name=service_name,
         service_version=service_version,

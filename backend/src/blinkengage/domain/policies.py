@@ -167,9 +167,7 @@ REASON_TEXT: dict[PolicyReason, str] = {
     PolicyReason.AUTOPILOT_MODE_EXCLUDES_THIS: (
         "Autopilot does not answer brand-new conversations for this company"
     ),
-    PolicyReason.CAPABILITIES_UNKNOWN: (
-        "the platform could not confirm what this company allows"
-    ),
+    PolicyReason.CAPABILITIES_UNKNOWN: ("the platform could not confirm what this company allows"),
     PolicyReason.CUSTOMER_OPTED_OUT: "the customer asked for no automated messages",
     PolicyReason.CUSTOMER_NOT_ELIGIBLE: "this customer does not qualify",
     PolicyReason.NO_QUEUE_CONFIGURED: "the service has no queue to route to",
@@ -409,9 +407,7 @@ def _agent_pickup(execution: ExecutionContext) -> PolicyDecision:
             PolicySource.CONVERSATION_STATE,
             assigned_to=str(execution.conversation.assigned_agent_id),
         )
-    return _allow(
-        Policy.AGENT_PICKUP, PolicyReason.PERMITTED, PolicySource.CONVERSATION_STATE
-    )
+    return _allow(Policy.AGENT_PICKUP, PolicyReason.PERMITTED, PolicySource.CONVERSATION_STATE)
 
 
 def _ownership_continuation(execution: ExecutionContext) -> PolicyDecision:
@@ -505,9 +501,7 @@ def as_routing_decision(decision: PolicyDecision) -> RoutingDecision:
     return RoutingDecision(
         kind=RoutingDecisionKind.POLICY_EVALUATED,
         outcome=(
-            RoutingDecisionOutcome.ALLOWED
-            if decision.allowed
-            else RoutingDecisionOutcome.DENIED
+            RoutingDecisionOutcome.ALLOWED if decision.allowed else RoutingDecisionOutcome.DENIED
         ),
         reason=(
             RoutingDecisionReason.POLICY_ALLOWED

@@ -151,9 +151,7 @@ class TestMessageAttachments:
             f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=owner_headers
         )
 
-        attachment = next(
-            a for m in listed.json()["items"] for a in m["attachments"]
-        )
+        attachment = next(a for m in listed.json()["items"] for a in m["attachments"])
         assert attachment["kind"] == "image"
         assert attachment["inline"] is True
         assert attachment["needs_fallback"] is False
@@ -222,9 +220,7 @@ class TestStreaming:
         listed = await client.get(
             f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=owner_headers
         )
-        media_url = next(
-            a["media_url"] for m in listed.json()["items"] for a in m["attachments"]
-        )
+        media_url = next(a["media_url"] for m in listed.json()["items"] for a in m["attachments"])
 
         # No Authorization header at all.
         response = await client.get(media_url)
@@ -248,9 +244,7 @@ class TestStreaming:
         the whole file."""
         conversation_id = await a_conversation(client, owner_headers, registered_owner, app)
         data = png_bytes(300, 300)
-        media_url = await self._media_url(
-            client, owner_headers, conversation_id, data, "image/png"
-        )
+        media_url = await self._media_url(client, owner_headers, conversation_id, data, "image/png")
 
         response = await client.get(media_url, headers={"Range": "bytes=10-19"})
 
@@ -269,9 +263,7 @@ class TestStreaming:
         not written for streaming."""
         conversation_id = await a_conversation(client, owner_headers, registered_owner, app)
         data = png_bytes(200, 200)
-        media_url = await self._media_url(
-            client, owner_headers, conversation_id, data, "image/png"
-        )
+        media_url = await self._media_url(client, owner_headers, conversation_id, data, "image/png")
 
         response = await client.get(media_url, headers={"Range": "bytes=-16"})
 
@@ -323,9 +315,7 @@ class TestStreaming:
         listed = await client.get(
             f"{BILLABLE_MESSAGES}/{conversation_id}/messages", headers=headers
         )
-        return str(
-            next(a["media_url"] for m in listed.json()["items"] for a in m["attachments"])
-        )
+        return str(next(a["media_url"] for m in listed.json()["items"] for a in m["attachments"]))
 
 
 class TestWhatALeakedUrlCannotDo:

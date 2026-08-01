@@ -125,9 +125,7 @@ class VerificationService:
         except MailDeliveryError as exc:
             # Logged without the token: a log line containing the raw
             # value would defeat storing only the hash.
-            logger.warning(
-                "verification_email_failed", user_id=str(user.id), error=str(exc)
-            )
+            logger.warning("verification_email_failed", user_id=str(user.id), error=str(exc))
             return False
         return True
 

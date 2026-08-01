@@ -261,9 +261,7 @@ def charge(
         # the cheapest brackets first, so "the first 100 are free, then the
         # ladder starts" is literally what happens.
         graduated = charge_graduated(terms.tier_table(), quantity=gross, skip=included)
-        blended = (
-            to_storage(graduated.subtotal / billable) if billable > 0 else to_storage(zero())
-        )
+        blended = to_storage(graduated.subtotal / billable) if billable > 0 else to_storage(zero())
         return _finish(
             terms,
             Charge(

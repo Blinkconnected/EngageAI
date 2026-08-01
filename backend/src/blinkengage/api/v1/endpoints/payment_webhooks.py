@@ -68,9 +68,7 @@ async def paypal_webhook(
         logger.warning("paypal_webhook_unconfigured", event_type=event_type)
         return {"status": "ignored"}
 
-    if not await adapter.verify_webhook(
-        headers=dict(request.headers), body=body
-    ):
+    if not await adapter.verify_webhook(headers=dict(request.headers), body=body):
         # Deliberately not a 401. A 401 tells an attacker probing this
         # endpoint that their forgery was detected and that a valid
         # signature would have worked; a 200 that does nothing tells
@@ -100,9 +98,7 @@ async def paypal_webhook(
         logger.info("paypal_webhook_not_captured", reference=reference)
         return {"status": "ignored"}
 
-    logger.info(
-        "paypal_webhook_captured", reference=reference, payment_id=str(payment.id)
-    )
+    logger.info("paypal_webhook_captured", reference=reference, payment_id=str(payment.id))
     return {"status": "captured"}
 
 
@@ -120,9 +116,7 @@ def _order_reference(body: dict[str, Any]) -> str | None:
         return None
 
     supplementary = resource.get("supplementary_data") or {}
-    related = (
-        supplementary.get("related_ids") if isinstance(supplementary, dict) else None
-    ) or {}
+    related = (supplementary.get("related_ids") if isinstance(supplementary, dict) else None) or {}
     if isinstance(related, dict) and related.get("order_id"):
         return str(related["order_id"])
 

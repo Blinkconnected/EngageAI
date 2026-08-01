@@ -106,9 +106,7 @@ class TestWhichEditsMintAVersion:
         assert body["current"]["version"] == 2
         assert body["current"]["sla_first_response_minutes"] == 5
 
-    async def test_renaming_mints_one(
-        self, client: AsyncClient, owner_headers: dict
-    ) -> None:
+    async def test_renaming_mints_one(self, client: AsyncClient, owner_headers: dict) -> None:
         """The name is carried by value on the version so an archived service
         can still be named. If a rename did not mint, conversations starting
         *after* it would keep reporting the old name — the snapshot would be
@@ -263,9 +261,7 @@ class TestIsolationAndPermissions:
                 "owner_password": "correct-horse-battery-9",
             },
         )
-        other_headers = {
-            "Authorization": f"Bearer {other.json()['tokens']['access_token']}"
-        }
+        other_headers = {"Authorization": f"Bearer {other.json()['tokens']['access_token']}"}
 
         response = await client.get(
             f"/api/v1/services/{created['service']['id']}", headers=other_headers
@@ -292,9 +288,7 @@ class TestIsolationAndPermissions:
             "/api/v1/auth/login",
             json={"email": "agent@acme.example", "password": "correct-horse-battery-9"},
         )
-        agent_headers = {
-            "Authorization": f"Bearer {signed_in.json()['access_token']}"
-        }
+        agent_headers = {"Authorization": f"Bearer {signed_in.json()['access_token']}"}
 
         response = await client.post(
             "/api/v1/services",

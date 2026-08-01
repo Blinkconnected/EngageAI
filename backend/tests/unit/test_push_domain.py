@@ -64,9 +64,10 @@ class TestPushMessage:
         assert message.data == {"conversation_id": "abc"}
 
     def test_empty_data_is_fine(self) -> None:
-        assert PushMessage(
-            token="t" * 20, platform=DevicePlatform.WEB, title="Hi", body="There"
-        ).data == {}
+        assert (
+            PushMessage(token="t" * 20, platform=DevicePlatform.WEB, title="Hi", body="There").data
+            == {}
+        )
 
 
 class TestOutcome:
@@ -101,9 +102,7 @@ class TestFcmPayload:
 
     def test_android_gets_high_priority(self) -> None:
         body = self._sender()._build_message(
-            PushMessage(
-                token="t" * 20, platform=DevicePlatform.ANDROID, title="t", body="b"
-            )
+            PushMessage(token="t" * 20, platform=DevicePlatform.ANDROID, title="t", body="b")
         )
         assert body["android"] == {"priority": "high"}
         assert "apns" not in body

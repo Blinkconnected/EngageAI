@@ -40,9 +40,7 @@ def _owner(kind: OwnerKind | None, owner_id: UUID | None, name: str | None) -> O
     )
 
 
-def _change(
-    row: ConversationOwnership, *, until: datetime
-) -> OwnershipChangeResponse:
+def _change(row: ConversationOwnership, *, until: datetime) -> OwnershipChangeResponse:
     """One hop, and how long it lasted.
 
     ``until`` is the next row's moment, or now for the last one — which is
@@ -107,8 +105,7 @@ async def read_ownership(
         # ever sat in its queue reports zero rather than one.
         transfers=max(len(timeline) - 1, 0),
         timeline=[
-            _change(row, until=until)
-            for row, until in zip(timeline, boundaries, strict=True)
+            _change(row, until=until) for row, until in zip(timeline, boundaries, strict=True)
         ],
     )
 

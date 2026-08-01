@@ -33,12 +33,8 @@ LEDGER = "/api/v1/platform/ledger"
 STATEMENT = f"{LEDGER}/statement"
 
 
-async def statement_for(
-    client: AsyncClient, headers: dict, company_id: str, **params: Any
-) -> dict:
-    response = await client.get(
-        f"{STATEMENT}/{company_id}", headers=headers, params=params
-    )
+async def statement_for(client: AsyncClient, headers: dict, company_id: str, **params: Any) -> dict:
+    response = await client.get(f"{STATEMENT}/{company_id}", headers=headers, params=params)
     assert response.status_code == 200, response.text
     return dict(response.json())
 
@@ -179,9 +175,7 @@ class TestTheRunningBalance:
         # Applying it to an invoice debits the liability back down.
         assert applied["entry"]["entry_type"] == "payment.allocated"
         assert applied["debit"] is not None and applied["credit"] is None
-        assert Decimal(applied["balance"]) == Decimal("1.00") - Decimal(
-            invoice["total_amount"]
-        )
+        assert Decimal(applied["balance"]) == Decimal("1.00") - Decimal(invoice["total_amount"])
         assert Decimal(page["closing_balance"]) == Decimal(position["credit_balance"])
 
     async def test_the_account_being_run_down_is_named_in_the_response(
@@ -282,7 +276,7 @@ class TestTheWindow:
     async def test_a_naive_instant_is_refused(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"1 March" is a different moment in Amman and Los Angeles, and
+        """ "1 March" is a different moment in Amman and Los Angeles, and
         the difference decides which entries are in the opening balance
         rather than on the page. Guessing one would be a silently wrong
         statement."""
@@ -433,9 +427,7 @@ class TestCurrency:
 
 
 class TestBoundary:
-    async def test_the_statement_route_is_declared_above_the_company_route(
-        self, app: Any
-    ) -> None:
+    async def test_the_statement_route_is_declared_above_the_company_route(self, app: Any) -> None:
         """``/{company_id}`` matches anything, so a literal path
         registered after it never runs. This collision has shipped twice
         in this repository."""

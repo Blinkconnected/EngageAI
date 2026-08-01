@@ -77,9 +77,7 @@ class SlaLifecycle:
                 now=now,
             )
 
-    async def owner_accepted(
-        self, *, conversation_id: UUID, now: datetime | None = None
-    ) -> None:
+    async def owner_accepted(self, *, conversation_id: UUID, now: datetime | None = None) -> None:
         """Somebody — a person or AI — took responsibility.
 
         The queue clock is *achieved* here, on acceptance rather than on
@@ -90,9 +88,7 @@ class SlaLifecycle:
         """
         if self._engine is None:
             return
-        await self._engine.achieve(
-            conversation_id=conversation_id, timer=SlaTimer.QUEUE, now=now
-        )
+        await self._engine.achieve(conversation_id=conversation_id, timer=SlaTimer.QUEUE, now=now)
 
     async def replied(
         self, *, conversation_id: UUID, was_first: bool, now: datetime | None = None
@@ -139,9 +135,7 @@ class SlaLifecycle:
             now=now,
         )
         for timer in _PAUSABLE:
-            await self._engine.resume(
-                conversation_id=conversation_id, timer=timer, now=now
-            )
+            await self._engine.resume(conversation_id=conversation_id, timer=timer, now=now)
 
     async def status_changed(
         self,
@@ -206,9 +200,7 @@ class SlaLifecycle:
 
         if status in (ConversationStatus.IN_PROGRESS, ConversationStatus.WAITING):
             for timer in _PAUSABLE:
-                await self._engine.resume(
-                    conversation_id=conversation_id, timer=timer, now=now
-                )
+                await self._engine.resume(conversation_id=conversation_id, timer=timer, now=now)
 
 
 __all__ = ["SlaLifecycle"]

@@ -56,9 +56,7 @@ class DeviceTokenRepository:
         return device
 
     async def get_by_token(self, token: str) -> DeviceToken | None:
-        result = await self._session.execute(
-            select(DeviceToken).where(DeviceToken.token == token)
-        )
+        result = await self._session.execute(select(DeviceToken).where(DeviceToken.token == token))
         return result.scalar_one_or_none()
 
     async def list_for_user(self, *, company_id: UUID, user_id: UUID) -> list[DeviceToken]:
@@ -69,9 +67,7 @@ class DeviceTokenRepository:
         )
         return list(result.scalars().all())
 
-    async def delete_for_user(
-        self, *, company_id: UUID, user_id: UUID, device_id: UUID
-    ) -> bool:
+    async def delete_for_user(self, *, company_id: UUID, user_id: UUID, device_id: UUID) -> bool:
         """Unregister one of the caller's own devices.
 
         Scoped to the caller rather than taking a bare id: signing out on

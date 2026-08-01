@@ -35,8 +35,6 @@ from blinkengage.domain.ownership import Owner, OwnerKind, OwnershipReason
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 
-pytestmark = pytest.mark.asyncio
-
 START = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 
 
@@ -72,6 +70,7 @@ async def a_conversation(session: Any, company_id: uuid.UUID | None = None) -> C
     return conversation
 
 
+@pytest.mark.asyncio
 class TestTheSevenFigures:
     async def test_a_whole_journey_produces_every_metric(self, app: Any) -> None:
         """One conversation, five owners, and every figure the reporting

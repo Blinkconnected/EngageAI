@@ -48,9 +48,7 @@ class CompanyNotActiveError(AuthenticationError):
         # it — and the fix here is not an administrator's decision but
         # an unpaid invoice, which anyone with billing access can act on.
         messages = {
-            "suspended": (
-                "This workspace has been suspended. Please contact your administrator."
-            ),
+            "suspended": ("This workspace has been suspended. Please contact your administrator."),
             "payment_suspended": (
                 "Access is suspended because of an unpaid invoice. A billing "
                 "administrator can restore it by settling the account."

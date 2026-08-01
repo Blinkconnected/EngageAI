@@ -193,9 +193,7 @@ class VersionInfo:
         parse error surfaces in the upgrade warning instead.
         """
         try:
-            return Version.parse(platform_version).satisfies(
-                Version.parse(self.minimum_platform)
-            )
+            return Version.parse(platform_version).satisfies(Version.parse(self.minimum_platform))
         except ValueError:
             return True
 

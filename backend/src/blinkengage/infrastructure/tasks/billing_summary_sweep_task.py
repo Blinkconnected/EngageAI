@@ -108,9 +108,7 @@ async def _refresh_daily_summaries_async() -> int:
             finalized = sum(outcome.days_finalized for outcome in outcomes)
             report.count("companies_processed", len(outcomes))
             report.count("days_refreshed", sum(o.days_refreshed for o in outcomes))
-            unpriced = {
-                metric for outcome in outcomes for metric in outcome.unpriced_metrics
-            }
+            unpriced = {metric for outcome in outcomes for metric in outcome.unpriced_metrics}
             logger.info(
                 "billing_daily_summaries_refreshed",
                 periods=len(outcomes),
@@ -132,6 +130,7 @@ async def _refresh_daily_summaries_async() -> int:
         # to a different loop".
         if _engine is not None:
             await _engine.dispose()
+
 
 @celery_app.task(name="blinkengage.billing.refresh_daily_summaries")  # type: ignore[misc]
 def refresh_daily_summaries() -> int:

@@ -97,9 +97,7 @@ class FcmPushSender(PushSender):
         # 503 during an incident, a 400 from a payload this code got
         # wrong — is retried. The dispatch window bounds how long that
         # can go on, so "retry" can never mean "forever".
-        return PushResult(
-            PushOutcome.RETRY, detail=error_code or f"http_{response.status_code}"
-        )
+        return PushResult(PushOutcome.RETRY, detail=error_code or f"http_{response.status_code}")
 
     def _build_message(self, message: PushMessage) -> dict[str, Any]:
         """The v1 message body.

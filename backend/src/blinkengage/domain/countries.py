@@ -121,9 +121,7 @@ def country_for(code: str | None) -> Country | None:
 def require_country(code: str) -> Country:
     country = country_for(code)
     if country is None:
-        raise UnknownCountryError(
-            f"'{code}' is not a country this installation can bill in."
-        )
+        raise UnknownCountryError(f"'{code}' is not a country this installation can bill in.")
     return country
 
 

@@ -24,9 +24,7 @@ async def providers(client: AsyncClient, headers: dict) -> dict[str, dict[str, A
 
 @pytest.mark.asyncio
 class TestTheScreenShowsEveryScheme:
-    async def test_the_jordanian_schemes_are_there(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_the_jordanian_schemes_are_there(self, client: AsyncClient, app: Any) -> None:
         """The reported gap: eFAWATEERcom, CliQ, MEPS and Network
         International were nowhere. A provider missing from this list is
         indistinguishable from one the product does not support."""
@@ -132,9 +130,7 @@ class TestSavingCredentials:
         assert again.status_code == 200
         assert again.json()["secret_set"]["api_password"] is True
 
-    async def test_an_empty_string_clears_a_secret(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_an_empty_string_clears_a_secret(self, client: AsyncClient, app: Any) -> None:
         """Clearing must be possible, and unambiguous."""
         headers = await platform_headers(client, app)
         url = "/api/v1/platform/settings/payment-providers/meps"
@@ -187,9 +183,7 @@ class TestSavingCredentials:
         assert found["meps"]["values"]["merchant_id"] == "M123"
         assert found["cliq"]["values"]["alias"] == "BLINK"
 
-    async def test_an_unknown_provider_is_refused(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_an_unknown_provider_is_refused(self, client: AsyncClient, app: Any) -> None:
         response = await client.put(
             "/api/v1/platform/settings/payment-providers/stripe",
             headers=await platform_headers(client, app),

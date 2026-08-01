@@ -68,9 +68,7 @@ class BillableOutcome:
 
 
 class BillableEventService:
-    def __init__(
-        self, *, events: BillableEventRepository, usage: UsageService
-    ) -> None:
+    def __init__(self, *, events: BillableEventRepository, usage: UsageService) -> None:
         self._events = events
         self._usage = usage
 

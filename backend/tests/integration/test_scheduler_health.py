@@ -122,9 +122,7 @@ class TestTheHealthApi:
         names = {task["name"] for task in response.json()["tasks"]}
         assert names == {task.name for task in BILLING_TASKS}
 
-    async def test_a_fresh_installation_says_never_run(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_fresh_installation_says_never_run(self, client: AsyncClient, app: Any) -> None:
         """Correct and not alarming on day one. After a deploy it means the
         beat schedule is not reaching the worker — the outage that otherwise
         looks like nothing at all."""
@@ -169,9 +167,7 @@ class TestTheHealthApi:
     ) -> None:
         """Installation-level: whether *the product's* background work is
         running is not a tenant's business."""
-        response = await client.get(
-            "/api/v1/platform/health/scheduler", headers=owner_headers
-        )
+        response = await client.get("/api/v1/platform/health/scheduler", headers=owner_headers)
 
         assert response.status_code in (401, 403)
 

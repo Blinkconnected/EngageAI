@@ -489,9 +489,7 @@ class PricingService:
             include_voided=True,
         )
 
-    async def company_currencies(
-        self, company_ids: list[uuid.UUID]
-    ) -> dict[uuid.UUID, str]:
+    async def company_currencies(self, company_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
         """Each company's billing currency.
 
         Exposed here rather than making every caller reach for a company
@@ -554,9 +552,7 @@ class PricingService:
             included_quantity=(
                 to_storage(included_quantity) if included_quantity is not None else None
             ),
-            minimum_charge=(
-                to_storage(minimum_charge) if minimum_charge is not None else None
-            ),
+            minimum_charge=(to_storage(minimum_charge) if minimum_charge is not None else None),
             params=dict(model_params or {}),
         )
         try:

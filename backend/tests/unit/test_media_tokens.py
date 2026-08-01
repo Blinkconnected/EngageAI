@@ -58,9 +58,7 @@ class TestWhatALeakedUrlCannotDo:
     def test_it_expires(self) -> None:
         settings = _settings()
         attachment, company = uuid.uuid4(), uuid.uuid4()
-        token = sign(
-            attachment_id=attachment, company_id=company, settings=settings, now=NOW
-        )
+        token = sign(attachment_id=attachment, company_id=company, settings=settings, now=NOW)
 
         with pytest.raises(MediaTokenError):
             verify(
@@ -118,9 +116,7 @@ class TestWhatALeakedUrlCannotDo:
         """It is signed, so pushing the timestamp out invalidates it."""
         settings = _settings()
         attachment, company = uuid.uuid4(), uuid.uuid4()
-        token = sign(
-            attachment_id=attachment, company_id=company, settings=settings, now=NOW
-        )
+        token = sign(attachment_id=attachment, company_id=company, settings=settings, now=NOW)
 
         with pytest.raises(MediaTokenError):
             verify(

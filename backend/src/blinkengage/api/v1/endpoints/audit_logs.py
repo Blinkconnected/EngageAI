@@ -42,7 +42,6 @@ async def _fetch_logo(
         return None
 
 
-
 #: Keys already given their own column, so the catch-all does not repeat
 #: them. Everything else an event carried is worth keeping — an export
 #: that silently drops a field is one somebody reconciles against and
@@ -75,6 +74,7 @@ def _detail_summary(details: dict[str, Any]) -> str:
         for key, value in sorted(details.items())
         if key not in _OWN_COLUMNS and value is not None
     )
+
 
 @router.get("", response_model=None)
 async def list_audit_logs(

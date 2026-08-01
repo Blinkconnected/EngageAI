@@ -181,9 +181,7 @@ class ServiceDirectoryService:
         service = await self.get(company_id=company_id, service_id=service_id)
         unknown = set(changes) - VERSIONED_FIELDS - IDENTITY_FIELDS
         if unknown:
-            raise InvalidServiceConfigurationError(
-                f"Unknown fields: {', '.join(sorted(unknown))}."
-            )
+            raise InvalidServiceConfigurationError(f"Unknown fields: {', '.join(sorted(unknown))}.")
 
         if "code" in changes and changes["code"] != service.code:
             clash = await self._services.by_code(company_id=company_id, code=changes["code"])

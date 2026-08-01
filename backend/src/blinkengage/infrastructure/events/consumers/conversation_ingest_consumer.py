@@ -672,9 +672,9 @@ async def _start_clocks(
 async def _accepted(session: AsyncSession, *, conversation: Conversation) -> None:
     """Somebody took responsibility, so the queue clock is answered."""
     try:
-        await SlaLifecycle(
-            SlaEngine(session, RoutingDecisionRepository(session))
-        ).owner_accepted(conversation_id=conversation.id)
+        await SlaLifecycle(SlaEngine(session, RoutingDecisionRepository(session))).owner_accepted(
+            conversation_id=conversation.id
+        )
     except Exception:  # noqa: BLE001 — never fatal, as above.
         logger.warning(
             "sla_queue_clock_not_settled",

@@ -105,9 +105,7 @@ class TestEveryManifestIsComplete:
         the wrong shape."""
         assert connector.declares == connector.manifest.capabilities
 
-    def test_a_credentials_method_means_a_credentials_form(
-        self, connector: Connector
-    ) -> None:
+    def test_a_credentials_method_means_a_credentials_form(self, connector: Connector) -> None:
         """And the reverse. A connector offering the form but declaring no
         fields renders an empty step; one declaring fields but not the method
         collects values the flow never asked for.
@@ -131,9 +129,7 @@ class TestEveryManifestIsComplete:
             assert connector.app_key, connector.channel_type
             assert manifest.required_permissions, connector.channel_type
 
-    def test_discovery_is_declared_with_something_to_discover(
-        self, connector: Connector
-    ) -> None:
+    def test_discovery_is_declared_with_something_to_discover(self, connector: Connector) -> None:
         """A picker with nothing described renders a list with no heading and
         no explanation when it comes back empty — which is the case customers
         actually hit."""
@@ -157,9 +153,7 @@ class TestDeclarationsMatchImplementations:
     def _overrides(connector: Connector, name: str) -> bool:
         return getattr(type(connector), name) is not getattr(Connector, name)
 
-    def test_automatic_webhook_registration_registers_something(
-        self, connector: Connector
-    ) -> None:
+    def test_automatic_webhook_registration_registers_something(self, connector: Connector) -> None:
         """The capability that was undeliverable until the contract grew a
         post-persist hook. A connector declaring it and inheriting the base's
         refusal promises inbound that never arrives.
@@ -190,9 +184,7 @@ class TestDeclarationsMatchImplementations:
         if connector.manifest.repair_actions:
             assert self._overrides(connector, "repair"), connector.channel_type
 
-    def test_a_repair_referenced_by_validation_is_declared(
-        self, connector: Connector
-    ) -> None:
+    def test_a_repair_referenced_by_validation_is_declared(self, connector: Connector) -> None:
         """The console renders a repair button from the *manifest*, so a
         finding pointing at an undeclared action offers a fix nothing can
         draw. Read off the source rather than run, since reaching every
@@ -249,9 +241,7 @@ class TestValidationCodesAreDeclared:
         for code in connector.manifest.declared_codes:
             assert isinstance(code, ValidationCode)
 
-    def test_the_manifest_declares_the_codes_the_source_returns(
-        self, connector: Connector
-    ) -> None:
+    def test_the_manifest_declares_the_codes_the_source_returns(self, connector: Connector) -> None:
         """The console pre-resolves copy from ``verification_steps``, so a
         code this connector can return but never declared is a raw slug in
         front of a customer at the worst possible moment.
@@ -308,8 +298,7 @@ class TestBlockingIsDecidedCentrally:
         unclassified = {
             code
             for code in ValidationCode
-            if code not in BLOCKING_CODES
-            and code not in NON_BLOCKING
+            if code not in BLOCKING_CODES and code not in NON_BLOCKING
         }
 
         assert unclassified == set(), sorted(c.value for c in unclassified)
@@ -397,13 +386,10 @@ class TestLifecycleResolution:
     """Two axes, one badge."""
 
     def test_maturity_shows_through_when_nothing_is_wrong(self) -> None:
-        assert (
-            effective_state(Maturity.BETA, Availability.AVAILABLE)
-            is LifecycleState.BETA
-        )
+        assert effective_state(Maturity.BETA, Availability.AVAILABLE) is LifecycleState.BETA
 
     def test_availability_wins(self) -> None:
-        """"We have turned this off" is more urgent and more actionable than
+        """ "We have turned this off" is more urgent and more actionable than
         "this code is mature", and showing the maturity badge on a connector
         nobody can use answers a question the customer did not ask."""
         assert (
@@ -411,8 +397,7 @@ class TestLifecycleResolution:
             is LifecycleState.MAINTENANCE
         )
         assert (
-            effective_state(Maturity.DEPRECATED, Availability.DISABLED)
-            is LifecycleState.DISABLED
+            effective_state(Maturity.DEPRECATED, Availability.DISABLED) is LifecycleState.DISABLED
         )
 
     def test_a_disabled_connector_refuses_new_connections(self) -> None:
@@ -515,9 +500,7 @@ class TestTheFeatureMatrixIsHonest:
 
         assert len(features) == len(set(features)), connector.channel_type
 
-    def test_a_channel_that_connects_can_carry_something(
-        self, connector: Connector
-    ) -> None:
+    def test_a_channel_that_connects_can_carry_something(self, connector: Connector) -> None:
         assert connector.manifest.supported_features, connector.channel_type
 
     def test_sending_and_receiving_are_declared_in_one_direction_each(
@@ -659,19 +642,13 @@ class TestDiagnosticsContract:
             report = await connector.diagnose(credentials=credentials, context=BARE)
             assert report.channel_type in {connector.channel_type, ""}
 
-    async def test_it_only_answers_keys_it_can_measure(
-        self, connector: Connector
-    ) -> None:
+    async def test_it_only_answers_keys_it_can_measure(self, connector: Connector) -> None:
         """With no credentials there is nothing to ask a provider, so nothing
         may come back OK. A connector reporting health from an empty dict is
         reporting something it did not measure."""
         report = await connector.diagnose(credentials={}, context=BARE)
 
-        invented = [
-            item.key.value
-            for item in report.items
-            if item.status is DiagnosticStatus.OK
-        ]
+        invented = [item.key.value for item in report.items if item.status is DiagnosticStatus.OK]
 
         assert invented == [], f"{connector.channel_type} invented {invented}"
 

@@ -365,9 +365,7 @@ class Connector(ABC):
     # --- Connect ------------------------------------------------------
 
     @abstractmethod
-    async def connect(
-        self, *, company_id: UUID, attempt: Attempt
-    ) -> tuple[Connection, ...]:
+    async def connect(self, *, company_id: UUID, attempt: Attempt) -> tuple[Connection, ...]:
         """Do whatever the provider needs, and return what to store.
 
         Subscribing an app, generating secrets, claiming a resource — all of

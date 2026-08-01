@@ -56,20 +56,16 @@ class TestTheThreeConceptsAreIndependent:
         """The agent went offline mid-conversation. Somebody was working it;
         nobody is answerable. Both true, and the pair is exactly what an
         operations console needs to surface."""
-        ownership = Ownership(
-            owner=NOBODY, since=NOW, reason=OwnershipReason.OWNER_UNAVAILABLE
-        )
+        ownership = Ownership(owner=NOBODY, since=NOW, reason=OwnershipReason.OWNER_UNAVAILABLE)
 
         assert ConversationStatus.IN_PROGRESS in ACTIVE
         assert ownership.owner.is_nobody is True
 
     def test_a_waiting_conversation_is_owned_by_its_queue(self) -> None:
-        """"Unassigned" and "unowned" are different words. A conversation in
+        """ "Unassigned" and "unowned" are different words. A conversation in
         a queue is not nobody's problem — the queue is answerable, which is
         what makes it findable and escalatable."""
-        ownership = Ownership(
-            owner=a_queue(), since=NOW, reason=OwnershipReason.NEW_CONVERSATION
-        )
+        ownership = Ownership(owner=a_queue(), since=NOW, reason=OwnershipReason.NEW_CONVERSATION)
 
         assert ownership.owner.is_nobody is False
         assert ownership.owner.is_a_person is False
@@ -269,7 +265,7 @@ class TestTheLifecycle:
 
 class TestOwnershipIsResponsibility:
     def test_each_kind_is_responsible_for_something_specific(self) -> None:
-        """"Owner" read as "assignee" is the misunderstanding this prevents.
+        """ "Owner" read as "assignee" is the misunderstanding this prevents.
         Stating the obligation as data lets an escalation ask "responsible
         for *what*?" and get an answer."""
         assert a_queue().responsibility is Responsibility.PICKUP

@@ -187,6 +187,7 @@ async def _run_async() -> tuple[int, str]:
         if _engine is not None:
             await _engine.dispose()
 
+
 @celery_app.task(name="blinkengage.billing.collections_sweep")  # type: ignore[misc]
 def collections_sweep() -> str:
     reconciled, summary = asyncio.run(_run_async())

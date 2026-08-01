@@ -73,7 +73,6 @@ from blinkengage.infrastructure.connectors.registry import ConnectorRegistry
 router = APIRouter(prefix="/channel-connect", tags=["channels"])
 
 
-
 def _manifest_response(manifest: ConnectorManifest) -> ManifestResponse:
     """A connector's own description, on the wire.
 
@@ -141,8 +140,7 @@ def _manifest_response(manifest: ConnectorManifest) -> ManifestResponse:
             for support in manifest.supported_features
         ],
         documentation=[
-            DocumentationLinkResponse(key=link.key, url=link.url)
-            for link in manifest.documentation
+            DocumentationLinkResponse(key=link.key, url=link.url) for link in manifest.documentation
         ],
         maturity=manifest.maturity.value,
         versions=VersionInfoResponse(
@@ -198,21 +196,14 @@ async def catalog(
             # template offering three channels that all need an app this
             # installation lacks is a dead end wearing a recommendation.
             if any(
-                p.connectable
-                for p in service.catalog()
-                if p.channel_type in template.channel_types
+                p.connectable for p in service.catalog() if p.channel_type in template.channel_types
             )
         ],
-        manifests=[
-            _manifest_response(connector.manifest)
-            for connector in ConnectorRegistry.all()
-        ],
+        manifests=[_manifest_response(connector.manifest) for connector in ConnectorRegistry.all()],
     )
 
 
-async def _render(
-    session: ConnectSession, service: ChannelConnectService
-) -> SessionResponse:
+async def _render(session: ConnectSession, service: ChannelConnectService) -> SessionResponse:
     """The whole wizard state, after whatever just happened.
 
     Assembled here rather than in the service so the service stays free of
@@ -258,9 +249,7 @@ async def _render(
     elif current.kind is StepKind.OAUTH_REDIRECT:
         connector = ConnectorRegistry.get(session.primary)
         if connector is not None:
-            authorize_url = await connector.authorize_url(
-                state=session.id, context=service.context
-            )
+            authorize_url = await connector.authorize_url(state=session.id, context=service.context)
 
     return SessionResponse(
         session_id=session.id,
@@ -493,9 +482,7 @@ async def channel_diagnostics(
     channel_config_id: UUID,
     auth: Annotated[AuthContext, Depends(require_permission("channels.read"))],
     channels: Annotated[ChannelConfigService, Depends(get_channel_config_service)],
-    diagnostics: Annotated[
-        ChannelDiagnosticsService, Depends(get_channel_diagnostics_service)
-    ],
+    diagnostics: Annotated[ChannelDiagnosticsService, Depends(get_channel_diagnostics_service)],
 ) -> DiagnosticReportResponse:
     """Everything known about one channel, in one call.
 
@@ -510,9 +497,7 @@ async def channel_diagnostics(
     support engineer who can only look should still be able to answer the
     question.
     """
-    channel = await channels.get(
-        company_id=auth.company_id, channel_config_id=channel_config_id
-    )
+    channel = await channels.get(company_id=auth.company_id, channel_config_id=channel_config_id)
     report = await diagnostics.report(channel)
     return DiagnosticReportResponse(
         channel_type=report.channel_type,
@@ -562,12 +547,8 @@ async def certify_channel(
 
     The score is computed from what ran and cannot be supplied.
     """
-    channel = await channels.get(
-        company_id=auth.company_id, channel_config_id=channel_config_id
-    )
-    report = await certifier.run(
-        channel, target=target, include_mutating=include_mutating
-    )
+    channel = await channels.get(company_id=auth.company_id, channel_config_id=channel_config_id)
+    report = await certifier.run(channel, target=target, include_mutating=include_mutating)
     return CertificationReportResponse(
         channel_type=report.channel_type,
         results=[

@@ -55,9 +55,7 @@ CONNECTOR_TIMEOUT = 12.0
 class ChannelDiagnosticsService:
     """One report per channel, from everything available."""
 
-    def __init__(
-        self, *, logs: ChannelConnectionLogRepository, context: DeploymentContext
-    ) -> None:
+    def __init__(self, *, logs: ChannelConnectionLogRepository, context: DeploymentContext) -> None:
         self._logs = logs
         self._context = context
 
@@ -166,9 +164,7 @@ class ChannelDiagnosticsService:
                 # first thing a support engineer needs to know.
                 else f"diagnostics.unhealthy.{channel.last_health_origin or 'unknown'}"
             ),
-            params=(
-                {} if healthy else {"detail": str(channel.last_health_detail or "")}
-            ),
+            params=({} if healthy else {"detail": str(channel.last_health_detail or "")}),
             measured_at=channel.last_health_checked_at,
         )
 

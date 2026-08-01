@@ -46,9 +46,7 @@ class TestChartOfAccounts:
         separately answerable — the first question asked when revenue
         looks wrong."""
         assert ACCOUNT_KINDS[LedgerAccount.REVENUE] is AccountKind.INCOME
-        assert (
-            ACCOUNT_KINDS[LedgerAccount.REVENUE_ADJUSTMENTS] is AccountKind.CONTRA_INCOME
-        )
+        assert ACCOUNT_KINDS[LedgerAccount.REVENUE_ADJUSTMENTS] is AccountKind.CONTRA_INCOME
         assert is_debit_normal(LedgerAccount.REVENUE_ADJUSTMENTS)
 
 

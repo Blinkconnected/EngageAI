@@ -177,9 +177,7 @@ def relax_verification_gate(request, monkeypatch) -> None:
     """
     if request.node.get_closest_marker("enforce_verification"):
         return
-    monkeypatch.setattr(
-        "blinkengage.domain.verification.UNVERIFIED_BLOCKED_ACTIONS", frozenset()
-    )
+    monkeypatch.setattr("blinkengage.domain.verification.UNVERIFIED_BLOCKED_ACTIONS", frozenset())
 
 
 @pytest.fixture
@@ -212,9 +210,7 @@ async def registered_owner(client: AsyncClient, app) -> dict:
             update(Company).where(Company.id == UUID(company_id)).values(verified_at=moment)
         )
         await session.execute(
-            update(User)
-            .where(User.company_id == UUID(company_id))
-            .values(email_verified_at=moment)
+            update(User).where(User.company_id == UUID(company_id)).values(email_verified_at=moment)
         )
         await session.commit()
 

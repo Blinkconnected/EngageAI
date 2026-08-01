@@ -17,9 +17,7 @@ from blinkengage.infrastructure.database.models.device_token import DeviceToken
 _TOKEN = "fcm-registration-token-" + "x" * 40
 
 
-async def _register(
-    client: AsyncClient, headers: dict, **overrides: Any
-) -> tuple[int, dict]:
+async def _register(client: AsyncClient, headers: dict, **overrides: Any) -> tuple[int, dict]:
     payload: dict[str, Any] = {
         "token": _TOKEN,
         "platform": "ios",
@@ -53,9 +51,7 @@ async def test_registering_twice_refreshes_rather_than_duplicates(
     assert first["id"] == second["id"]
     assert second["device_name"] == "iPhone 15 Pro Max"
 
-    listed = (
-        await client.get("/api/v1/notifications/devices", headers=owner_headers)
-    ).json()
+    listed = (await client.get("/api/v1/notifications/devices", headers=owner_headers)).json()
     assert len(listed["items"]) == 1
 
 
@@ -103,9 +99,7 @@ async def test_a_token_changes_hands_instead_of_duplicating(
     assert str(rows[0].company_id) == company_id
 
     # And the original owner no longer has it listed.
-    listed = (
-        await client.get("/api/v1/notifications/devices", headers=owner_headers)
-    ).json()
+    listed = (await client.get("/api/v1/notifications/devices", headers=owner_headers)).json()
     assert listed["items"] == []
 
 
@@ -119,9 +113,7 @@ async def test_unregistering_stops_pushes_to_that_device(
     )
     assert deleted.status_code == 204
 
-    listed = (
-        await client.get("/api/v1/notifications/devices", headers=owner_headers)
-    ).json()
+    listed = (await client.get("/api/v1/notifications/devices", headers=owner_headers)).json()
     assert listed["items"] == []
 
 

@@ -177,9 +177,7 @@ async def test_cannot_delete_a_system_role(client: AsyncClient, owner_headers: d
     assert response.status_code == 400
 
 
-async def test_cannot_delete_a_role_with_members(
-    client: AsyncClient, owner_headers: dict
-) -> None:
+async def test_cannot_delete_a_role_with_members(client: AsyncClient, owner_headers: dict) -> None:
     agent = await _invite_agent(client, owner_headers)
     create_response = await client.post(
         "/api/v1/roles",
@@ -193,14 +191,10 @@ async def test_cannot_delete_a_role_with_members(
     )
     assert assign_response.status_code == 200
 
-    delete_response = await client.delete(
-        f"/api/v1/roles/{role_id}", headers=owner_headers
-    )
+    delete_response = await client.delete(f"/api/v1/roles/{role_id}", headers=owner_headers)
     assert delete_response.status_code == 400
 
-    members_response = await client.get(
-        f"/api/v1/roles/{role_id}/members", headers=owner_headers
-    )
+    members_response = await client.get(f"/api/v1/roles/{role_id}/members", headers=owner_headers)
     assert members_response.status_code == 200
     members = members_response.json()
     assert len(members) == 1
@@ -215,9 +209,7 @@ async def test_delete_an_empty_custom_role(client: AsyncClient, owner_headers: d
     )
     role_id = create_response.json()["id"]
 
-    delete_response = await client.delete(
-        f"/api/v1/roles/{role_id}", headers=owner_headers
-    )
+    delete_response = await client.delete(f"/api/v1/roles/{role_id}", headers=owner_headers)
     assert delete_response.status_code == 204
 
     get_response = await client.get(f"/api/v1/roles/{role_id}", headers=owner_headers)

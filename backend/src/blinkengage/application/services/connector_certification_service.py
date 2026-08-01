@@ -200,8 +200,7 @@ class ConnectorCertificationService:
 
     def _empty(self, channel: ChannelConfig, ran_at: datetime) -> CertificationReport:
         results = tuple(
-            ScenarioResult(kind=kind, outcome=Outcome.NOT_SUPPORTED)
-            for kind in ScenarioKind
+            ScenarioResult(kind=kind, outcome=Outcome.NOT_SUPPORTED) for kind in ScenarioKind
         )
         return CertificationReport(
             channel_type=channel.channel_type,

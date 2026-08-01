@@ -62,9 +62,7 @@ class TestSecretsAreWriteOnly:
 
         assert full.secret_set == {"client_secret": True}
         assert "client_secret" not in full.values
-        assert a_config(values={"client_id": "abc"}).view().secret_set == {
-            "client_secret": False
-        }
+        assert a_config(values={"client_id": "abc"}).view().secret_set == {"client_secret": False}
 
     def test_saving_the_form_unchanged_does_not_erase_the_secret(self) -> None:
         """The one that matters. The console was never given the secret, so
@@ -231,7 +229,7 @@ class TestTheDescriptorsAndTheEnumAgree:
         assert described == set(PaymentProviderKind)
 
     def test_a_provider_that_cannot_be_connected_explains_why(self) -> None:
-        """"Awaiting integration" with no reason leaves an operator
+        """ "Awaiting integration" with no reason leaves an operator
         wondering whether they typed something wrong."""
         for descriptor in PROVIDERS:
             if not descriptor.has_adapter:

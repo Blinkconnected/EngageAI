@@ -140,9 +140,7 @@ async def _generate_pending_invoices_async() -> int:
             await _engine.dispose()
 
 
-async def _run(
-    session_factory: async_sessionmaker[AsyncSession], report: RunReport
-) -> int:
+async def _run(session_factory: async_sessionmaker[AsyncSession], report: RunReport) -> int:
     backfilled = await _backfill_missing_periods(session_factory, now=datetime.now(UTC))
     report.count("periods_backfilled", backfilled)
 
@@ -219,6 +217,7 @@ async def _run(
     report.count("companies_processed", len(pending))
     report.count("invoices_generated", generated)
     return generated
+
 
 @celery_app.task(name="blinkengage.billing.generate_pending_invoices")  # type: ignore[misc]
 def generate_pending_invoices() -> int:

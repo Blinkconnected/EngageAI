@@ -119,9 +119,7 @@ class TestCompanyOverview:
         suspended = await client.get(
             "/api/v1/platform/companies?status_filter=suspended", headers=headers
         )
-        trial = await client.get(
-            "/api/v1/platform/companies?status_filter=trial", headers=headers
-        )
+        trial = await client.get("/api/v1/platform/companies?status_filter=trial", headers=headers)
 
         assert [row["id"] for row in suspended.json()["items"]] == [company_id]
         assert company_id not in [row["id"] for row in trial.json()["items"]]
@@ -160,8 +158,10 @@ class TestSuspension:
         session_factory = app.state.container.session_factory()
         async with session_factory() as session:
             owner = (
-                await session.execute(select(User).where(User.is_company_owner.is_(True)))
-            ).scalars().first()
+                (await session.execute(select(User).where(User.is_company_owner.is_(True))))
+                .scalars()
+                .first()
+            )
             assert owner is not None
             email = owner.email
             owner.hashed_password = hash_password(_PASSWORD)
@@ -263,8 +263,10 @@ class TestSoftDeletedCompany:
             assert company is not None
             company.deleted_at = datetime.now(UTC)
             owner = (
-                await session.execute(select(User).where(User.is_company_owner.is_(True)))
-            ).scalars().first()
+                (await session.execute(select(User).where(User.is_company_owner.is_(True))))
+                .scalars()
+                .first()
+            )
             assert owner is not None
             email = owner.email
             owner.hashed_password = hash_password(_PASSWORD)

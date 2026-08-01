@@ -177,7 +177,7 @@ class TestWhoDoesNotGetAnInvoice:
     async def test_a_customer_who_signed_up_after_the_month_ended(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"Every customer gets a document" means every customer who *was*
+        """ "Every customer gets a document" means every customer who *was*
         one. Somebody who signed up in August is not sent a bill for July,
         and receiving one would be alarming rather than reassuring."""
         await seed_global(client, await platform_headers(client, app))

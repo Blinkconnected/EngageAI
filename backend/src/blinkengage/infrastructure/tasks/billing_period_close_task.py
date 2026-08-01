@@ -118,9 +118,7 @@ async def _close_due_periods_async() -> int:
                 closed = 0
                 for outcome in outcomes:
                     if not outcome.already_closed:
-                        await summaries.finalize_closed_period(
-                            period_id=outcome.period_id, now=now
-                        )
+                        await summaries.finalize_closed_period(period_id=outcome.period_id, now=now)
                         closed += 1
 
             report.count("companies_processed", len(outcomes))

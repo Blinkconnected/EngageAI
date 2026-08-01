@@ -133,6 +133,4 @@ class TestIsAiAvailableForCompany:
 
     def test_true_when_company_has_its_own_override(self) -> None:
         settings = _settings(ai_provider="disabled")
-        assert (
-            is_ai_available_for_company(settings, {"provider": "openai", "api_key": "k"}) is True
-        )
+        assert is_ai_available_for_company(settings, {"provider": "openai", "api_key": "k"}) is True

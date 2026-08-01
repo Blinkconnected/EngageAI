@@ -135,9 +135,7 @@ def _sla_event(*, company_id: str, conversation_id: str, event_type: str) -> dic
 async def _dispatch_sla(app: Any, event: dict) -> None:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
-        await autopilot_sla_consumer.handle_event(
-            event, session, app.state.container.settings()
-        )
+        await autopilot_sla_consumer.handle_event(event, session, app.state.container.settings())
         await session.commit()
 
 
@@ -354,9 +352,9 @@ class TestNewConversationMode:
         """The pre-existing behavior is now an explicit mode. With it off,
         a brand-new conversation in an autopilot-enabled queue is assigned
         normally instead of being handed to AI."""
-        company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()[
-            "company"
-        ]["id"]
+        company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
+            "id"
+        ]
         await client.patch(
             "/api/v1/company",
             json={

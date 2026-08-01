@@ -82,9 +82,7 @@ async def _retire_stale(session: AsyncSession, *, cutoff: datetime) -> int:
     return int(result.rowcount or 0)
 
 
-async def dispatch_pending(
-    session: AsyncSession, settings: Settings, sender: PushSender
-) -> int:
+async def dispatch_pending(session: AsyncSession, settings: Settings, sender: PushSender) -> int:
     """The testable core — takes an external session and an already-built
     sender, unlike the Celery wrapper below (which builds its own engine
     and cannot be pointed at a test database, and would otherwise need

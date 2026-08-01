@@ -123,7 +123,10 @@ class TestMetering:
         headers = await platform_headers(client, app)
         company_id = await company_id_of(client, owner_headers)
 
-        assert await meter(app, conversation_created(company_id, str(uuid4()), datetime.now(UTC))) == "recorded"
+        assert (
+            await meter(app, conversation_created(company_id, str(uuid4()), datetime.now(UTC)))
+            == "recorded"
+        )
 
         response = await client.get(
             f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
@@ -180,7 +183,9 @@ class TestMetering:
     ) -> None:
         """Not to when the meter got around to reporting it. A redelivery
         three days later must still land in the right month."""
-        headers = await platform_headers(client, app)
+        # Called for its side effect — it provisions the platform admin the
+        # metering path expects to exist. Its headers are not needed here.
+        await platform_headers(client, app)
         company_id = await company_id_of(client, owner_headers)
         earlier = datetime.now(UTC) - timedelta(hours=2)
 
@@ -528,9 +533,7 @@ async def _close_current(client: AsyncClient, headers: dict, company_id: str) ->
         f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
     )
     period_id = current.json()["period"]["id"]
-    closed = await client.post(
-        f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers
-    )
+    closed = await client.post(f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers)
     assert closed.status_code == 200, closed.text
     return str(period_id)
 

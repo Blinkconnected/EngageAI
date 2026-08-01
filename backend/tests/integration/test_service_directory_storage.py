@@ -82,9 +82,7 @@ async def a_service_with_version(
 
 @pytest.mark.asyncio
 class TestAConversationKeepsWhatItStartedWith:
-    async def test_editing_a_service_does_not_move_a_bound_conversation(
-        self, app: Any
-    ) -> None:
+    async def test_editing_a_service_does_not_move_a_bound_conversation(self, app: Any) -> None:
         """The guarantee, through storage. An administrator halving the
         first-response target at noon must not rewrite the deadline of a
         conversation opened that morning."""
@@ -217,9 +215,7 @@ class TestCustomerVersionsAreMintedOnlyWhenTheyShould:
         assert (before.version, after.version) == (1, 2)
         assert after.tier is CustomerTier.VIP
 
-    async def test_returning_to_a_previous_state_reuses_that_version(
-        self, app: Any
-    ) -> None:
+    async def test_returning_to_a_previous_state_reuses_that_version(self, app: Any) -> None:
         """Promoted then demoted reuses the original version rather than
         minting a third identical one. Matched on the fingerprint, not only
         against the newest row."""
@@ -245,9 +241,7 @@ class TestCustomerVersionsAreMintedOnlyWhenTheyShould:
 
         assert back.id == standard.id
 
-    async def test_the_stored_context_reports_whether_it_is_still_current(
-        self, app: Any
-    ) -> None:
+    async def test_the_stored_context_reports_whether_it_is_still_current(self, app: Any) -> None:
         """The fingerprint travels with the context, so the console can
         answer "why is this conversation not being treated as VIP?" without
         a second query."""
@@ -318,7 +312,7 @@ class TestBindingsAreAHistoryNotAPointer:
         assert current.reason is ContextBindingReason.BOUND_AT_START
 
     async def test_rebinding_keeps_the_original(self, app: Any) -> None:
-        """"Moved to another service on the 3rd, by Sara, because the
+        """ "Moved to another service on the 3rd, by Sara, because the
         customer reached the wrong team" is the question this table exists
         to answer. Overwriting would erase it."""
         factory = app.state.container.session_factory()
@@ -404,9 +398,7 @@ async def a_conversation(session: Any, company_id: uuid.UUID) -> uuid.UUID:
         ConversationStatus,
     )
 
-    channel = ChannelConfig(
-        company_id=company_id, channel_type="whatsapp", display_name="WhatsApp"
-    )
+    channel = ChannelConfig(company_id=company_id, channel_type="whatsapp", display_name="WhatsApp")
     session.add(channel)
     await session.flush()
 

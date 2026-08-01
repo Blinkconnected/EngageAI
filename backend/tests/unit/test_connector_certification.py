@@ -82,7 +82,7 @@ class TestWhatIsNotClaimedIsNotCountedAgainstYou:
 
 class TestWhatWasNotRunDoesNotCountForYou:
     def test_a_suite_that_ran_almost_nothing_is_inconclusive(self) -> None:
-        """"96%, Production Ready" from two executed scenarios is a sentence
+        """ "96%, Production Ready" from two executed scenarios is a sentence
         no suite should be able to produce."""
         thin = certify(results(**{"pass": 2, "skipped": 9}))
 
@@ -228,13 +228,16 @@ class TestNothingMessagesARealCustomer:
     def test_everything_that_changes_the_channel_is_declared(self) -> None:
         """Off by default from the other direction: a run that left a working
         channel disconnected would be a diagnostic worse than the problem."""
-        assert frozenset(
-            {
-                ScenarioKind.DISCONNECT,
-                ScenarioKind.RECONNECT,
-                ScenarioKind.TOKEN_REFRESH,
-            }
-        ) == MUTATES_THE_CHANNEL
+        assert (
+            frozenset(
+                {
+                    ScenarioKind.DISCONNECT,
+                    ScenarioKind.RECONNECT,
+                    ScenarioKind.TOKEN_REFRESH,
+                }
+            )
+            == MUTATES_THE_CHANNEL
+        )
 
     def test_no_scenario_is_both(self) -> None:
         """A scenario needing two different opt-ins is one whose guard

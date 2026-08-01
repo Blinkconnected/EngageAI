@@ -42,17 +42,13 @@ class TestAccess:
 
 
 class TestReadWrite:
-    async def test_defaults_come_from_the_environment(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_defaults_come_from_the_environment(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
         response = await client.get(SETTINGS, headers=headers)
         assert response.status_code == 200
         assert response.json()["customised"] is False
 
-    async def test_the_password_is_never_returned(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_the_password_is_never_returned(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
         saved = await client.put(SETTINGS, headers=headers, json=VALID)
 
@@ -78,9 +74,7 @@ class TestReadWrite:
         assert updated.json()["host"] == "smtp.changed.test"
         assert updated.json()["password_set"] is True
 
-    async def test_an_empty_password_clears_it(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_an_empty_password_clears_it(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
         await client.put(SETTINGS, headers=headers, json=VALID)
 
@@ -88,9 +82,7 @@ class TestReadWrite:
 
         assert cleared.json()["password_set"] is False
 
-    async def test_reset_falls_back_to_the_environment(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_reset_falls_back_to_the_environment(self, client: AsyncClient, app: Any) -> None:
         """The way back for an operator who has misconfigured the relay
         from the console."""
         headers = await platform_headers(client, app)
@@ -106,9 +98,7 @@ class TestReadWrite:
         saved = await client.put(SETTINGS, headers=headers, json=VALID)
         assert saved.json()["updated_by_email"]
 
-    async def test_a_bad_sender_address_is_refused(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_bad_sender_address_is_refused(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
         response = await client.put(
             SETTINGS, headers=headers, json={**VALID, "from_address": "not-an-address"}

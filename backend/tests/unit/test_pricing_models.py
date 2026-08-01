@@ -92,9 +92,7 @@ class TestTieredIsTheSameFunction:
 
 class TestIncludedQuantity:
     def test_the_rate_carries_its_own_allowance(self) -> None:
-        result = charge(
-            tiered_terms(included_quantity=Decimal(100)), quantity=Decimal(300)
-        )
+        result = charge(tiered_terms(included_quantity=Decimal(100)), quantity=Decimal(300))
 
         assert result.included_quantity == Decimal("100.000000")
         assert result.billable_quantity == Decimal("200.000000")
@@ -103,9 +101,7 @@ class TestIncludedQuantity:
     def test_a_rate_without_one_falls_back_to_the_metric_default(self) -> None:
         """A rate written before allowances were per-rate must keep charging
         exactly as it did — the code table is still the answer for it."""
-        result = charge(
-            tiered_terms(), quantity=Decimal(300), default_included=Decimal(100)
-        )
+        result = charge(tiered_terms(), quantity=Decimal(300), default_included=Decimal(100))
 
         assert result.included_quantity == Decimal("100.000000")
         assert result.billable_quantity == Decimal("200.000000")
@@ -153,9 +149,7 @@ class TestMinimumCharge:
         assert result.minimum_applied is False
 
     def test_it_applies_to_a_tiered_rate_too(self) -> None:
-        result = charge(
-            tiered_terms(minimum_charge=Decimal("10")), quantity=Decimal(600)
-        )
+        result = charge(tiered_terms(minimum_charge=Decimal("10")), quantity=Decimal(600))
 
         assert result.subtotal == Decimal("10.000000")
         assert result.minimum_applied is True
@@ -208,9 +202,7 @@ class TestFixedFee:
         """A fee is not a per-unit price, so reporting a billable quantity
         would invite somebody to multiply by it."""
         result = charge(
-            PricingTerms(
-                model=PricingModel.FIXED_FEE, unit_amount=Decimal("49"), currency="USD"
-            ),
+            PricingTerms(model=PricingModel.FIXED_FEE, unit_amount=Decimal("49"), currency="USD"),
             quantity=Decimal(500),
         )
 
@@ -298,9 +290,7 @@ class TestValidation:
     def test_an_unimplemented_model_is_refused(self) -> None:
         with pytest.raises(PricingModelError, match="not implemented"):
             validate_terms(
-                PricingTerms(
-                    model=PricingModel.PACKAGE, unit_amount=Decimal("1"), currency="USD"
-                )
+                PricingTerms(model=PricingModel.PACKAGE, unit_amount=Decimal("1"), currency="USD")
             )
 
     def test_the_shipped_shapes_validate(self) -> None:
@@ -313,7 +303,5 @@ class TestDescription:
         assert describe(flat_terms()) == "0.05 per unit"
         assert "Volume tiers" in describe(tiered_terms())
         assert "Fixed fee" in describe(
-            PricingTerms(
-                model=PricingModel.FIXED_FEE, unit_amount=Decimal("49"), currency="USD"
-            )
+            PricingTerms(model=PricingModel.FIXED_FEE, unit_amount=Decimal("49"), currency="USD")
         )

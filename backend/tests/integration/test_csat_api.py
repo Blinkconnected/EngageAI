@@ -199,9 +199,7 @@ class TestCsatContext:
         )
         token = _extract_token(link_response.json()["url"])
 
-        response = await client.get(
-            f"/api/v1/csat/{conversation_id}", params={"token": token}
-        )
+        response = await client.get(f"/api/v1/csat/{conversation_id}", params={"token": token})
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["conversation_id"] == conversation_id
@@ -223,9 +221,7 @@ class TestCsatContext:
             json={"email": "customer@example.com"},
         )
 
-        response = await client.get(
-            f"/api/v1/csat/{conversation_id}", params={"token": token}
-        )
+        response = await client.get(f"/api/v1/csat/{conversation_id}", params={"token": token})
         assert response.json()["needs_contact_info"] is False
 
     async def test_already_responded_is_true_after_submitting(
@@ -243,9 +239,7 @@ class TestCsatContext:
             json={"rating": 5},
         )
 
-        response = await client.get(
-            f"/api/v1/csat/{conversation_id}", params={"token": token}
-        )
+        response = await client.get(f"/api/v1/csat/{conversation_id}", params={"token": token})
         assert response.json()["already_responded"] is True
 
     async def test_invalid_token_is_rejected(

@@ -35,11 +35,11 @@ class PlatformProfileResponse(BaseModel):
     deliberately refuses a platform token (it has no company to describe)
     — without this the frontend has no way to tell a platform admin from
     a broken session, and lands them on a blank page."""
+
     #: True when this operator may read but not change. The console
     #: disables its controls and says so — but the server enforces it, and
     #: a disabled button is a courtesy rather than a permission.
     read_only: bool = False
-
 
     model_config = ConfigDict(from_attributes=True)
 

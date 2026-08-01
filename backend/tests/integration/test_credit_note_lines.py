@@ -15,6 +15,7 @@ either holds or does not.
 """
 
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -635,7 +636,8 @@ class TestTheInvariantWithNoConstraintBehindIt:
         line = await line_named(session, invoice, "Billable messages")
 
         for attempt in range(4):
-            try:
+            # Refusals are the point: only the first may land.
+            with suppress(InvoiceStateError):
                 await service.issue_credit_note(
                     invoice_id=invoice.id,
                     selections=[
@@ -643,9 +645,6 @@ class TestTheInvariantWithNoConstraintBehindIt:
                     ],
                     reason=f"Attempt {attempt}",
                 )
-            except InvoiceStateError:
-                # Refusals are the point: only the first may land.
-                pass
 
         await session.refresh(invoice)
         assert invoice.amount_credited <= invoice.total_amount

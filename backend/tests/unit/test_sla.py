@@ -84,7 +84,7 @@ class TestPausingIsTheWholePoint:
         assert later - (NOW + timedelta(hours=3)) == timedelta(minutes=50)
 
     def test_every_pause_reason_has_wording(self) -> None:
-        """"The timer is paused" tells a supervisor nothing. "Paused,
+        """ "The timer is paused" tells a supervisor nothing. "Paused,
         outside business hours" tells them there is nothing to do."""
         for reason in PauseReason:
             assert reason in PAUSE_TEXT
@@ -174,7 +174,7 @@ class TestHealthIsWhatAnAgentSees:
 
 class TestTheTimelineGoesInTheSameLog:
     def test_a_pause_records_its_reason_and_the_new_deadline(self) -> None:
-        """"Why did this deadline change?" is answered by comparing two
+        """ "Why did this deadline change?" is answered by comparing two
         rows, which is why the deadline is on every one."""
         paused = a_clock(
             state=SlaState.PAUSED,
@@ -203,9 +203,7 @@ class TestTheTimelineGoesInTheSameLog:
 
         decision = as_routing_decision(paused, kind=kind, reason=reason, now=NOW)
 
-        assert decision.sentence == (
-            "The first response clock paused: outside business hours."
-        )
+        assert decision.sentence == ("The first response clock paused: outside business hours.")
 
     def test_a_breach_reads_as_one(self) -> None:
         kind, reason = RECORDED_AS[SlaState.BREACHED]

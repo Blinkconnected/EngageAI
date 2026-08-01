@@ -75,7 +75,7 @@ class TestEveryActionIsRecorded:
     async def test_issuing_records_both_states(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"It became issued" does not say what it was beforehand, and
+        """ "It became issued" does not say what it was beforehand, and
         that difference is what a dispute turns on."""
         headers = await platform_headers(client, app)
         await seed_global(client, headers)
@@ -254,9 +254,7 @@ class TestCorrelation:
 
         assert response.headers[CORRELATION_HEADER]
 
-    async def test_a_supplied_correlation_id_is_kept(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_supplied_correlation_id_is_kept(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
 
         response = await client.get(
@@ -290,7 +288,7 @@ class TestActor:
     async def test_a_scheduled_sweep_is_recorded_as_the_system(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"Nobody did this, a job did" is a real and distinct answer
+        """ "Nobody did this, a job did" is a real and distinct answer
         from "we don't know who"."""
         from blinkengage.infrastructure.database.models.invoicing import Invoice
 
@@ -389,16 +387,16 @@ class TestImmutability:
 
         for method in ("post", "put", "patch", "delete"):
             response = await getattr(client, method)(
-                "/api/v1/platform/invoices/audit", headers=headers, **({"json": {}} if method != "delete" else {})
+                "/api/v1/platform/invoices/audit",
+                headers=headers,
+                **({"json": {}} if method != "delete" else {}),
             )
             assert response.status_code in (404, 405), method
 
     async def test_a_tenant_cannot_read_the_financial_trail(
         self, client: AsyncClient, owner_headers: dict
     ) -> None:
-        response = await client.get(
-            "/api/v1/platform/invoices/audit", headers=owner_headers
-        )
+        response = await client.get("/api/v1/platform/invoices/audit", headers=owner_headers)
 
         assert response.status_code == 403
 
@@ -419,9 +417,7 @@ async def test_the_trail_survives_the_document_being_investigated(
         events = (
             (
                 await session.execute(
-                    select(FinancialAuditEvent).where(
-                        FinancialAuditEvent.entity_id == uuid4()
-                    )
+                    select(FinancialAuditEvent).where(FinancialAuditEvent.entity_id == uuid4())
                 )
             )
             .scalars()
@@ -436,9 +432,7 @@ async def test_the_trail_survives_the_document_being_investigated(
         assert event["entity_type"] == "invoice"
 
 
-async def _record_payment(
-    client: AsyncClient, headers: dict, company_id: str, amount: str
-) -> dict:
+async def _record_payment(client: AsyncClient, headers: dict, company_id: str, amount: str) -> dict:
     response = await client.post(
         "/api/v1/platform/invoices/payments",
         json={

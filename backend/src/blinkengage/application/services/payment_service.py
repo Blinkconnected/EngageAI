@@ -710,17 +710,13 @@ class PaymentService:
         outstanding = await self._ledger.account_balance(
             LedgerAccount.ACCOUNTS_RECEIVABLE, company_id=invoice.company_id
         )
-        document_outstanding = (
-            invoice.total_amount - invoice.amount_paid - invoice.amount_credited
-        )
+        document_outstanding = invoice.total_amount - invoice.amount_paid - invoice.amount_credited
         # Bounded by the invoice, not by the company's whole receivable:
         # writing off "everything outstanding" when the operator named one
         # invoice would quietly clear the others too.
         amount = min(document_outstanding, outstanding) if outstanding > zero() else zero()
         if amount <= zero():
-            raise PaymentProcessingError(
-                "That invoice has nothing outstanding to write off."
-            )
+            raise PaymentProcessingError("That invoice has nothing outstanding to write off.")
 
         invoice.written_off_at = datetime.now(UTC)
         await self._ledger.record(
@@ -731,8 +727,7 @@ class PaymentService:
             reference_id=invoice_id,
             reference_number=invoice.invoice_number,
             description=(
-                f"Receivable on {invoice.invoice_number or 'an invoice'} "
-                f"written off: {reason}"
+                f"Receivable on {invoice.invoice_number or 'an invoice'} " f"written off: {reason}"
             ),
             currency=invoice.currency,
         )

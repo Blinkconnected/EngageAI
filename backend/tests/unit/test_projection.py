@@ -40,8 +40,7 @@ def at(day: int, hour: int = 12) -> datetime:
 def inputs(costs: dict[int, str], *, now: datetime) -> ProjectionInput:
     return ProjectionInput(
         daily=tuple(
-            DailyCost(day=date(2026, 6, day), cost=Decimal(value))
-            for day, value in costs.items()
+            DailyCost(day=date(2026, 6, day), cost=Decimal(value)) for day, value in costs.items()
         ),
         period_start=START,
         period_end=END,
@@ -118,9 +117,7 @@ class TestDailyAverage:
         assert result.actual_to_date == Decimal("91")
 
     def test_no_complete_days_is_an_answer_not_a_zero(self) -> None:
-        result = project(
-            inputs({1: "5"}, now=at(1)), strategy=ProjectionStrategy.DAILY_AVERAGE
-        )
+        result = project(inputs({1: "5"}, now=at(1)), strategy=ProjectionStrategy.DAILY_AVERAGE)
 
         assert isinstance(result, NoProjection)
         assert result.reason is ProjectionUnavailable.NO_COMPLETE_DAYS
@@ -142,9 +139,7 @@ class TestRollingSevenDay:
         tripled its volume last week should not be projected from the
         fortnight before it."""
         costs = {**{day: "10" for day in range(1, 8)}, **{day: "40" for day in range(8, 15)}}
-        result = project(
-            inputs(costs, now=at(15)), strategy=ProjectionStrategy.ROLLING_7_DAY
-        )
+        result = project(inputs(costs, now=at(15)), strategy=ProjectionStrategy.ROLLING_7_DAY)
 
         assert isinstance(result, Projection)
         assert result.days_measured == ROLLING_WINDOW_DAYS
@@ -206,17 +201,13 @@ class TestLinearPace:
     def test_refuses_to_project_from_two_hours(self) -> None:
         """Dividing by two hours of a 30-day month multiplies whatever
         happened by ~360 — not wrong so much as meaningless."""
-        result = project(
-            inputs({1: "5"}, now=at(1, 2)), strategy=ProjectionStrategy.LINEAR_PACE
-        )
+        result = project(inputs({1: "5"}, now=at(1, 2)), strategy=ProjectionStrategy.LINEAR_PACE)
 
         assert isinstance(result, NoProjection)
         assert result.reason is ProjectionUnavailable.TOO_EARLY
 
     def test_no_usage_yields_no_projection(self) -> None:
-        result = project(
-            inputs({}, now=at(15)), strategy=ProjectionStrategy.LINEAR_PACE
-        )
+        result = project(inputs({}, now=at(15)), strategy=ProjectionStrategy.LINEAR_PACE)
         assert isinstance(result, NoProjection)
         assert result.reason is ProjectionUnavailable.NO_USAGE
 

@@ -76,9 +76,7 @@ async def seed_tiered_global(client: AsyncClient, app: Any, headers: dict) -> No
 async def events_for(app: Any) -> list[BillableEvent]:
     session_factory = app.state.container.session_factory()
     async with session_factory() as session:
-        result = await session.execute(
-            select(BillableEvent).order_by(BillableEvent.occurred_at)
-        )
+        result = await session.execute(select(BillableEvent).order_by(BillableEvent.occurred_at))
         return list(result.scalars().all())
 
 
@@ -219,9 +217,7 @@ class TestWhatIsCharged:
 
         await meter(
             app,
-            inbound_message(
-                company_id, str(uuid.uuid4()), datetime.now(UTC), channel_type=channel
-            ),
+            inbound_message(company_id, str(uuid.uuid4()), datetime.now(UTC), channel_type=channel),
         )
 
         assert await usage_quantity(app) == Decimal("1.000000")
@@ -237,9 +233,7 @@ class TestWhatIsCharged:
 
         await meter(
             app,
-            inbound_message(
-                company_id, str(uuid.uuid4()), datetime.now(UTC), message_type="media"
-            ),
+            inbound_message(company_id, str(uuid.uuid4()), datetime.now(UTC), message_type="media"),
         )
 
         assert await usage_quantity(app) == Decimal("1.000000")
@@ -374,9 +368,7 @@ class TestVolumeTiers:
         company_id = await company_id_of(client, owner_headers)
         await _send(app, company_id, count=150)
 
-        estimate = (
-            await client.get("/api/v1/billing/estimate", headers=owner_headers)
-        ).json()
+        estimate = (await client.get("/api/v1/billing/estimate", headers=owner_headers)).json()
 
         assert estimate["month_to_date"][0]["unit_amount"] == "0.002000"
         assert estimate["month_to_date"][0]["included_quantity"] == "100.000000"
@@ -408,9 +400,7 @@ class TestVolumeTiers:
         assert first["month_to_date"][0]["unit_amount"] == "0.002000"
 
         await _send(app, company_id, count=200, offset=150)
-        immediate = (
-            await client.get("/api/v1/billing/estimate", headers=owner_headers)
-        ).json()
+        immediate = (await client.get("/api/v1/billing/estimate", headers=owner_headers)).json()
         assert immediate["month_to_date"][0]["quantity"] == "150.000000", "still fresh"
 
         session_factory = app.state.container.session_factory()
@@ -468,7 +458,7 @@ class TestChannelAnalytics:
     async def test_it_breaks_them_down_by_who_sent_them(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"How much of our traffic is the AI doing?" — a question about the
+        """ "How much of our traffic is the AI doing?" — a question about the
         product, answerable without the answer changing anybody's bill."""
         headers = await platform_headers(client, app)
         await seed_tiered_global(client, app, headers)
@@ -476,12 +466,8 @@ class TestChannelAnalytics:
         at = datetime.now(UTC) - timedelta(hours=1)
 
         await meter(app, inbound_message(company_id, str(uuid.uuid4()), at))
-        await meter(
-            app, outbound_message(company_id, str(uuid.uuid4()), at, is_ai_generated=True)
-        )
-        await meter(
-            app, outbound_message(company_id, str(uuid.uuid4()), at, is_ai_assisted=True)
-        )
+        await meter(app, outbound_message(company_id, str(uuid.uuid4()), at, is_ai_generated=True))
+        await meter(app, outbound_message(company_id, str(uuid.uuid4()), at, is_ai_assisted=True))
         await meter(app, outbound_message(company_id, str(uuid.uuid4()), at))
 
         body = (await client.get("/api/v1/billing/dashboard", headers=owner_headers)).json()
@@ -506,22 +492,16 @@ async def _send(app: Any, company_id: str, *, count: int, offset: int = 0) -> No
     for index in range(offset, offset + count):
         await meter(
             app,
-            inbound_message(
-                company_id, str(uuid.uuid5(uuid.NAMESPACE_URL, f"msg:{index}")), at
-            ),
+            inbound_message(company_id, str(uuid.uuid5(uuid.NAMESPACE_URL, f"msg:{index}")), at),
         )
 
 
 async def _close(client: AsyncClient, headers: dict, company_id: str) -> str:
     current = (
-        await client.get(
-            f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
-        )
+        await client.get(f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers)
     ).json()
     period_id = current["period"]["id"]
-    closed = await client.post(
-        f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers
-    )
+    closed = await client.post(f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers)
     assert closed.status_code == 200, closed.text
     return str(period_id)
 

@@ -78,7 +78,7 @@ class TestAConversationKeepsWhatItStartedWith:
         assert is_stale(binding, current_version=3) is False
 
     def test_rebinding_is_recorded_as_a_deliberate_act(self) -> None:
-        """"Unless an administrator explicitly re-routes them" — so the
+        """ "Unless an administrator explicitly re-routes them" — so the
         reason distinguishes a conversation that was moved from one that
         simply started here."""
         rebound = ContextBinding(

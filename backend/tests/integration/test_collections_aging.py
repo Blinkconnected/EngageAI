@@ -112,9 +112,7 @@ async def dinar_invoice(client: AsyncClient, headers: dict, app: Any, *, email: 
     )
     period_id = current.json()["period"]["id"]
     await client.post(f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers)
-    detail = await client.post(
-        f"/api/v1/platform/invoices/generate/{period_id}", headers=headers
-    )
+    detail = await client.post(f"/api/v1/platform/invoices/generate/{period_id}", headers=headers)
     invoice_id = detail.json()["invoice"]["id"]
     issued = await client.post(f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers)
     assert issued.status_code == 200, issued.text
@@ -152,9 +150,9 @@ class TestBucketing:
         assert Decimal(bucket(body, "USD", "days_31_60")["amount_outstanding"]) == (
             DOLLAR_INVOICE_TOTAL
         )
-        assert [
-            row["bucket"] for row in books(body, "USD")["buckets"] if row["invoice_count"]
-        ] == ["days_31_60"]
+        assert [row["bucket"] for row in books(body, "USD")["buckets"] if row["invoice_count"]] == [
+            "days_31_60"
+        ]
         assert books(body, "USD")["invoice_count"] == 1
 
     async def test_every_bucket_is_reported_even_when_it_is_empty(
@@ -273,9 +271,9 @@ class TestWrittenOffDebtIsNotAged:
         invoice = await dollar_invoice(client, headers, app, company_id, days_overdue=120)
 
         before = await report(client, headers)
-        assert bucket(before, "USD", "days_90_plus")["invoice_count"] == 1, (
-            "the fixture must actually be aged before the write-off means anything"
-        )
+        assert (
+            bucket(before, "USD", "days_90_plus")["invoice_count"] == 1
+        ), "the fixture must actually be aged before the write-off means anything"
 
         written = await client.post(
             f"/api/v1/platform/ledger/write-offs/{invoice['id']}",
@@ -355,8 +353,7 @@ class TestNothingIsSummedAcrossCurrencies:
 
         assert isinstance(books(body, "USD")["total_outstanding"], str)
         assert all(
-            isinstance(row["amount_outstanding"], str)
-            for row in books(body, "USD")["buckets"]
+            isinstance(row["amount_outstanding"], str) for row in books(body, "USD")["buckets"]
         )
 
 
@@ -381,7 +378,7 @@ class TestScoping:
     async def test_an_unknown_company_is_a_404_not_an_empty_report(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"Owes nothing" and "no such company" are different answers, and
+        """ "Owes nothing" and "no such company" are different answers, and
         only one of them means the operator should check the id they
         pasted."""
         headers = await platform_headers(client, app)

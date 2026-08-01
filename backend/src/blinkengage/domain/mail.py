@@ -90,9 +90,7 @@ def from_stored(stored: dict[str, Any] | None, *, defaults: MailConfig) -> MailC
     return MailConfig(
         host=str(stored.get("host") or defaults.host),
         port=int(stored.get("port") or defaults.port),
-        security=(
-            MailSecurity(security) if security in set(MailSecurity) else defaults.security
-        ),
+        security=(MailSecurity(security) if security in set(MailSecurity) else defaults.security),
         from_address=str(stored.get("from_address") or defaults.from_address),
         from_name=str(stored.get("from_name") or defaults.from_name),
         username=_optional(stored, "username", defaults.username),

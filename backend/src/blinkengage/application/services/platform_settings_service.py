@@ -65,9 +65,7 @@ def environment_mail_config(settings: Settings) -> MailConfig:
 
 
 class PlatformSettingsService:
-    def __init__(
-        self, *, repository: PlatformSettingsRepository, settings: Settings
-    ) -> None:
+    def __init__(self, *, repository: PlatformSettingsRepository, settings: Settings) -> None:
         self._repository = repository
         self._settings = settings
 
@@ -113,9 +111,7 @@ class PlatformSettingsService:
         """
         return await self._repository.get(SMTP_KEY) is not None
 
-    async def save_mail_config(
-        self, config: MailConfig, *, actor_email: str | None
-    ) -> MailConfig:
+    async def save_mail_config(self, config: MailConfig, *, actor_email: str | None) -> MailConfig:
         """Stores the relay configuration.
 
         A ``None`` password is preserved from what is already stored,

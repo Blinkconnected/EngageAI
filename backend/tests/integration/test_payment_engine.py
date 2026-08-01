@@ -83,9 +83,7 @@ class StubProvider:
         )
 
     async def get_intent(self, provider_reference: str) -> ProviderIntent:
-        return ProviderIntent(
-            provider_reference=provider_reference, status=self.order_status
-        )
+        return ProviderIntent(provider_reference=provider_reference, status=self.order_status)
 
     async def refund(self, **kwargs: Any) -> ProviderRefund:
         if self.refund_fails:
@@ -156,9 +154,7 @@ class TestCheckout:
             json={"provider": "paypal"},
         )
 
-        detail = await client.get(
-            f"/api/v1/platform/invoices/{invoice['id']}", headers=headers
-        )
+        detail = await client.get(f"/api/v1/platform/invoices/{invoice['id']}", headers=headers)
         assert Decimal(detail.json()["invoice"]["amount_paid"]) == Decimal("0")
         assert detail.json()["invoice"]["status"] == "issued"
 
@@ -214,9 +210,7 @@ class TestCapture:
         company_id = await company_id_of(client, owner_headers)
         invoice, _ = await paid_invoice(client, headers, app, company_id, gateway)
 
-        detail = await client.get(
-            f"/api/v1/platform/invoices/{invoice['id']}", headers=headers
-        )
+        detail = await client.get(f"/api/v1/platform/invoices/{invoice['id']}", headers=headers)
         body = detail.json()
         assert body["invoice"]["status"] == "paid"
         assert Decimal(body["invoice"]["amount_paid"]) == Decimal(invoice["total_amount"])
@@ -238,12 +232,8 @@ class TestCapture:
 
         assert redelivered.status_code == 200
         assert len(gateway.captures) == 1, "the provider was called a second time"
-        detail = await client.get(
-            f"/api/v1/platform/invoices/{invoice['id']}", headers=headers
-        )
-        assert Decimal(detail.json()["invoice"]["amount_paid"]) == Decimal(
-            invoice["total_amount"]
-        )
+        detail = await client.get(f"/api/v1/platform/invoices/{invoice['id']}", headers=headers)
+        assert Decimal(detail.json()["invoice"]["amount_paid"]) == Decimal(invoice["total_amount"])
 
     async def test_a_declined_capture_leaves_the_invoice_unpaid(
         self, client: AsyncClient, owner_headers: dict, app: Any, gateway: StubProvider
@@ -261,8 +251,7 @@ class TestCapture:
         gateway.capture_fails = True
 
         failed = await client.post(
-            f"/api/v1/platform/payments/capture/paypal/"
-            f"{checkout.json()['provider_reference']}",
+            f"/api/v1/platform/payments/capture/paypal/" f"{checkout.json()['provider_reference']}",
             headers=headers,
         )
 
@@ -271,16 +260,14 @@ class TestCapture:
         # discard the reason the customer needs.
         assert failed.status_code == 200
         assert failed.json()["status"] == "failed"
-        detail = await client.get(
-            f"/api/v1/platform/invoices/{invoice['id']}", headers=headers
-        )
+        detail = await client.get(f"/api/v1/platform/invoices/{invoice['id']}", headers=headers)
         assert detail.json()["invoice"]["status"] == "issued"
         assert Decimal(detail.json()["invoice"]["amount_paid"]) == Decimal("0")
 
     async def test_the_failure_reason_is_kept_in_the_providers_words(
         self, client: AsyncClient, owner_headers: dict, app: Any, gateway: StubProvider
     ) -> None:
-        """"INSTRUMENT_DECLINED" tells a customer what to fix. "failed"
+        """ "INSTRUMENT_DECLINED" tells a customer what to fix. "failed"
         tells them nothing."""
         headers = await platform_headers(client, app)
         await seed_global(client, headers, amount="0.050000")
@@ -293,9 +280,7 @@ class TestCapture:
             json={"provider": "paypal"},
         )
         gateway.capture_fails = True
-        await client.post(
-            "/api/v1/platform/payments/capture/paypal/ORDER-1", headers=headers
-        )
+        await client.post("/api/v1/platform/payments/capture/paypal/ORDER-1", headers=headers)
 
         intents = await client.get(
             f"/api/v1/platform/payments/intents/{company_id}", headers=headers
@@ -421,9 +406,7 @@ class TestReversal:
         assert reopened["reason"] == "Chargeback 4021."
 
     @staticmethod
-    async def _allocation_id(
-        client: AsyncClient, headers: dict, invoice_id: str, app: Any
-    ) -> str:
+    async def _allocation_id(client: AsyncClient, headers: dict, invoice_id: str, app: Any) -> str:
         from blinkengage.infrastructure.database.models.invoicing import PaymentAllocation
 
         async with app.state.container.session_factory()() as session:
@@ -465,9 +448,7 @@ class TestRefunds:
         await seed_global(client, headers, amount="0.050000")
         company_id = await company_id_of(client, owner_headers)
         invoice, _ = await paid_invoice(client, headers, app, company_id, gateway)
-        allocation_id = await TestReversal._allocation_id(
-            client, headers, invoice["id"], app
-        )
+        allocation_id = await TestReversal._allocation_id(client, headers, invoice["id"], app)
         await client.post(
             f"/api/v1/platform/payments/allocations/{allocation_id}/reverse",
             headers=headers,
@@ -492,9 +473,7 @@ class TestRefunds:
         await seed_global(client, headers, amount="0.050000")
         company_id = await company_id_of(client, owner_headers)
         invoice, _ = await paid_invoice(client, headers, app, company_id, gateway)
-        allocation_id = await TestReversal._allocation_id(
-            client, headers, invoice["id"], app
-        )
+        allocation_id = await TestReversal._allocation_id(client, headers, invoice["id"], app)
         await client.post(
             f"/api/v1/platform/payments/allocations/{allocation_id}/reverse",
             headers=headers,
@@ -525,9 +504,7 @@ class TestRefunds:
         await seed_global(client, headers, amount="0.050000")
         company_id = await company_id_of(client, owner_headers)
         invoice, _ = await paid_invoice(client, headers, app, company_id, gateway)
-        allocation_id = await TestReversal._allocation_id(
-            client, headers, invoice["id"], app
-        )
+        allocation_id = await TestReversal._allocation_id(client, headers, invoice["id"], app)
         await client.post(
             f"/api/v1/platform/payments/allocations/{allocation_id}/reverse",
             headers=headers,
@@ -688,8 +665,7 @@ class TestCollections:
             json={"provider": "paypal"},
         )
         await client.post(
-            f"/api/v1/platform/payments/capture/paypal/"
-            f"{checkout.json()['provider_reference']}",
+            f"/api/v1/platform/payments/capture/paypal/" f"{checkout.json()['provider_reference']}",
             headers=headers,
         )
         run = await client.post(
@@ -756,9 +732,7 @@ class TestCollections:
             )
             await session.commit()
 
-        standing = await client.get(
-            "/api/v1/platform/payments/collections/status", headers=headers
-        )
+        standing = await client.get("/api/v1/platform/payments/collections/status", headers=headers)
 
         row = next(r for r in standing.json() if r["company_id"] == company_id)
         assert row["overdue_invoices"] == 1
@@ -956,7 +930,7 @@ class TestSuspensionAccess:
     async def test_the_message_says_what_to_do_about_it(
         self, client: AsyncClient, owner_headers: dict, app: Any
     ) -> None:
-        """"Contact your administrator" is useless advice to the
+        """ "Contact your administrator" is useless advice to the
         administrator, who is the person reading it."""
         from blinkengage.domain.exceptions import CompanyNotActiveError
 
@@ -1237,9 +1211,7 @@ class TestAllocationListing:
             )
             assert allocated.status_code == 200, allocated.text
 
-        first = (
-            await client.get(ALLOCATIONS, headers=headers, params={"limit": 2})
-        ).json()
+        first = (await client.get(ALLOCATIONS, headers=headers, params={"limit": 2})).json()
         second = (
             await client.get(ALLOCATIONS, headers=headers, params={"limit": 2, "offset": 2})
         ).json()

@@ -30,8 +30,7 @@ def test_every_allowed_audio_or_video_type_can_actually_be_played() -> None:
     unplayable = [
         content_type
         for content_type in _allowed()
-        if content_type.startswith(("audio/", "video/"))
-        and not is_inline_renderable(content_type)
+        if content_type.startswith(("audio/", "video/")) and not is_inline_renderable(content_type)
     ]
     assert unplayable == []
 

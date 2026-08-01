@@ -109,9 +109,7 @@ class TestACompanyWithoutADirectoryIsUntouched:
         async with factory() as session:
             await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
-            bindings = (
-                (await session.execute(select(ConversationContextBinding))).scalars().all()
-            )
+            bindings = (await session.execute(select(ConversationContextBinding))).scalars().all()
 
         assert list(bindings) == []
 
@@ -134,8 +132,8 @@ class TestACompanyWithADirectory:
             await session.commit()
 
             binding = (
-                (await session.execute(select(ConversationContextBinding))).scalar_one_or_none()
-            )
+                await session.execute(select(ConversationContextBinding))
+            ).scalar_one_or_none()
             version = await session.get(ServiceVersion, binding.service_version_id)
 
         assert binding is not None
@@ -211,7 +209,7 @@ class TestACompanyWithADirectory:
     async def test_the_stages_that_did_not_decide_are_kept(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """"Why did this go to Billing?" is answered by what the earlier
+        """ "Why did this go to Billing?" is answered by what the earlier
         stages did *not* do as much as by what the winner did. A decision
         holding only the outcome makes the pipeline a black box with a
         receipt."""
@@ -225,9 +223,7 @@ class TestACompanyWithADirectory:
             await a_service(session, company_id, "Support", order=2)
             await session.commit()
 
-            await _ingest(
-                session, company_id=str(company_id), chat=chat, body="about my invoice"
-            )
+            await _ingest(session, company_id=str(company_id), chat=chat, body="about my invoice")
             await session.commit()
             recorded = await decisions(session)
 
@@ -250,17 +246,11 @@ class TestACompanyWithADirectory:
             await a_service(session, company_id, "Support")
             await session.commit()
 
-            await _ingest(
-                session, company_id=str(company_id), chat=chat, external_id="ext-1"
-            )
-            await _ingest(
-                session, company_id=str(company_id), chat=chat, external_id="ext-2"
-            )
+            await _ingest(session, company_id=str(company_id), chat=chat, external_id="ext-1")
+            await _ingest(session, company_id=str(company_id), chat=chat, external_id="ext-2")
             await session.commit()
 
-            bindings = (
-                (await session.execute(select(ConversationContextBinding))).scalars().all()
-            )
+            bindings = (await session.execute(select(ConversationContextBinding))).scalars().all()
             conversations = (await session.execute(select(Conversation))).scalars().all()
 
         assert len(list(conversations)) == 1
@@ -296,9 +286,7 @@ class TestTheServiceOwnsQueueSelection:
             recorded = await decisions(session)
             conversation = (await session.execute(select(Conversation))).scalar_one()
 
-        queue_choice = next(
-            d for d in recorded if d.kind is RoutingDecisionKind.QUEUE_SELECTED
-        )
+        queue_choice = next(d for d in recorded if d.kind is RoutingDecisionKind.QUEUE_SELECTED)
         assert str(conversation.queue_id) == queue_id
         assert queue_choice.reason is RoutingDecisionReason.SERVICE_OWNS_QUEUE
         assert queue_choice.selected_queue_name == "Billing queue"
@@ -346,9 +334,7 @@ class TestTheServiceOwnsQueueSelection:
             recorded = await decisions(session)
             conversation = (await session.execute(select(Conversation))).scalar_one()
 
-        queue_choice = next(
-            d for d in recorded if d.kind is RoutingDecisionKind.QUEUE_SELECTED
-        )
+        queue_choice = next(d for d in recorded if d.kind is RoutingDecisionKind.QUEUE_SELECTED)
         assert str(conversation.queue_id) == rule_queue
         assert queue_choice.reason is RoutingDecisionReason.RULE_MATCHED
 
@@ -408,9 +394,7 @@ class TestThePolicyGateIsRecorded:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             recorded = await decisions(session)
 

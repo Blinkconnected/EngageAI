@@ -52,9 +52,7 @@ async def closed_period_with_usage(
         f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
     )
     period_id = current.json()["period"]["id"]
-    closed = await client.post(
-        f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers
-    )
+    closed = await client.post(f"/api/v1/platform/usage/periods/{period_id}/close", headers=headers)
     assert closed.status_code == 200, closed.text
     return str(period_id)
 
@@ -82,9 +80,7 @@ async def consume_allowance(client: AsyncClient, headers: dict, company_id: str)
 
 
 async def draft_invoice(client: AsyncClient, headers: dict, period_id: str) -> dict:
-    response = await client.post(
-        f"/api/v1/platform/invoices/generate/{period_id}", headers=headers
-    )
+    response = await client.post(f"/api/v1/platform/invoices/generate/{period_id}", headers=headers)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -92,9 +88,7 @@ async def draft_invoice(client: AsyncClient, headers: dict, period_id: str) -> d
 async def issued_invoice(client: AsyncClient, headers: dict, period_id: str) -> dict:
     detail = await draft_invoice(client, headers, period_id)
     invoice_id = detail["invoice"]["id"]
-    response = await client.post(
-        f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers
-    )
+    response = await client.post(f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers)
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -126,9 +120,7 @@ class TestGeneration:
 
         detail = await draft_invoice(client, headers, period_id)
 
-        line = next(
-            line for line in detail["lines"] if line["metric_code"] == BILLABLE_MESSAGE
-        )
+        line = next(line for line in detail["lines"] if line["metric_code"] == BILLABLE_MESSAGE)
         # 100 consumed by the fixture's allowance entry, 4 metered on
         # top. The line shows all three numbers, and the charge is on
         # the billable part alone.
@@ -307,9 +299,7 @@ class TestImmutability:
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice_id = (await issued_invoice(client, headers, period_id))["invoice"]["id"]
 
-        again = await client.post(
-            f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers
-        )
+        again = await client.post(f"/api/v1/platform/invoices/{invoice_id}/issue", headers=headers)
 
         assert again.status_code == 409
         assert "issued" in again.json()["detail"].lower()
@@ -521,9 +511,7 @@ class TestCreditNotes:
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         invoice_id = (await issued_invoice(client, headers, period_id))["invoice"]["id"]
         creditable = (
-            await client.get(
-                f"/api/v1/platform/invoices/{invoice_id}/creditable", headers=headers
-            )
+            await client.get(f"/api/v1/platform/invoices/{invoice_id}/creditable", headers=headers)
         ).json()["lines"][0]
         line_id = creditable["invoice_line_id"]
         # Everything the line has left — a full credit, expressed the only
@@ -668,9 +656,7 @@ async def test_acting_on_an_unknown_invoice_is_a_404(
     assert response.status_code == 404
 
 
-async def _record_payment(
-    client: AsyncClient, headers: dict, company_id: str, amount: str
-) -> dict:
+async def _record_payment(client: AsyncClient, headers: dict, company_id: str, amount: str) -> dict:
     response = await client.post(
         "/api/v1/platform/invoices/payments",
         json={
@@ -685,9 +671,7 @@ async def _record_payment(
     return response.json()
 
 
-async def _pay_in_full(
-    client: AsyncClient, headers: dict, company_id: str, detail: dict
-) -> None:
+async def _pay_in_full(client: AsyncClient, headers: dict, company_id: str, detail: dict) -> None:
     total = detail["invoice"]["total_amount"]
     payment = await _record_payment(client, headers, company_id, total)
     response = await client.post(
@@ -731,9 +715,7 @@ async def test_invoice_lines_never_change_after_generation(
     )
 
     after = (
-        await client.get(
-            f"/api/v1/platform/invoices/{detail['invoice']['id']}", headers=headers
-        )
+        await client.get(f"/api/v1/platform/invoices/{detail['invoice']['id']}", headers=headers)
     ).json()
     assert after["lines"] == before
 
@@ -793,9 +775,9 @@ class TestCancellingAnIssuedInvoiceUnwindsTheLedger:
             json={"reason": "Duplicate of INV-2026-000001."},
         )
 
-        books = (
-            await client.get("/api/v1/platform/ledger/trial-balance", headers=headers)
-        ).json()[0]
+        books = (await client.get("/api/v1/platform/ledger/trial-balance", headers=headers)).json()[
+            0
+        ]
         accounts = {row["account"]: Decimal(row["balance"]) for row in books["accounts"]}
 
         assert accounts["revenue"] == Decimal("0")
@@ -816,9 +798,7 @@ class TestCancellingAnIssuedInvoiceUnwindsTheLedger:
             json={"reason": "Withdrawn."},
         )
 
-        books = (
-            await client.get("/api/v1/platform/ledger/trial-balance", headers=headers)
-        ).json()
+        books = (await client.get("/api/v1/platform/ledger/trial-balance", headers=headers)).json()
         assert all(row["in_balance"] for row in books)
 
     async def test_the_documents_and_the_ledger_agree_afterwards(
@@ -885,9 +865,7 @@ class TestCancellingAnIssuedInvoiceUnwindsTheLedger:
             headers=headers,
             json={
                 "reason": "Two of the four conversations were ours, not theirs.",
-                "lines": [
-                    {"invoice_line_id": line_id, "quantity": "2"}
-                ],
+                "lines": [{"invoice_line_id": line_id, "quantity": "2"}],
             },
         )
         assert credited.status_code in (200, 201), credited.text

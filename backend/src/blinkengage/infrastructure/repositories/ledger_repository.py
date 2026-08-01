@@ -83,8 +83,7 @@ class LedgerRepository:
             # Either side: an account's statement is every movement it
             # took part in, whichever direction.
             stmt = stmt.where(
-                (LedgerEntry.debit_account == account)
-                | (LedgerEntry.credit_account == account)
+                (LedgerEntry.debit_account == account) | (LedgerEntry.credit_account == account)
             )
         if entry_type is not None:
             stmt = stmt.where(LedgerEntry.entry_type == entry_type)

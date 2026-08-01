@@ -1102,9 +1102,7 @@ def get_billing_dashboard_service(
     hardcoded list eventually shows a button that cannot work.
     """
     return BillingDashboardService(
-        billable=BillableEventService(
-            events=BillableEventRepository(session), usage=usage_service
-        ),
+        billable=BillableEventService(events=BillableEventRepository(session), usage=usage_service),
         summaries=BillingSummaryRepository(session),
         summary_service=summary_service,
         periods=BillingPeriodRepository(session),
@@ -1392,6 +1390,7 @@ async def enforce_erp_test_connection_rate_limit(
     await enforce_rate_limit(limiter, str(auth.user_id))
     return auth
 
+
 async def enforce_platform_test_connection_rate_limit(
     platform: Annotated[PlatformContext, Depends(get_platform_auth)],
     redis: Annotated[Redis, Depends(get_redis)],
@@ -1556,9 +1555,7 @@ async def get_media_company_id(
         )
     ).scalar_one_or_none()
     if company_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     return company_id
 
 
@@ -1569,4 +1566,3 @@ def get_platform_settings_service(
     return PlatformSettingsService(
         repository=PlatformSettingsRepository(session), settings=settings
     )
-

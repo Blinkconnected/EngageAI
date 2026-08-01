@@ -192,6 +192,4 @@ async def unregister_device(
     valid token, so nothing would report it, and the next notification
     would arrive on a device whose user has left.
     """
-    await service.unregister(
-        company_id=auth.company_id, user_id=auth.user_id, device_id=device_id
-    )
+    await service.unregister(company_id=auth.company_id, user_id=auth.user_id, device_id=device_id)

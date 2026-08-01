@@ -123,9 +123,7 @@ class TestWhatTheDocumentSays:
         invoice = await an_issued_invoice(client, headers, app, company_id)
         before = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 
@@ -145,9 +143,7 @@ class TestWhatTheDocumentSays:
 
         after = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 
@@ -185,9 +181,7 @@ class TestWhatTheDocumentSays:
 
         text = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 
@@ -208,9 +202,7 @@ class TestWhatItRefuses:
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         draft = (await draft_invoice(client, headers, period_id))["invoice"]
 
-        response = await client.get(
-            f"/api/v1/platform/invoices/{draft['id']}/pdf", headers=headers
-        )
+        response = await client.get(f"/api/v1/platform/invoices/{draft['id']}/pdf", headers=headers)
 
         assert response.status_code == 409
 
@@ -331,9 +323,7 @@ class TestADocumentThatIsNoLongerABill:
 
         text = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 
@@ -358,9 +348,7 @@ class TestADocumentThatIsNoLongerABill:
 
         text = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 
@@ -377,9 +365,7 @@ class TestADocumentThatIsNoLongerABill:
 
         text = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 
@@ -400,9 +386,7 @@ class TestTheIssuerIdentifiesItself:
 
         text = text_of(
             (
-                await client.get(
-                    f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers
-                )
+                await client.get(f"/api/v1/platform/invoices/{invoice['id']}/pdf", headers=headers)
             ).content
         )
 

@@ -133,6 +133,5 @@ class TestStatusPrecedence:
 
     def test_nothing_owed_is_active(self) -> None:
         assert (
-            status_for(has_overdue=False, has_open=False, suspended=False)
-            is BillingStatus.ACTIVE
+            status_for(has_overdue=False, has_open=False, suspended=False) is BillingStatus.ACTIVE
         )

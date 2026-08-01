@@ -255,9 +255,7 @@ class CollectionsService:
         reference_day = today or datetime.now(UTC).date()
         result = CollectionsRun()
 
-        result.marked_overdue = len(
-            await self._invoice_service.mark_overdue(today=reference_day)
-        )
+        result.marked_overdue = len(await self._invoice_service.mark_overdue(today=reference_day))
 
         for invoice in await self._open_invoices():
             if invoice.due_date is None:
@@ -589,9 +587,7 @@ class CollectionsService:
         company and queries per company. It is a page-load-once figure.
         """
         today = datetime.now(UTC).date()
-        rows = await self._session.execute(
-            select(Company).where(Company.deleted_at.is_(None))
-        )
+        rows = await self._session.execute(select(Company).where(Company.deleted_at.is_(None)))
         standings = []
         for company in rows.scalars().all():
             standing = await self._standing(company, today)
@@ -699,9 +695,7 @@ class CollectionsService:
             # "90+ days overdue" would invent a fact the document does not
             # state; ``current`` says only what is known — that it is owed.
             days_overdue = (reference_day - due_date).days if due_date is not None else 0
-            by_bucket = tallies.setdefault(
-                row.currency, {band.bucket: [] for band in AGING_BANDS}
-            )
+            by_bucket = tallies.setdefault(row.currency, {band.bucket: [] for band in AGING_BANDS})
             by_bucket[bucket_for(days_overdue)].append(
                 row.total_amount - row.amount_paid - row.amount_credited
             )

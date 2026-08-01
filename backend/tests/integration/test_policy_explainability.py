@@ -141,7 +141,7 @@ async def a_conversation_row(app: Any, session: Any) -> None:
 
 class TestEnforcementIsAlwaysRecorded:
     async def test_a_denial_is_written_with_its_reason_and_source(self, app: Any) -> None:
-        """"Denied" sends an administrator hunting. The source is what tells
+        """ "Denied" sends an administrator hunting. The source is what tells
         them which screen to open."""
         factory = app.state.container.session_factory()
         async with factory() as session:

@@ -236,9 +236,7 @@ class ChannelConnectService:
             if not session.grant:
                 raise ConnectSessionError("Authorization has not finished yet.")
             return
-        session.inputs = {
-            key: value for key, value in payload.items() if key != "display_name"
-        }
+        session.inputs = {key: value for key, value in payload.items() if key != "display_name"}
         # Discovery is skipped on the form path, so cache what was typed as
         # the whole answer and let verify read it.
 
@@ -246,9 +244,7 @@ class ChannelConnectService:
         chosen = payload.get("selected") or {}
         if not isinstance(chosen, dict) or not any(chosen.values()):
             raise ConnectSessionError("Choose at least one to connect.")
-        session.selected = {
-            name: [str(value) for value in ids] for name, ids in chosen.items()
-        }
+        session.selected = {name: [str(value) for value in ids] for name, ids in chosen.items()}
 
     async def _verify(self, session: ConnectSession) -> None:
         """Run every connector's checks, keeping each finding attributed.

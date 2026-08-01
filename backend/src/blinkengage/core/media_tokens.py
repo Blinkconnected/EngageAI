@@ -62,9 +62,7 @@ class MediaTokenError(Exception):
 
 
 def _signing_key(settings: Settings) -> bytes:
-    return hmac.new(
-        settings.jwt_secret_key.encode(), _KEY_CONTEXT, hashlib.sha256
-    ).digest()
+    return hmac.new(settings.jwt_secret_key.encode(), _KEY_CONTEXT, hashlib.sha256).digest()
 
 
 @dataclass(frozen=True, slots=True)

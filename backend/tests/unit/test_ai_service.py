@@ -320,9 +320,7 @@ class TestSuggestAutopilotReply:
     async def test_handoff_yes_is_respected_even_with_high_confidence(
         self, events: FakeEventPublisher
     ) -> None:
-        provider = FakeAiProvider(
-            "REPLY: I can process that refund.\nCONFIDENCE: 95\nHANDOFF: YES"
-        )
+        provider = FakeAiProvider("REPLY: I can process that refund.\nCONFIDENCE: 95\nHANDOFF: YES")
         service = _service(provider, events)
 
         result = await service.suggest_autopilot_reply(

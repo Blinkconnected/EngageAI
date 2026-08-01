@@ -645,9 +645,7 @@ class InvoiceService:
             reference_entity="payment_allocation",
             reference_id=allocation.id,
             reference_number=invoice.invoice_number,
-            description=(
-                f"Payment applied to {invoice.invoice_number or 'an invoice'}"
-            ),
+            description=(f"Payment applied to {invoice.invoice_number or 'an invoice'}"),
             currency=invoice.currency,
         )
         await self._settle_if_covered(invoice_id, actor_user_id)

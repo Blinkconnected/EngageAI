@@ -102,11 +102,7 @@ async def trial_balance(
     credits. Every entry carries both sides, so this cannot go false
     through normal use — which is exactly why it is worth checking.
     """
-    books = (
-        [await ledger.trial_balance(currency)]
-        if currency
-        else await ledger.trial_balances()
-    )
+    books = [await ledger.trial_balance(currency)] if currency else await ledger.trial_balances()
     return [
         TrialBalanceResponse(
             currency=tb.currency,

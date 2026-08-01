@@ -43,9 +43,7 @@ async def issue_token(app: Any, email: str) -> str:
     """Mints a link the way the service does, without sending mail."""
     raw = generate_token()
     async with app.state.container.session_factory()() as session:
-        user = (
-            await session.execute(select(User).where(User.email == email))
-        ).scalar_one()
+        user = (await session.execute(select(User).where(User.email == email))).scalar_one()
         session.add(
             EmailVerificationToken(
                 user_id=user.id,
@@ -77,9 +75,7 @@ class TestSignup:
             rows = (await session.execute(select(EmailVerificationToken))).scalars().all()
         assert rows
 
-    async def test_the_raw_token_is_never_stored(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_the_raw_token_is_never_stored(self, client: AsyncClient, app: Any) -> None:
         """A verification link is a bearer credential. Only its hash
         exists here, so a database backup is not a way to verify
         somebody else's account."""
@@ -87,16 +83,14 @@ class TestSignup:
         raw = await issue_token(app, "hashed@unverified.example")
         async with app.state.container.session_factory()() as session:
             stored = (
-                await session.execute(select(EmailVerificationToken.token_hash))
-            ).scalars().all()
+                (await session.execute(select(EmailVerificationToken.token_hash))).scalars().all()
+            )
         assert raw not in stored
         assert hash_token(raw) in stored
 
 
 class TestGate:
-    async def test_an_unverified_company_can_sign_in_and_read(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_an_unverified_company_can_sign_in_and_read(self, client: AsyncClient) -> None:
         account = await register(client, owner_email="reader@unverified.example")
         headers = {"Authorization": f"Bearer {account['tokens']['access_token']}"}
 
@@ -117,9 +111,7 @@ class TestGate:
         # — they *are* the administrator.
         assert "Confirm your email" in response.json()["detail"]
 
-    async def test_verifying_lifts_the_gate(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_verifying_lifts_the_gate(self, client: AsyncClient, app: Any) -> None:
         account = await register(client, owner_email="lifted@unverified.example")
         headers = {"Authorization": f"Bearer {account['tokens']['access_token']}"}
         raw = await issue_token(app, "lifted@unverified.example")
@@ -137,9 +129,7 @@ class TestGate:
 
 
 class TestConsumingALink:
-    async def test_an_unknown_token_is_reported_not_raised(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_an_unknown_token_is_reported_not_raised(self, client: AsyncClient) -> None:
         """200, not 404: a 404 would let anybody probe which tokens
         exist."""
         response = await client.get(
@@ -180,10 +170,10 @@ class TestConsumingALink:
         # And it did not verify anything on the way past.
         async with app.state.container.session_factory()() as session:
             company = (
-                await session.execute(
-                    select(Company).where(Company.slug.like("unverified-co%"))
-                )
-            ).scalars().first()
+                (await session.execute(select(Company).where(Company.slug.like("unverified-co%"))))
+                .scalars()
+                .first()
+            )
         assert company is not None and company.verified_at is None
 
 

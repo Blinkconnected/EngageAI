@@ -201,8 +201,6 @@ def _net_of_allowance(
     return net
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class MetricCost:
     """One metric's contribution, quantity and estimated money together.
@@ -555,9 +553,7 @@ class BillingDashboardService:
         period = await self._refresh_if_stale(company_id=company_id, now=moment)
         currency = currency_for(company.billing_currency)
 
-        rows = (
-            await self._summaries.for_period(period.id) if period is not None else []
-        )
+        rows = await self._summaries.for_period(period.id) if period is not None else []
         estimate = self._estimate(
             rows=rows, period=period, now=moment, currency=currency, strategy=strategy
         )
@@ -758,21 +754,15 @@ class BillingDashboardService:
             for dimension, rows in (
                 (
                     "channel",
-                    await self._billable.by_channel(
-                        company_id=company_id, start=start, end=end
-                    ),
+                    await self._billable.by_channel(company_id=company_id, start=start, end=end),
                 ),
                 (
                     "origin",
-                    await self._billable.by_origin(
-                        company_id=company_id, start=start, end=end
-                    ),
+                    await self._billable.by_origin(company_id=company_id, start=start, end=end),
                 ),
                 (
                     "direction",
-                    await self._billable.by_direction(
-                        company_id=company_id, start=start, end=end
-                    ),
+                    await self._billable.by_direction(company_id=company_id, start=start, end=end),
                 ),
             )
             if rows
@@ -1051,9 +1041,7 @@ class BillingDashboardService:
             ),
         ]
 
-        suspends = next(
-            (step for step in DEFAULT_DUNNING_POLICY if step.suspends), None
-        )
+        suspends = next((step for step in DEFAULT_DUNNING_POLICY if step.suspends), None)
         if suspends is not None:
             at = due_on + timedelta(days=suspends.offset_days)
             events.append(
@@ -1207,8 +1195,7 @@ class BillingDashboardService:
                     effective_from=resolved.effective_from if resolved else None,
                     free_allowance=allowance_for(item.metric_code),
                     tiers=tuple(
-                        TierView(up_to=tier.up_to, unit_amount=tier.unit_amount)
-                        for tier in tiers
+                        TierView(up_to=tier.up_to, unit_amount=tier.unit_amount) for tier in tiers
                     ),
                 )
             )
@@ -1247,8 +1234,7 @@ _METHOD_EXPLANATIONS: dict[ProjectionStrategy, str] = {
 
 _UNAVAILABLE_EXPLANATIONS: dict[ProjectionUnavailable, str] = {
     ProjectionUnavailable.NO_COMPLETE_DAYS: (
-        "This billing period has no complete day yet. A projection will appear "
-        "tomorrow."
+        "This billing period has no complete day yet. A projection will appear " "tomorrow."
     ),
     ProjectionUnavailable.TOO_EARLY: (
         "It is too early in the period for a projection to mean anything."
@@ -1429,9 +1415,7 @@ def _status_detail(
 
 #: Named here so the reminder ladder shown on the timeline cannot drift from
 #: the one that actually sends notices.
-DUNNING_STAGES: tuple[DunningStage, ...] = tuple(
-    step.stage for step in DEFAULT_DUNNING_POLICY
-)
+DUNNING_STAGES: tuple[DunningStage, ...] = tuple(step.stage for step in DEFAULT_DUNNING_POLICY)
 
 #: Periods a dashboard read will refresh. A closed period is never
 #: re-priced — see ``BillingSummaryService.refresh_period``.

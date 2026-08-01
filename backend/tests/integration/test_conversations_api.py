@@ -197,9 +197,7 @@ async def test_unread_count_reflects_inbound_messages_and_clears_on_view(
     # someone actually views the conversation's messages.
     assert list_response.json()["items"][0]["unread_count"] == 1
 
-    await client.get(
-        f"/api/v1/conversations/{conversation['id']}/messages", headers=owner_headers
-    )
+    await client.get(f"/api/v1/conversations/{conversation['id']}/messages", headers=owner_headers)
 
     cleared_response = await client.get(
         f"/api/v1/conversations/{conversation['id']}", headers=owner_headers

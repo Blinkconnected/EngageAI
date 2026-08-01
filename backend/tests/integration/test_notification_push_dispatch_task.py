@@ -292,9 +292,7 @@ async def test_delivery_to_one_device_settles_the_notification(
     assert (await _notification(app, notification_id)).push_dispatched_at is not None
 
     async with app.state.container.session_factory()() as session:
-        tokens = [
-            row.token for row in (await session.execute(select(DeviceToken))).scalars().all()
-        ]
+        tokens = [row.token for row in (await session.execute(select(DeviceToken))).scalars().all()]
     assert tokens == ["live-" + "a" * 30]
 
 

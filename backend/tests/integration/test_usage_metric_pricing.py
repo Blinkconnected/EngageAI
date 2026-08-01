@@ -32,9 +32,7 @@ TABLE = [
 ]
 
 
-async def set_global(
-    client: AsyncClient, headers: dict, **body: Any
-) -> Any:
+async def set_global(client: AsyncClient, headers: dict, **body: Any) -> Any:
     payload = {
         "unit_amount": "0.001",
         "effective_from": iso(datetime.now(UTC)),
@@ -89,16 +87,12 @@ class TestTheCatalog:
     def _kinds(self, body: list[dict[str, Any]]) -> dict[str, str]:
         return {item["code"]: item["kind"] for item in body}
 
-    async def test_each_metric_says_how_it_aggregates(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_each_metric_says_how_it_aggregates(self, client: AsyncClient, app: Any) -> None:
         """The billing type, in the sense that decides the arithmetic. A seat
         counted like a message would bill thirty times the seats."""
         headers = await platform_headers(client, app)
 
-        body = (
-            await client.get("/api/v1/platform/pricing/metrics", headers=headers)
-        ).json()
+        body = (await client.get("/api/v1/platform/pricing/metrics", headers=headers)).json()
 
         kinds = self._kinds(body)
         assert kinds["BILLABLE_MESSAGE"] == "counter"
@@ -106,16 +100,12 @@ class TestTheCatalog:
         assert kinds["STORAGE_GB_MONTH"] == "sampled"
         assert kinds["ACTIVE_AGENT"] == "seat"
 
-    async def test_only_the_metered_one_is_priceable(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_only_the_metered_one_is_priceable(self, client: AsyncClient, app: Any) -> None:
         """Declaring a metric is free; pricing one that nothing measures would
         produce a rate that charges nobody and looks like working billing."""
         headers = await platform_headers(client, app)
 
-        body = (
-            await client.get("/api/v1/platform/pricing/metrics", headers=headers)
-        ).json()
+        body = (await client.get("/api/v1/platform/pricing/metrics", headers=headers)).json()
 
         priceable = [item["code"] for item in body if item["is_priceable"]]
         assert priceable == ["BILLABLE_MESSAGE"]
@@ -169,9 +159,7 @@ class TestThePricingModels:
 
 
 class TestWritingARate:
-    async def test_a_flat_rate_is_the_default(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_flat_rate_is_the_default(self, client: AsyncClient, app: Any) -> None:
         """Every rate written before pricing models existed was flat, and
         omitting the field must keep meaning that."""
         headers = await platform_headers(client, app)
@@ -184,9 +172,7 @@ class TestWritingARate:
         assert rate["tiers"] == []
         assert rate["included_quantity"] is None
 
-    async def test_a_tiered_rate_carries_its_table(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_tiered_rate_carries_its_table(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
 
         response = await set_global(
@@ -218,9 +204,7 @@ class TestWritingARate:
 
         assert response.json()["rate"]["included_quantity"] == "250.000000"
 
-    async def test_a_minimum_charge_is_recorded(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_minimum_charge_is_recorded(self, client: AsyncClient, app: Any) -> None:
         headers = await platform_headers(client, app)
 
         response = await set_global(client, headers, minimum_charge="25")
@@ -230,13 +214,11 @@ class TestWritingARate:
     async def test_a_model_that_is_not_enabled_is_refused_with_a_reason(
         self, client: AsyncClient, app: Any
     ) -> None:
-        """"Not yet" and "no such thing" send an operator looking in different
+        """ "Not yet" and "no such thing" send an operator looking in different
         places, so they are different answers."""
         headers = await platform_headers(client, app)
 
-        response = await set_global(
-            client, headers, pricing_model="graduated_tier", tiers=TABLE
-        )
+        response = await set_global(client, headers, pricing_model="graduated_tier", tiers=TABLE)
 
         assert response.status_code == 409, response.text
         assert "not enabled in this release" in response.json()["detail"]
@@ -260,9 +242,7 @@ class TestWritingARate:
         assert response.status_code == 422, response.text
         assert "tier table" in response.json()["detail"]
 
-    async def test_a_flat_rate_with_a_table_is_refused(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_a_flat_rate_with_a_table_is_refused(self, client: AsyncClient, app: Any) -> None:
         """A table that is stored but never applied is a price nobody is
         charged — and the next person to read the row will believe it."""
         headers = await platform_headers(client, app)
@@ -312,7 +292,7 @@ class TestTheAuditTrail:
     async def test_the_table_itself_is_recorded_not_just_that_it_changed(
         self, client: AsyncClient, app: Any
     ) -> None:
-        """"The price changed" is not an answer when the price is a table. An
+        """ "The price changed" is not an answer when the price is a table. An
         operator asking what it was last quarter needs the steps."""
         headers = await platform_headers(client, app)
         await set_global(
@@ -324,9 +304,7 @@ class TestTheAuditTrail:
             minimum_charge="5",
         )
 
-        history = (
-            await client.get("/api/v1/platform/pricing/history", headers=headers)
-        ).json()
+        history = (await client.get("/api/v1/platform/pricing/history", headers=headers)).json()
 
         entry = history[0]
         assert entry["details"]["pricing_model"] == "volume_tier"

@@ -47,7 +47,7 @@ class TestSelection:
         assert index == 1
 
     def test_the_bound_itself_is_inside_its_tier(self) -> None:
-        """"Up to 200" includes 200. A half-open bound here would put 200 in
+        """ "Up to 200" includes 200. A half-open bound here would put 200 in
         the next tier and contradict the sentence the customer was shown."""
         assert select_tier(MESSAGES, Decimal(200))[0].unit_amount == Decimal("0.002")
         assert select_tier(MESSAGES, Decimal(201))[0].unit_amount == Decimal("0.0015")
@@ -275,7 +275,7 @@ class TestGraduatedLadders:
         )
 
     def test_the_allowance_consumes_the_cheapest_brackets_first(self) -> None:
-        """"The first 100 are free, then the ladder starts" — literally what
+        """ "The first 100 are free, then the ladder starts" — literally what
         happens, and what a customer reading the table expects."""
         result = charge_graduated(MESSAGES, quantity=Decimal(300), skip=ALLOWANCE)
 

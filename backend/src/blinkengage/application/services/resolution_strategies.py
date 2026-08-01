@@ -184,9 +184,7 @@ class BusinessRulesStage:
             evidence={"rules_evaluated": len(rules)},
         )
 
-    async def _rules_for(
-        self, services: list[Any]
-    ) -> list[tuple[uuid.UUID, str, dict[str, Any]]]:
+    async def _rules_for(self, services: list[Any]) -> list[tuple[uuid.UUID, str, dict[str, Any]]]:
         """Every active service's rules, in the operator's chosen order.
 
         Read from each service's *current* version. A rule is configuration

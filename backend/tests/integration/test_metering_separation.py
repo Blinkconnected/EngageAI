@@ -59,9 +59,7 @@ PRICING_COLUMNS = frozenset(
 
 async def _close_current(client: AsyncClient, headers: dict, company_id: str) -> str:
     current = (
-        await client.get(
-            f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers
-        )
+        await client.get(f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers)
     ).json()
     period_id = current["period"]["id"]
     response = await client.post(

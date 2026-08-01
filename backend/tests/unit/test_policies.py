@@ -358,9 +358,7 @@ class TestAgentPickup:
     def test_one_already_assigned_names_who_has_it(self) -> None:
         """So the console can say "Sara has this" rather than "unavailable"."""
         agent = uuid.uuid4()
-        execution = an_execution(
-            conversation={"status": "in_progress", "assigned_agent_id": agent}
-        )
+        execution = an_execution(conversation={"status": "in_progress", "assigned_agent_id": agent})
 
         decision = ENGINE.evaluate(Policy.AGENT_PICKUP, execution)
 
@@ -428,9 +426,7 @@ class TestWhatGetsWrittenToTheLog:
         decision = ENGINE.evaluate(
             Policy.AI_ENGAGEMENT,
             an_execution(
-                customer=a_customer(
-                    contact_preference=ContactPreference.NO_AUTOMATED_MESSAGES
-                )
+                customer=a_customer(contact_preference=ContactPreference.NO_AUTOMATED_MESSAGES)
             ),
         )
 
@@ -451,9 +447,7 @@ class TestWhatGetsWrittenToTheLog:
             ENGINE.evaluate(
                 Policy.AI_ENGAGEMENT,
                 an_execution(
-                    customer=a_customer(
-                        contact_preference=ContactPreference.NO_AUTOMATED_MESSAGES
-                    )
+                    customer=a_customer(contact_preference=ContactPreference.NO_AUTOMATED_MESSAGES)
                 ),
             )
         )

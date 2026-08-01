@@ -149,9 +149,7 @@ class TestTheFingerprintMintsVersionsOnlyWhenItShould:
             "contract_id": fingerprint(contract_id=uuid.uuid4()),
             "pricing_profile_id": fingerprint(pricing_profile_id=uuid.uuid4()),
             "segment": fingerprint(segment="enterprise"),
-            "contact_preference": fingerprint(
-                contact_preference=ContactPreference.EMAIL_ONLY
-            ),
+            "contact_preference": fingerprint(contact_preference=ContactPreference.EMAIL_ONLY),
             "preferred_agent_id": fingerprint(preferred_agent_id=uuid.uuid4()),
         }
 

@@ -225,9 +225,7 @@ class ConnectorProfile:
         """
         if self.lifecycle in BLOCKS_NEW_CONNECTIONS or not self.platform_supported:
             return False
-        return self.supports(Capability.OAUTH) or self.supports(
-            Capability.MANUAL_CONFIGURATION
-        )
+        return self.supports(Capability.OAUTH) or self.supports(Capability.MANUAL_CONFIGURATION)
 
     @property
     def warns(self) -> bool:
@@ -266,8 +264,7 @@ def steps_for(
         # connecting to things, and it should be able to say it rather than
         # be bent into the default.
         return tuple(
-            Step(step_id, kind, f"connect.step.{step_id.value}")
-            for step_id, kind in declared
+            Step(step_id, kind, f"connect.step.{step_id.value}") for step_id, kind in declared
         )
 
     oauth = profile.supports(Capability.OAUTH) if using_oauth is None else using_oauth
@@ -275,9 +272,7 @@ def steps_for(
     steps: list[Step] = [Step(StepId.SELECT, StepKind.SELECT, "connect.step.select")]
 
     if oauth:
-        steps.append(
-            Step(StepId.AUTHENTICATE, StepKind.OAUTH_REDIRECT, "connect.step.authorize")
-        )
+        steps.append(Step(StepId.AUTHENTICATE, StepKind.OAUTH_REDIRECT, "connect.step.authorize"))
     elif profile.supports(Capability.MANUAL_CONFIGURATION):
         steps.append(Step(StepId.AUTHENTICATE, StepKind.FORM, "connect.step.credentials"))
 
@@ -285,17 +280,13 @@ def steps_for(
     # names one resource already, so there is no list to choose from — which
     # is why this tests the grant and not only the capability.
     if oauth and profile.supports(Capability.AUTO_DISCOVERY):
-        steps.append(
-            Step(StepId.DISCOVER, StepKind.RESOURCE_PICKER, "connect.step.choose")
-        )
+        steps.append(Step(StepId.DISCOVER, StepKind.RESOURCE_PICKER, "connect.step.choose"))
 
     # Worth a step whenever there is anything to check. A connector with no
     # health check and no webhooks has nothing to report, and a checklist of
     # nothing is a step that only wastes the customer's time.
     if profile.supports(Capability.HEALTH_CHECKS) or profile.supports(Capability.WEBHOOKS):
-        steps.append(
-            Step(StepId.VERIFY, StepKind.CHECKLIST, "connect.step.verify", automatic=True)
-        )
+        steps.append(Step(StepId.VERIFY, StepKind.CHECKLIST, "connect.step.verify", automatic=True))
 
     steps.append(Step(StepId.CONNECT, StepKind.SUMMARY, "connect.step.connect"))
     return tuple(steps)

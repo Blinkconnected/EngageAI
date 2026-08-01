@@ -372,7 +372,7 @@ class TestAudit:
     async def test_the_actor_survives_the_user_being_deleted(
         self, client: AsyncClient, app: Any
     ) -> None:
-        """"Changed by" is a required field of the requirement. A bare
+        """ "Changed by" is a required field of the requirement. A bare
         foreign key would turn every price an ex-operator set into an
         anonymous change, so the identity is stored as a value too."""
         headers = await platform_headers(client, app)
@@ -482,10 +482,8 @@ class TestConcurrencyAndIntegrity:
 
         assert response.status_code == 422
 
-    async def test_a_naive_effective_date_is_refused(
-        self, client: AsyncClient, app: Any
-    ) -> None:
-        """"From 1 August" is a different instant in Auckland and Los
+    async def test_a_naive_effective_date_is_refused(self, client: AsyncClient, app: Any) -> None:
+        """ "From 1 August" is a different instant in Auckland and Los
         Angeles; guessing one would price a 00:30Z conversation
         differently depending on the server."""
         headers = await platform_headers(client, app)
@@ -643,9 +641,7 @@ class TestOneCurrencyPerPriceList:
         )
 
         usd = await client.get("/api/v1/platform/pricing/effective", headers=headers)
-        jod = await client.get(
-            "/api/v1/platform/pricing/effective?currency=JOD", headers=headers
-        )
+        jod = await client.get("/api/v1/platform/pricing/effective?currency=JOD", headers=headers)
 
         assert usd.status_code == 200, usd.text
         assert jod.status_code == 200, jod.text
@@ -654,16 +650,12 @@ class TestOneCurrencyPerPriceList:
         assert jod.json()["items"][0]["unit_amount"] == "0.035000"
         assert jod.json()["items"][0]["currency"] == "JOD"
 
-    async def test_the_response_offers_the_other_lists(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_the_response_offers_the_other_lists(self, client: AsyncClient, app: Any) -> None:
         """So a console can show the choice without keeping its own copy of
         the currency table."""
         headers = await platform_headers(client, app)
 
-        body = (
-            await client.get("/api/v1/platform/pricing/effective", headers=headers)
-        ).json()
+        body = (await client.get("/api/v1/platform/pricing/effective", headers=headers)).json()
 
         assert body["currency"] == "USD"
         assert body["available_currencies"] == ["JOD", "USD"]
@@ -779,12 +771,8 @@ class TestCoverage:
 
         await seed_global(client, headers)
 
-        body = (
-            await client.get("/api/v1/platform/pricing/health", headers=headers)
-        ).json()
-        assert {m["metric_code"]: m["covered"] for m in body["metrics"]} == {
-            BILLABLE_MESSAGE: True
-        }
+        body = (await client.get("/api/v1/platform/pricing/health", headers=headers)).json()
+        assert {m["metric_code"]: m["covered"] for m in body["metrics"]} == {BILLABLE_MESSAGE: True}
         assert body["ok"] is True
 
     async def test_a_dollar_rate_does_not_cover_a_company_billing_in_dinars(
@@ -841,9 +829,7 @@ class TestCoverage:
         headers = await platform_headers(client, app)
         await seed_global(client, headers)
 
-        body = (
-            await client.get("/api/v1/platform/pricing/health", headers=headers)
-        ).json()
+        body = (await client.get("/api/v1/platform/pricing/health", headers=headers)).json()
 
         codes = {m["metric_code"] for m in body["metrics"]}
         assert "PHONE_MINUTE" not in codes, "planned"
@@ -867,9 +853,7 @@ async def _seed_profiles(app: Any) -> None:
             ]
         ):
             session.add(
-                PricingProfile(
-                    key=key, name=name, is_system=is_system, sort_order=order * 10
-                )
+                PricingProfile(key=key, name=name, is_system=is_system, sort_order=order * 10)
             )
         await session.commit()
 

@@ -44,9 +44,7 @@ class AttachmentStore:
             response.close()
             response.release_conn()
 
-    async def download_range(
-        self, *, key: str, offset: int, length: int | None
-    ) -> bytes:
+    async def download_range(self, *, key: str, offset: int, length: int | None) -> bytes:
         """Part of an object, for an HTTP range request.
 
         What makes dragging a video's scrubber work. Without it a browser
@@ -61,9 +59,7 @@ class AttachmentStore:
         return await to_thread.run_sync(self._download_range_sync, key, offset, length)
 
     def _download_range_sync(self, key: str, offset: int, length: int | None) -> bytes:
-        response = self._client.get_object(
-            self._bucket, key, offset=offset, length=length or 0
-        )
+        response = self._client.get_object(self._bucket, key, offset=offset, length=length or 0)
         try:
             return bytes(response.read())
         finally:

@@ -80,9 +80,7 @@ class ConversationSlaClock(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     target_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
 
     #: Time counted so far, excluding every pause.
-    elapsed: Mapped[timedelta] = mapped_column(
-        Interval, nullable=False, default=timedelta
-    )
+    elapsed: Mapped[timedelta] = mapped_column(Interval, nullable=False, default=timedelta)
     #: When the current running period began. ``None`` while paused or
     #: settled.
     running_since: Mapped[datetime | None] = mapped_column(UtcDateTime(), default=None)

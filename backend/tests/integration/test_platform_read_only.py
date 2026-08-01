@@ -32,9 +32,7 @@ READ_ONLY_SAFE_POSTS = _READ_ONLY_SAFE_POSTS
 async def make_read_only(app: Any) -> None:
     async with app.state.container.session_factory()() as session:
         await session.execute(
-            update(User)
-            .where(User.is_platform_admin.is_(True))
-            .values(platform_read_only=True)
+            update(User).where(User.is_platform_admin.is_(True)).values(platform_read_only=True)
         )
         await session.commit()
 
@@ -89,9 +87,7 @@ class TestReadsStayOpen:
 
         assert response.status_code == 200
 
-    async def test_the_profile_reports_read_only(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_the_profile_reports_read_only(self, client: AsyncClient, app: Any) -> None:
         """The console needs to know, so it can disable its controls and
         say why rather than letting somebody fill in a form that will be
         refused."""
@@ -256,9 +252,7 @@ class TestEveryPlatformWriteIsGated:
 
         assert reached == [], "a read-only operator reached a write route"
 
-    async def test_the_refusal_lands_before_the_lookup(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_the_refusal_lands_before_the_lookup(self, client: AsyncClient, app: Any) -> None:
         """403 for an id that does not exist, not 404."""
         headers = await platform_headers(client, app)
         await make_read_only(app)
@@ -271,9 +265,7 @@ class TestEveryPlatformWriteIsGated:
 
         assert response.status_code == 403
 
-    async def test_an_operator_who_may_write_still_can(
-        self, client: AsyncClient, app: Any
-    ) -> None:
+    async def test_an_operator_who_may_write_still_can(self, client: AsyncClient, app: Any) -> None:
         """The gate must refuse the tier, not the route — a guard that blocked
         everybody would pass every assertion above."""
         headers = await platform_headers(client, app)

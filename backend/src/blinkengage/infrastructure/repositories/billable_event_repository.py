@@ -105,9 +105,7 @@ class BillableEventRepository:
             for row in result.all()
         ]
 
-    async def for_period(
-        self, period_id: uuid.UUID, *, limit: int = 500
-    ) -> list[BillableEvent]:
+    async def for_period(self, period_id: uuid.UUID, *, limit: int = 500) -> list[BillableEvent]:
         """The evidence behind a period's charge, newest first.
 
         Limited: a busy month has hundreds of thousands of these, and the

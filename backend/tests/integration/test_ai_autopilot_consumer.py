@@ -115,7 +115,11 @@ async def _create_autopilot_conversation(
         # Sanity check on this helper's own setup, not the thing under test.
         assert conversation.autopilot_active is True
         message = (
-            (await db_session.execute(select(Message).where(Message.conversation_id == conversation.id)))
+            (
+                await db_session.execute(
+                    select(Message).where(Message.conversation_id == conversation.id)
+                )
+            )
             .scalars()
             .one()
         )
@@ -177,7 +181,9 @@ async def test_high_confidence_reply_is_auto_sent(
         reply="We're open 9-5 Monday to Friday.", confidence=90, handoff="NO"
     )
     monkeypatch.setattr(
-        ai_autopilot_consumer, "build_ai_provider_for_company", lambda settings, config: fake_provider
+        ai_autopilot_consumer,
+        "build_ai_provider_for_company",
+        lambda settings, config: fake_provider,
     )
 
     await _dispatch(
@@ -208,10 +214,14 @@ async def test_high_confidence_reply_is_auto_sent(
 async def test_low_confidence_hands_off_without_sending_a_reply(
     client: AsyncClient, owner_headers: dict, app: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    seed = await _create_autopilot_conversation(client, owner_headers, app, confidence_threshold=0.7)
+    seed = await _create_autopilot_conversation(
+        client, owner_headers, app, confidence_threshold=0.7
+    )
     fake_provider = FakeAiProvider(reply="Maybe we're open then?", confidence=40, handoff="NO")
     monkeypatch.setattr(
-        ai_autopilot_consumer, "build_ai_provider_for_company", lambda settings, config: fake_provider
+        ai_autopilot_consumer,
+        "build_ai_provider_for_company",
+        lambda settings, config: fake_provider,
     )
 
     await _dispatch(
@@ -252,7 +262,9 @@ async def test_model_requested_handoff_overrides_high_confidence(
         reply="I can process that refund for you.", confidence=95, handoff="YES"
     )
     monkeypatch.setattr(
-        ai_autopilot_consumer, "build_ai_provider_for_company", lambda settings, config: fake_provider
+        ai_autopilot_consumer,
+        "build_ai_provider_for_company",
+        lambda settings, config: fake_provider,
     )
 
     await _dispatch(
@@ -322,7 +334,9 @@ async def test_redelivery_of_the_same_message_does_not_double_send(
     seed = await _create_autopilot_conversation(client, owner_headers, app)
     fake_provider = FakeAiProvider(reply="We're open 9-5.", confidence=90, handoff="NO")
     monkeypatch.setattr(
-        ai_autopilot_consumer, "build_ai_provider_for_company", lambda settings, config: fake_provider
+        ai_autopilot_consumer,
+        "build_ai_provider_for_company",
+        lambda settings, config: fake_provider,
     )
 
     event = _message_persisted_event(
@@ -388,7 +402,9 @@ async def test_ai_master_switch_turned_off_mid_conversation_hands_off_instead_of
         reply="We're open 9-5 Monday to Friday.", confidence=90, handoff="NO"
     )
     monkeypatch.setattr(
-        ai_autopilot_consumer, "build_ai_provider_for_company", lambda settings, config: fake_provider
+        ai_autopilot_consumer,
+        "build_ai_provider_for_company",
+        lambda settings, config: fake_provider,
     )
 
     await _dispatch(

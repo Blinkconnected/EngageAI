@@ -131,7 +131,7 @@ class TestThePipelineStopsAtTheFirstAnswer:
 
 class TestTheFourOutcomesAreDistinct:
     async def test_skipped_and_continue_are_not_the_same_fact(self) -> None:
-        """"AI was not confident" and "AI is switched off" look identical on
+        """ "AI was not confident" and "AI is switched off" look identical on
         a screen that conflates them, and only one is a configuration
         problem."""
         off = declined(

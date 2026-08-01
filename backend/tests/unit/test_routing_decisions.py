@@ -276,9 +276,7 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
         # Built through the SLA module's own factory, because it owns the
         # wording — the log carries the phrase the clock chose rather than
         # re-rendering it years later in whatever words the code uses then.
-        RoutingDecisionReason.SLA_CLOCK_RUNNING: as_sla_decision(
-            _a_clock(), SlaState.RUNNING
-        ),
+        RoutingDecisionReason.SLA_CLOCK_RUNNING: as_sla_decision(_a_clock(), SlaState.RUNNING),
         RoutingDecisionReason.SLA_CLOCK_PAUSED: as_sla_decision(
             _a_clock(
                 state=SlaState.PAUSED,
@@ -305,14 +303,10 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
             PolicyEngine().evaluate(Policy.ROUTING, _an_execution())
         ),
         RoutingDecisionReason.POLICY_DENIED: as_routing_decision(
-            PolicyEngine().evaluate(
-                Policy.ROUTING, _an_execution(status="closed")
-            )
+            PolicyEngine().evaluate(Policy.ROUTING, _an_execution(status="closed"))
         ),
         RoutingDecisionReason.SERVICE_OWNS_QUEUE: queue_decision(
-            QueueRouting(
-                queue_id=queue_id, reason=RoutingDecisionReason.SERVICE_OWNS_QUEUE
-            ),
+            QueueRouting(queue_id=queue_id, reason=RoutingDecisionReason.SERVICE_OWNS_QUEUE),
             queue_name="Billing queue",
         ),
         # --- Service resolution ---------------------------------------

@@ -1338,7 +1338,6 @@ def _selectable_gateways() -> tuple[_Gateway, ...]:
     )
 
 
-
 def _finding(
     check: str,
     level: str,
@@ -1376,6 +1375,7 @@ def _finding(
         repair_action=repair,
         instructions_key=instructions,
     )
+
 
 def _requires(gateway: _Gateway, name: str) -> bool:
     return any(field.name == name and field.required for field in gateway.fields)
@@ -1456,6 +1456,7 @@ class SmsConnector(Connector):
 
     channel_type = "sms"
     app_key = None
+
     #: The only manifest here that is *computed*, and the reason is the
     #: second plugin level: which fields to ask for depends on which carriers
     #: this build shipped. It is still stable for the life of the process —
@@ -1473,9 +1474,7 @@ class SmsConnector(Connector):
                     kind="select",
                     label_key="connect.sms.gatewayLabel",
                     help_key="connect.sms.gatewayHelp",
-                    options=tuple(
-                        (gateway.name, gateway.label_key) for gateway in gateways
-                    ),
+                    options=tuple((gateway.name, gateway.label_key) for gateway in gateways),
                 ),
                 *_union_credential_specs(gateways),
             )

@@ -342,9 +342,7 @@ class ConnectorManifest:
         never declared means the console may have no copy for it, and the
         customer sees a raw slug at the worst possible moment.
         """
-        return frozenset(
-            code for step in self.verification_steps for code in step.codes
-        )
+        return frozenset(code for step in self.verification_steps for code in step.codes)
 
 
 def blocking(results: tuple[ValidationResult, ...]) -> tuple[ValidationResult, ...]:

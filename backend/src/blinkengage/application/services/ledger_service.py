@@ -109,9 +109,7 @@ class ReconciliationRow:
 
 
 class LedgerService:
-    def __init__(
-        self, *, entries: LedgerRepository, numbers: DocumentNumberRepository
-    ) -> None:
+    def __init__(self, *, entries: LedgerRepository, numbers: DocumentNumberRepository) -> None:
         self._entries = entries
         self._numbers = numbers
 
@@ -236,15 +234,11 @@ class LedgerService:
         The authoritative answer. The invoice columns hold the same
         figure as a projection, and ``reconcile()`` proves they match.
         """
-        return await self.account_balance(
-            LedgerAccount.ACCOUNTS_RECEIVABLE, company_id=company_id
-        )
+        return await self.account_balance(LedgerAccount.ACCOUNTS_RECEIVABLE, company_id=company_id)
 
     async def credit_balance(self, company_id: uuid.UUID) -> Decimal:
         """Money held on the company's behalf and not yet applied."""
-        return await self.account_balance(
-            LedgerAccount.CUSTOMER_CREDIT, company_id=company_id
-        )
+        return await self.account_balance(LedgerAccount.CUSTOMER_CREDIT, company_id=company_id)
 
     async def company_currency(self, company_id: uuid.UUID) -> str:
         """Which currency this company's figures are in.
@@ -321,9 +315,7 @@ class LedgerReconciliation:
         stmt = select(
             Invoice.company_id,
             func.coalesce(
-                func.sum(
-                    Invoice.total_amount - Invoice.amount_paid - Invoice.amount_credited
-                ),
+                func.sum(Invoice.total_amount - Invoice.amount_paid - Invoice.amount_credited),
                 0,
             ),
         ).where(Invoice.status.in_(tuple(OPEN_STATES)))
@@ -371,9 +363,7 @@ class LedgerReconciliation:
                 totals[row[0]] = totals.get(row[0], zero()) + sign * Decimal(str(row[1]))
         return totals
 
-    async def divergences(
-        self, *, company_id: uuid.UUID | None = None
-    ) -> list[ReconciliationRow]:
+    async def divergences(self, *, company_id: uuid.UUID | None = None) -> list[ReconciliationRow]:
         return [row for row in await self.rows(company_id=company_id) if not row.agrees]
 
 

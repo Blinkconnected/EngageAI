@@ -64,9 +64,7 @@ async def test_search_agents_by_name(client: AsyncClient, owner_headers: dict) -
         headers=owner_headers,
     )
 
-    response = await client.get(
-        "/api/v1/agents", params={"search": "alice"}, headers=owner_headers
-    )
+    response = await client.get("/api/v1/agents", params={"search": "alice"}, headers=owner_headers)
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 1

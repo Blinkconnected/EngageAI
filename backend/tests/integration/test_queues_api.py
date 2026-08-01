@@ -28,9 +28,7 @@ async def test_create_duplicate_queue_name_conflicts(
 async def test_create_queue_defaults_autopilot_to_disabled(
     client: AsyncClient, owner_headers: dict
 ) -> None:
-    response = await client.post(
-        "/api/v1/queues", json={"name": "Support"}, headers=owner_headers
-    )
+    response = await client.post("/api/v1/queues", json={"name": "Support"}, headers=owner_headers)
     assert response.status_code == 201, response.text
     assert response.json()["autopilot_enabled"] is False
 

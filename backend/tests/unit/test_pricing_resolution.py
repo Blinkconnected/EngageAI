@@ -210,7 +210,7 @@ class TestEffectiveDating:
         assert resolve(rates, at=AUG).unit_amount == Decimal("0.090")
 
     def test_a_naive_instant_is_refused(self) -> None:
-        """"Effective from 1 August" is a different moment in Auckland
+        """ "Effective from 1 August" is a different moment in Auckland
         and Los Angeles. Guessing one would price a 00:30Z conversation
         differently depending on the server."""
         with pytest.raises(PricingError, match="timezone-aware"):

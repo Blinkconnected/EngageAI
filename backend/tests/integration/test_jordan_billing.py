@@ -27,9 +27,7 @@ JORDAN_SIGNUP = {
 
 
 async def register(client: AsyncClient, app: Any, **overrides: Any) -> dict:
-    response = await client.post(
-        "/api/v1/auth/register", json={**JORDAN_SIGNUP, **overrides}
-    )
+    response = await client.post("/api/v1/auth/register", json={**JORDAN_SIGNUP, **overrides})
     assert response.status_code == 201, response.text
     body = response.json()
     # Verified so the company can act — the gate is covered elsewhere.
@@ -64,9 +62,7 @@ class TestSignup:
     async def test_the_rest_of_the_world_is_billed_in_dollars(
         self, client: AsyncClient, app: Any
     ) -> None:
-        account = await register(
-            client, app, country_code="GB", owner_email="uk@example.example"
-        )
+        account = await register(client, app, country_code="GB", owner_email="uk@example.example")
         assert account["user"]["company"]["billing_currency"] == "USD"
 
     async def test_omitting_the_country_yields_the_default(
@@ -199,9 +195,7 @@ class TestBillingInDinars:
         # 50 billable at 0.035 = 1.750 — and three decimal places survive.
         assert Decimal(detail.json()["invoice"]["total_amount"]) == Decimal("1.75")
 
-        position = await client.get(
-            f"/api/v1/platform/ledger/{company_id}", headers=headers
-        )
+        position = await client.get(f"/api/v1/platform/ledger/{company_id}", headers=headers)
         assert position.json()["currency"] == "JOD"
         assert Decimal(position.json()["outstanding"]) == Decimal("1.75")
 
@@ -298,9 +292,7 @@ class TestBillingInDinars:
                 "received_at": datetime.now(UTC).isoformat(),
             },
         )
-        world = await register(
-            client, app, country_code="US", owner_email="us@example.example"
-        )
+        world = await register(client, app, country_code="US", owner_email="us@example.example")
         await client.post(
             "/api/v1/platform/invoices/payments",
             headers=headers,

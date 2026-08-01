@@ -310,9 +310,7 @@ class TestAzureOpenAiProvider:
             model=None,
         )
 
-    async def test_complete_posts_to_deployment_url(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_complete_posts_to_deployment_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             assert str(request.url) == (
                 "https://my-resource.openai.azure.com/openai/deployments/"

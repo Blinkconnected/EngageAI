@@ -209,9 +209,7 @@ def elapsed_fraction(inputs: ProjectionInput) -> Decimal:
     if total <= 0:
         return zero()
     finished = Decimal(complete_days(inputs))
-    seconds_today = Decimal(
-        inputs.now.hour * 3600 + inputs.now.minute * 60 + inputs.now.second
-    )
+    seconds_today = Decimal(inputs.now.hour * 3600 + inputs.now.minute * 60 + inputs.now.second)
     partial = seconds_today / Decimal(86_400)
     return min(Decimal(1), (finished + partial) / Decimal(total))
 
@@ -276,9 +274,7 @@ def _project_from_average(
     else:
         today_so_far = _costs_by_day(inputs).get(inputs.now.date(), zero())
         projected = (
-            measured_cost
-            + max(today_so_far, average)
-            + multiply(Decimal(remaining - 1), average)
+            measured_cost + max(today_so_far, average) + multiply(Decimal(remaining - 1), average)
         )
 
     return Projection(

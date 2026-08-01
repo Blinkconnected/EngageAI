@@ -15,9 +15,7 @@ from blinkengage.domain.usage import build_snapshot_line
 def flat_terms(unit_amount: Decimal) -> PricingTerms:
     """A flat rate with no allowance of its own, so the metric's default
     applies — which is what these tests are about."""
-    return PricingTerms(
-        model=PricingModel.FLAT, unit_amount=unit_amount, currency="USD"
-    )
+    return PricingTerms(model=PricingModel.FLAT, unit_amount=unit_amount, currency="USD")
 
 
 class TestSplit:

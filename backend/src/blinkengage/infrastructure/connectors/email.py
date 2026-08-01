@@ -484,9 +484,7 @@ class _Smtp:
             use_tls=bool(credentials.get("smtp_use_tls", True)),
             username=str(credentials.get("smtp_username") or ""),
             password=str(credentials.get("smtp_password") or ""),
-            sender=str(
-                credentials.get("from_address", credentials.get("smtp_username", "")) or ""
-            ),
+            sender=str(credentials.get("from_address", credentials.get("smtp_username", "")) or ""),
         )
 
     @property
@@ -627,9 +625,7 @@ async def _probe_smtp(credentials: dict[str, Any]) -> tuple[ValidationResult, ..
             )
         return tuple(outcomes)
 
-    return (
-        ValidationResult(ValidationCode.OK, channel_type="email", params=params),
-    )
+    return (ValidationResult(ValidationCode.OK, channel_type="email", params=params),)
 
 
 def _esmtp_diagnostic(*, esmtp: bool, params: dict[str, str]) -> Diagnostic:
@@ -712,9 +708,7 @@ async def _diagnose_smtp(credentials: dict[str, Any]) -> tuple[Diagnostic, ...]:
             # Read here, inside the session: closing resets the client's
             # record of the greeting, so a version read afterwards would
             # always say the server speaks nothing.
-            protocol = _esmtp_diagnostic(
-                esmtp=client.last_ehlo_response is not None, params=params
-            )
+            protocol = _esmtp_diagnostic(esmtp=client.last_ehlo_response is not None, params=params)
             if not smtp.username:
                 # An unauthenticated relay has no password to verify, and the
                 # row must not imply one was. OK is still the honest status —
@@ -822,16 +816,12 @@ def _inbound_diagnostic(credentials: dict[str, Any]) -> Diagnostic:
     # contributes health and log history, never WEBHOOK_STATUS, and the
     # connector wins the merge regardless. So the honest answer is that the
     # poll has not been observed, with what was configured shown beside it.
-    incomplete = not credentials.get("imap_username") or not credentials.get(
-        "imap_password"
-    )
+    incomplete = not credentials.get("imap_username") or not credentials.get("imap_password")
     return Diagnostic(
         key=DiagnosticKey.WEBHOOK_STATUS,
         status=DiagnosticStatus.WARN if incomplete else DiagnosticStatus.UNKNOWN,
         value=imap_host,
-        detail_key=(
-            _DIAG_INBOUND_INCOMPLETE if incomplete else _DIAG_INBOUND_BY_IMAP_POLL
-        ),
+        detail_key=(_DIAG_INBOUND_INCOMPLETE if incomplete else _DIAG_INBOUND_BY_IMAP_POLL),
         # The folder matters and is easy to get wrong: a poll pointed at a
         # folder the customer's own rules move mail out of finds nothing
         # while every other row stays green.
@@ -863,9 +853,7 @@ def _skipped(kind: ScenarioKind, detail_key: str, **params: str) -> ScenarioResu
     reason, because "skipped" with no reason is indistinguishable from a
     connector that could not be bothered.
     """
-    return ScenarioResult(
-        kind=kind, outcome=Outcome.SKIPPED, detail_key=detail_key, params=params
-    )
+    return ScenarioResult(kind=kind, outcome=Outcome.SKIPPED, detail_key=detail_key, params=params)
 
 
 def _failed(
@@ -1137,9 +1125,9 @@ def _first_line(data: list[Any] | None) -> str:
     if not data or data[0] is None:
         return ""
     answer = data[0]
-    return (
-        answer.decode(errors="replace") if isinstance(answer, bytes) else str(answer)
-    )[:_MAX_DETAIL_CHARS]
+    return (answer.decode(errors="replace") if isinstance(answer, bytes) else str(answer))[
+        :_MAX_DETAIL_CHARS
+    ]
 
 
 def _examine_folder_sync(
@@ -1277,9 +1265,7 @@ class EmailConnector(Connector):
         description_key="connect.email.description",
         category=ConnectorCategory.EMAIL,
         icon="email",
-        capabilities=frozenset(
-            {Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS}
-        ),
+        capabilities=frozenset({Capability.MANUAL_CONFIGURATION, Capability.HEALTH_CHECKS}),
         auth_methods=(AuthMethod.CREDENTIALS,),
         required_credentials=_CREDENTIAL_FIELDS,
         verification_steps=(
@@ -1565,9 +1551,7 @@ class EmailConnector(Connector):
                 # the fall-through of this method must never be a pass.
                 return _skipped(kind, _CERT_PROVIDER_NO_OP)
 
-    async def connect(
-        self, *, company_id: UUID, attempt: Attempt
-    ) -> tuple[Connection, ...]:
+    async def connect(self, *, company_id: UUID, attempt: Attempt) -> tuple[Connection, ...]:
         """Write down the mailbox, and nothing else.
 
         There is no subscription to create, no callback to register and no

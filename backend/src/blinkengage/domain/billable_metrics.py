@@ -399,9 +399,7 @@ def retired_metrics() -> tuple[BillableMetric, ...]:
     """Metrics that were once metered. Surfaced so a console can show a
     company's historical charges with a label rather than an unexplained
     code."""
-    return tuple(
-        metric for metric in METRICS if metric.availability is MetricAvailability.RETIRED
-    )
+    return tuple(metric for metric in METRICS if metric.availability is MetricAvailability.RETIRED)
 
 
 def is_retired(code: str) -> bool:

@@ -85,9 +85,7 @@ async def revenue_overview(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="`since` must fall before `until`.",
         )
-    return RevenueOverviewResponse.model_validate(
-        await service.overview(since=since, until=until)
-    )
+    return RevenueOverviewResponse.model_validate(await service.overview(since=since, until=until))
 
 
 @router.get("/companies/{company_id}/dashboard", response_model=BillingDashboardResponse)
@@ -158,9 +156,7 @@ async def company_invoices(
     ]
 
 
-@router.get(
-    "/companies/{company_id}/standing", response_model=CompanyBillingStatusResponse
-)
+@router.get("/companies/{company_id}/standing", response_model=CompanyBillingStatusResponse)
 async def company_standing(
     company_id: uuid.UUID,
     collections: Annotated[CollectionsService, Depends(get_collections_service)],

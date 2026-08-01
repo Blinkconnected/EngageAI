@@ -85,9 +85,7 @@ class TestTheFlowComesFromCapabilities:
         """Discovery needs something to enumerate *with*. A customer who
         pasted one credential has already named the resource, and showing
         them a picker of one is a step that exists to be clicked past."""
-        both = profile(
-            Capability.OAUTH, Capability.AUTO_DISCOVERY, Capability.MANUAL_CONFIGURATION
-        )
+        both = profile(Capability.OAUTH, Capability.AUTO_DISCOVERY, Capability.MANUAL_CONFIGURATION)
 
         via_oauth = steps_for(both, using_oauth=True)
         via_form = steps_for(both, using_oauth=False)

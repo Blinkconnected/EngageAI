@@ -661,7 +661,7 @@ class TestCsvExport:
 
 
 class TestWhatOwedMeans:
-    """"Outstanding" has to mean the same thing here as everywhere else.
+    """ "Outstanding" has to mean the same thing here as everywhere else.
 
     Three of these documents look like debts if you only subtract paid and
     credited from the total, and none of them is one. Collections, the
@@ -705,9 +705,7 @@ class TestWhatOwedMeans:
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         draft = await draft_invoice(client, headers, period_id)
 
-        body = (
-            await client.get(SEARCH, headers=headers, params={"company_id": company_id})
-        ).json()
+        body = (await client.get(SEARCH, headers=headers, params={"company_id": company_id})).json()
 
         group = group_for(body, "USD")
         assert group["invoice_count"] == 1
@@ -729,9 +727,7 @@ class TestWhatOwedMeans:
         )
         assert cancelled.status_code == 200, cancelled.text
 
-        body = (
-            await client.get(SEARCH, headers=headers, params={"company_id": company_id})
-        ).json()
+        body = (await client.get(SEARCH, headers=headers, params={"company_id": company_id})).json()
 
         assert Decimal(group_for(body, "USD")["amount_outstanding"]) == Decimal("0")
 
@@ -790,9 +786,7 @@ class TestTheExportIsData:
         those two facts combine into code execution on a finance laptop."""
         headers = await platform_headers(client, app)
         await seed_global(client, headers)
-        company_id = await register_company(
-            client, "formula", company_name="=cmd|' /C calc'!A0"
-        )
+        company_id = await register_company(client, "formula", company_name="=cmd|' /C calc'!A0")
         period_id = await closed_period_with_usage(client, headers, app, company_id)
         await issued_invoice(client, headers, period_id)
 

@@ -99,9 +99,7 @@ class TestTheStrategies:
         """Configured to overflow with no lane configured. It waits — but
         it records *why*, because a misconfiguration that behaves exactly
         like the default is one nobody ever finds."""
-        decision = decide(
-            strategy=OverflowStrategy.OVERFLOW_QUEUE, overflow_runtime_queue_id=None
-        )
+        decision = decide(strategy=OverflowStrategy.OVERFLOW_QUEUE, overflow_runtime_queue_id=None)
 
         assert decision.reason is OverflowReason.OVERFLOW_LANE_MISSING
         assert decision.moved is False
@@ -119,9 +117,7 @@ class TestTheStrategies:
     def test_the_ai_policy_overrules_an_ai_strategy(self) -> None:
         """The strategy wants AI; the policy forbids it. The policy is the
         narrower, more deliberate statement, so it wins."""
-        decision = decide(
-            strategy=OverflowStrategy.AI_FIRST, ai_policy=AiOverflowPolicy.NEVER
-        )
+        decision = decide(strategy=OverflowStrategy.AI_FIRST, ai_policy=AiOverflowPolicy.NEVER)
 
         assert decision.reason is OverflowReason.FULL_BUT_WAITING
         assert decision.engage_ai is False

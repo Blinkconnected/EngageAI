@@ -272,9 +272,7 @@ class SlaEngine:
         )
         return result.scalar_one_or_none()
 
-    async def _record(
-        self, row: ConversationSlaClock, state: SlaState, *, now: datetime
-    ) -> Clock:
+    async def _record(self, row: ConversationSlaClock, state: SlaState, *, now: datetime) -> Clock:
         """Writes the transition, and never costs the conversation.
 
         Same tradeoff as every other recorder here: the clock moving is the

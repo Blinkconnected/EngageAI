@@ -53,9 +53,7 @@ class BillingSummaryRepository:
         )
         return list(result.scalars().all())
 
-    async def for_day(
-        self, *, company_id: uuid.UUID, day: date
-    ) -> list[BillingDailySummary]:
+    async def for_day(self, *, company_id: uuid.UUID, day: date) -> list[BillingDailySummary]:
         return await self.between(company_id=company_id, start=day, end=day)
 
     async def existing_keys(
@@ -67,10 +65,7 @@ class BillingSummaryRepository:
         month of rows across every metric, and a query each would make the
         sweep quadratic in period length.
         """
-        return {
-            (row.usage_date, row.metric_code): row
-            for row in await self.for_period(period_id)
-        }
+        return {(row.usage_date, row.metric_code): row for row in await self.for_period(period_id)}
 
     async def refresh_open_day(
         self,

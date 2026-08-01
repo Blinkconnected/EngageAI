@@ -222,7 +222,7 @@ class TestBusinessRules:
         assert result.service_id == billing.id
 
     async def test_a_channel_rule_routes_without_any_text(self, app: Any) -> None:
-        """"WhatsApp goes to Sales" must work for a customer who sent a
+        """ "WhatsApp goes to Sales" must work for a customer who sent a
         photo and no words."""
         factory = app.state.container.session_factory()
         async with factory() as session:
@@ -287,9 +287,7 @@ class TestBusinessRules:
         assert result.outcome is StageOutcome.SKIPPED
         assert result.reason is StageReason.NOT_CONFIGURED
 
-    async def test_a_malformed_rule_set_does_not_take_routing_down(
-        self, app: Any
-    ) -> None:
+    async def test_a_malformed_rule_set_does_not_take_routing_down(self, app: Any) -> None:
         """Stored JSON is not typed. A bad write must not stop every
         conversation for the company."""
         factory = app.state.container.session_factory()
@@ -318,9 +316,7 @@ class TestBusinessRules:
 
 @pytest.mark.asyncio
 class TestFixedAndFallback:
-    async def test_one_active_service_resolves_without_asking_anybody(
-        self, app: Any
-    ) -> None:
+    async def test_one_active_service_resolves_without_asking_anybody(self, app: Any) -> None:
         """The common case at signup. A directory with one entry should
         never be shown to a customer as a choice."""
         factory = app.state.container.session_factory()
@@ -364,16 +360,12 @@ class TestFixedAndFallback:
             await a_service(session, company_id, "Support", order=2)
             await session.commit()
 
-            result = await FallbackStage(ServiceRepository(session)).resolve(
-                a_request(company_id)
-            )
+            result = await FallbackStage(ServiceRepository(session)).resolve(a_request(company_id))
 
         assert result.service_id == first.id
         assert result.reason is StageReason.FALLBACK
 
-    async def test_a_company_with_no_services_is_answered_honestly(
-        self, app: Any
-    ) -> None:
+    async def test_a_company_with_no_services_is_answered_honestly(self, app: Any) -> None:
         """Not invented. The conversation is handled the way it was before
         services existed, and the Inspector says why."""
         factory = app.state.container.session_factory()
@@ -381,9 +373,7 @@ class TestFixedAndFallback:
             company_id = await a_company(session)
             await session.commit()
 
-            result = await FallbackStage(ServiceRepository(session)).resolve(
-                a_request(company_id)
-            )
+            result = await FallbackStage(ServiceRepository(session)).resolve(a_request(company_id))
 
         assert result.outcome is StageOutcome.CONTINUE
         assert result.reason is StageReason.NOT_CONFIGURED

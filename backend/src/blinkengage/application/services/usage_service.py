@@ -237,9 +237,7 @@ class UsageService:
                     },
                 )
             )
-            return RecordOutcome(
-                recorded=False, reason="period_closed", period_id=period.id
-            )
+            return RecordOutcome(recorded=False, reason="period_closed", period_id=period.id)
 
         record = await self._records.add(
             UsageRecord(

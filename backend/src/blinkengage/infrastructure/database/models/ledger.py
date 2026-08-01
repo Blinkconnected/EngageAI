@@ -99,9 +99,7 @@ class LedgerEntry(UUIDPrimaryKeyMixin, Base):
         Enum(LedgerAccount, native_enum=False, length=30), nullable=False
     )
 
-    amount: Mapped[Decimal] = mapped_column(
-        Numeric(PRICE_PRECISION, PRICE_SCALE), nullable=False
-    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(PRICE_PRECISION, PRICE_SCALE), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
 
     #: What caused this — ``invoice``, ``payment``, ``credit_note``,

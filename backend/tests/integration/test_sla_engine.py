@@ -78,9 +78,7 @@ async def sla_rows(session: Any) -> list[RoutingDecisionRecord]:
 
 
 class TestPausingMovesTheDeadlineByExactlyTheWait:
-    async def test_the_customer_thinking_is_not_the_business_being_late(
-        self, app: Any
-    ) -> None:
+    async def test_the_customer_thinking_is_not_the_business_being_late(self, app: Any) -> None:
         """The calculation that matters. Ten minutes of work happened, the
         customer had the ball for three hours, and the business still owes
         fifty minutes — not fifty minus three hours, and not sixty."""
@@ -114,9 +112,7 @@ class TestPausingMovesTheDeadlineByExactlyTheWait:
         assert clock.counted(now=resumed_at) == timedelta(minutes=10)
         assert clock.deadline(now=resumed_at) == resumed_at + timedelta(minutes=50)
 
-    async def test_a_paused_clock_leaves_the_sweep(
-        self, app: Any
-    ) -> None:
+    async def test_a_paused_clock_leaves_the_sweep(self, app: Any) -> None:
         """``due_at`` is cleared rather than left for the sweep to filter,
         so a paused clock cannot be breached by a query that forgot."""
         factory = app.state.container.session_factory()
@@ -187,9 +183,7 @@ class TestPausingMovesTheDeadlineByExactlyTheWait:
 
 
 class TestTheServiceOwnsTheTargets:
-    async def test_a_clock_the_service_does_not_measure_never_starts(
-        self, app: Any
-    ) -> None:
+    async def test_a_clock_the_service_does_not_measure_never_starts(self, app: Any) -> None:
         """A back-office queue that answers when it answers is a real
         configuration. Inventing a deadline for it would put a red row in
         front of an agent for a promise nobody made."""
@@ -366,9 +360,7 @@ class TestEveryMovementIsInTheTimeline:
         # this deadline change?" is answered by comparing two of them.
         assert rows[0].sla_detail["deadline"] != rows[2].sla_detail["deadline"]
 
-    async def test_the_customer_question_travels_with_every_row(
-        self, app: Any
-    ) -> None:
+    async def test_the_customer_question_travels_with_every_row(self, app: Any) -> None:
         """A reader months later should not have to know what
         "next_response" meant in the release that wrote the row."""
         factory = app.state.container.session_factory()
@@ -409,9 +401,7 @@ class TestTheInspectorAnswersTheSixQuestions:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             engine = engine_for(session)
@@ -430,9 +420,7 @@ class TestTheInspectorAnswersTheSixQuestions:
             await session.commit()
 
         body = (
-            await client.get(
-                f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers
-            )
+            await client.get(f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers)
         ).json()
 
         clock = next(c for c in body["clocks"] if c["timer"] == "first_response")
@@ -468,9 +456,7 @@ class TestTheInspectorAnswersTheSixQuestions:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             engine = engine_for(session)
@@ -495,9 +481,7 @@ class TestTheInspectorAnswersTheSixQuestions:
             await session.commit()
 
         body = (
-            await client.get(
-                f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers
-            )
+            await client.get(f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers)
         ).json()
 
         events = [e for e in body["timeline"] if e["timer"] == "resolution"]
@@ -577,9 +561,7 @@ class TestTheClocksRunFromRealEvents:
 
         factory = app.state.container.session_factory()
         async with factory() as session:
-            await _ingest(
-                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
-            )
+            await _ingest(session, company_id=registered_owner["user"]["company"]["id"], chat=chat)
             await session.commit()
             conversation = (await session.execute(select(Conversation))).scalar_one()
             sla = await engine_for(session).read(conversation.id)
@@ -634,9 +616,7 @@ class TestTheClocksRunFromRealEvents:
         assert waiting.status_code == 200
 
         body = (
-            await client.get(
-                f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers
-            )
+            await client.get(f"/api/v1/conversations/{conversation.id}/sla", headers=owner_headers)
         ).json()
 
         first = next(c for c in body["clocks"] if c["timer"] == "first_response")

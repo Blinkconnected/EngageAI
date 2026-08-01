@@ -29,9 +29,7 @@ class RoutingDecisionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def sla_events(
-        self, *, conversation_id: uuid.UUID
-    ) -> list[RoutingDecisionRecord]:
+    async def sla_events(self, *, conversation_id: uuid.UUID) -> list[RoutingDecisionRecord]:
         """Every SLA movement on this conversation, oldest first.
 
         Filtered on ``sla_timer`` rather than on the kinds, so a kind added
@@ -94,9 +92,7 @@ class RoutingDecisionRepository:
                     "question": decision.sla.question,
                     "pause_text": decision.sla.pause_text,
                     "deadline": (
-                        None
-                        if decision.sla.deadline is None
-                        else decision.sla.deadline.isoformat()
+                        None if decision.sla.deadline is None else decision.sla.deadline.isoformat()
                     ),
                     "elapsed_minutes": decision.sla.elapsed_minutes,
                     "target_minutes": decision.sla.target_minutes,

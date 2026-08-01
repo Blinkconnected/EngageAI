@@ -99,9 +99,7 @@ _CREDENTIAL_SCHEMAS: dict[str, type[BaseModel]] = {
 #: inbound message fails its signature check and is silently discarded.
 #: "Verification is green and no messages arrive" is not a diagnosable
 #: symptom, so the value is required up front instead.
-PROVIDER_SIGNED_CHANNELS: frozenset[str] = frozenset(
-    {"whatsapp", "messenger", "instagram"}
-)
+PROVIDER_SIGNED_CHANNELS: frozenset[str] = frozenset({"whatsapp", "messenger", "instagram"})
 
 #: channel_type -> the one credentials field that gets a random value
 #: filled in server-side when the operator leaves it blank, the same way

@@ -126,9 +126,7 @@ class AuthService:
                 slug=slug,
                 status=CompanyStatus.TRIAL,
                 country_code=country.code if country else None,
-                billing_currency=(
-                    country.currency.code if country else DEFAULT_CURRENCY.code
-                ),
+                billing_currency=(country.currency.code if country else DEFAULT_CURRENCY.code),
             )
         )
 

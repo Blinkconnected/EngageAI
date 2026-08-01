@@ -160,7 +160,7 @@ class TestTheComplianceSwitchSurvivedTheMigration:
     async def test_the_refusal_is_recorded_not_merely_a_branch(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """"AI did not answer" sends an administrator hunting through four
+        """ "AI did not answer" sends an administrator hunting through four
         screens. A recorded decision with a source tells them which one."""
         _, rows = await _run(
             client,
@@ -215,7 +215,7 @@ class TestNoProviderIsReportedBeforeAnyChoice:
     async def test_it_outranks_the_autopilot_switches(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """"AI cannot work at all" before "the company chose not to use it
+        """ "AI cannot work at all" before "the company chose not to use it
         here". An administrator told Autopilot is off, who switches it on
         and finds AI still silent, has been sent the wrong way."""
         conversation, rows = await _run(

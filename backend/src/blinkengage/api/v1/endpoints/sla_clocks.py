@@ -79,9 +79,7 @@ def _explain(clock: Clock, *, now: datetime) -> str:
     return f"Running, {minutes} minutes left. ({question})"
 
 
-def _clock(
-    clock: Clock, *, now: datetime, note: str | None, owner_label: str
-) -> ClockResponse:
+def _clock(clock: Clock, *, now: datetime, note: str | None, owner_label: str) -> ClockResponse:
     remaining = clock.remaining(now=now)
     return ClockResponse(
         timer=clock.timer.value,
@@ -89,9 +87,7 @@ def _clock(
         state=clock.state.value,
         target_minutes=clock.target_minutes,
         elapsed_minutes=round(clock.counted(now=now).total_seconds() / 60, 2),
-        remaining_minutes=(
-            None if remaining is None else round(remaining.total_seconds() / 60, 2)
-        ),
+        remaining_minutes=(None if remaining is None else round(remaining.total_seconds() / 60, 2)),
         deadline=clock.deadline(now=now),
         pause_reason=None if clock.pause_reason is None else clock.pause_reason.value,
         pause_text=None if clock.pause_reason is None else PAUSE_TEXT[clock.pause_reason],

@@ -1036,9 +1036,7 @@ class TestLiveDashboard:
 
         assert response.status_code == 200, response.text
         workload = next(
-            row
-            for row in response.json()["agent_workload"]
-            if row["agent_id"] == str(agent_id)
+            row for row in response.json()["agent_workload"] if row["agent_id"] == str(agent_id)
         )
         assert workload["open_count"] == 1
         assert workload["pending_count"] == 0

@@ -184,9 +184,7 @@ class AllocationReversalRepository:
     async def get(self, allocation_id: uuid.UUID) -> PaymentAllocation | None:
         return await self._session.get(PaymentAllocation, allocation_id)
 
-    async def reverse(
-        self, *, allocation_id: uuid.UUID, reason: str, at: datetime
-    ) -> bool:
+    async def reverse(self, *, allocation_id: uuid.UUID, reason: str, at: datetime) -> bool:
         """Marks an allocation reversed, but only if it is not already.
 
         ``reversed`` is in the WHERE clause so two concurrent reversals

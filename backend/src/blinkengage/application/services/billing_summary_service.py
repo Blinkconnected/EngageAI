@@ -176,9 +176,7 @@ class BillingSummaryService:
         # than re-read afterwards, so it cannot depend on whether the
         # identity map saw the UPDATEs.
         measured: dict[tuple[date, str], Decimal] = {
-            key: row.estimated_cost
-            for key, row in existing.items()
-            if row.finalized_at is not None
+            key: row.estimated_cost for key, row in existing.items() if row.finalized_at is not None
         }
         inserts: list[BillingDailySummary] = []
 
@@ -219,9 +217,7 @@ class BillingSummaryService:
                         quantity=to_storage(quantity),
                         unit_amount=to_storage(unit_amount) if unit_amount is not None else None,
                         estimated_cost=cost,
-                        currency=(
-                            resolved.currency if resolved is not None else fallback_currency
-                        ),
+                        currency=(resolved.currency if resolved is not None else fallback_currency),
                     )
                 )
                 outcome.days_written += 1
