@@ -67,6 +67,23 @@ class RoutingDecisionRepository:
             selected_service_id=decision.selected_service_id,
             selected_service_name=decision.selected_service_name,
             service_version=decision.service_version,
+            sla_timer=None if decision.sla is None else decision.sla.timer,
+            sla_pause_reason=None if decision.sla is None else decision.sla.pause_reason,
+            sla_detail=(
+                {}
+                if decision.sla is None
+                else {
+                    "question": decision.sla.question,
+                    "pause_text": decision.sla.pause_text,
+                    "deadline": (
+                        None
+                        if decision.sla.deadline is None
+                        else decision.sla.deadline.isoformat()
+                    ),
+                    "elapsed_minutes": decision.sla.elapsed_minutes,
+                    "target_minutes": decision.sla.target_minutes,
+                }
+            ),
             policy=None if decision.policy is None else decision.policy.policy,
             policy_reason=None if decision.policy is None else decision.policy.reason,
             policy_source=None if decision.policy is None else decision.policy.source,

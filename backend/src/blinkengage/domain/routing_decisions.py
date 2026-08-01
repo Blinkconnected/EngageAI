@@ -45,6 +45,7 @@ exists to remove.
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -113,10 +114,28 @@ class RoutingDecisionKind(StrEnum):
     #: A conversation was kept with an agent by the 24h ownership window
     #: rather than re-routed. "Why is this still with them".
     OWNERSHIP_APPLIED = "ownership_applied"
+    # --- The SLA clocks ----------------------------------------------
+    #
+    # In this log rather than a table of their own. An SLA transition is a
+    # decision the platform made about a conversation, exactly like a
+    # routing or policy one, and a conversation is explained by reading
+    # *one* history in order — not by interleaving three by timestamp and
+    # hoping the clocks agree.
+
+    #: A clock started. Which one is on ``sla_timer``.
+    SLA_STARTED = "sla_started"
     #: The SLA clock stopped. "Why is the timer not running".
     SLA_PAUSED = "sla_paused"
     #: The SLA clock started again.
     SLA_RESUMED = "sla_resumed"
+    #: Met before its deadline.
+    SLA_ACHIEVED = "sla_achieved"
+    #: Missed.
+    SLA_BREACHED = "sla_breached"
+    #: Stopped without a verdict — the conversation ended before this clock
+    #: could be met or missed. Distinct from achieved, because counting an
+    #: abandoned conversation as a success is how a dashboard lies.
+    SLA_STOPPED = "sla_stopped"
     #: A business rule was asked and answered — see ``domain/policies.py``.
     #: Written for every policy evaluation that *gates* something, so no
     #: module can allow or deny behaviour without leaving a record of it.
@@ -236,6 +255,24 @@ class RoutingDecisionReason(StrEnum):
     POLICY_ALLOWED = "policy_allowed"
     #: A policy refused it.
     POLICY_DENIED = "policy_denied"
+
+    # --- An SLA clock moved ------------------------------------------
+    #
+    # One reason per kind of movement. *Which* clock and *why* it paused
+    # live on the ``sla`` field below, where the pause vocabulary stays
+    # owned by ``domain/sla.py`` rather than being copied into this enum
+    # and left to drift — the same split as the policy reasons above.
+
+    #: The clock is now running.
+    SLA_CLOCK_RUNNING = "sla_clock_running"
+    #: The clock is not running, and ``sla.pause_reason`` says why.
+    SLA_CLOCK_PAUSED = "sla_clock_paused"
+    #: It was met.
+    SLA_TARGET_MET = "sla_target_met"
+    #: It was missed.
+    SLA_TARGET_MISSED = "sla_target_missed"
+    #: The conversation ended before the clock could be met or missed.
+    SLA_CLOCK_STOPPED = "sla_clock_stopped"
 
     # --- AI instead of a human ---------------------------------------
 
@@ -447,6 +484,33 @@ class PolicyEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+class SlaEvent:
+    """One SLA clock's movement, as stored on a decision.
+
+    Flat strings rather than the SLA enums, for the same reason as the
+    other two records here: this is written into a row read years later,
+    and a member renamed in code must not make an old row unreadable.
+    """
+
+    timer: str
+    #: The customer question this clock answers, frozen at the moment. A
+    #: reader months later should not have to know what "next_response"
+    #: meant in the release that wrote the row.
+    question: str
+    #: Set on a pause, and only on a pause.
+    pause_reason: str | None = None
+    pause_text: str | None = None
+    #: The deadline as it stood after this event. Recorded on every one,
+    #: because "why did this deadline change?" is answered by comparing
+    #: two rows — and a deadline moves legitimately whenever a clock
+    #: pauses.
+    deadline: datetime | None = None
+    #: Minutes counted against the target so far, excluding pauses.
+    elapsed_minutes: float | None = None
+    target_minutes: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ResolutionStageRecord:
     """One stage of the resolution pipeline, as stored.
 
@@ -517,6 +581,9 @@ class RoutingDecision:
 
     #: Set on ``POLICY_EVALUATED`` decisions. See ``domain/policies.py``.
     policy: PolicyEvaluation | None = None
+
+    #: Set on the ``SLA_*`` decisions. See ``domain/sla.py``.
+    sla: SlaEvent | None = None
 
     matched_rule: MatchedRule | None = None
     rules_evaluated: int = 0
@@ -607,6 +674,22 @@ def _rule_phrase(decision: RoutingDecision) -> str:
     return f'routing rule "{rule.name}" (priority {rule.priority})'
 
 
+def _sla_sentence(decision: RoutingDecision) -> str:
+    """An SLA movement in a sentence, built from the structured fields."""
+    sla = decision.sla
+    assert sla is not None  # noqa: S101 — guarded by the caller
+    what = sla.timer.replace("_", " ")
+    if decision.reason is RoutingDecisionReason.SLA_CLOCK_PAUSED:
+        return f"The {what} clock paused: {sla.pause_text or 'no reason given'}."
+    if decision.reason is RoutingDecisionReason.SLA_CLOCK_RUNNING:
+        return f"The {what} clock is running."
+    if decision.reason is RoutingDecisionReason.SLA_TARGET_MET:
+        return f"The {what} target was met."
+    if decision.reason is RoutingDecisionReason.SLA_TARGET_MISSED:
+        return f"The {what} target was missed."
+    return f"The {what} clock stopped without a verdict."
+
+
 def _headline(decision: RoutingDecision) -> str:
     reason = decision.reason
     queue = _queue_phrase(decision)
@@ -618,6 +701,12 @@ def _headline(decision: RoutingDecision) -> str:
     service = decision.selected_service_name or (
         f"service {decision.selected_service_id}" if decision.selected_service_id else None
     )
+    if decision.sla is not None:
+        # Rendered from the clock's own words. An SLA decision falling
+        # through to the queue phrasing below would read "Routed to no
+        # queue", which is true of every one of them and explains none.
+        return _sla_sentence(decision)
+
     if decision.policy is not None:
         # Rendered from the policy's own words. A policy decision falling
         # through to the queue phrasing below would read "Routed to no

@@ -92,6 +92,16 @@ class RoutingDecisionRecord(UUIDPrimaryKeyMixin, Base):
         # "What did we refuse, and why" across a company. Partial, so it
         # costs nothing for the routing and service decisions that are most
         # of this table.
+        # "What did we breach, and on which clock" — partial, so it costs
+        # nothing for the decisions that are most of this table.
+        Index(
+            "ix_routing_decisions_sla",
+            "company_id",
+            "sla_timer",
+            "decided_at",
+            postgresql_where=text("sla_timer IS NOT NULL"),
+            sqlite_where=text("sla_timer IS NOT NULL"),
+        ),
         Index(
             "ix_routing_decisions_policy",
             "company_id",
@@ -191,6 +201,25 @@ class RoutingDecisionRecord(UUIDPrimaryKeyMixin, Base):
     #: row that re-rendered itself would quietly restate an old decision in
     #: today's words.
     policy_text: Mapped[str | None] = mapped_column(String(200), default=None)
+
+    # --- An SLA clock moved ------------------------------------------
+    #
+    # Two columns and a blob, split by what somebody actually filters on.
+    # "Show me every first-response breach" and "show me everything paused
+    # for business hours" are real queries; "show me everything whose
+    # deadline was 14:32" is not.
+
+    #: Which clock — ``queue`` / ``first_response`` / ``next_response`` /
+    #: ``resolution``.
+    sla_timer: Mapped[str | None] = mapped_column(String(20), default=None)
+    #: Why it is not running. Set on a pause, and only on a pause.
+    sla_pause_reason: Mapped[str | None] = mapped_column(String(30), default=None)
+    #: The rest, frozen at the moment: the customer question this clock
+    #: answers, the wording of the pause, the deadline as it then stood,
+    #: and the minutes counted against the target. The deadline is on
+    #: *every* SLA row rather than only on pauses, because "why did this
+    #: deadline change?" is answered by comparing two of them.
+    sla_detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
     #: The routing rule that matched, copied. ``matched_rule_name`` is
     #: rendered from the rule's conditions (``RoutingRule`` has no name

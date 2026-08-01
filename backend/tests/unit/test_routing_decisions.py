@@ -49,6 +49,14 @@ from blinkengage.domain.service_context import (
     ServiceContext,
     SlaTargets,
 )
+from blinkengage.domain.sla import (
+    RECORDED_AS,
+    Clock,
+    PauseReason,
+    SlaState,
+    SlaTimer,
+)
+from blinkengage.domain.sla import as_routing_decision as sla_as_routing_decision
 from blinkengage.infrastructure.database.models.queue import RoutingRule
 
 
@@ -96,6 +104,24 @@ def _assignment(
         reason=reason,
         candidates_considered=considered,
         rejected=rejected,
+    )
+
+
+def _a_clock(**kw: object) -> Clock:
+    defaults: dict[str, object] = {
+        "timer": SlaTimer.FIRST_RESPONSE,
+        "state": SlaState.RUNNING,
+        "target_minutes": 60,
+        "running_since": datetime(2026, 8, 1, tzinfo=UTC),
+    }
+    return Clock(**{**defaults, **kw})  # type: ignore[arg-type]
+
+
+def as_sla_decision(clock: Clock, state: SlaState) -> RoutingDecision:
+    """One clock movement, through the real factory and the real table."""
+    kind, reason = RECORDED_AS[state]
+    return sla_as_routing_decision(
+        clock, kind=kind, reason=reason, now=datetime(2026, 8, 1, tzinfo=UTC)
     )
 
 
@@ -245,6 +271,31 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
             queue_id=queue_id,
             queue_name="Spanish Support",
         ),
+        # --- An SLA clock moved ---------------------------------------
+        #
+        # Built through the SLA module's own factory, because it owns the
+        # wording — the log carries the phrase the clock chose rather than
+        # re-rendering it years later in whatever words the code uses then.
+        RoutingDecisionReason.SLA_CLOCK_RUNNING: as_sla_decision(
+            _a_clock(), SlaState.RUNNING
+        ),
+        RoutingDecisionReason.SLA_CLOCK_PAUSED: as_sla_decision(
+            _a_clock(
+                state=SlaState.PAUSED,
+                running_since=None,
+                pause_reason=PauseReason.WAITING_FOR_CUSTOMER,
+            ),
+            SlaState.PAUSED,
+        ),
+        RoutingDecisionReason.SLA_TARGET_MET: as_sla_decision(
+            _a_clock(state=SlaState.ACHIEVED), SlaState.ACHIEVED
+        ),
+        RoutingDecisionReason.SLA_TARGET_MISSED: as_sla_decision(
+            _a_clock(state=SlaState.BREACHED), SlaState.BREACHED
+        ),
+        RoutingDecisionReason.SLA_CLOCK_STOPPED: as_sla_decision(
+            _a_clock(state=SlaState.STOPPED), SlaState.STOPPED
+        ),
         # --- A business rule was applied ------------------------------
         #
         # Built through the policy module's own factory, because it owns the
@@ -375,6 +426,14 @@ def test_each_decision_kind_matches_its_outcome() -> None:
             assert decision.selected_queue_id is not None
         elif decision.outcome is RoutingDecisionOutcome.AUTOPILOT:
             assert decision.kind is RoutingDecisionKind.AI_ENGAGED
+            assert decision.selected_agent_id is None
+        elif decision.sla is not None:
+            # An SLA movement is about a clock, not about a destination. It
+            # names no queue and no agent, and it always says which clock —
+            # a row that did not would explain nothing.
+            assert decision.kind.value.startswith("sla_")
+            assert decision.sla.timer
+            assert decision.selected_queue_id is None
             assert decision.selected_agent_id is None
         elif decision.outcome in (
             RoutingDecisionOutcome.ALLOWED,
