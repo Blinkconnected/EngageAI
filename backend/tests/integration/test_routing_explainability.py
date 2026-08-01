@@ -491,9 +491,21 @@ class TestVolumeAndImmutability:
     async def test_the_repository_offers_no_way_to_amend_a_decision(self) -> None:
         """Structural, not conventional: a decision is corrected by
         recording another one, and there is no method with which to do
-        anything else."""
+        anything else.
+
+        Two assertions, because the exact set alone teaches the wrong
+        lesson. It fails on any addition — including a harmless read, as it
+        did when ``sla_events`` arrived — and a test that fails for
+        harmless reasons trains people to update it without thinking. So
+        the set is kept, to force the conversation, and the *reason* is
+        checked separately: no method may be named for mutation.
+        """
         methods = {name for name in dir(RoutingDecisionRepository) if not name.startswith("_")}
-        assert methods == {"record", "for_conversation", "recent_for_company"}
+        assert methods == {"record", "for_conversation", "recent_for_company", "sla_events"}
+
+        mutating = {"update", "amend", "edit", "delete", "remove", "purge", "correct", "set"}
+        for name in methods:
+            assert not any(verb in name for verb in mutating), name
 
     async def test_reaching_around_the_repository_cannot_alter_a_decision(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
