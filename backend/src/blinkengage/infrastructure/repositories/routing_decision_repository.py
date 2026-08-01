@@ -64,6 +64,18 @@ class RoutingDecisionRepository:
             selected_queue_name=decision.selected_queue_name,
             selected_agent_id=decision.selected_agent_id,
             selected_agent_name=decision.selected_agent_name,
+            selected_service_id=decision.selected_service_id,
+            selected_service_name=decision.selected_service_name,
+            service_version=decision.service_version,
+            resolution_stages=[
+                {
+                    "strategy": stage.strategy,
+                    "outcome": stage.outcome,
+                    "reason": stage.reason,
+                    "evidence": stage.evidence,
+                }
+                for stage in decision.resolution_stages
+            ],
             matched_rule_id=None if rule is None else rule.rule_id,
             matched_rule_name=None if rule is None else rule.name,
             matched_rule_priority=None if rule is None else rule.priority,

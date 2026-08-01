@@ -141,6 +141,59 @@ no wildcards, and no stemming. Choose distinctive substrings.
 
 ---
 
+## 4b. Service resolution rules are a separate thing — and match differently
+
+Everything above describes **queue** routing rules (`routing_rules`), which
+choose a queue. Service resolution (`domain/service_resolution.py`,
+`application/services/resolution_strategies.py`) chooses the *service* a
+conversation runs inside, and runs **before** queue selection.
+
+They look similar and they are not the same, so the difference is stated
+here rather than left to be discovered:
+
+| | Queue routing rules | Service resolution rules |
+|---|---|---|
+| Chooses | A queue | A service |
+| Stored in | `routing_rules` table | `service_versions.extras.resolution_rules` |
+| Keyword matching | **Substring** — see §4 above | **Word boundary** |
+| Ordering | `priority` column | The service's `display_order` |
+
+**The keyword difference is deliberate.** Substring matching is documented
+behaviour for queue rules and changing it would alter routing for every
+existing installation. For service rules, which are new, word boundaries are
+the better default: a service keyed on `count` matching "I can't access my
+account" arrives *somewhere*, so nobody reports it as a routing bug, and the
+misroute is invisible. `{"keywords": ["payment failed"]}` matches as a
+phrase, which is what somebody typing it intends.
+
+Service rules take two conditions only — `channels` and `keywords` —
+deliberately, and not a general expression language. Every condition added is
+one an administrator has to understand before they can trust the routing.
+
+### What gets recorded
+
+A `SERVICE_RESOLVED` decision, before any queue decision, carrying the
+service, its **version**, and every stage the pipeline ran — including the
+ones that decided nothing. "Why did this go to Billing?" is answered by what
+the earlier stages did *not* do as much as by what the winner did.
+
+`SERVICE_FIXED` and `SERVICE_FALLBACK` can name the same service and mean
+different things: one is a decision, the other is nothing having decided. An
+operator seeing many fallbacks needs to add rules, not reassurance.
+
+### A company with no services
+
+Nothing is recorded and nothing is bound. Such a company has not opted into
+services, so nothing was expected to happen and there is nothing to explain —
+and writing "this company has no services" once per conversation would put a
+row nobody can act on beside every decision somebody can.
+
+That is deliberately unlike `LEFT_UNROUTED`, which *does* get a row: there,
+routing was expected and did not happen. Once a directory exists, a
+conversation it fails to cover **is** recorded, because then the gap is real.
+
+---
+
 ## 5. Unrecognised keys are silently ignored — and that makes the rule a catch-all
 
 **This is the sharpest edge in the whole routing system, so it is stated

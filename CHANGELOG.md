@@ -16,6 +16,31 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Conversations are now matched to a service, and the platform records
+  why.** A *service* is a thing a customer can be helped with — Billing,
+  Technical Support, Sales. When a message arrives, the platform works out
+  which one it belongs to and writes down how it decided.
+
+  It tries, in order: what the customer chose themselves, then the
+  company's own rules (by channel, or by words in the first message), then
+  the company's only service if there is just one, and finally a fallback
+  so that no conversation is ever left belonging to nothing.
+
+  **Every step is kept, not only the one that decided.** "Why did this go
+  to Billing?" is answered as much by what the earlier steps did not do —
+  the customer was never offered a choice, no keyword matched — as by the
+  step that did. The decision also records *which version* of the service
+  was used, so a conversation can still be explained after the service has
+  been edited.
+
+  Keyword rules match whole words. A service set up for "count" does not
+  swallow "I can't access my account" — a misroute that arrives somewhere
+  and so never gets reported.
+
+  Companies that have not set up any services are entirely unaffected: no
+  extra records are written and conversations are handled exactly as
+  before.
+
 - **Groundwork for the Service Directory.** New storage for *services* — the
   things a customer can be helped with — and for the frozen configuration a
   conversation runs inside.

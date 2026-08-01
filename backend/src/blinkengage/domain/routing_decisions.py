@@ -46,6 +46,7 @@ exists to remove.
 import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 #: How many rejected candidates a single decision may carry.
 #:
@@ -96,6 +97,11 @@ class RoutingDecisionKind(StrEnum):
     #: AI took the conversation instead of a human. The answer to "why did
     #: AI respond".
     AI_ENGAGED = "ai_engaged"
+    #: The resolution pipeline chose which service the conversation runs
+    #: inside — the decision every later one depends on, because the
+    #: service is what supplies the queue, the SLA targets and the AI
+    #: policy. Written once per conversation, before any queue is chosen.
+    SERVICE_RESOLVED = "service_resolved"
 
     # --- Reserved for later milestones -------------------------------
     # Written by nothing today. Present so the milestones below do not
@@ -128,6 +134,11 @@ class RoutingDecisionOutcome(StrEnum):
     AGENT = "agent"
     #: AI owns it. There is no id for AI — that is the point of the value.
     AUTOPILOT = "autopilot"
+    #: A service was chosen. ``selected_service_id`` names it. A separate
+    #: outcome from ``QUEUE`` because resolving a service and choosing a
+    #: queue are two decisions with two different fixes when they go
+    #: wrong — the first is the directory, the second is the routing rule.
+    SERVICE = "service"
     #: Explicitly nothing, and ``reason`` says why.
     NOTHING = "nothing"
 
@@ -170,6 +181,31 @@ class RoutingDecisionReason(StrEnum):
     #: ``TARGET_QUEUE_MISSING``: re-activate it, rather than re-point the
     #: rule.
     TARGET_QUEUE_INACTIVE = "target_queue_inactive"
+
+    # --- Choosing a service ------------------------------------------
+    #
+    # One per resolution strategy that can decide, mirroring
+    # ``domain/service_resolution.StageReason``. Deliberately duplicated
+    # rather than shared: the stage reasons are a *pipeline's* vocabulary
+    # and include outcomes ("skipped", "precondition unmet") that are not
+    # decisions at all, while these are the subset a decision row can
+    # honestly claim. The per-stage detail is kept in ``evidence``.
+
+    #: The customer picked the service themselves.
+    SERVICE_CUSTOMER_CHOSE = "service_customer_chose"
+    #: A company routing rule named it.
+    SERVICE_RULE_MATCHED = "service_rule_matched"
+    #: The company has exactly one service, or nominated a default.
+    SERVICE_FIXED = "service_fixed"
+    #: Nothing decided, so the last stage caught it. Distinct from
+    #: ``SERVICE_FIXED`` even when the same service is chosen: one is a
+    #: decision, the other is nothing having decided, and an operator
+    #: seeing a lot of these needs to add rules rather than reassurance.
+    SERVICE_FALLBACK = "service_fallback"
+    #: No stage resolved anything, and there was nothing to fall back to —
+    #: the company has no active services. The conversation is handled the
+    #: way it was before services existed.
+    SERVICE_NOT_CONFIGURED = "service_not_configured"
 
     # --- AI instead of a human ---------------------------------------
 
@@ -356,6 +392,35 @@ def most_informative(
 
 
 @dataclass(frozen=True, slots=True)
+class ResolutionStageRecord:
+    """One stage of the resolution pipeline, as stored.
+
+    Flat strings rather than the domain enums, because this is written into
+    a JSON column and read back years later: an enum member renamed in code
+    must not make an old row unreadable.
+    """
+
+    strategy: str
+    outcome: str
+    reason: str
+    evidence: dict[str, Any]
+
+
+#: Which decision reason each resolving stage reason maps to. A mapping
+#: rather than a string prefix, so a stage reason added later has to be
+#: given a decision reason deliberately instead of silently producing one
+#: no console knows about.
+_SERVICE_REASONS: dict[str, RoutingDecisionReason] = {
+    "customer_chose": RoutingDecisionReason.SERVICE_CUSTOMER_CHOSE,
+    "rule_matched": RoutingDecisionReason.SERVICE_RULE_MATCHED,
+    "fixed": RoutingDecisionReason.SERVICE_FIXED,
+    "fallback": RoutingDecisionReason.SERVICE_FALLBACK,
+    "confident_classification": RoutingDecisionReason.SERVICE_RULE_MATCHED,
+    "external_answer": RoutingDecisionReason.SERVICE_RULE_MATCHED,
+}
+
+
+@dataclass(frozen=True, slots=True)
 class RoutingDecision:
     """One recorded decision — the thing that gets stored and read back.
 
@@ -383,6 +448,18 @@ class RoutingDecision:
     selected_agent_id: uuid.UUID | None = None
     selected_agent_name: str | None = None
 
+    #: The service the conversation runs inside, and the version of it that
+    #: was bound. Both copied, like the queue name: a service is renamed and
+    #: archived through the ordinary admin screen, and a decision that lost
+    #: its name would read "resolved to 4f2a…" forever after.
+    selected_service_id: uuid.UUID | None = None
+    selected_service_name: str | None = None
+    service_version: int | None = None
+    #: Every stage the pipeline ran, in order, whether or not it decided.
+    #: "Why did this go to Billing?" is answered by what the earlier stages
+    #: did *not* do as much as by what the winner did.
+    resolution_stages: tuple[ResolutionStageRecord, ...] = ()
+
     matched_rule: MatchedRule | None = None
     rules_evaluated: int = 0
 
@@ -403,6 +480,41 @@ class RoutingDecision:
         on the phone need. Both, in that order of authority.
         """
         return f"{_headline(self)}{_rejection_clause(self)}"
+
+
+def service_decision(
+    *,
+    service_id: uuid.UUID | None,
+    service_name: str | None,
+    service_version: int | None,
+    deciding_reason: str | None,
+    stages: tuple[ResolutionStageRecord, ...],
+) -> RoutingDecision:
+    """The decision the resolution pipeline produced.
+
+    ``service_id`` is ``None`` when nothing resolved — a company with no
+    active services. That is a real outcome and gets a row of its own
+    rather than silence, because "no service" is exactly the state somebody
+    will need explained.
+    """
+    if service_id is None:
+        return RoutingDecision(
+            kind=RoutingDecisionKind.SERVICE_RESOLVED,
+            outcome=RoutingDecisionOutcome.NOTHING,
+            reason=RoutingDecisionReason.SERVICE_NOT_CONFIGURED,
+            resolution_stages=stages,
+        )
+    return RoutingDecision(
+        kind=RoutingDecisionKind.SERVICE_RESOLVED,
+        outcome=RoutingDecisionOutcome.SERVICE,
+        reason=_SERVICE_REASONS.get(
+            deciding_reason or "", RoutingDecisionReason.SERVICE_FALLBACK
+        ),
+        selected_service_id=service_id,
+        selected_service_name=service_name,
+        service_version=service_version,
+        resolution_stages=stages,
+    )
 
 
 # --- Rendering -------------------------------------------------------
@@ -440,6 +552,24 @@ def _rule_phrase(decision: RoutingDecision) -> str:
 def _headline(decision: RoutingDecision) -> str:
     reason = decision.reason
     queue = _queue_phrase(decision)
+
+    # Service resolution first: it runs before any queue is chosen, and a
+    # service decision falling through to the queue phrasing below would
+    # read "Routed to no queue", which is true of every one of them and
+    # explains none of them.
+    service = decision.selected_service_name or (
+        f"service {decision.selected_service_id}" if decision.selected_service_id else None
+    )
+    if reason is RoutingDecisionReason.SERVICE_CUSTOMER_CHOSE:
+        return f"Running in {service} because the customer chose it."
+    if reason is RoutingDecisionReason.SERVICE_RULE_MATCHED:
+        return f"Running in {service} because a routing rule matched."
+    if reason is RoutingDecisionReason.SERVICE_FIXED:
+        return f"Running in {service}, the only service this could be."
+    if reason is RoutingDecisionReason.SERVICE_FALLBACK:
+        return f"Running in {service}: nothing else claimed the conversation."
+    if reason is RoutingDecisionReason.SERVICE_NOT_CONFIGURED:
+        return "No service: this company has none configured, so nothing was bound."
 
     if reason is RoutingDecisionReason.RULE_MATCHED:
         return f"Routed to {queue} because {_rule_phrase(decision)} matched."

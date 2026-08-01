@@ -26,6 +26,7 @@ from blinkengage.domain.routing_decisions import (
     MatchedRule,
     QueueRouting,
     RejectedCandidate,
+    ResolutionStageRecord,
     RoutingDecision,
     RoutingDecisionKind,
     RoutingDecisionOutcome,
@@ -36,6 +37,7 @@ from blinkengage.domain.routing_decisions import (
     most_informative,
     queue_decision,
     queue_unavailable_decision,
+    service_decision,
 )
 from blinkengage.infrastructure.database.models.queue import RoutingRule
 
@@ -94,7 +96,7 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
     set comparison — the point is that nobody can add a reason without
     landing in this map.
     """
-    queue_id, agent_id = uuid4(), uuid4()
+    queue_id, agent_id, service_id = uuid4(), uuid4(), uuid4()
     rule = MatchedRule(
         rule_id=uuid4(),
         name="channel is web_chat",
@@ -203,6 +205,52 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
             queue_id=queue_id,
             queue_name="Spanish Support",
         ),
+        # --- Service resolution ---------------------------------------
+        #
+        # Built through ``service_decision`` like the rest, so the sentence
+        # each produces is the one an export and a support engineer see.
+        RoutingDecisionReason.SERVICE_CUSTOMER_CHOSE: service_decision(
+            service_id=service_id,
+            service_name="Billing",
+            service_version=3,
+            deciding_reason="customer_chose",
+            stages=(),
+        ),
+        RoutingDecisionReason.SERVICE_RULE_MATCHED: service_decision(
+            service_id=service_id,
+            service_name="Billing",
+            service_version=3,
+            deciding_reason="rule_matched",
+            stages=(
+                ResolutionStageRecord(
+                    strategy="business_rules",
+                    outcome="resolved",
+                    reason="rule_matched",
+                    evidence={"matched_keyword": "invoice"},
+                ),
+            ),
+        ),
+        RoutingDecisionReason.SERVICE_FIXED: service_decision(
+            service_id=service_id,
+            service_name="Support",
+            service_version=1,
+            deciding_reason="fixed",
+            stages=(),
+        ),
+        RoutingDecisionReason.SERVICE_FALLBACK: service_decision(
+            service_id=service_id,
+            service_name="Support",
+            service_version=1,
+            deciding_reason="fallback",
+            stages=(),
+        ),
+        RoutingDecisionReason.SERVICE_NOT_CONFIGURED: service_decision(
+            service_id=None,
+            service_name=None,
+            service_version=None,
+            deciding_reason=None,
+            stages=(),
+        ),
     }
 
 
@@ -269,9 +317,18 @@ def test_each_decision_kind_matches_its_outcome() -> None:
         elif decision.outcome is RoutingDecisionOutcome.AUTOPILOT:
             assert decision.kind is RoutingDecisionKind.AI_ENGAGED
             assert decision.selected_agent_id is None
+        elif decision.outcome is RoutingDecisionOutcome.SERVICE:
+            # Resolution happens before a queue is chosen, so a service
+            # decision names neither a queue nor an agent — and must name
+            # the service, or the row explains nothing.
+            assert decision.kind is RoutingDecisionKind.SERVICE_RESOLVED
+            assert decision.selected_service_id is not None
+            assert decision.selected_queue_id is None
+            assert decision.selected_agent_id is None
         else:
             assert decision.selected_agent_id is None
             assert decision.kind in (
+                RoutingDecisionKind.SERVICE_RESOLVED,
                 RoutingDecisionKind.LEFT_UNROUTED,
                 RoutingDecisionKind.LEFT_UNASSIGNED,
             )

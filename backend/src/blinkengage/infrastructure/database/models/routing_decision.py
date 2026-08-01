@@ -143,6 +143,21 @@ class RoutingDecisionRecord(UUIDPrimaryKeyMixin, Base):
     #: decision about somebody who has since left into an anonymous one.
     selected_agent_name: Mapped[str | None] = mapped_column(String(255), default=None)
 
+    #: The service the conversation was bound to, and which version of it.
+    #: No foreign key, for the same reason as the queue above: a decision
+    #: must survive the service being archived, and this row is evidence
+    #: rather than a live reference.
+    selected_service_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
+    selected_service_name: Mapped[str | None] = mapped_column(String(255), default=None)
+    service_version: Mapped[int | None] = mapped_column(Integer, default=None)
+    #: Every stage the resolution pipeline ran, in order, whether or not it
+    #: decided. JSON rather than a child table for the same reason as
+    #: ``rejected_candidates``: written once with its parent, read whole,
+    #: never queried across rows.
+    resolution_stages: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+
     #: The routing rule that matched, copied. ``matched_rule_name`` is
     #: rendered from the rule's conditions (``RoutingRule`` has no name
     #: column) and frozen here, so editing a rule never rewrites the

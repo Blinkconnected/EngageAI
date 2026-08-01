@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
+from blinkengage.application.services.resolution_strategies import default_stages
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
@@ -31,12 +32,16 @@ from blinkengage.domain.company_settings import (
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.routing_decisions import (
+    ResolutionStageRecord,
     RoutingDecision,
     assignment_decision,
     autopilot_decision,
     queue_decision,
     queue_unavailable_decision,
+    service_decision,
 )
+from blinkengage.domain.service_context import ContextBindingReason
+from blinkengage.domain.service_resolution import ResolutionRequest, resolve_service
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.database.models.conversation import (
@@ -50,6 +55,9 @@ from blinkengage.infrastructure.database.models.message import (
     MessageAttachment,
     MessageDirection,
     MessageType,
+)
+from blinkengage.infrastructure.database.models.service_directory import (
+    ConversationContextBinding,
 )
 from blinkengage.infrastructure.database.session import (
     create_engine,
@@ -81,6 +89,11 @@ from blinkengage.infrastructure.repositories.routing_decision_repository import 
 )
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
+)
+from blinkengage.infrastructure.repositories.service_directory_repository import (
+    ContextBindingRepository,
+    CustomerContextRepository,
+    ServiceRepository,
 )
 
 logger = get_logger(__name__)
@@ -471,6 +484,139 @@ async def _record_decision(
         )
 
 
+async def _resolve_service(
+    conversation: Conversation,
+    *,
+    company_id: UUID,
+    channel_type: str,
+    body: str | None,
+    session: AsyncSession,
+    decisions: RoutingDecisionRepository,
+) -> None:
+    """Resolves the service this conversation runs inside, and binds it.
+
+    Runs **before** queue selection, because the service is what supplies
+    the queue, the SLA targets and the AI policy — every later decision
+    depends on this one.
+
+    **A company with no services behaves exactly as it did before services
+    existed.** That is not a fallback bolted on; it is the condition under
+    which this shipped at all. Every company on the installation has an
+    empty directory today, so the only acceptable outcome for them is the
+    old one, plus a decision row saying why nothing was bound.
+
+    Like ``_record_decision``, this must never cost us the conversation.
+    Resolution reads configuration an administrator can get wrong in ways
+    nobody anticipated; a customer's message must not be the casualty. A
+    failure here is logged and the conversation is routed as before.
+    """
+    try:
+        services = ServiceRepository(session)
+
+        # A company that has no service directory has not opted into
+        # services at all, so nothing was expected to happen and there is
+        # nothing to explain. Recording "this company has no services" once
+        # per conversation would put a row nobody can act on beside every
+        # decision somebody can — and today that is every company on the
+        # installation, which would double the table with pure noise.
+        #
+        # Deliberately different from ``LEFT_UNROUTED``, which *is* worth a
+        # row: there, routing was expected to happen and did not. Here it
+        # was never asked for. Once a directory exists, a conversation it
+        # fails to cover is recorded, because then the gap is real.
+        if not await services.active_for_company(company_id):
+            return
+
+        resolved = await resolve_service(
+            default_stages(services),
+            ResolutionRequest(
+                company_id=company_id,
+                conversation_id=conversation.id,
+                channel_type=channel_type,
+                body=body,
+                customer_id=conversation.customer_id,
+            ),
+        )
+
+        stages = tuple(
+            ResolutionStageRecord(
+                strategy=stage.strategy.value,
+                outcome=stage.outcome.value,
+                reason=stage.reason.value,
+                evidence=dict(stage.evidence),
+            )
+            for stage in resolved.stages
+        )
+
+        context = (
+            await services.current_context(resolved.service_id)
+            if resolved.service_id is not None
+            else None
+        )
+        await _record_decision(
+            session,
+            decisions,
+            company_id=company_id,
+            conversation_id=conversation.id,
+            decision=service_decision(
+                service_id=resolved.service_id,
+                service_name=context.name if context else None,
+                service_version=context.version if context else None,
+                deciding_reason=resolved.stages[-1].reason.value if resolved.stages else None,
+                stages=stages,
+            ),
+        )
+
+        if context is None:
+            return
+
+        # The binding is what makes the version *stick*. Without it the
+        # conversation would re-resolve on every read and quietly follow the
+        # service's edits, which is the exact behaviour versioning exists to
+        # prevent.
+        await ContextBindingRepository(session).add(
+            ConversationContextBinding(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                service_version_id=context.service_version_id,
+                customer_context_version_id=await _customer_version_id(
+                    session, company_id=company_id, customer_id=conversation.customer_id
+                ),
+                reason=ContextBindingReason.BOUND_AT_START,
+            )
+        )
+    except Exception:  # noqa: BLE001 — see the docstring: never fatal.
+        logger.warning(
+            "service_resolution_failed",
+            conversation_id=str(conversation.id),
+            company_id=str(company_id),
+            exc_info=True,
+        )
+
+
+async def _customer_version_id(
+    session: AsyncSession, *, company_id: UUID, customer_id: UUID | None
+) -> UUID | None:
+    """The customer's context version, minted only if one is needed.
+
+    ``None`` for a conversation from somebody the platform has never seen —
+    a normal case, not an error. ``ensure_version`` writes nothing when the
+    customer's routing-relevant attributes have not moved, which is almost
+    always.
+    """
+    if customer_id is None:
+        return None
+    customer = await session.get(Customer, customer_id)
+    if customer is None:
+        return None
+    version = await CustomerContextRepository(session).ensure_version(
+        customer_id=customer.id,
+        company_id=company_id,
+        display_name=customer.full_name,
+    )
+    return version.id
+
+
 async def _route_and_assign(
     conversation: Conversation,
     *,
@@ -495,6 +641,20 @@ async def _route_and_assign(
     queues = QueueRepository(session)
     agent_skills = AgentSkillRepository(session)
     decisions = RoutingDecisionRepository(session)
+
+    # First: which service is this conversation in? Everything below reads
+    # from what that decides once the queue binding moves onto the service
+    # version. Today it records the decision and binds the context; queue
+    # selection still runs from the routing rules exactly as before, so no
+    # existing company's routing changes.
+    await _resolve_service(
+        conversation,
+        company_id=company_id,
+        channel_type=channel_type,
+        body=body,
+        session=session,
+        decisions=decisions,
+    )
 
     routing_engine = RoutingEngine(routing_rules=routing_rules)
     routing = await routing_engine.select_queue(
