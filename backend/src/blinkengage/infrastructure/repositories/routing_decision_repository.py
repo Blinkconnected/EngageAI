@@ -67,6 +67,10 @@ class RoutingDecisionRepository:
             selected_service_id=decision.selected_service_id,
             selected_service_name=decision.selected_service_name,
             service_version=decision.service_version,
+            policy=None if decision.policy is None else decision.policy.policy,
+            policy_reason=None if decision.policy is None else decision.policy.reason,
+            policy_source=None if decision.policy is None else decision.policy.source,
+            policy_text=None if decision.policy is None else decision.policy.text,
             resolution_stages=[
                 {
                     "strategy": stage.strategy,

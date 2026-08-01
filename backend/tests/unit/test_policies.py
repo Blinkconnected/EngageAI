@@ -30,8 +30,9 @@ from blinkengage.domain.policies import (
     PolicyEngine,
     PolicyReason,
     PolicySource,
-    decision_for_log,
+    as_routing_decision,
 )
+from blinkengage.domain.routing_decisions import RoutingDecisionKind, RoutingDecisionOutcome
 from blinkengage.domain.runtime_queues import AiOverflowPolicy, OverflowStrategy
 from blinkengage.domain.service_context import (
     AiPolicy,
@@ -161,12 +162,12 @@ class TestEveryDecisionSaysWhereItCameFrom:
         assert decision.source is PolicySource.CUSTOMER_CONTEXT
 
     def test_the_sentence_reads_as_the_inspector_shows_it(self) -> None:
-        execution = an_execution(service=a_service(queue=None))
+        execution = an_execution(conversation={"status": "closed"})
 
         sentence = ENGINE.evaluate(Policy.ROUTING, execution).sentence
 
         assert sentence == (
-            "Denied: routing — the service has no queue to route to (service_context)."
+            "Denied: routing — the conversation is already finished (conversation_state)."
         )
 
     def test_nothing_configured_is_distinct_from_somebody_chose_this(self) -> None:
@@ -298,14 +299,15 @@ class TestAiEngagement:
 
 
 class TestRouting:
-    def test_a_service_with_no_queue_is_a_recorded_decision(self) -> None:
-        """A configuration an administrator can create and a conversation
-        cannot run in. Denied explicitly rather than failing on a ``None``
-        four call-frames downstream."""
+    def test_a_service_with_no_queue_is_still_routable(self) -> None:
+        """It stopped being a denial when the service took ownership of
+        queue selection: routing rules became the fallback rather than a
+        parallel mechanism, so a service naming no queue is one whose
+        conversations the rules still place. Refusing here would block a
+        configuration that works."""
         decision = ENGINE.evaluate(Policy.ROUTING, an_execution(service=a_service(queue=None)))
 
-        assert decision.reason is PolicyReason.NO_QUEUE_CONFIGURED
-        assert decision.detail["service"] == "Technical Support"
+        assert decision.allowed is True
 
     def test_a_finished_conversation_is_not_routed(self) -> None:
         execution = an_execution(conversation={"status": "closed"})
@@ -419,10 +421,10 @@ class TestTheInspectorCanAskEverythingAtOnce:
 
 
 class TestWhatGetsWrittenToTheLog:
-    def test_a_decision_records_its_reason_and_source(self) -> None:
-        """One place decides what a stored policy evaluation looks like, so
-        the log's format and the policy vocabulary cannot drift apart."""
-        conversation = uuid.uuid4()
+    def test_a_decision_becomes_a_routing_decision(self) -> None:
+        """A policy evaluation is recorded in the same log as the routing
+        and service decisions, so a conversation is explained end to end by
+        reading one thing in order."""
         decision = ENGINE.evaluate(
             Policy.AI_ENGAGEMENT,
             an_execution(
@@ -432,20 +434,38 @@ class TestWhatGetsWrittenToTheLog:
             ),
         )
 
-        row = decision_for_log(decision, conversation)
+        row = as_routing_decision(decision)
 
-        assert row["conversation_id"] == str(conversation)
-        assert row["policy"] == "ai_engagement"
-        assert row["effect"] == "deny"
-        assert row["reason"] == "customer_opted_out"
-        assert row["source"] == "customer_context"
-        assert "no automated messages" in row["sentence"]
+        assert row.kind is RoutingDecisionKind.POLICY_EVALUATED
+        assert row.outcome is RoutingDecisionOutcome.DENIED
+        assert row.policy is not None
+        assert row.policy.policy == "ai_engagement"
+        assert row.policy.reason == "customer_opted_out"
+        assert row.policy.source == "customer_context"
 
-    def test_the_row_is_json_serialisable(self) -> None:
-        """It is stored as JSON. A UUID left as an object fails at write
-        time, in the consumer, after the decision was already acted on."""
-        import json
+    def test_the_wording_travels_with_the_row(self) -> None:
+        """Copied rather than re-rendered on read, for the same reason a
+        queue's name is: the phrasing may be reworded, and a row that
+        re-rendered itself would restate an old decision in today's words."""
+        row = as_routing_decision(
+            ENGINE.evaluate(
+                Policy.AI_ENGAGEMENT,
+                an_execution(
+                    customer=a_customer(
+                        contact_preference=ContactPreference.NO_AUTOMATED_MESSAGES
+                    )
+                ),
+            )
+        )
 
-        row = decision_for_log(ENGINE.evaluate(Policy.ROUTING, an_execution()), uuid.uuid4())
+        assert row.policy is not None
+        assert row.policy.text == "the customer asked for no automated messages"
+        assert "no automated messages" in row.sentence
 
-        assert json.loads(json.dumps(row))["policy"] == "routing"
+    def test_an_allowance_is_recorded_too(self) -> None:
+        """A log holding only refusals answers "why was this blocked?" and
+        not "why was this permitted?" — and the second is the question asked
+        after something reached a customer that should not have."""
+        row = as_routing_decision(ENGINE.evaluate(Policy.ROUTING, an_execution()))
+
+        assert row.outcome is RoutingDecisionOutcome.ALLOWED

@@ -15,9 +15,12 @@ feature could rot:
   own history every time somebody tuned their routing.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from blinkengage.application.services.routing_engine import RoutingEngine
+from blinkengage.domain.execution_context import ConversationFacts, ExecutionContext
+from blinkengage.domain.policies import Policy, PolicyEngine, as_routing_decision
 from blinkengage.domain.routing_decisions import (
     MAX_RECORDED_REJECTIONS,
     MAX_RULE_NAME,
@@ -38,6 +41,13 @@ from blinkengage.domain.routing_decisions import (
     queue_decision,
     queue_unavailable_decision,
     service_decision,
+)
+from blinkengage.domain.runtime_queues import AiOverflowPolicy, OverflowStrategy
+from blinkengage.domain.service_context import (
+    AiPolicy,
+    QueueBinding,
+    ServiceContext,
+    SlaTargets,
 )
 from blinkengage.infrastructure.database.models.queue import RoutingRule
 
@@ -86,6 +96,36 @@ def _assignment(
         reason=reason,
         candidates_considered=considered,
         rejected=rejected,
+    )
+
+
+def _an_execution(*, status: str = "waiting") -> ExecutionContext:
+    """The minimum an execution needs for a policy to answer."""
+    company_id = uuid4()
+    return ExecutionContext(
+        service=ServiceContext(
+            service_id=uuid4(),
+            version=1,
+            service_version_id=uuid4(),
+            company_id=company_id,
+            name="Support",
+            queue=QueueBinding(
+                logical_queue_id=uuid4(),
+                logical_queue_name="Support",
+                overflow_strategy=OverflowStrategy.WAIT,
+                ai_overflow_policy=AiOverflowPolicy.NEVER,
+            ),
+            sla=SlaTargets(),
+            ai=AiPolicy(),
+        ),
+        customer=None,
+        conversation=ConversationFacts(
+            conversation_id=uuid4(),
+            company_id=company_id,
+            channel_type="web_chat",
+            started_at=datetime(2026, 8, 1, tzinfo=UTC),
+            status=status,
+        ),
     )
 
 
@@ -205,6 +245,19 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
             queue_id=queue_id,
             queue_name="Spanish Support",
         ),
+        # --- A business rule was applied ------------------------------
+        #
+        # Built through the policy module's own factory, because it owns the
+        # wording — the log carries the phrase the policy chose rather than
+        # re-rendering it years later in whatever words the code uses then.
+        RoutingDecisionReason.POLICY_ALLOWED: as_routing_decision(
+            PolicyEngine().evaluate(Policy.ROUTING, _an_execution())
+        ),
+        RoutingDecisionReason.POLICY_DENIED: as_routing_decision(
+            PolicyEngine().evaluate(
+                Policy.ROUTING, _an_execution(status="closed")
+            )
+        ),
         RoutingDecisionReason.SERVICE_OWNS_QUEUE: queue_decision(
             QueueRouting(
                 queue_id=queue_id, reason=RoutingDecisionReason.SERVICE_OWNS_QUEUE
@@ -322,6 +375,17 @@ def test_each_decision_kind_matches_its_outcome() -> None:
             assert decision.selected_queue_id is not None
         elif decision.outcome is RoutingDecisionOutcome.AUTOPILOT:
             assert decision.kind is RoutingDecisionKind.AI_ENGAGED
+            assert decision.selected_agent_id is None
+        elif decision.outcome in (
+            RoutingDecisionOutcome.ALLOWED,
+            RoutingDecisionOutcome.DENIED,
+        ):
+            # A policy answers a question about permission. It names no
+            # queue and no agent, and it always says which rule was asked —
+            # a row that did not would explain nothing.
+            assert decision.kind is RoutingDecisionKind.POLICY_EVALUATED
+            assert decision.policy is not None
+            assert decision.selected_queue_id is None
             assert decision.selected_agent_id is None
         elif decision.outcome is RoutingDecisionOutcome.SERVICE:
             # Resolution happens before a queue is chosen, so a service

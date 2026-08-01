@@ -37,7 +37,6 @@ truth, instead of a fabricated rationale that reads like a real decision.
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -45,6 +44,13 @@ from typing import Any
 
 from blinkengage.domain.customer_context import ContactPreference
 from blinkengage.domain.execution_context import ExecutionContext
+from blinkengage.domain.routing_decisions import (
+    PolicyEvaluation,
+    RoutingDecision,
+    RoutingDecisionKind,
+    RoutingDecisionOutcome,
+    RoutingDecisionReason,
+)
 
 
 class Policy(StrEnum):
@@ -294,18 +300,16 @@ def _ai_engagement(execution: ExecutionContext) -> PolicyDecision:
 def _routing(execution: ExecutionContext) -> PolicyDecision:
     """May this conversation be routed?
 
-    A service with no queue is a configuration an administrator can create
-    and a conversation cannot run in. Denying here — rather than failing on a
-    ``None`` somewhere downstream — is what turns it into a recorded decision
-    somebody can read.
+    **A service with no queue is no longer a denial**, and that changed when
+    the service took ownership of queue selection: routing rules became the
+    fallback rather than a parallel mechanism, so a service that names no
+    queue is a service whose conversations the rules still place. Refusing
+    here would block a configuration that works.
+
+    "Nothing routed this" remains recorded — as ``LEFT_UNROUTED`` by the
+    engine that actually tried, which is where the rule count and the reason
+    live.
     """
-    if not execution.service.routes_anywhere:
-        return _deny(
-            Policy.ROUTING,
-            PolicyReason.NO_QUEUE_CONFIGURED,
-            PolicySource.SERVICE_CONTEXT,
-            service=execution.service.name,
-        )
     if execution.conversation.status in _FINISHED:
         return _deny(
             Policy.ROUTING,
@@ -458,21 +462,33 @@ class PolicyEngine:
         return frozenset(self._rules)
 
 
-def decision_for_log(decision: PolicyDecision, conversation_id: uuid.UUID) -> dict[str, Any]:
-    """A policy decision in the shape the routing decision log stores.
+def as_routing_decision(decision: PolicyDecision) -> RoutingDecision:
+    """A policy decision as a row in the routing decision log.
 
-    Kept here so the log's format and the policy's vocabulary cannot drift:
-    one place decides what a recorded policy evaluation looks like.
+    Kept here rather than in ``routing_decisions`` so the log's shape and the
+    policy vocabulary cannot drift apart: one module owns what a recorded
+    evaluation looks like, and it is the one that owns the words.
     """
-    return {
-        "conversation_id": str(conversation_id),
-        "policy": decision.policy.value,
-        "effect": decision.effect.value,
-        "reason": decision.reason.value,
-        "source": decision.source.value,
-        "sentence": decision.sentence,
-        "detail": decision.detail,
-    }
+    return RoutingDecision(
+        kind=RoutingDecisionKind.POLICY_EVALUATED,
+        outcome=(
+            RoutingDecisionOutcome.ALLOWED
+            if decision.allowed
+            else RoutingDecisionOutcome.DENIED
+        ),
+        reason=(
+            RoutingDecisionReason.POLICY_ALLOWED
+            if decision.allowed
+            else RoutingDecisionReason.POLICY_DENIED
+        ),
+        policy=PolicyEvaluation(
+            policy=decision.policy.value,
+            effect=decision.effect.value,
+            reason=decision.reason.value,
+            source=decision.source.value,
+            text=REASON_TEXT[decision.reason],
+        ),
+    )
 
 
 __all__ = [
@@ -483,5 +499,5 @@ __all__ = [
     "PolicyEngine",
     "PolicyReason",
     "PolicySource",
-    "decision_for_log",
+    "as_routing_decision",
 ]

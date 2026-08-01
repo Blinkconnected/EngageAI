@@ -169,6 +169,63 @@ why a test asserts it cannot come back.
 
 ---
 
+## Every evaluation is recorded
+
+A policy must never silently allow or deny anything. The engine above is pure —
+no repository, no clock — which is what makes its rules exhaustively testable.
+`RecordingPolicyEngine` is the layer that makes them explainable: every
+evaluation that *gates* behaviour writes a `POLICY_EVALUATED` routing
+decision, into the same log as the routing and service decisions, so a
+conversation is explained end to end by reading one thing in order.
+
+Structural, not a convention. `evaluate` records; there is no flag to pass and
+none to forget. A module handed one of these cannot ask a policy quietly.
+
+**Allowances are recorded as well as refusals.** A log holding only refusals
+answers *"why was this blocked?"* and not *"why was this permitted?"* — and
+the second is the question asked after something reached a customer that
+should not have.
+
+### Asking is not deciding
+
+The one distinction that has to exist. The Routing Inspector shows what the
+platform would allow right now — nine policies, on a screen somebody opens to
+understand a conversation. If those evaluations wrote decisions, opening the
+Inspector would append nine rows about the act of looking, the log would fill
+with the observer rather than the system, and a conversation's history would
+change every time somebody read it.
+
+So there are two methods:
+
+| | Records? | For |
+|---|---|---|
+| `evaluate(policy, execution)` | **Always** | Gating behaviour |
+| `preview(execution)` | Never | The Routing Inspector |
+
+Nothing has to remember which is which. `preview` is synchronous and takes no
+repository, so a caller reaching for it instead of `evaluate` is making a
+visible choice rather than an easy mistake — the method that cannot record is
+also the one whose answer nothing may act on.
+
+Recording is never fatal, the same tradeoff as the routing decision log: the
+decision is the product, the record is evidence *about* it, and an evaluation
+that could not be written must not stop a customer being answered.
+
+### What is stored
+
+`policy`, `policy_reason`, `policy_source` and `policy_text` are **columns**,
+unlike `resolution_stages` which is JSON. Those are read whole with their row;
+these are what somebody *filters* by — "show me everything AI was refused for,
+and where the refusal came from" — and a filter over a JSON key is a filter
+nobody writes.
+
+`policy_reason` holds the policy module's own vocabulary rather than a value
+from `RoutingDecisionReason`. Copying a second closed set into that enum would
+leave the two to drift, and the reason an administrator filters on belongs to
+the rule, not to the log. `policy_text` is frozen at the moment of the
+decision, for the same reason a queue's name is copied: a row that re-rendered
+itself would restate an old decision in today's words.
+
 ## Replacing a rule
 
 `PolicyEngine(rules={...})` overrides individual rules without editing the
@@ -195,9 +252,15 @@ The Policy Engine is the destination; not everything has moved in yet.
 
 - **`conversation_ingest_consumer.py`** carries a five-condition AI Autopilot
   gate (queue opt-in, company AI switch, Autopilot opt-in, activation mode,
-  provider configured). It is correct today. When it migrates, the activation
-  modes and the queue opt-in need homes in `CompanyCapabilities` or the
-  Service Context first — migrating before then would drop them.
+  provider configured). It is correct today, and it is deliberately **not**
+  migrated yet: the activation modes and the per-queue opt-in have no home in
+  `CompanyCapabilities` or the Service Context, and half-migrating a
+  compliance kill switch would be worse than leaving it whole. It moves with
+  the AI queue worker, which is what replaces the per-queue opt-in with the
+  service's own AI policy.
+
+  `Policy.ROUTING` **is** wired, in the same consumer — the first live caller,
+  recording an allowance on every conversation that resolves into a service.
 - **`api/deps.py`** gates the agent-facing AI endpoints on the same company
   switch.
 

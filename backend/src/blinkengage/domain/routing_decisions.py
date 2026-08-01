@@ -117,6 +117,10 @@ class RoutingDecisionKind(StrEnum):
     SLA_PAUSED = "sla_paused"
     #: The SLA clock started again.
     SLA_RESUMED = "sla_resumed"
+    #: A business rule was asked and answered — see ``domain/policies.py``.
+    #: Written for every policy evaluation that *gates* something, so no
+    #: module can allow or deny behaviour without leaving a record of it.
+    POLICY_EVALUATED = "policy_evaluated"
 
 
 class RoutingDecisionOutcome(StrEnum):
@@ -141,6 +145,11 @@ class RoutingDecisionOutcome(StrEnum):
     SERVICE = "service"
     #: Explicitly nothing, and ``reason`` says why.
     NOTHING = "nothing"
+    #: A policy permitted something. Its own outcome rather than folded into
+    #: ``NOTHING``, because a console filtering "what did we refuse today"
+    #: must not have to parse a reason string to find out.
+    ALLOWED = "allowed"
+    DENIED = "denied"
 
 
 class RoutingDecisionReason(StrEnum):
@@ -214,6 +223,19 @@ class RoutingDecisionReason(StrEnum):
     #: the company has no active services. The conversation is handled the
     #: way it was before services existed.
     SERVICE_NOT_CONFIGURED = "service_not_configured"
+
+    # --- A business rule was applied ---------------------------------
+    #
+    # Two reasons, not one per policy reason. The *policy's* own vocabulary
+    # — which rule, why, and from which configuration — lives on the
+    # ``policy`` field below, where it stays a closed set owned by
+    # ``domain/policies.py`` instead of being copied into this enum and
+    # left to drift.
+
+    #: A policy permitted the behaviour.
+    POLICY_ALLOWED = "policy_allowed"
+    #: A policy refused it.
+    POLICY_DENIED = "policy_denied"
 
     # --- AI instead of a human ---------------------------------------
 
@@ -400,6 +422,31 @@ def most_informative(
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyEvaluation:
+    """One business rule's answer, as stored on a decision.
+
+    Flat strings rather than the policy enums, for the same reason as
+    ``ResolutionStageRecord``: this is written into a row read years later,
+    and a member renamed in code must not make an old row unreadable.
+
+    ``text`` is the human phrasing, supplied by the policy module because it
+    is the one that owns the wording. Carrying it means this module can
+    render a policy decision without importing the policy vocabulary — the
+    dependency would run the wrong way, since a policy is a *kind of*
+    decision and not the other way round.
+    """
+
+    policy: str
+    effect: str
+    reason: str
+    #: Which configuration produced the answer — the customer, the service,
+    #: the company's settings, the conversation's state. The field that
+    #: makes a refusal actionable rather than merely visible.
+    source: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class ResolutionStageRecord:
     """One stage of the resolution pipeline, as stored.
 
@@ -467,6 +514,9 @@ class RoutingDecision:
     #: "Why did this go to Billing?" is answered by what the earlier stages
     #: did *not* do as much as by what the winner did.
     resolution_stages: tuple[ResolutionStageRecord, ...] = ()
+
+    #: Set on ``POLICY_EVALUATED`` decisions. See ``domain/policies.py``.
+    policy: PolicyEvaluation | None = None
 
     matched_rule: MatchedRule | None = None
     rules_evaluated: int = 0
@@ -568,6 +618,14 @@ def _headline(decision: RoutingDecision) -> str:
     service = decision.selected_service_name or (
         f"service {decision.selected_service_id}" if decision.selected_service_id else None
     )
+    if decision.policy is not None:
+        # Rendered from the policy's own words. A policy decision falling
+        # through to the queue phrasing below would read "Routed to no
+        # queue", which is true of every one of them and explains none.
+        verb = "Allowed" if decision.outcome is RoutingDecisionOutcome.ALLOWED else "Denied"
+        what = decision.policy.policy.replace("_", " ")
+        return f"{verb}: {what} — {decision.policy.text} ({decision.policy.source})."
+
     if reason is RoutingDecisionReason.SERVICE_CUSTOMER_CHOSE:
         return f"Running in {service} because the customer chose it."
     if reason is RoutingDecisionReason.SERVICE_RULE_MATCHED:

@@ -65,6 +65,21 @@ for more detail on how this page is put together.
   measured. Blank is not the same as 0 — 0 means the target is missed the
   moment the clock starts.
 
+- **Business rules now explain themselves in the conversation's history.**
+  Whenever the platform decides whether something is allowed — may AI answer
+  this, may this be routed, may an agent take it — the decision is written
+  into the same record as the routing and service decisions, with what was
+  decided, why, and which setting produced the answer.
+
+  Permissions are recorded as well as refusals. A record holding only
+  refusals answers "why was this blocked?" and not "why was this allowed?",
+  and the second is the question asked after something reaches a customer
+  that should not have.
+
+  Simply *viewing* what the platform would currently allow does not add to
+  the record — otherwise opening a conversation to understand it would
+  change its history.
+
 - **A service now decides which queue its conversations go to.** If a
   service names a queue, conversations for that service go there, and the
   record says so: "Routed to Billing queue because the service sends its

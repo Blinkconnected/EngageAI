@@ -41,7 +41,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Enum, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, Enum, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blinkengage.domain.routing_decisions import (
@@ -89,6 +89,17 @@ class RoutingDecisionRecord(UUIDPrimaryKeyMixin, Base):
         # (which is what would have forced a per-dialect ``text()`` index
         # here, the way ``ix_conversations_company_last_message`` needed).
         Index("ix_routing_decisions_company_recent", "company_id", "decided_at"),
+        # "What did we refuse, and why" across a company. Partial, so it
+        # costs nothing for the routing and service decisions that are most
+        # of this table.
+        Index(
+            "ix_routing_decisions_policy",
+            "company_id",
+            "policy",
+            "decided_at",
+            postgresql_where=text("policy IS NOT NULL"),
+            sqlite_where=text("policy IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
@@ -157,6 +168,29 @@ class RoutingDecisionRecord(UUIDPrimaryKeyMixin, Base):
     resolution_stages: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list
     )
+
+    # --- A business rule was applied ---------------------------------
+    #
+    # Columns rather than JSON, unlike the two above: these are what an
+    # administrator filters by — "show me everything AI was refused for,
+    # and where the refusal came from" — and a filter over a JSON key is a
+    # filter nobody writes.
+
+    #: Which policy was asked, e.g. ``ai_engagement``.
+    policy: Mapped[str | None] = mapped_column(String(40), default=None)
+    #: Its own reason code, from the policy vocabulary rather than this
+    #: table's. Kept separate so the reason set stays owned by
+    #: ``domain/policies.py`` instead of being copied here and left to drift.
+    policy_reason: Mapped[str | None] = mapped_column(String(40), default=None)
+    #: Which configuration produced the answer — the customer, the service,
+    #: the company's settings. The field that makes a refusal actionable
+    #: rather than merely visible.
+    policy_source: Mapped[str | None] = mapped_column(String(30), default=None)
+    #: The human phrasing, frozen at the moment of the decision. Copied for
+    #: the same reason a queue's name is: the wording may be reworded, and a
+    #: row that re-rendered itself would quietly restate an old decision in
+    #: today's words.
+    policy_text: Mapped[str | None] = mapped_column(String(200), default=None)
 
     #: The routing rule that matched, copied. ``matched_rule_name`` is
     #: rendered from the rule's conditions (``RoutingRule`` has no name

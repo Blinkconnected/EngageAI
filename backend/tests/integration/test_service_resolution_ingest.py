@@ -371,3 +371,47 @@ class TestTheServiceOwnsQueueSelection:
 
         assert str(conversation.queue_id) == rule_queue
         assert all(d.kind is not RoutingDecisionKind.SERVICE_RESOLVED for d in recorded)
+
+
+class TestThePolicyGateIsRecorded:
+    async def test_routing_is_asked_and_the_answer_is_written(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """A policy must never silently allow or deny. The allowance is
+        recorded as well as the refusal — a log holding only refusals
+        answers "why was this blocked?" and not "why was this permitted?",
+        and the second is the question asked after something reached a
+        customer that should not have."""
+        chat = await _web_chat_session(client, owner_headers)
+        company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await a_service(session, company_id, "Support")
+            await session.commit()
+
+            await _ingest(session, company_id=str(company_id), chat=chat)
+            await session.commit()
+            recorded = await decisions(session)
+
+        policy_rows = [d for d in recorded if d.kind is RoutingDecisionKind.POLICY_EVALUATED]
+        assert [row.policy for row in policy_rows] == ["routing"]
+        assert policy_rows[0].policy_source == "service_context"
+
+    async def test_a_company_without_services_asks_no_policy(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """No service context, so nothing to evaluate against — and no row,
+        because a policy nobody asked is not a policy that silently
+        allowed."""
+        chat = await _web_chat_session(client, owner_headers)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(
+                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
+            )
+            await session.commit()
+            recorded = await decisions(session)
+
+        assert all(d.kind is not RoutingDecisionKind.POLICY_EVALUATED for d in recorded)

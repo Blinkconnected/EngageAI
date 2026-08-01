@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.policy_recorder import RecordingPolicyEngine
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.resolution_strategies import default_stages
 from blinkengage.application.services.routing_engine import RoutingEngine
@@ -31,6 +32,8 @@ from blinkengage.domain.company_settings import (
     is_autopilot_new_conversation_mode_enabled,
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
+from blinkengage.domain.execution_context import ConversationFacts, ExecutionContext
+from blinkengage.domain.policies import Policy, PolicyEngine
 from blinkengage.domain.routing_decisions import (
     QueueRouting,
     ResolutionStageRecord,
@@ -657,6 +660,34 @@ async def _route_and_assign(
         session=session,
         decisions=decisions,
     )
+
+    # Asked, and recorded. A conversation that is finished has nothing to
+    # route, and this is the gate that says so in a row somebody can read
+    # rather than in a branch nobody can see. Every policy evaluation that
+    # gates behaviour leaves a decision — see ``policy_recorder``.
+    if service is not None:
+        policies = RecordingPolicyEngine(
+            PolicyEngine(),
+            decisions,
+            company_id=company_id,
+            conversation_id=conversation.id,
+        )
+        routable = await policies.evaluate(
+            Policy.ROUTING,
+            ExecutionContext(
+                service=service,
+                customer=None,
+                conversation=ConversationFacts(
+                    conversation_id=conversation.id,
+                    company_id=company_id,
+                    channel_type=channel_type,
+                    started_at=conversation.created_at or datetime.now(UTC),
+                    status=conversation.status.value,
+                ),
+            ),
+        )
+        if routable.denied:
+            return
 
     # **The service owns queue selection where it names a queue.**
     # Customer → Service → Logical Queue → Runtime Queue → Agent: the
