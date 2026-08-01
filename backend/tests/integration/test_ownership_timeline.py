@@ -89,28 +89,28 @@ class TestTheTimeline:
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=queue,
-                reason=OwnershipReason.ENTERED_QUEUE,
+                reason=OwnershipReason.NEW_CONVERSATION,
                 now=NOW,
             )
             await ownership.transfer(
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=AI_OWNER,
-                reason=OwnershipReason.AI_ENGAGED,
+                reason=OwnershipReason.AI_ENGAGEMENT,
                 now=NOW + timedelta(seconds=30),
             )
             await ownership.transfer(
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=queue,
-                reason=OwnershipReason.AI_HANDED_OVER,
+                reason=OwnershipReason.AI_RELEASED,
                 now=NOW + timedelta(minutes=2),
             )
             await ownership.transfer(
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=john,
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=NOW + timedelta(minutes=5),
             )
             await session.commit()
@@ -124,10 +124,10 @@ class TestTheTimeline:
             OwnerKind.HUMAN_AGENT,
         ]
         assert [row.reason for row in timeline] == [
-            OwnershipReason.ENTERED_QUEUE,
-            OwnershipReason.AI_ENGAGED,
-            OwnershipReason.AI_HANDED_OVER,
-            OwnershipReason.PICKED_UP,
+            OwnershipReason.NEW_CONVERSATION,
+            OwnershipReason.AI_ENGAGEMENT,
+            OwnershipReason.AI_RELEASED,
+            OwnershipReason.PICKED_BY_AGENT,
         ]
 
     async def test_every_row_carries_who_it_came_from(self, app: Any) -> None:
@@ -143,14 +143,14 @@ class TestTheTimeline:
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=queue,
-                reason=OwnershipReason.ENTERED_QUEUE,
+                reason=OwnershipReason.NEW_CONVERSATION,
                 now=NOW,
             )
             await ownership.transfer(
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=NOW + timedelta(minutes=1),
             )
             await session.commit()
@@ -170,14 +170,14 @@ class TestTheTimeline:
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=queue_owner(uuid.uuid4(), "Support"),
-                reason=OwnershipReason.ENTERED_QUEUE,
+                reason=OwnershipReason.NEW_CONVERSATION,
                 now=NOW,
             )
             await ownership.transfer(
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=NOW + timedelta(minutes=1),
             )
             await session.commit()
@@ -186,7 +186,7 @@ class TestTheTimeline:
 
         assert current is not None
         assert current.owner.describe() == "John"
-        assert current.reason is OwnershipReason.PICKED_UP
+        assert current.reason is OwnershipReason.PICKED_BY_AGENT
 
     async def test_handing_it_to_whoever_already_has_it_writes_nothing(
         self, app: Any
@@ -203,7 +203,7 @@ class TestTheTimeline:
                     conversation_id=conversation_id,
                     company_id=company_id,
                     to=john,
-                    reason=OwnershipReason.PICKED_UP,
+                    reason=OwnershipReason.PICKED_BY_AGENT,
                     now=NOW,
                 )
             await session.commit()
@@ -227,14 +227,14 @@ class TestStickyHolds:
                 conversation_id=first,
                 company_id=company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=NOW,
             )
             await ownership.transfer(
                 conversation_id=second,
                 company_id=company_id,
                 to=queue_owner(uuid.uuid4(), "Support"),
-                reason=OwnershipReason.ENTERED_QUEUE,
+                reason=OwnershipReason.NEW_CONVERSATION,
                 now=NOW,
             )
             await session.commit()
@@ -257,7 +257,7 @@ class TestStickyHolds:
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=NOW,
             )
             await session.commit()
@@ -280,14 +280,14 @@ class TestStickyHolds:
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=NOW,
             )
             await ownership.transfer(
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=queue_owner(uuid.uuid4(), "Support"),
-                reason=OwnershipReason.RELEASED,
+                reason=OwnershipReason.RELEASED_BY_OWNER,
                 now=NOW + timedelta(hours=1),
             )
             await session.commit()
@@ -304,7 +304,7 @@ class TestStickyHolds:
                 conversation_id=conversation_id,
                 company_id=company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 rules=OwnershipRules(policy=ReleasePolicy.IMMEDIATE),
                 now=NOW,
             )
@@ -368,10 +368,18 @@ class TestTheOwnershipApi:
         body = response.json()
         assert body["current"]["owner"]["kind"] == "queue"
         assert body["current"]["owner"]["label"] == "Support"
-        assert body["current"]["reason_text"] == "it entered the queue"
+        # Responsible for *what*. The question an escalation asks, and the
+        # one that stops "owner" being read as "assignee".
+        assert body["current"]["owner"]["responsibility"] == "pickup"
+        assert body["current"]["owner"]["unowned"] is False
+        assert body["current"]["reason"] == "new_conversation"
+        assert body["current"]["reason_text"] == "the conversation arrived"
         assert body["current"]["since"] is not None
         assert body["current"]["held"] is True
+        assert body["current"]["held_for_seconds"] >= 0
         assert body["timeline"][0]["previous"]["kind"] == "nobody"
+        # The arrival is not a hand-over.
+        assert body["transfers"] == 0
 
     async def test_another_companys_conversation_is_not_found(
         self, client: AsyncClient, owner_headers: dict, app: Any
@@ -428,7 +436,7 @@ class TestTheStickySweep:
                 conversation_id=conversation.id,
                 company_id=conversation.company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
                 now=datetime.now(UTC) - timedelta(hours=25),
             )
             await session.commit()
@@ -447,7 +455,7 @@ class TestTheStickySweep:
         assert released == 1
         assert current is not None
         assert current.owner.kind is OwnerKind.QUEUE
-        assert current.reason is OwnershipReason.STICKY_WINDOW_EXPIRED
+        assert current.reason is OwnershipReason.OWNERSHIP_EXPIRED
         # And it touched nothing else. A sweep that quietly changed a status
         # while releasing a hold would re-couple the two concepts M3 split,
         # and would do it where nobody looks — a conversation an agent
@@ -478,7 +486,7 @@ class TestTheStickySweep:
                 conversation_id=conversation.id,
                 company_id=conversation.company_id,
                 to=agent_owner(uuid.uuid4(), "John"),
-                reason=OwnershipReason.PICKED_UP,
+                reason=OwnershipReason.PICKED_BY_AGENT,
             )
             await session.commit()
 
@@ -495,3 +503,82 @@ class TestTheStickySweep:
         assert released == 0
         assert current is not None
         assert current.owner.describe() == "John"
+
+
+class TestTheInspectorAnswersWithoutReadingTheList:
+    async def test_previous_owner_and_transfer_count_are_lifted_out(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """"Who had this before me" is a question asked on its own. Making
+        somebody read a timeline to answer it is the difference between an
+        inspector and a dump."""
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        from tests.integration.test_routing_explainability import _routing_rule
+
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(
+                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
+            )
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            await service_for(session).transfer(
+                conversation_id=conversation.id,
+                company_id=conversation.company_id,
+                to=agent_owner(uuid.uuid4(), "John"),
+                reason=OwnershipReason.PICKED_BY_AGENT,
+            )
+            await session.commit()
+
+        body = (
+            await client.get(
+                f"/api/v1/conversations/{conversation.id}/ownership", headers=owner_headers
+            )
+        ).json()
+
+        assert body["current"]["owner"]["label"] == "John"
+        assert body["current"]["owner"]["responsibility"] == "customer_communication"
+        assert body["previous"]["label"] == "Support"
+        assert body["transfers"] == 1
+        # Every hop carries how long it lasted, derived rather than stored.
+        assert all(hop["held_for_seconds"] >= 0 for hop in body["timeline"])
+
+    async def test_ai_is_responsible_for_automated_engagement(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """Not "the system", and not nobody. AI holding a conversation is a
+        real owner with a real obligation — answering within the service's
+        policy, and handing back when the policy says to."""
+        chat = await _web_chat_session(client, owner_headers)
+        queue_id = await _queue(client, owner_headers, name="Support")
+        from tests.integration.test_routing_explainability import _routing_rule
+
+        await _routing_rule(client, owner_headers, queue_id=queue_id)
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await _ingest(
+                session, company_id=registered_owner["user"]["company"]["id"], chat=chat
+            )
+            await session.commit()
+            conversation = (await session.execute(select(Conversation))).scalar_one()
+            await service_for(session).transfer(
+                conversation_id=conversation.id,
+                company_id=conversation.company_id,
+                to=AI_OWNER,
+                reason=OwnershipReason.AI_ENGAGEMENT,
+            )
+            await session.commit()
+
+        body = (
+            await client.get(
+                f"/api/v1/conversations/{conversation.id}/ownership", headers=owner_headers
+            )
+        ).json()
+
+        assert body["current"]["owner"]["kind"] == "ai_queue_worker"
+        assert body["current"]["owner"]["responsibility"] == "automated_engagement"
+        assert body["current"]["owner"]["unowned"] is False

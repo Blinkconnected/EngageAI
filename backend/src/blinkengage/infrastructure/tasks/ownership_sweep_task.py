@@ -127,7 +127,7 @@ async def _release(
         conversation_id=conversation_id,
         company_id=company_id,
         queue=queue_owner(conversation.queue_id, None if queue is None else queue.name),
-        reason=OwnershipReason.STICKY_WINDOW_EXPIRED,
+        reason=OwnershipReason.OWNERSHIP_EXPIRED,
         now=now,
     )
     logger.info(

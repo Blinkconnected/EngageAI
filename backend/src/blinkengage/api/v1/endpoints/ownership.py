@@ -31,11 +31,23 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 def _owner(kind: OwnerKind | None, owner_id: UUID | None, name: str | None) -> OwnerResponse:
     resolved = Owner(kind=kind or OwnerKind.NOBODY, id=owner_id, name=name)
     return OwnerResponse(
-        kind=resolved.kind.value, id=resolved.id, name=resolved.name, label=resolved.describe()
+        kind=resolved.kind.value,
+        id=resolved.id,
+        name=resolved.name,
+        label=resolved.describe(),
+        responsibility=resolved.responsibility.value,
+        unowned=resolved.is_nobody,
     )
 
 
-def _change(row: ConversationOwnership) -> OwnershipChangeResponse:
+def _change(
+    row: ConversationOwnership, *, until: datetime
+) -> OwnershipChangeResponse:
+    """One hop, and how long it lasted.
+
+    ``until`` is the next row's moment, or now for the last one — which is
+    what makes an in-flight conversation countable rather than a gap.
+    """
     reason: OwnershipReason = row.reason
     return OwnershipChangeResponse(
         owner=_owner(row.owner_kind, row.owner_id, row.owner_name),
@@ -43,6 +55,7 @@ def _change(row: ConversationOwnership) -> OwnershipChangeResponse:
         reason=reason.value,
         reason_text=REASON_TEXT[reason],
         at=row.owned_from,
+        held_for_seconds=max((until - row.owned_from).total_seconds(), 0.0),
         actor_user_id=row.actor_user_id,
         note=row.note,
     )
@@ -63,28 +76,40 @@ async def read_ownership(
     """
     await conversations.get(company_id=auth.company_id, conversation_id=conversation_id)
 
+    now = datetime.now(UTC)
     current = await ownership.current(conversation_id)
     timeline = await ownership.timeline(conversation_id)
+
+    # Each hop lasts until the next one, and the last until now.
+    boundaries = [row.owned_from for row in timeline[1:]] + [now]
+    latest = timeline[-1] if timeline else None
 
     return ConversationOwnershipResponse(
         current=(
             None
             if current is None
             else CurrentOwnershipResponse(
-                owner=OwnerResponse(
-                    kind=current.owner.kind.value,
-                    id=current.owner.id,
-                    name=current.owner.name,
-                    label=current.owner.describe(),
-                ),
+                owner=_owner(current.owner.kind, current.owner.id, current.owner.name),
                 reason=current.reason.value,
                 reason_text=REASON_TEXT[current.reason],
                 since=current.since,
                 holds_until=current.holds_until,
-                held=current.is_held(now=datetime.now(UTC)),
+                held=current.is_held(now=now),
+                held_for_seconds=max(current.held_for(now=now).total_seconds(), 0.0),
             )
         ),
-        timeline=[_change(row) for row in timeline],
+        previous=(
+            None
+            if latest is None or latest.previous_kind is None
+            else _owner(latest.previous_kind, latest.previous_id, latest.previous_name)
+        ),
+        # The arrival is not a hand-over, so a conversation that has only
+        # ever sat in its queue reports zero rather than one.
+        transfers=max(len(timeline) - 1, 0),
+        timeline=[
+            _change(row, until=until)
+            for row, until in zip(timeline, boundaries, strict=True)
+        ],
     )
 
 

@@ -805,7 +805,7 @@ async def _route_and_assign(
         conversation=conversation,
         company_id=company_id,
         owner=queue_owner(queue_id, None if queue is None else queue.name),
-        reason=OwnershipReason.ENTERED_QUEUE,
+        reason=OwnershipReason.NEW_CONVERSATION,
     )
 
     # Recorded after the lookup rather than before it purely so the
@@ -876,7 +876,7 @@ async def _route_and_assign(
                 conversation=conversation,
                 company_id=company_id,
                 owner=AI_OWNER,
-                reason=OwnershipReason.AI_ENGAGED,
+                reason=OwnershipReason.AI_ENGAGEMENT,
             )
             # The answer to both "why did AI respond" and "why was nobody
             # assigned" — one conversation has exactly one owner, and this

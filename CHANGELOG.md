@@ -58,6 +58,20 @@ for more detail on how this page is put together.
   automatically, and the history records that it was the window and not a
   person who let it go.
 
+  Every owner is responsible for something specific — a queue for somebody
+  picking the conversation up, an agent for talking to the customer, AI for
+  answering within the service's policy, a supervisor for whatever the
+  escalation was about. "Nobody" is an exceptional state rather than a
+  resting one: every route hands a conversation to its queue instead, so a
+  conversation with no owner means something went wrong that was not
+  caught.
+
+  Reasons for a change of hands come from a fixed list — arrived, picked up
+  by an agent, AI engaged, AI released, customer replied, ownership
+  expired, resolved, closed, escalated, transferred, supervisor override.
+  A note can add detail; it can never stand in for the reason, because a
+  reason has to be countable.
+
   Status, queue and owner are now three independent things. A conversation
   can be resolved and still owned, waiting and owned by its queue, being
   handled and owned by nobody. None of those are contradictions, and

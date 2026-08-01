@@ -365,3 +365,103 @@ Recorded, not resolved. The **code** is what happens.
    document notes that release resets `queue_entered_at` (understating
    reported wait) or clears `picked_up_at` (removing the conversation
    from the pickup-time average altogether) — see §6.
+
+---
+
+## Ownership
+
+**Ownership is operational responsibility. It is not assignment.**
+
+Assignment is a conversation on somebody's screen. Ownership is the answer to
+*"if nothing happens, whose problem is that?"*. They coincide often enough to
+be confused and differ exactly where it matters.
+
+Status, queue and owner are **three independent facts**. A conversation can be
+`in_progress` and owned by nobody (the agent went offline), `waiting` and owned
+by its queue, `resolved` and still owned by whoever resolved it. None of those
+are contradictions, and treating them as one fact is what made the old
+four-status model ambiguous.
+
+### Who can own, and what that obliges them to do
+
+| Owner | Responsible for |
+|---|---|
+| Queue | **Pickup** — somebody must take this |
+| Agent | **Customer communication** |
+| AI queue worker | **Automated engagement**, within the service's AI policy |
+| Team | **Pickup**, held by a named group |
+| Supervisor | **Escalation** — whatever the escalation was about |
+| Nobody | **Nothing.** An exceptional state, never a resting one |
+
+`NOBODY` and `QUEUE` are different values rather than one null, because
+"unassigned" and "unowned" are different words and only one is a problem.
+Every path in the platform hands a conversation to its *queue* rather than to
+nobody — so a conversation found unowned means something went wrong that was
+not caught, and the value exists precisely so it can be found.
+
+AI likewise has a kind of its own. Recording "AI has it" as "nobody has it"
+would make the moment AI hands back a transition from nothing.
+
+### Transfer reasons are structured, never free text
+
+Fifteen closed codes: `new_conversation`, `picked_by_agent`,
+`assigned_by_strategy`, `ai_engagement`, `manual_transfer`, `escalation`,
+`supervisor_override`, `sticky_continuation`, `customer_replied`,
+`released_by_owner`, `ai_released`, `ownership_expired`,
+`conversation_resolved`, `conversation_closed`, `owner_unavailable`.
+
+`note` exists and is **additive**: it can say which supervisor asked and what
+the escalation was about; it can never say *why* ownership moved. A timeline
+whose reasons were prose could not be grouped, filtered or counted, and every
+metric below would become a string-matching exercise.
+
+`new_conversation` is deliberately distinct from a later return to the queue.
+One code meaning both would make "average time until pickup" unanswerable —
+the query could not tell a conversation's first row from its fourth.
+
+### Metrics, without schema changes
+
+Every figure is derived from the rows already written:
+
+| Metric | Derived from |
+|---|---|
+| Average queue / AI / agent / supervisor ownership time | Each row holds until the next; the last holds until now |
+| Number of ownership transfers | Row count minus one — the arrival is not a hand-over |
+| Average time until pickup | First `human_agent` row minus the conversation's creation |
+| Average time until AI engagement | First `ai_queue_worker` row minus the same |
+
+An `owned_until` column would be the obvious optimisation and is deliberately
+absent: writing it means updating the *previous* row, which breaks the
+append-only history the model rests on. A test asserts no duration column
+exists, so the optimisation cannot arrive by accident.
+
+Durations are dialect-aware — PostgreSQL subtracts timestamps into an interval
+that `EXTRACT(EPOCH …)` reads, SQLite has neither and needs `julianday()`. That
+is not a detail: the first version silently returned figures wrong by a factor
+of billions on SQLite rather than raising, which is why the metrics have a test
+rather than a claim.
+
+### The Ownership Inspector
+
+`GET /api/v1/conversations/{id}/ownership` answers, without making anybody read
+a list: the **current owner** and what they are responsible for, **owner
+since** and how long, the **previous owner**, the **transfer reason** in code
+and in words, the **number of transfers**, and the full **timeline** with how
+long each hop lasted.
+
+### Sticky ownership
+
+An owner may keep a conversation after they stop working it, so a customer
+replying twenty minutes later reaches the person who already knows them.
+Configurable per service — `sticky` (24 hours by default), `immediate`,
+`on_resolve`, `on_close`.
+
+Only a **person's** hold expires. A queue owning a conversation is not a claim
+that runs out: it is answerable until somebody takes it, and a queue whose
+ownership timed out would leave the conversation owned by nobody — the one
+outcome this model exists to avoid.
+
+A lapsed hold does not release itself. The timeline is append-only, so
+`release-expired-ownership` (every five minutes) notices and writes the next
+row, handing the conversation back to its **queue**. It touches neither the
+status nor the queue itself.

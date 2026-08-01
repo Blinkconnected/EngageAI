@@ -67,63 +67,118 @@ class OwnerKind(StrEnum):
     SUPERVISOR = "supervisor"
 
 
+class Responsibility(StrEnum):
+    """What being the owner actually obliges you to do.
+
+    Ownership is *operational responsibility*, and responsibility differs by
+    who holds it — a queue is answerable for somebody picking the
+    conversation up, an agent for talking to the customer. Stating it as
+    data rather than leaving it implied is what lets an escalation ask
+    "responsible for what?" and get an answer, and what stops "owner" being
+    read as "assignee" by the next person to touch this.
+    """
+
+    #: Somebody must take this. The queue's obligation, and the reason a
+    #: conversation waiting in one is not nobody's problem.
+    PICKUP = "pickup"
+    #: Talking to the customer. The agent's obligation.
+    CUSTOMER_COMMUNICATION = "customer_communication"
+    #: Answering automatically, within the service's AI policy — and
+    #: handing back when the policy says to.
+    AUTOMATED_ENGAGEMENT = "automated_engagement"
+    #: Whatever the escalation was about. The supervisor's obligation,
+    #: which begins where the normal rules stopped being enough.
+    ESCALATION = "escalation"
+    #: **Nobody is answerable.** Not a responsibility — the absence of one,
+    #: named so it can be found. See ``OwnerKind.NOBODY``.
+    NONE = "none"
+
+
+#: What each kind of owner is responsible for. A mapping rather than a method
+#: on the enum, so the Inspector, the API and any future escalation rule all
+#: read one table.
+RESPONSIBILITY: Final[dict[OwnerKind, Responsibility]] = {}
+
+
 class OwnershipReason(StrEnum):
-    """Why ownership moved. Closed, so the timeline can be grouped.
+    """Why ownership moved. Closed, and the only vocabulary there is.
+
+    **Free text never replaces one of these.** ``OwnershipChange.note``
+    exists and is deliberately additive: a note can say *which* supervisor
+    asked and *what* the escalation was about, and it can never say why
+    ownership moved. A timeline whose reasons were prose could not be
+    grouped, filtered, or counted, and every metric below would become a
+    string-matching exercise.
 
     Named as *events* rather than states: this is a history, and "assigned"
     is something that happened at a moment, not a condition.
     """
 
     # --- taking it on -------------------------------------------------
-    #: It entered a queue, so the queue became answerable.
-    ENTERED_QUEUE = "entered_queue"
-    #: The assignment strategy chose somebody.
+    #: The conversation was created and placed in a queue. The first row of
+    #: every timeline, and the clock every "time until…" metric starts from.
+    NEW_CONVERSATION = "new_conversation"
+    #: An agent claimed it from the queue themselves.
+    PICKED_BY_AGENT = "picked_by_agent"
+    #: The queue's assignment strategy chose somebody. Distinct from
+    #: ``PICKED_BY_AGENT`` because one is the platform deciding and the
+    #: other is a person deciding, and an operator tuning a strategy needs
+    #: to tell those apart.
     ASSIGNED_BY_STRATEGY = "assigned_by_strategy"
-    #: An agent claimed it from the queue.
-    PICKED_UP = "picked_up"
-    #: Somebody handed it over deliberately.
-    TRANSFERRED = "transferred"
     #: AI took it as a queue worker.
-    AI_ENGAGED = "ai_engaged"
-    #: The previous owner got it back because ownership was still theirs —
-    #: the sticky window had not expired. The reason a returning customer
-    #: reaches the person who already knows them.
-    STICKY_CONTINUATION = "sticky_continuation"
+    AI_ENGAGEMENT = "ai_engagement"
+    #: Somebody handed it over deliberately.
+    MANUAL_TRANSFER = "manual_transfer"
+    #: It was escalated — to a supervisor, a senior team, a specialist.
+    ESCALATION = "escalation"
     #: A supervisor took it, overriding the normal rules.
-    SUPERVISOR_TOOK_OVER = "supervisor_took_over"
+    SUPERVISOR_OVERRIDE = "supervisor_override"
+    #: The previous owner got it back because ownership was still theirs —
+    #: the window had not expired. The reason a returning customer reaches
+    #: the person who already knows them.
+    STICKY_CONTINUATION = "sticky_continuation"
+    #: The customer replied, so the conversation came back to be handled.
+    #: Where it goes — the queue, or the previous owner — is the ownership
+    #: rules' decision; this only says what prompted it.
+    CUSTOMER_REPLIED = "customer_replied"
 
     # --- letting it go ------------------------------------------------
     #: The owner released it back to the queue.
-    RELEASED = "released"
-    #: It was resolved and the rules release on resolve.
-    RELEASED_ON_RESOLVE = "released_on_resolve"
-    #: It was closed and the rules release on close.
-    RELEASED_ON_CLOSE = "released_on_close"
-    #: The sticky window ran out. The conversation is back in the queue and
-    #: the previous owner is no longer answerable — the answer to "why did
-    #: this leave my list overnight".
-    STICKY_WINDOW_EXPIRED = "sticky_window_expired"
+    RELEASED_BY_OWNER = "released_by_owner"
     #: AI handed back to humans.
-    AI_HANDED_OVER = "ai_handed_over"
+    AI_RELEASED = "ai_released"
+    #: The window ran out. The answer to "why did this leave my list
+    #: overnight" — and notably not a person's doing, which is why these
+    #: rows name no actor.
+    OWNERSHIP_EXPIRED = "ownership_expired"
+    #: It was resolved, and the rules release on resolve.
+    CONVERSATION_RESOLVED = "conversation_resolved"
+    #: It was closed, and the rules release on close.
+    CONVERSATION_CLOSED = "conversation_closed"
     #: The owner is no longer available — offline, deactivated, gone.
     OWNER_UNAVAILABLE = "owner_unavailable"
 
 
 #: The human wording. Beside the codes, never instead of them: a console
-#: filters on the code and shows the sentence.
+#: filters and counts on the code and shows the sentence. Every reason has
+#: one, enforced by a test — a reason with no wording renders as a raw enum
+#: name in the Inspector, which is the console equivalent of a raw
+#: translation key.
 REASON_TEXT: Final[dict[OwnershipReason, str]] = {
-    OwnershipReason.ENTERED_QUEUE: "it entered the queue",
+    OwnershipReason.NEW_CONVERSATION: "the conversation arrived",
+    OwnershipReason.PICKED_BY_AGENT: "they picked it up",
     OwnershipReason.ASSIGNED_BY_STRATEGY: "the queue's assignment strategy chose them",
-    OwnershipReason.PICKED_UP: "they picked it up",
-    OwnershipReason.TRANSFERRED: "it was transferred to them",
-    OwnershipReason.AI_ENGAGED: "AI took it from the queue",
+    OwnershipReason.AI_ENGAGEMENT: "AI took it from the queue",
+    OwnershipReason.MANUAL_TRANSFER: "it was transferred to them",
+    OwnershipReason.ESCALATION: "it was escalated",
+    OwnershipReason.SUPERVISOR_OVERRIDE: "a supervisor took it over",
     OwnershipReason.STICKY_CONTINUATION: "they still owned it from earlier",
-    OwnershipReason.SUPERVISOR_TOOK_OVER: "a supervisor took it over",
-    OwnershipReason.RELEASED: "they released it",
-    OwnershipReason.RELEASED_ON_RESOLVE: "it was resolved",
-    OwnershipReason.RELEASED_ON_CLOSE: "it was closed",
-    OwnershipReason.STICKY_WINDOW_EXPIRED: "their ownership window ran out",
-    OwnershipReason.AI_HANDED_OVER: "AI handed it back",
+    OwnershipReason.CUSTOMER_REPLIED: "the customer replied",
+    OwnershipReason.RELEASED_BY_OWNER: "they released it",
+    OwnershipReason.AI_RELEASED: "AI handed it back",
+    OwnershipReason.OWNERSHIP_EXPIRED: "their ownership window ran out",
+    OwnershipReason.CONVERSATION_RESOLVED: "it was resolved",
+    OwnershipReason.CONVERSATION_CLOSED: "it was closed",
     OwnershipReason.OWNER_UNAVAILABLE: "they were no longer available",
 }
 
@@ -203,7 +258,24 @@ class Owner:
 
     @property
     def is_nobody(self) -> bool:
+        """Whether nobody is answerable.
+
+        **An exceptional state, never a resting one.** Every path in the
+        platform hands a conversation to its queue rather than to nobody,
+        so a conversation found here means something went wrong that was
+        not caught — and the value exists precisely so it can be found.
+        """
         return self.kind is OwnerKind.NOBODY
+
+    @property
+    def responsibility(self) -> Responsibility:
+        """What owning this obliges you to do.
+
+        Answers "responsible for *what*?", which is the question an
+        escalation asks and the one that stops "owner" being read as
+        "assignee".
+        """
+        return RESPONSIBILITY[self.kind]
 
     @property
     def is_a_person(self) -> bool:
@@ -229,6 +301,19 @@ _NEEDS_ID: Final[frozenset[OwnerKind]] = frozenset(
 #: Nobody is answerable. A value rather than ``None`` so every caller handles
 #: one type and a query can find them.
 NOBODY: Final[Owner] = Owner(kind=OwnerKind.NOBODY)
+
+RESPONSIBILITY.update(
+    {
+        OwnerKind.QUEUE: Responsibility.PICKUP,
+        OwnerKind.HUMAN_AGENT: Responsibility.CUSTOMER_COMMUNICATION,
+        OwnerKind.AI_QUEUE_WORKER: Responsibility.AUTOMATED_ENGAGEMENT,
+        # A team is answerable for somebody in it taking the conversation —
+        # the same obligation as a queue, held by a named group.
+        OwnerKind.TEAM: Responsibility.PICKUP,
+        OwnerKind.SUPERVISOR: Responsibility.ESCALATION,
+        OwnerKind.NOBODY: Responsibility.NONE,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,6 +409,7 @@ __all__ = [
     "DEFAULT_STICKY_HOURS",
     "NOBODY",
     "REASON_TEXT",
+    "RESPONSIBILITY",
     "Owner",
     "OwnerKind",
     "Ownership",
@@ -331,6 +417,7 @@ __all__ = [
     "OwnershipReason",
     "OwnershipRules",
     "ReleasePolicy",
+    "Responsibility",
     "hold_until",
     "releases_on",
 ]

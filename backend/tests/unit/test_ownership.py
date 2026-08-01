@@ -27,6 +27,7 @@ from blinkengage.domain.lifecycle import (
 from blinkengage.domain.ownership import (
     NOBODY,
     REASON_TEXT,
+    RESPONSIBILITY,
     Owner,
     OwnerKind,
     Ownership,
@@ -34,6 +35,7 @@ from blinkengage.domain.ownership import (
     OwnershipReason,
     OwnershipRules,
     ReleasePolicy,
+    Responsibility,
     hold_until,
     releases_on,
 )
@@ -66,7 +68,7 @@ class TestTheThreeConceptsAreIndependent:
         a queue is not nobody's problem — the queue is answerable, which is
         what makes it findable and escalatable."""
         ownership = Ownership(
-            owner=a_queue(), since=NOW, reason=OwnershipReason.ENTERED_QUEUE
+            owner=a_queue(), since=NOW, reason=OwnershipReason.NEW_CONVERSATION
         )
 
         assert ownership.owner.is_nobody is False
@@ -81,7 +83,7 @@ class TestTheThreeConceptsAreIndependent:
         ownership = Ownership(
             owner=sara,
             since=NOW,
-            reason=OwnershipReason.RELEASED_ON_RESOLVE,
+            reason=OwnershipReason.CONVERSATION_RESOLVED,
             holds_until=NOW + timedelta(hours=24),
         )
 
@@ -92,7 +94,7 @@ class TestTheThreeConceptsAreIndependent:
         """Folding ``waiting_customer`` in makes a queue look like it is
         drowning when it is idle — the business is not late, the customer
         has not replied."""
-        assert BACKLOG == {ConversationStatus.WAITING}
+        assert {ConversationStatus.WAITING} == BACKLOG
         assert ConversationStatus.WAITING_CUSTOMER not in BACKLOG
 
 
@@ -148,7 +150,7 @@ class TestStickyOwnership:
         ownership = Ownership(
             owner=an_agent(),
             since=NOW,
-            reason=OwnershipReason.PICKED_UP,
+            reason=OwnershipReason.PICKED_BY_AGENT,
             holds_until=NOW + timedelta(hours=24),
         )
 
@@ -199,7 +201,7 @@ class TestTheTimelineExplainsItself:
         "why did it leave me" — and the second is the question asked."""
         sara, queue = an_agent(), a_queue()
         change = OwnershipChange(
-            owner=sara, previous=queue, reason=OwnershipReason.PICKED_UP, at=NOW
+            owner=sara, previous=queue, reason=OwnershipReason.PICKED_BY_AGENT, at=NOW
         )
 
         assert change.previous.describe() == "Support"
@@ -212,7 +214,7 @@ class TestTheTimelineExplainsItself:
         change = OwnershipChange(
             owner=a_queue(),
             previous=an_agent(),
-            reason=OwnershipReason.STICKY_WINDOW_EXPIRED,
+            reason=OwnershipReason.OWNERSHIP_EXPIRED,
             at=NOW,
         )
 
@@ -228,7 +230,7 @@ class TestTheTimelineExplainsItself:
 
     def test_how_long_it_has_been_held(self) -> None:
         """The "since when" the model has to answer."""
-        ownership = Ownership(owner=an_agent(), since=NOW, reason=OwnershipReason.PICKED_UP)
+        ownership = Ownership(owner=an_agent(), since=NOW, reason=OwnershipReason.PICKED_BY_AGENT)
 
         assert ownership.held_for(now=NOW + timedelta(minutes=90)) == timedelta(minutes=90)
 
@@ -263,3 +265,90 @@ class TestTheLifecycle:
         is a conversation the migration would silently drop."""
         assert set(LEGACY_STATUS) == {"open", "pending", "resolved", "closed"}
         assert LEGACY_STATUS["pending"] is ConversationStatus.WAITING_CUSTOMER
+
+
+class TestOwnershipIsResponsibility:
+    def test_each_kind_is_responsible_for_something_specific(self) -> None:
+        """"Owner" read as "assignee" is the misunderstanding this prevents.
+        Stating the obligation as data lets an escalation ask "responsible
+        for *what*?" and get an answer."""
+        assert a_queue().responsibility is Responsibility.PICKUP
+        assert an_agent().responsibility is Responsibility.CUSTOMER_COMMUNICATION
+        assert (
+            Owner(kind=OwnerKind.AI_QUEUE_WORKER).responsibility
+            is Responsibility.AUTOMATED_ENGAGEMENT
+        )
+        assert (
+            Owner(kind=OwnerKind.SUPERVISOR, id=uuid.uuid4(), name="Dana").responsibility
+            is Responsibility.ESCALATION
+        )
+
+    def test_a_team_carries_the_same_obligation_as_a_queue(self) -> None:
+        """Somebody in it must take the conversation. The same obligation,
+        held by a named group rather than an anonymous one."""
+        team = Owner(kind=OwnerKind.TEAM, id=uuid.uuid4(), name="Tier 2")
+
+        assert team.responsibility is Responsibility.PICKUP
+
+    def test_nobody_is_the_absence_of_responsibility(self) -> None:
+        """An exceptional state, never a resting one. Every path hands a
+        conversation to its queue rather than to nobody, so a conversation
+        found here means something went wrong that was not caught — and the
+        value exists precisely so it can be found."""
+        assert NOBODY.responsibility is Responsibility.NONE
+        assert NOBODY.is_nobody is True
+
+    def test_every_kind_has_a_responsibility(self) -> None:
+        """A kind with none would be an owner nobody could say anything
+        about — and it would raise on the Inspector, in production, the
+        first time one existed."""
+        for kind in OwnerKind:
+            assert kind in RESPONSIBILITY
+
+
+class TestTheReasonVocabularyIsStructured:
+    def test_it_covers_every_named_transfer_reason(self) -> None:
+        """The specification's list, in the model's own words. A reason
+        that exists in conversation but not in the enum is one somebody
+        will express as free text, and free text cannot be grouped,
+        filtered or counted."""
+        named = {
+            "new_conversation",
+            "picked_by_agent",
+            "ai_engagement",
+            "ai_released",
+            "customer_replied",
+            "ownership_expired",
+            "conversation_resolved",
+            "conversation_closed",
+            "escalation",
+            "manual_transfer",
+            "supervisor_override",
+        }
+
+        assert named <= {reason.value for reason in OwnershipReason}
+
+    def test_arrival_and_a_later_return_are_different_reasons(self) -> None:
+        """One code meaning both would make "average time until pickup"
+        unanswerable: the query could not tell a conversation's first row
+        from its fourth."""
+        assert OwnershipReason.NEW_CONVERSATION is not OwnershipReason.RELEASED_BY_OWNER
+
+    def test_a_note_cannot_stand_in_for_a_reason(self) -> None:
+        """Free text is additive, never a substitute. A note says *which*
+        supervisor asked; the reason says why ownership moved, and only one
+        of those can be counted."""
+        change = OwnershipChange(
+            owner=an_agent(),
+            previous=a_queue(),
+            reason=OwnershipReason.ESCALATION,
+            at=NOW,
+            note="Customer asked for a manager",
+        )
+
+        assert change.reason is OwnershipReason.ESCALATION
+        assert "escalated" in change.sentence
+        # The note is not in the sentence: the sentence is built from the
+        # structured fields, so it reads the same for every escalation and
+        # groups with them.
+        assert "manager" not in change.sentence
