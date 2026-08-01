@@ -127,6 +127,14 @@ class PolicyReason(StrEnum):
     COMPANY_DISABLED = "company_disabled"
     #: Switched on, but no provider was ever configured.
     NO_AI_PROVIDER = "no_ai_provider"
+    #: AI features are on, but Autopilot itself is not. A company may want
+    #: agent-facing suggestions without AI answering customers directly,
+    #: and reporting that as "AI is off" would send an administrator to
+    #: switch on something already on.
+    AUTOPILOT_DISABLED = "autopilot_disabled"
+    #: Autopilot is on, but not for brand-new conversations — a company
+    #: running it on SLA triggers and agent requests only.
+    AUTOPILOT_MODE_EXCLUDES_THIS = "autopilot_mode_excludes_this"
     #: The execution did not say what the company allows, so AI is refused
     #: rather than assumed. Fail-closed, and visibly so: this reason in the
     #: log means a caller needs fixing, not that a customer was refused.
@@ -155,6 +163,10 @@ REASON_TEXT: dict[PolicyReason, str] = {
     PolicyReason.SERVICE_DISABLED: "the service has it switched off",
     PolicyReason.COMPANY_DISABLED: "the company has AI features switched off",
     PolicyReason.NO_AI_PROVIDER: "no AI provider is configured",
+    PolicyReason.AUTOPILOT_DISABLED: "AI Autopilot is switched off for this company",
+    PolicyReason.AUTOPILOT_MODE_EXCLUDES_THIS: (
+        "Autopilot does not answer brand-new conversations for this company"
+    ),
     PolicyReason.CAPABILITIES_UNKNOWN: (
         "the platform could not confirm what this company allows"
     ),
@@ -266,6 +278,27 @@ def _ai_engagement(execution: ExecutionContext) -> PolicyDecision:
         return _deny(
             Policy.AI_ENGAGEMENT,
             PolicyReason.NO_AI_PROVIDER,
+            PolicySource.COMPANY_SETTINGS,
+        )
+    if not execution.available.autopilot_enabled:
+        # A company may want agent-facing suggestions without AI answering
+        # customers directly. Reported separately, or an administrator is
+        # sent to switch on something that is already on.
+        return _deny(
+            Policy.AI_ENGAGEMENT,
+            PolicyReason.AUTOPILOT_DISABLED,
+            PolicySource.COMPANY_SETTINGS,
+        )
+    if (
+        execution.conversation.status == "new"
+        and not execution.available.autopilot_on_new_conversation
+    ):
+        # Autopilot running on SLA triggers and agent requests only. The
+        # conversation is brand new, so this mode excludes it — and says
+        # so rather than reporting Autopilot as off.
+        return _deny(
+            Policy.AI_ENGAGEMENT,
+            PolicyReason.AUTOPILOT_MODE_EXCLUDES_THIS,
             PolicySource.COMPANY_SETTINGS,
         )
     if not execution.service.ai.enabled:

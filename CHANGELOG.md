@@ -14,6 +14,23 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Changed
+
+- **When AI does not answer, the platform now says which setting stopped
+  it.** The decision is recorded with the exact switch and the screen it
+  lives on — the company-wide AI switch, the Autopilot switch, the
+  activation mode, or a missing AI provider. Previously all four produced
+  the same silence.
+
+  They are reported in the order that helps: a missing provider comes
+  before "Autopilot is switched off", because AI that cannot work at all is
+  a different problem from AI a company chose not to use here — and an
+  administrator told the second, who switches it on and finds AI still
+  silent, has been sent the wrong way.
+
+  Companies that have not set up services are unaffected and behave exactly
+  as before.
+
 ### Added
 
 - **Response-time targets now describe the customer's experience.** Four

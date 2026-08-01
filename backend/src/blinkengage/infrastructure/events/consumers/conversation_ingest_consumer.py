@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.company_capabilities import capabilities_for
 from blinkengage.application.services.ownership_service import (
     AI_OWNER,
     OwnershipService,
@@ -893,33 +894,63 @@ async def _route_and_assign(
         return
 
     if queue.autopilot_enabled:
-        # AI Autopilot (see docs/architecture/ai-engine.md): the queue's
-        # own opt-in, the Autopilot opt-in AND the company-wide "Enable
-        # AI Engine features" master switch must all be on, and a real
-        # provider must actually be configured. is_ai_enabled is the
-        # master switch a compliance officer reaches for to guarantee no
-        # AI-generated content reaches customers — it must gate this
-        # exactly like it gates the agent-facing AI endpoints, or turning
-        # it off would silently leave Autopilot auto-replying anyway.
-        # Skips human auto-assignment entirely rather than assigning both
-        # an agent and AI — ai_autopilot_consumer.py (bound to
-        # message.persisted, which already fired for this same first
-        # message earlier in this same transaction) does the actual
-        # reply-or-handoff work, uniformly for the first message and
-        # every one after it.
+        # **Migrated to the Policy Engine.** This was five inline conditions
+        # — the queue opt-in, the company AI master switch, the Autopilot
+        # opt-in, the activation mode, and a configured provider. Four of
+        # them are now company *capabilities* the AI_ENGAGEMENT policy reads,
+        # so the same rule answers here and everywhere else, and the answer
+        # is recorded rather than being a branch nobody can see.
+        #
+        # The queue's own opt-in stays as the outer gate, and stays inline:
+        # it predates services, and a company that has not adopted the
+        # service directory has no service AI policy to replace it with. It
+        # goes when services are universal.
+        #
+        # The compliance switch is the reason this migration waited. Getting
+        # it wrong would mean AI answering customers of a company that had
+        # switched AI off — and nothing would fail, and no test would go red.
         company = await CompanyRepository(session).get_by_id(company_id)
-        if (
-            company is not None
-            and is_ai_enabled(company.settings)
-            and is_autopilot_enabled(company.settings)
-            # The "new conversation" activation mode specifically — a
-            # company can now run Autopilot in SLA-trigger and/or
-            # agent-request mode *only*, leaving brand-new conversations
-            # to be assigned to a human as normal. Defaults on, so a
-            # company whose settings predate modes is unaffected.
-            and is_autopilot_new_conversation_mode_enabled(company.settings)
-            and is_ai_available_for_company(settings, company.ai_config)
-        ):
+        engaged = False
+        if service is not None:
+            policies = RecordingPolicyEngine(
+                PolicyEngine(),
+                decisions,
+                company_id=company_id,
+                conversation_id=conversation.id,
+            )
+            engaged = (
+                await policies.evaluate(
+                    Policy.AI_ENGAGEMENT,
+                    ExecutionContext(
+                        service=service,
+                        customer=None,
+                        conversation=ConversationFacts(
+                            conversation_id=conversation.id,
+                            company_id=company_id,
+                            channel_type=channel_type,
+                            started_at=conversation.created_at or datetime.now(UTC),
+                            # "new" specifically: the activation-mode check
+                            # is about brand-new conversations, and this is
+                            # the one place a conversation is still new.
+                            status="new",
+                        ),
+                        capabilities=capabilities_for(company, settings=settings),
+                    ),
+                )
+            ).allowed
+        else:
+            # No service directory, so no ExecutionContext to evaluate
+            # against. The original five conditions, unchanged, for the
+            # companies this still describes.
+            engaged = (
+                company is not None
+                and is_ai_enabled(company.settings)
+                and is_autopilot_enabled(company.settings)
+                and is_autopilot_new_conversation_mode_enabled(company.settings)
+                and is_ai_available_for_company(settings, company.ai_config)
+            )
+
+        if engaged:
             conversation.autopilot_active = True
             conversation.status = ConversationStatus.IN_PROGRESS
             # The queue clock is answered on *acceptance*, not on reply.

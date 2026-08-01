@@ -93,6 +93,11 @@ class CompanyCapabilities:
     #: company may want agent-facing suggestions without AI answering
     #: customers directly.
     autopilot_enabled: bool = False
+    #: The "new conversation" activation mode. A company may run Autopilot
+    #: on SLA triggers and agent requests *only*, leaving brand-new
+    #: conversations to a human — so this is a separate switch from
+    #: ``autopilot_enabled`` rather than folded into it.
+    autopilot_on_new_conversation: bool = False
 
     # There is deliberately no ``automation_enabled``. No such company-level
     # switch exists today, and a capability with nothing behind it makes a

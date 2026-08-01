@@ -17,15 +17,15 @@ import pytest
 
 from blinkengage.domain.routing_decisions import RoutingDecisionKind, RoutingDecisionReason
 from blinkengage.domain.sla import (
+    HEALTH_ORDER,
     PAUSE_TEXT,
     QUESTION,
     RECORDED_AS,
-    HEALTH_ORDER,
     Clock,
     PauseReason,
+    SlaHealth,
     SlaState,
     SlaTimer,
-    SlaHealth,
     as_routing_decision,
     overall,
 )

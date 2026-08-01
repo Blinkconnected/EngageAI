@@ -75,7 +75,12 @@ def an_execution(*, opted_out: bool = False) -> ExecutionContext:
             started_at=datetime.now(UTC),
             status="waiting",
         ),
-        capabilities=CompanyCapabilities(ai_enabled=True, ai_provider_configured=True),
+        capabilities=CompanyCapabilities(
+            ai_enabled=True,
+            ai_provider_configured=True,
+            autopilot_enabled=True,
+            autopilot_on_new_conversation=True,
+        ),
     )
 
 

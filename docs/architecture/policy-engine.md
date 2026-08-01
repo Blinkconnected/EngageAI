@@ -250,20 +250,28 @@ stores, so the log's format and the policy vocabulary cannot drift apart.
 
 The Policy Engine is the destination; not everything has moved in yet.
 
-- **`conversation_ingest_consumer.py`** carries a five-condition AI Autopilot
-  gate (queue opt-in, company AI switch, Autopilot opt-in, activation mode,
-  provider configured). It is correct today, and it is deliberately **not**
-  migrated yet: the activation modes and the per-queue opt-in have no home in
-  `CompanyCapabilities` or the Service Context, and half-migrating a
-  compliance kill switch would be worse than leaving it whole. It moves with
-  the AI queue worker, which is what replaces the per-queue opt-in with the
-  service's own AI policy.
+- **The AI Autopilot gate is migrated** (M5). Four of its five conditions —
+  the company AI master switch, the Autopilot opt-in, the activation mode and
+  a configured provider — are now `CompanyCapabilities` that `AI_ENGAGEMENT`
+  reads, so the same rule answers here and everywhere else, and the answer is
+  a recorded decision rather than a branch nobody can see.
 
-  `Policy.ROUTING` **is** wired, in the same consumer — the first live caller,
-  recording an allowance on every conversation that resolves into a service.
+  Each switch refuses **on its own and says which one it was**. "AI did not
+  answer" sends an administrator hunting through four screens; "denied,
+  Autopilot is switched off for this company, from company settings" does not.
+  `no_ai_provider` is reported ahead of the Autopilot switches deliberately —
+  "AI cannot work at all" before "the company chose not to use it here",
+  because you cannot act on a choice about something that does not function.
+
+  **The queue's own opt-in stays inline**, and stays the outer gate. It
+  predates services, and a company that has not adopted the service directory
+  has no service AI policy to replace it with. When no service is bound there
+  is no `ExecutionContext` to evaluate against at all, so those companies keep
+  the original five conditions unchanged — a gap in *explainability*, never in
+  enforcement, and one that closes as services become universal.
+
 - **`api/deps.py`** gates the agent-facing AI endpoints on the same company
-  switch.
-
+  switch, and is not yet migrated.
 Until a caller migrates, it keeps its own check. Two implementations of one
 rule is the problem this module exists to end, so each migration deletes the
 local copy rather than leaving both.
