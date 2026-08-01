@@ -486,3 +486,108 @@ Recorded, not resolved. The **code** is what happens.
    `ConversationService.update()`". Because that method treats `None` as
    "leave unchanged", `reassign_queue` moves the conversation while
    leaving the existing agent assigned to it.
+
+---
+
+# The four clocks (M4)
+
+Each clock exists to answer a question a customer would recognise. That is not
+decoration — it decides when each starts, stops and pauses, and naming them
+after the question is what stops a later change quietly making one measure
+something else.
+
+| Clock | The question it answers |
+|---|---|
+| Queue | How long did the customer wait before someone accepted responsibility? |
+| First response | How long until the customer received the first meaningful response? |
+| Next response | How long is the customer waiting for the next response? |
+| Resolution | How long until the issue is solved? |
+
+The four are **independent**. A service may measure some and not others.
+`None` means *not measured*; `0` means *already late the moment it starts*.
+Folding them together would invent a deadline nobody set.
+
+The question travels with every recorded row — a timer labelled
+`first_response` explains nothing to somebody asking why a conversation is red.
+
+## Pausing is the point
+
+**A clock never simply pauses.** Every pause carries a structured reason:
+waiting for customer, outside business hours, manual, supervisor override,
+dependency waiting, system maintenance. "The timer is paused" tells a
+supervisor nothing; "paused, outside business hours" tells them there is
+nothing to do.
+
+Closed vocabulary, so *"how much of our SLA time is lost waiting on
+customers?"* is answerable rather than a string-matching exercise. `pause_note`
+is free text **beside** the reason, never instead of it — a dependency pause
+can name what it is waiting on; it cannot invent a seventh reason.
+
+A clock holds **elapsed time**, not a start moment. That is what lets a paused
+clock stop counting while wall-clock does not, and it means the deadline is
+derived — so a deadline legitimately moves while paused. Not a bug, and exactly
+what the Inspector exists to explain.
+
+`due_at` is cleared on pause rather than left for the sweep to filter, so a
+paused clock cannot be breached by a query that forgot.
+
+## The service owns the targets
+
+Copied onto the clock when it starts, from the service version the conversation
+is bound to — not read through it on every check. A conversation's targets are
+frozen at its start, so an administrator halving a target at noon does not move
+the deadline of everything already running.
+
+## Urgency
+
+Four bands, not a percentage: a list sorted by a number still has to be read
+one row at a time.
+
+| Band | Means |
+|---|---|
+| `breached` | Already missed. Nothing gets better by waiting |
+| `at_risk` | Past 80% of the target |
+| `on_track` | Running, with room |
+| `resting` | Paused or not measured — **can safely wait** |
+
+`resting` is the one that matters most: it lets an agent ignore something
+without wondering whether they should.
+
+The **worst** clock decides the conversation, never an average. One whose first
+response is twenty minutes overdue is not "mostly fine" because its resolution
+target is generous.
+
+A zero target reports as breached rather than dividing by zero — it is a
+configuration an administrator is allowed to save, so it must not be a crash.
+
+## Terminal states
+
+`achieved` and `breached` are terminal. A breach is a fact about what happened;
+a clock that could un-breach would let a late reply erase the lateness.
+
+`stopped` is deliberately **not** `achieved` — the conversation ended before the
+clock could be met or missed, and counting an abandoned conversation as a
+success is how a dashboard lies.
+
+## Two representations, on purpose
+
+`conversation_sla_clocks` is **mutable** and answers *where does this stand* in
+one indexed read. The append-only decision log answers *how did it get here*.
+Neither derives cheaply from the other, so both exist.
+
+The timeline lives in the **existing** decision log, beside the routing, service
+and policy decisions — which reserved `SLA_PAUSED`/`SLA_RESUMED` back in M1. An
+SLA transition *is* a decision the platform made about a conversation, and a
+conversation is explained by reading one history in order rather than
+interleaving three by timestamp and hoping the clocks agree.
+
+## The Inspector
+
+`GET /api/v1/conversations/{id}/sla` answers all six questions: why each clock
+is running, why it is paused, why it was breached, why it was resumed, why the
+deadline changed (compare two timeline rows — every one carries the deadline as
+it then stood), and what needs doing now.
+
+Every clock carries a one-sentence `explanation`, built from the structured
+fields so two conversations paused for the same reason read alike and group
+together.

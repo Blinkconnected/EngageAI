@@ -117,6 +117,7 @@ from blinkengage.infrastructure.database.models.service_directory import (
     ServiceVersion,
 )
 from blinkengage.infrastructure.database.models.sla import Holiday, SlaPolicy
+from blinkengage.infrastructure.database.models.sla_clock import ConversationSlaClock
 from blinkengage.infrastructure.database.models.team import Team, TeamMembership
 from blinkengage.infrastructure.database.models.usage import (
     BillingPeriod,
@@ -200,6 +201,7 @@ __all__ = [
     "Queue",
     "ConversationContextBinding",
     "ConversationOwnership",
+    "ConversationSlaClock",
     "CustomerContextVersion",
     "QueueAssignmentStrategy",
     "QueueDailyStats",

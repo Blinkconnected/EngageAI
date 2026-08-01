@@ -1,115 +1,77 @@
-from datetime import date as date_type
+"""Wire shapes for the SLA Inspector.
+
+Built to answer the six questions somebody actually asks — why is it running,
+why is it paused, why was it breached, why was it resumed, why did the deadline
+change, and what should I do about it — rather than to expose the clock's
+internal state and leave the reader to infer.
+"""
+
 from datetime import datetime
-from typing import Literal
-from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
-
-# Aliased on import (rather than `from datetime import date`) because a
-# field literally named `date` typed `date | None = None` triggers a real
-# CPython bytecode ordering quirk for class-body annotated assignments:
-# the value is STORE_NAME'd to `date` *before* the `date | None`
-# annotation expression is evaluated, so `date` resolves to the
-# just-assigned `None` instead of the datetime type, raising
-# "unsupported operand type(s) for |: 'NoneType' and 'NoneType'" —
-# reproducible with any `x: x | None = None` where the field and type
-# share a name. Only triggers on the `= value` form; `date: date_type` on
-# its own would have been fine, but every field below is aliased anyway
-# for consistency.
+from pydantic import BaseModel
 
 
-class EscalationRule(BaseModel):
-    """One step of an ``SlaPolicy.escalation_rules`` list. Which extra
-    field is required depends on ``action`` — validated below rather than
-    via a discriminated union, since all three actions share the same
-    two top-level fields (``trigger``/``action``) and only differ in one
-    extra parameter."""
-
-    trigger: Literal["warning", "breach"]
-    action: Literal["reassign_queue", "reassign_agent", "notify"]
-    target_queue_id: UUID | None = None
-    target_agent_id: UUID | None = None
-    user_ids: list[UUID] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _check_action_params(self) -> "EscalationRule":
-        if self.action == "reassign_queue" and self.target_queue_id is None:
-            raise ValueError("action 'reassign_queue' requires target_queue_id")
-        if self.action == "reassign_agent" and self.target_agent_id is None:
-            raise ValueError("action 'reassign_agent' requires target_agent_id")
-        if self.action == "notify" and not self.user_ids:
-            raise ValueError("action 'notify' requires at least one user id in user_ids")
-        return self
-
-
-class SlaPolicyCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=150)
-    description: str | None = None
-    first_response_target_minutes: int | None = Field(default=None, gt=0)
-    resolution_target_minutes: int | None = Field(default=None, gt=0)
-    warning_threshold_percent: int = Field(default=80, ge=1, le=100)
-    business_hours_aware: bool = True
-    escalation_rules: list[EscalationRule] = Field(default_factory=list)
-
-
-class SlaPolicyUpdateRequest(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=150)
-    description: str | None = None
-    first_response_target_minutes: int | None = Field(default=None, gt=0)
-    resolution_target_minutes: int | None = Field(default=None, gt=0)
-    warning_threshold_percent: int | None = Field(default=None, ge=1, le=100)
-    business_hours_aware: bool | None = None
-    escalation_rules: list[EscalationRule] | None = None
-    is_active: bool | None = None
+class ClockResponse(BaseModel):
+    timer: str
+    #: The question this clock answers, in the words a customer would use.
+    #: Carried because "first_response" explains nothing to somebody asking
+    #: why a conversation is red.
+    question: str
+    #: ``not_measured`` / ``running`` / ``paused`` / ``achieved`` /
+    #: ``breached`` / ``stopped``.
+    state: str
+    #: ``None`` when this service does not measure this clock — a real
+    #: configuration, not a gap.
+    target_minutes: int | None
+    #: Counted against the target, excluding every pause.
+    elapsed_minutes: float
+    #: What is left. Negative once overdue, which is more useful than
+    #: clamping at zero: "twenty minutes late" and "just late" are
+    #: different situations.
+    remaining_minutes: float | None
+    #: When it runs out, as of now. Moves while paused — legitimately, and
+    #: the reason ``pause_reason`` is never optional.
+    deadline: datetime | None
+    #: Structured, and set only while paused.
+    pause_reason: str | None
+    #: The same in words.
+    pause_text: str | None
+    #: Free text beside the reason, never instead of it.
+    pause_note: str | None
+    started_at: datetime | None
+    settled_at: datetime | None
+    #: ``breached`` / ``at_risk`` / ``on_track`` / ``resting``.
+    urgency: str
+    #: One sentence answering "why is this clock where it is". What the
+    #: Inspector shows before anybody expands anything.
+    explanation: str
 
 
-class SlaPolicyResponse(BaseModel):
-    id: UUID
-    name: str
-    description: str | None
-    first_response_target_minutes: int | None
-    resolution_target_minutes: int | None
-    warning_threshold_percent: int
-    business_hours_aware: bool
-    escalation_rules: list[EscalationRule]
-    is_active: bool
-    assigned_queue_count: int
-    created_at: datetime
-    updated_at: datetime
+class SlaEventResponse(BaseModel):
+    """One movement, from the conversation's decision log."""
+
+    kind: str
+    timer: str
+    at: datetime
+    #: How it reads — "The first response clock paused: outside business
+    #: hours."
+    sentence: str
+    pause_reason: str | None
+    #: The deadline as it stood after this event. On every row, because
+    #: "why did this deadline change?" is answered by comparing two.
+    deadline: datetime | None
+    elapsed_minutes: float | None
+    target_minutes: int | None
 
 
-class HolidayCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    date: date_type
-    recurs_annually: bool = False
+class ConversationSlaResponse(BaseModel):
+    #: The worst clock — what the Inbox sorts and colours by. Never an
+    #: average: a conversation twenty minutes overdue on first response is
+    #: not "mostly fine" because its resolution target is generous.
+    urgency: str
+    clocks: list[ClockResponse]
+    #: Oldest first — the order a story is read in.
+    timeline: list[SlaEventResponse]
 
 
-class HolidayUpdateRequest(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=200)
-    date: date_type | None = None
-    recurs_annually: bool | None = None
-
-
-class HolidayResponse(BaseModel):
-    id: UUID
-    name: str
-    date: date_type
-    recurs_annually: bool
-
-    model_config = {"from_attributes": True}
-
-
-class SlaPreviewRequest(BaseModel):
-    """A hypothetical conversation creation time, so an admin can see
-    exactly what a policy's deadlines would look like before assigning it
-    to a real queue — never touches real data."""
-
-    policy_id: UUID
-    starts_at: datetime
-
-
-class SlaPreviewResponse(BaseModel):
-    first_response_warning_at: datetime | None
-    first_response_deadline: datetime | None
-    resolution_warning_at: datetime | None
-    resolution_deadline: datetime | None
+__all__ = ["ClockResponse", "ConversationSlaResponse", "SlaEventResponse"]

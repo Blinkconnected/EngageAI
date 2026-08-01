@@ -29,6 +29,24 @@ class RoutingDecisionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def sla_events(
+        self, *, conversation_id: uuid.UUID
+    ) -> list[RoutingDecisionRecord]:
+        """Every SLA movement on this conversation, oldest first.
+
+        Filtered on ``sla_timer`` rather than on the kinds, so a kind added
+        later is included without this query having to be remembered.
+        """
+        result = await self._session.execute(
+            select(RoutingDecisionRecord)
+            .where(
+                RoutingDecisionRecord.conversation_id == conversation_id,
+                RoutingDecisionRecord.sla_timer.is_not(None),
+            )
+            .order_by(RoutingDecisionRecord.decided_at)
+        )
+        return list(result.scalars().all())
+
     async def record(
         self, *, company_id: uuid.UUID, conversation_id: uuid.UUID, decision: RoutingDecision
     ) -> RoutingDecisionRecord:

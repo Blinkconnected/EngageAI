@@ -14,6 +14,40 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **Response-time targets now describe the customer's experience.** Four
+  clocks, each answering a question a customer would recognise: how long
+  they waited before someone took responsibility, how long until they got a
+  first real reply, how long they are waiting for the next one, and how long
+  until the problem was solved.
+
+  Each service sets its own targets, and any of them can be left unmeasured
+  — a back-office queue that answers when it answers is a real way to work,
+  and inventing a deadline for it would put a red row in front of an agent
+  for a promise nobody made.
+
+  **A clock never just stops — it always says why.** Waiting for the
+  customer, outside business hours, paused by an agent or a supervisor,
+  waiting on something outside the conversation, or maintenance. Time a
+  customer spends thinking is not time the business was late, and the
+  deadline moves out by exactly that much and no more. A note can add
+  detail; it can never replace the reason.
+
+  Every conversation now shows what needs attention: **breached**, **at
+  risk**, **on track**, or **resting**. Resting is the useful one — it means
+  this can safely wait. The worst clock decides, never an average: a
+  conversation twenty minutes overdue on its first reply is not "mostly
+  fine" because its resolution target is generous.
+
+  A missed target stays missed. A late reply does not erase the lateness,
+  and a conversation that ended before a clock could be met or missed is
+  recorded as exactly that rather than counted as a success.
+
+  Every start, pause, resume, achievement and breach is recorded in the same
+  history as the routing decisions, so a conversation can be explained by
+  reading one story in order — including why a deadline moved.
+
 ### Changed
 
 - **A conversation's status now says one thing.** There were four statuses

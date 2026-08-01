@@ -78,6 +78,7 @@ from blinkengage.application.services.routing_rule_service import RoutingRuleSer
 from blinkengage.application.services.scheduler_health_service import SchedulerHealthService
 from blinkengage.application.services.search_service import SearchService
 from blinkengage.application.services.service_directory_service import ServiceDirectoryService
+from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.application.services.usage_service import UsageService
@@ -199,6 +200,9 @@ from blinkengage.infrastructure.repositories.queue_repository import QueueReposi
 from blinkengage.infrastructure.repositories.quick_reply_repository import QuickReplyRepository
 from blinkengage.infrastructure.repositories.reporting_repository import ReportingRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
+from blinkengage.infrastructure.repositories.routing_decision_repository import (
+    RoutingDecisionRepository,
+)
 from blinkengage.infrastructure.repositories.routing_rule_repository import (
     RoutingRuleRepository,
 )
@@ -713,6 +717,18 @@ def get_conversation_service_ws(
         agent_skills=AgentSkillRepository(session),
         realtime=realtime,
     )
+
+
+def get_sla_engine(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SlaEngine:
+    return SlaEngine(session, RoutingDecisionRepository(session))
+
+
+def get_routing_decision_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> RoutingDecisionRepository:
+    return RoutingDecisionRepository(session)
 
 
 def get_ownership_service(
