@@ -27,6 +27,29 @@ class PaymentProviderKind(StrEnum):
     MANUAL = "manual"
     PAYPAL = "paypal"
 
+    # --- Jordan -----------------------------------------------------
+    #
+    # Added as first-class members rather than as strings on the side,
+    # because a payment stores its provider forever: a refund years from
+    # now has to find the same adapter, and a value the enum does not
+    # know is a payment nothing can ever act on again.
+    #
+    # Several of these have no adapter yet — see
+    # ``domain/payment_providers.py``, which is where a provider's flow
+    # and configuration live. Being namable is a precondition for being
+    # configurable, and configurable is a precondition for connected.
+
+    #: Bill presentment. A bill is published to the scheme and the
+    #: customer pays it at any bank channel quoting the reference.
+    EFAWATEERCOM = "efawateercom"
+    #: Instant credit transfer to an alias. No merchant redirect exists;
+    #: incoming transfers are matched against a payment reference.
+    CLIQ = "cliq"
+    #: Card acquiring through the Jordanian processor.
+    MEPS = "meps"
+    #: Card acquiring through Network International (N-Genius).
+    NETWORK_INTERNATIONAL = "network_international"
+
 
 class PaymentIntentStatus(StrEnum):
     """A gateway payment's life.

@@ -19,6 +19,7 @@ export function PlatformLayout() {
       sections={[
         { to: '/platform', label: t('PlatformLayout.companies'), end: true },
         { to: '/platform/mail', label: t('PlatformLayout.mail') },
+        { to: '/platform/payments', label: t('PlatformLayout.payments') },
       ]}
       sibling={{ to: '/platform/billing', label: t('PlatformLayout.billingConsole') }}
     />

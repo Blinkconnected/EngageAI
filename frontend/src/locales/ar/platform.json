@@ -5,7 +5,8 @@
     "signOut": "تسجيل الخروج",
     "companies": "الشركات",
     "mail": "البريد",
-    "billingConsole": "وحدة تحكم الفوترة"
+    "billingConsole": "وحدة تحكم الفوترة",
+    "payments": "المدفوعات"
   },
   "BillingConsole": {
     "title": "وحدة تحكم الفوترة",
@@ -384,5 +385,28 @@
     "SMS_MESSAGE": "رسالة نصية SMS",
     "STORAGE_GB_MONTH": "التخزين",
     "WEBHOOK_EVENT": "حدث Webhook"
+  },
+  "payments": {
+    "title": "مزودو الدفع",
+    "subtitle": "حسابات التاجر التي يحصّل هذا النظام الأموال من خلالها. تُحفظ البيانات مشفّرة ولا تُعرض مرة أخرى بعد الحفظ.",
+    "enabled": "مفعّل",
+    "save": "حفظ",
+    "saveFailed": "تعذّر حفظ الإعدادات. يرجى المحاولة مرة أخرى.",
+    "loadFailed": "تعذّر تحميل مزودي الدفع.",
+    "noConfiguration": "لا يوجد ما يُضبط — هذا متاح دائمًا.",
+    "secretSet": "محفوظ — اتركه فارغًا للإبقاء عليه",
+    "secretKeepHint": "توجد قيمة محفوظة. اتركه فارغًا للإبقاء عليها، أو اكتب قيمة جديدة لاستبدالها.",
+    "lastChangedBy": "آخر تعديل بواسطة {{email}}",
+    "flow": {
+      "redirect": "صفحة دفع مستضافة",
+      "bill_presentment": "إصدار فاتورة",
+      "credit_transfer": "تحويل بنكي",
+      "operator_entry": "تُسجَّل من قِبل المالية"
+    },
+    "readiness": {
+      "active": "نشط",
+      "not_configured": "غير مُعد",
+      "awaiting_integration": "بانتظار الربط"
+    }
   }
 }

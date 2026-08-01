@@ -997,6 +997,83 @@ that fails at the first charge. `GET /platform/payments/providers`
 reports what is actually available, so a console never offers a button
 that cannot work.
 
+### Four payment flows, not one
+
+The temptation is to model every provider as "a gateway": credentials in,
+redirect out, webhook back. That describes PayPal and it is wrong for most
+of what Jordan actually uses — in a way that produces a checkout button
+leading somewhere the scheme does not have.
+
+So `domain/payment_providers.py` starts from **flows**, because the flow
+decides what the customer is shown, what the platform stores, and how money
+is matched back to an invoice:
+
+| Flow | What happens | Providers |
+|---|---|---|
+| `redirect` | Hosted checkout; the customer leaves and comes back | PayPal, MEPS, Network International |
+| `bill_presentment` | The bill is pushed *to the scheme*; the customer pays it at any bank channel quoting a reference | eFAWATEERcom |
+| `credit_transfer` | The customer pushes money to an alias on their own schedule; nothing is started on our side | CliQ |
+| `operator_entry` | Finance records money that has arrived | Manual |
+
+Two providers sharing a flow can share a screen. Two providers sharing only
+the word "payment" cannot.
+
+`bill_presentment` and `credit_transfer` have no intent to expire and no
+redirect to fail: there is only a bill to publish, or a transfer to match.
+Modelling either as a redirect would invent a checkout page neither scheme
+has.
+
+### Configuring a provider
+
+`/platform/settings/payment-providers`, following the mail relay exactly:
+one encrypted row (`platform_settings`, key `payment_providers`), stored
+settings layered over the environment so an installation running on
+`PAYPAL_*` variables keeps working untouched.
+
+Each provider declares its own **credential fields** as data, so the API,
+the console form and the validation read one list — a field the backend
+requires and the form never renders is a provider that can never be saved.
+Field names mirror each scheme's own vocabulary ("outlet reference", not a
+normalised "merchant id"), because an operator is copying values out of a
+bank's onboarding pack.
+
+Providers are saved **one at a time**: these are separate contracts with
+separate people, and a form that saved all of them together would make
+editing one an opportunity to clear another.
+
+**Secrets are write-only.** A stored credential is never sent back to the
+console; the screen is told *that* a secret is set, not what it is. On a
+write, an absent secret means "unchanged" and an empty string means
+"cleared" — because the console cannot resend what it was never given, and
+reading absence as "clear" would unconfigure every merchant account on the
+installation the moment somebody opened the page and pressed Save.
+
+That is why reads return a `ProviderView` rather than a redacted
+`ProviderConfig`. The two facts the console needs — the non-secret values,
+and which secrets exist — cannot both survive redaction: strip first and
+"is the password set?" answers no for everything. One type, no ordering to
+get wrong.
+
+### Readiness is three states, not a boolean
+
+- `active` — configured, and an adapter exists.
+- `not_configured` — an adapter exists; credentials are missing or it is
+  switched off.
+- `awaiting_integration` — credentials can be stored, but **no adapter
+  exists yet**.
+
+The third is the honest state of eFAWATEERcom, CliQ, MEPS and Network
+International today: the schemes are namable, configurable and country-
+scoped, and nothing pushes a bill or opens a checkout. They are
+deliberately **absent from `PaymentProviderRegistry`**, which is what the
+checkout asks "can this be paid?" — answering yes for something that cannot
+complete puts a dead button in front of a customer. The settings screen
+says so in words instead, which is the right place to say it.
+
+Completing them needs each scheme's integration specification. The wire
+protocol is not something to infer: an adapter posting invented fields to
+an invented endpoint is prototype code in the money path.
+
 ### Intents versus payments
 
 A **payment intent** is money *requested*. A **payment** is money that

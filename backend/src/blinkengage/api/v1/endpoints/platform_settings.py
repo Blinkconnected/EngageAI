@@ -8,7 +8,7 @@ through.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.deps import (
@@ -19,8 +19,12 @@ from blinkengage.api.deps import (
     get_platform_settings_service,
 )
 from blinkengage.api.schemas.platform_settings import (
+    CredentialFieldResponse,
     MailSettingsRequest,
     MailSettingsResponse,
+    PaymentProviderRequest,
+    PaymentProviderResponse,
+    PaymentProvidersResponse,
     TestMailRequest,
     TestMailResponse,
 )
@@ -30,6 +34,12 @@ from blinkengage.application.services.platform_settings_service import (
 from blinkengage.core.auth_context import PlatformContext
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.mail import MailConfig
+from blinkengage.domain.payment_providers import (
+    PROVIDERS,
+    ProviderView,
+    UnknownProviderKindError,
+    descriptor_for,
+)
 from blinkengage.infrastructure.email.mailer import MailDeliveryError, send_with_config
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
 
@@ -154,6 +164,104 @@ async def test_mail_settings(
         logger.warning("platform_mail_test_failed", host=config.host, error=str(exc))
         return TestMailResponse(delivered=False, detail=str(exc))
     return TestMailResponse(delivered=True)
+
+
+# --- Payment providers -----------------------------------------------
+#
+# Installation-level, like the mail relay: these are the merchant
+# accounts the product itself collects money through, not a tenant's
+# own. A company administrator has no business reading them, which is
+# why they live behind ``get_platform_auth`` on this router.
+
+
+def _provider_response(view: ProviderView) -> PaymentProviderResponse:
+    """The wire shape, built from a ``ProviderView``.
+
+    A view rather than a config, so there is no path through this function
+    that can serialise a stored credential.
+    """
+    descriptor = descriptor_for(view.kind)
+    return PaymentProviderResponse(
+        kind=descriptor.kind.value,
+        label=descriptor.label,
+        description=descriptor.description,
+        flow=descriptor.flow.value,
+        countries=list(descriptor.countries),
+        fields=[
+            CredentialFieldResponse(
+                name=field.name,
+                label=field.label,
+                secret=field.secret,
+                required=field.required,
+                help_text=field.help_text,
+                choices=list(field.choices),
+            )
+            for field in descriptor.fields
+        ],
+        enabled=view.enabled,
+        readiness=view.readiness.value,
+        missing=list(view.missing),
+        secret_set=view.secret_set,
+        values=dict(view.values),
+        pending_note=descriptor.pending_note,
+    )
+
+
+@router.get("/payment-providers", response_model=PaymentProvidersResponse)
+async def read_payment_providers(
+    service: Annotated[PlatformSettingsService, Depends(get_platform_settings_service)],
+) -> PaymentProvidersResponse:
+    """Every provider this build knows, configured or not.
+
+    All of them, always — a provider missing from the list is
+    indistinguishable from one this build does not support, and an
+    operator looking for eFAWATEERcom needs to find it whether or not
+    anybody has filled it in.
+    """
+    configs, updated_by, updated_at = await service.payment_providers_view()
+    return PaymentProvidersResponse(
+        providers=[_provider_response(configs[p.kind.value]) for p in PROVIDERS],
+        updated_by_email=updated_by,
+        updated_at=updated_at,
+    )
+
+
+@router.put("/payment-providers/{kind}", response_model=PaymentProviderResponse)
+async def save_payment_provider(
+    kind: str,
+    payload: PaymentProviderRequest,
+    service: Annotated[PlatformSettingsService, Depends(get_platform_settings_service)],
+    platform: Annotated[PlatformContext, Depends(get_platform_auth)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PaymentProviderResponse:
+    """Stores one provider's settings.
+
+    One at a time: these are separate contracts with separate people, and
+    a form that saves all of them at once makes editing one an
+    opportunity to clear another.
+    """
+    try:
+        descriptor_for(kind)
+    except UnknownProviderKindError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{kind}' is not a payment provider this installation supports.",
+        ) from None
+
+    user = await UserRepository(session).get_by_id(platform.user_id)
+    saved = await service.save_payment_provider(
+        kind=kind,
+        enabled=payload.enabled,
+        values=payload.values,
+        actor_email=user.email if user else None,
+    )
+    logger.info(
+        "platform_payment_provider_saved",
+        provider=kind,
+        enabled=saved.enabled,
+        readiness=saved.readiness.value,
+    )
+    return _provider_response(saved)
 
 
 __all__ = ["router"]

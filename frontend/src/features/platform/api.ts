@@ -22,6 +22,9 @@ import type {
   Tier,
   MailSettings,
   MailSettingsInput,
+  PaymentProvider,
+  PaymentProviderInput,
+  PaymentProvidersResponse,
   TestMailResult,
 } from './types'
 
@@ -534,5 +537,34 @@ export function useAssignProfileMutation() {
     },
     onSuccess: (_data, variables) =>
       queryClient.invalidateQueries({ queryKey: companyPricingKey(variables.companyId) }),
+  })
+}
+
+const PAYMENT_PROVIDERS_KEY = ['platform', 'settings', 'payment-providers']
+
+async function fetchPaymentProviders(): Promise<PaymentProvidersResponse> {
+  const { data } = await apiClient.get<PaymentProvidersResponse>(
+    '/platform/settings/payment-providers',
+  )
+  return data
+}
+
+export function usePaymentProvidersQuery() {
+  return useQuery({ queryKey: PAYMENT_PROVIDERS_KEY, queryFn: fetchPaymentProviders })
+}
+
+export function useSavePaymentProviderMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ kind, input }: { kind: string; input: PaymentProviderInput }) => {
+      const { data } = await apiClient.put<PaymentProvider>(
+        `/platform/settings/payment-providers/${kind}`,
+        input,
+      )
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PAYMENT_PROVIDERS_KEY })
+    },
   })
 }

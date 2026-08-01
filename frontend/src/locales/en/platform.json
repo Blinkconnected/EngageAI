@@ -5,7 +5,8 @@
     "signOut": "Sign out",
     "companies": "Companies",
     "mail": "Email",
-    "billingConsole": "Billing Console"
+    "billingConsole": "Billing Console",
+    "payments": "Payments"
   },
   "BillingConsole": {
     "title": "Billing Console",
@@ -384,5 +385,28 @@
     "SMS_MESSAGE": "SMS message",
     "STORAGE_GB_MONTH": "Storage",
     "WEBHOOK_EVENT": "Webhook event"
+  },
+  "payments": {
+    "title": "Payment providers",
+    "subtitle": "The merchant accounts this installation collects money through. Credentials are stored encrypted and are never shown again once saved.",
+    "enabled": "Enabled",
+    "save": "Save",
+    "saveFailed": "Could not save these settings. Please try again.",
+    "loadFailed": "Could not load payment providers.",
+    "noConfiguration": "Nothing to configure — this is always available.",
+    "secretSet": "Saved — leave blank to keep",
+    "secretKeepHint": "A value is saved. Leave blank to keep it, or type a new one to replace it.",
+    "lastChangedBy": "Last changed by {{email}}",
+    "flow": {
+      "redirect": "Hosted checkout",
+      "bill_presentment": "Bill presentment",
+      "credit_transfer": "Bank transfer",
+      "operator_entry": "Recorded by finance"
+    },
+    "readiness": {
+      "active": "Active",
+      "not_configured": "Not set up",
+      "awaiting_integration": "Awaiting integration"
+    }
   }
 }

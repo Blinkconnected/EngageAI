@@ -10,6 +10,7 @@ wrong account.
 """
 
 from blinkengage.core.config import Settings
+from blinkengage.domain.payment_providers import ProviderConfig, ProviderReadiness
 from blinkengage.domain.payments import PaymentProviderKind
 from blinkengage.infrastructure.payments.base import PaymentProvider
 from blinkengage.infrastructure.payments.manual import ManualProvider
@@ -38,6 +39,36 @@ class PaymentProviderRegistry:
                 sandbox=settings.paypal_sandbox,
                 brand_name=settings.paypal_brand_name,
             )
+        return cls(providers)
+
+    @classmethod
+    def from_configs(cls, configs: dict[str, ProviderConfig]) -> "PaymentProviderRegistry":
+        """Built from what an operator configured in the console.
+
+        **A provider is registered only if an adapter exists for it.** A
+        scheme whose credentials are stored but whose integration is not
+        written must not appear here: the registry is what the checkout
+        asks "can this be paid?", and answering yes for something that
+        cannot complete puts a dead button in front of a customer. Those
+        providers report ``AWAITING_INTEGRATION`` on the settings screen
+        instead, which is the honest place to say it.
+
+        Manual is added unconditionally, for the reason above.
+        """
+        providers: dict[str, PaymentProvider] = {PaymentProviderKind.MANUAL.value: ManualProvider()}
+
+        paypal = configs.get(PaymentProviderKind.PAYPAL.value)
+        if paypal is not None and paypal.readiness() is ProviderReadiness.ACTIVE:
+            providers[PaymentProviderKind.PAYPAL.value] = PayPalProvider(
+                client_id=paypal.get("client_id"),
+                client_secret=paypal.get("client_secret"),
+                webhook_id=paypal.get("webhook_id"),
+                sandbox=paypal.sandbox,
+                brand_name=paypal.get("brand_name") or "Blink Engage",
+            )
+
+        # eFAWATEERcom, CliQ, MEPS and Network International are deliberately
+        # absent until their adapters exist. See docs/architecture/billing.md.
         return cls(providers)
 
     def get(self, kind: str) -> PaymentProvider:

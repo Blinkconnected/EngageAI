@@ -8,6 +8,7 @@ import { PlatformCompaniesPage } from '../features/platform/PlatformCompaniesPag
 import { CompanyUsersPage } from '../features/platform/CompanyUsersPage'
 import { PlatformCompanyBillingPage } from '../features/platform/PlatformCompanyBillingPage'
 import { PlatformMailPage } from '../features/platform/PlatformMailPage'
+import { PlatformPaymentProvidersPage } from '../features/platform/PlatformPaymentProvidersPage'
 import { PlatformPricingPage } from '../features/platform/PlatformPricingPage'
 import { RevenueDashboardPage } from '../features/billingops/RevenueDashboardPage'
 import { InvoicesPage } from '../features/billingops/InvoicesPage'
@@ -148,6 +149,7 @@ export function AppRoutes() {
               the installation, not running the revenue system. */}
           <Route path="companies/:companyId/users" element={<CompanyUsersPage />} />
           <Route path="mail" element={<PlatformMailPage />} />
+          <Route path="payments" element={<PlatformPaymentProvidersPage />} />
         </Route>
 
         {/* The billing console. A separate surface from the platform

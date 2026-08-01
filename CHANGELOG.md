@@ -14,6 +14,45 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **Payment providers can now be set up from the Platform Console.** A new
+  **Payments** screen lists every scheme the product supports, including
+  the Jordanian ones — **eFAWATEERcom, CliQ, MEPS and Network
+  International** — alongside PayPal and manual entry. Credentials are
+  stored encrypted and each provider is saved on its own, so setting up one
+  can never disturb another.
+
+  Each scheme is described by how it is *actually* paid, not lumped
+  together as "a gateway": a hosted checkout, a bill you publish and the
+  customer pays at any bank channel, a transfer the customer pushes to your
+  alias, or a payment finance records by hand. Getting that wrong is how a
+  customer ends up at a checkout page a scheme does not have.
+
+  Jordanian schemes are offered only to Jordanian customers, and PayPal is
+  not offered to them — showing somebody a payment route they cannot use is
+  worse than showing nothing.
+
+  Each provider says plainly where it stands: **active**, **not set up**,
+  or **awaiting integration**. eFAWATEERcom, CliQ, MEPS and Network
+  International are at *awaiting integration* — their credentials can be
+  entered and stored now, and they are deliberately not offered to
+  customers as a payment option until the integration with each scheme is
+  built, so nobody meets a payment button that cannot complete.
+
+  Settings entered here take precedence over the deployment's environment
+  variables, and an installation that has never opened the screen keeps
+  working exactly as before.
+
+### Security
+
+- **A saved payment credential is never sent back to the browser.** The
+  settings screen is told that a secret exists, not what it is, and a
+  credential the operator does not retype is left untouched rather than
+  overwritten with a blank. Without that, opening the payments screen and
+  pressing Save would have quietly unconfigured every merchant account on
+  the installation.
+
 ### Fixed
 
 - **Invoices are now generated automatically at the start of each month.**

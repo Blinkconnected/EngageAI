@@ -7,6 +7,7 @@ again once it is set.
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -80,3 +81,59 @@ __all__ = [
     "TestMailRequest",
     "TestMailResponse",
 ]
+
+
+# --- Payment providers -----------------------------------------------
+
+
+class CredentialFieldResponse(BaseModel):
+    """One box on the provider's form.
+
+    The form is described by the backend rather than hardcoded in the
+    console: a field the backend requires and the form does not render is
+    a provider that can never be saved.
+    """
+
+    name: str
+    label: str
+    secret: bool
+    required: bool
+    help_text: str | None = None
+    choices: list[str] = []
+
+
+class PaymentProviderResponse(BaseModel):
+    kind: str
+    label: str
+    description: str
+    #: How the customer actually pays — redirect, bill presentment, credit
+    #: transfer or operator entry. Decides what the console explains.
+    flow: str
+    countries: list[str]
+    fields: list[CredentialFieldResponse]
+    enabled: bool
+    #: ``active`` / ``not_configured`` / ``awaiting_integration``.
+    readiness: str
+    #: Required fields with nothing in them, so the console can point at
+    #: them rather than saying "invalid".
+    missing: list[str]
+    #: Which secrets have a value — never the values themselves.
+    secret_set: dict[str, bool]
+    #: Everything that is not a secret.
+    values: dict[str, Any]
+    #: Why this cannot be connected yet, when it cannot.
+    pending_note: str | None = None
+
+
+class PaymentProvidersResponse(BaseModel):
+    providers: list[PaymentProviderResponse]
+    updated_by_email: str | None
+    updated_at: datetime | None
+
+
+class PaymentProviderRequest(BaseModel):
+    enabled: bool = False
+    #: A secret omitted (or sent as null) is left unchanged; sent as ""
+    #: it is cleared. The console is never given a stored secret back, so
+    #: treating absence as "clear" would erase credentials on every save.
+    values: dict[str, Any] = {}

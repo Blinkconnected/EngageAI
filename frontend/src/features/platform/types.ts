@@ -315,3 +315,61 @@ export interface PricingRate {
   created_by_email: string | null
   reason: string | null
 }
+
+/** How a customer actually pays. The distinction the screen is built on:
+ * `redirect` sends them to a hosted checkout, `bill_presentment` publishes
+ * a bill they pay at their own bank, `credit_transfer` is money they push
+ * to an alias, and `operator_entry` is finance recording what arrived. */
+export type PaymentFlow =
+  | 'redirect'
+  | 'bill_presentment'
+  | 'credit_transfer'
+  | 'operator_entry'
+
+/** `awaiting_integration` means credentials can be stored but no adapter
+ * exists yet — shown plainly rather than as a button that cannot work. */
+export type ProviderReadiness = 'active' | 'not_configured' | 'awaiting_integration'
+
+export interface CredentialField {
+  name: string
+  label: string
+  secret: boolean
+  required: boolean
+  help_text: string | null
+  choices: string[]
+}
+
+export interface PaymentProvider {
+  kind: string
+  label: string
+  description: string
+  flow: PaymentFlow
+  /** ISO 3166-1 alpha-2 codes this provider serves; empty means everywhere. */
+  countries: string[]
+  /** The form, described by the backend so a required field cannot be one
+   * this screen never renders. */
+  fields: CredentialField[]
+  enabled: boolean
+  readiness: ProviderReadiness
+  /** Required fields with nothing in them, so the screen can point at the
+   * empty box rather than saying "invalid". */
+  missing: string[]
+  /** Which secrets have a value — never the values. */
+  secret_set: Record<string, boolean>
+  /** Everything that is not a secret. */
+  values: Record<string, unknown>
+  pending_note: string | null
+}
+
+export interface PaymentProvidersResponse {
+  providers: PaymentProvider[]
+  updated_by_email: string | null
+  updated_at: string | null
+}
+
+export interface PaymentProviderInput {
+  enabled: boolean
+  /** A secret omitted keeps what is stored; an empty string clears it. The
+   * screen is never given a stored secret, so it must not send one back. */
+  values: Record<string, unknown>
+}
