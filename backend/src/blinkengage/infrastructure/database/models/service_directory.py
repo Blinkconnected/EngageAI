@@ -94,8 +94,22 @@ class Service(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
     #: Which version new conversations bind to. Deliberately a pointer rather
     #: than a flag on the version: "the current one" is a single fact, and
     #: two rows both claiming to be current is a state no query can resolve.
+    #:
+    #: ``use_alter=True`` because this closes a cycle — a service points at
+    #: its current version and every version points back at its service.
+    #: Without it SQLAlchemy cannot order ``create_all``/``drop_all`` and
+    #: warns on every test that builds a schema, which is noise loud enough
+    #: to bury a real warning. The migration already adds this constraint as
+    #: a separate step for the same reason.
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("service_versions.id", ondelete="SET NULL"), default=None
+        GUID(),
+        ForeignKey(
+            "service_versions.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_services_current_version",
+        ),
+        default=None,
     )
 
     #: An inactive service takes no new conversations. Distinct from
