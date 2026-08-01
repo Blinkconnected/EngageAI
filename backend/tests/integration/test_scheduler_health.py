@@ -31,8 +31,6 @@ from blinkengage.infrastructure.database.models.scheduler_run import SchedulerRu
 from blinkengage.infrastructure.tasks.run_recorder import record_run
 from tests.integration.test_pricing_engine import platform_headers
 
-pytestmark = pytest.mark.asyncio
-
 
 async def runs(app: Any, task_name: str) -> list[SchedulerRun]:
     factory = app.state.container.session_factory()
@@ -45,6 +43,7 @@ async def runs(app: Any, task_name: str) -> list[SchedulerRun]:
         return list(result.scalars().all())
 
 
+@pytest.mark.asyncio
 class TestARunIsRecorded:
     async def test_a_successful_run_records_what_it_counted(self, app: Any) -> None:
         factory = app.state.container.session_factory()
@@ -111,6 +110,7 @@ class TestARunIsRecorded:
         assert mid_flight[0].finished_at is None
 
 
+@pytest.mark.asyncio
 class TestTheHealthApi:
     async def test_it_lists_every_billing_job(self, client: AsyncClient, app: Any) -> None:
         response = await client.get(
