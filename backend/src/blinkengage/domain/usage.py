@@ -98,6 +98,23 @@ def month_bounds(moment: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
+def previous_month_bounds(moment: datetime) -> tuple[datetime, datetime]:
+    """The calendar month *before* the one containing ``moment``.
+
+    What the invoice run bills on the 1st. Derived by stepping back from
+    the current month's start rather than by subtracting 30 days, so it is
+    correct in March and in January rather than approximately correct.
+    """
+    start_of_this_month, _ = month_bounds(moment)
+    end = start_of_this_month
+    start = (
+        datetime(end.year - 1, 12, 1, tzinfo=UTC)
+        if end.month == 1
+        else datetime(end.year, end.month - 1, 1, tzinfo=UTC)
+    )
+    return start, end
+
+
 def period_covers(period_start: datetime, period_end: datetime, moment: datetime) -> bool:
     return period_start <= moment < period_end
 

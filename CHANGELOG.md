@@ -14,7 +14,113 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Invoices are now generated automatically at the start of each month.**
+  Closing a billing period and invoicing it were separate steps, and only
+  the first one was scheduled. A month would close by itself just after
+  midnight on the 1st and then sit there — correctly closed and never
+  billed — until somebody opened the Billing Console and pressed Generate
+  for each company in turn.
+
+  An hourly run now bills every closed period that has no invoice yet. It
+  looks for *periods without an invoice* rather than *periods closed
+  recently*, so a month missed during an outage is picked up on the next
+  run instead of staying unbilled until somebody notices. A backlog is
+  cleared oldest month first, and one company's problem no longer stops
+  everybody else's invoices — the failure is logged with the company's
+  name and the run carries on.
+
+  Invoices come out **issued**, with their number, not as drafts. A draft
+  is an unfinished invoice: it has no number, so a customer has nothing to
+  quote and nothing to pay against, and the payment clock never starts. A
+  draft left behind by an interrupted run is picked up and issued on the
+  next one rather than sitting there forever.
+
+- **Customers who used nothing now get an invoice too.** Billing periods
+  were only created when a company first did something billable, so a
+  company that was quiet all month had no period — and therefore no
+  invoice, no record, and nothing to show for the month. They now receive
+  a proper zero invoice like everybody else. Somebody looking for last
+  month's invoice can now tell "you owed nothing" apart from "we forgot
+  you".
+
+  Two groups are deliberately left out: closed accounts, and customers who
+  signed up after the month ended — a July bill arriving for somebody who
+  joined in August would be alarming rather than reassuring.
+
+- **Three billing jobs were failing roughly every other run.** Period
+  closing, the collections and dunning sweep, and the daily billing
+  figures each hit a database-connection fault on alternate runs — 132
+  failures in the last two days alone. Nothing looked broken, because
+  every one of those jobs is safe to repeat: a failed run simply left its
+  work for the next successful one. Months still closed and overdue
+  notices still went out, but late and unpredictably.
+
+  All three are fixed, and the platform now checks for the mistake
+  automatically — it is the kind that only shows up on a job's *second*
+  run inside a worker, which is why it survived three separate times.
+
 ### Added
+
+- **Business rules now live in one place — the Policy Engine.** Questions
+  like "may AI answer this?", "may this conversation be routed?", "may an
+  agent pick it up?" and "may it skip the queue?" used to be answered
+  wherever they happened to be needed. A rule written in one module and
+  forgotten in another means the platform behaves differently depending on
+  which door a conversation came through. Now every module asks the same
+  engine, and gets the same answer.
+
+  **Every answer explains itself.** Not a yes or no — a decision with a
+  reason and, crucially, a **source**: the Customer Context, the service's
+  configuration, the company's settings, the state of the conversation.
+  "Denied" sends an administrator hunting; "denied, from the Customer
+  Context" tells them which screen to open. Reasons come from a fixed list
+  so the Routing Inspector can group and filter them.
+
+  When more than one rule would say no, the reason shown is the one that
+  stays true after the others are fixed. If a customer has asked for no
+  automated messages *and* the company has AI switched off, the platform
+  reports the customer's request — because switching AI back on will not
+  make AI reply to that customer, and saying otherwise promises a fix that
+  never arrives.
+
+  Rules belonging to features that have not shipped yet — SLA pausing,
+  automation, auto-close — are present and say so, reporting "this policy
+  is not yet enforced" rather than inventing a rationale that reads like a
+  real decision. They are there so future modules ask the engine instead of
+  growing their own copy of a rule.
+
+- **A conversation now runs inside an Execution Context.** One object
+  carrying how the business behaves for this conversation, how this
+  customer is treated, what is true of the conversation right now, and what
+  the company permits. Resolved once at the start and passed to every
+  module, so two modules can no longer disagree about the same customer.
+
+  The service and customer contexts are **frozen at the version the
+  conversation started with**. An administrator halving a response target
+  at noon no longer rewrites the deadline of every conversation opened that
+  morning — an agent watching a countdown would have seen it jump. Existing
+  conversations continue as they began unless an administrator explicitly
+  re-routes them; the console shows when a conversation is running on an
+  older version, so a supervisor wondering why two conversations in one
+  queue have different deadlines gets an answer.
+
+  Customer versions are minted only when something that actually changes
+  how a conversation is handled changes — tier, VIP status, language,
+  contract, contact preference. Renaming a customer does not fork their
+  history; promoting them to VIP does.
+
+### Security
+
+- **The company-wide AI switch can no longer be lost by omission.** It is
+  the switch a compliance officer uses to guarantee no AI-generated content
+  reaches customers. The AI policy refuses when it cannot confirm what a
+  company allows, rather than treating silence as permission — so a module
+  that forgets to supply it gets a refusal, not an unintended AI reply.
+  "Switched off" and "switched on but never set up" are also reported as
+  different answers, because they are different problems with different
+  fixes.
 
 - **Every issued invoice now has a proper PDF.** Download it, open it for
   printing, or send it to the customer by email — from the Billing Console,

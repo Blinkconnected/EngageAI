@@ -11,10 +11,14 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from blinkengage.domain.usage import BillingPeriodStatus
+from blinkengage.domain.invoicing import InvoiceStatus
+from blinkengage.domain.usage import BillingPeriodStatus, due_date
+from blinkengage.infrastructure.database.models.company import Company
+from blinkengage.infrastructure.database.models.invoicing import Invoice
 from blinkengage.infrastructure.database.models.usage import (
     BillingPeriod,
     UsagePeriodLine,
@@ -89,6 +93,121 @@ class BillingPeriodRepository:
             .where(
                 BillingPeriod.status == BillingPeriodStatus.OPEN,
                 BillingPeriod.period_end <= now,
+            )
+            .order_by(BillingPeriod.period_end)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def companies_missing_period(
+        self, *, period_start: datetime, period_end: datetime, limit: int = 1000
+    ) -> list[tuple[uuid.UUID, str]]:
+        """``(company_id, billing_currency)`` for companies with no period
+        covering this month — the ones a zero invoice must be built for.
+
+        Periods are opened lazily, on a company's first metered event, so a
+        company that used nothing all month has no period at all and would
+        otherwise never be billed. Every customer gets a monthly document
+        whether or not they used anything, so the gap has to be filled
+        before the month can be closed.
+
+        Excluded: soft-deleted companies, and companies created *after* the
+        month ended — a customer who signed up in August is not sent a bill
+        for July.
+
+        Overlap rather than an exact ``period_start`` match, so a period
+        with unusual bounds still counts as covering the month and does not
+        cause a second one to be created beside it.
+        """
+        covering = (
+            select(BillingPeriod.id)
+            .where(
+                BillingPeriod.company_id == Company.id,
+                BillingPeriod.period_start < period_end,
+                BillingPeriod.period_end > period_start,
+            )
+            .exists()
+        )
+        result = await self._session.execute(
+            select(Company.id, Company.billing_currency)
+            .where(
+                Company.deleted_at.is_(None),
+                Company.created_at < period_end,
+                ~covering,
+            )
+            .order_by(Company.created_at)
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def add_closed_period(
+        self,
+        *,
+        company_id: uuid.UUID,
+        period_start: datetime,
+        period_end: datetime,
+        closed_at: datetime,
+        currency: str,
+    ) -> BillingPeriod | None:
+        """Creates an already-closed, empty period for a month with no usage.
+
+        Inserted **closed** rather than opened and then closed, because one
+        open period per company is a database constraint: a company whose
+        first usage landed in August already has an open August period, and
+        opening a backfilled July one beside it would violate that. A month
+        with no usage has nothing to snapshot anyway — closing it is a
+        formality, and doing it in one statement leaves no window in which
+        a second open period exists.
+
+        Returns ``None`` if a concurrent run created it first.
+        """
+        period = BillingPeriod(
+            company_id=company_id,
+            period_start=period_start,
+            period_end=period_end,
+            status=BillingPeriodStatus.CLOSED,
+            closed_at=closed_at,
+            total_amount=Decimal("0"),
+            currency=currency,
+            due_date=datetime.combine(
+                due_date(period_end), datetime.min.time(), tzinfo=period_end.tzinfo
+            ),
+        )
+        self._session.add(period)
+        try:
+            await self._session.flush()
+        except IntegrityError:
+            await self._session.rollback()
+            return None
+        return period
+
+    async def closed_needing_invoice(self, *, limit: int = 500) -> list[BillingPeriod]:
+        """Closed periods with no invoice, or with one still in draft.
+
+        Driven off the *state of the document* rather than off "closed in
+        the last hour", so the sweep is self-healing in the way the close
+        job already is: a period missed during an outage is picked up on
+        the next run instead of staying uninvoiced until somebody notices
+        a month later.
+
+        Drafts count as needing work. A draft has no invoice number, so a
+        customer has nothing to quote and nothing to pay against, and the
+        payment clock never starts — it is an unfinished invoice, not a
+        finished one of a different kind. Matching only on *absence* would
+        leave a run that died between generating and issuing to strand a
+        month as a draft forever, which is precisely the state a sweep
+        exists to heal. Once the invoice is issued the period stops
+        matching, which is what stops the sweep working on it forever.
+
+        Oldest first, so a backlog is cleared in the order the months
+        actually happened.
+        """
+        result = await self._session.execute(
+            select(BillingPeriod)
+            .outerjoin(Invoice, Invoice.billing_period_id == BillingPeriod.id)
+            .where(
+                BillingPeriod.status == BillingPeriodStatus.CLOSED,
+                or_(Invoice.id.is_(None), Invoice.status == InvoiceStatus.DRAFT),
             )
             .order_by(BillingPeriod.period_end)
             .limit(limit)

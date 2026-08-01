@@ -124,50 +124,58 @@ def build_invoice_service(session: AsyncSession) -> InvoiceService:
 async def _run_async() -> tuple[int, str]:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
-    providers = PaymentProviderRegistry.from_settings(settings)
+    try:
+        providers = PaymentProviderRegistry.from_settings(settings)
 
-    async with session_scope(session_factory) as session:
-        invoice_service = build_invoice_service(session)
-        audit = FinancialAuditRecorder(FinancialAuditRepository(session))
+        async with session_scope(session_factory) as session:
+            invoice_service = build_invoice_service(session)
+            audit = FinancialAuditRecorder(FinancialAuditRepository(session))
 
-        reconciled = await PaymentService(
-            intents=PaymentIntentRepository(session),
-            refunds=PaymentRefundRepository(session),
-            reversals=AllocationReversalRepository(session),
-            payments=PaymentRepository(session),
-            invoices=InvoiceRepository(session),
-            invoice_service=invoice_service,
-            providers=providers,
-            audit=audit,
-            ledger=LedgerService(
-                entries=LedgerRepository(session),
-                numbers=DocumentNumberRepository(session),
-            ),
-            settings=settings,
-        ).reconcile_pending(older_than=datetime.now(UTC) - _RECONCILE_AFTER)
+            reconciled = await PaymentService(
+                intents=PaymentIntentRepository(session),
+                refunds=PaymentRefundRepository(session),
+                reversals=AllocationReversalRepository(session),
+                payments=PaymentRepository(session),
+                invoices=InvoiceRepository(session),
+                invoice_service=invoice_service,
+                providers=providers,
+                audit=audit,
+                ledger=LedgerService(
+                    entries=LedgerRepository(session),
+                    numbers=DocumentNumberRepository(session),
+                ),
+                settings=settings,
+            ).reconcile_pending(older_than=datetime.now(UTC) - _RECONCILE_AFTER)
 
-        run = await CollectionsService(
-            session=session,
-            invoice_service=invoice_service,
-            notifications=NotificationService(
-                notifications=NotificationRepository(session),
-                companies=CompanyRepository(session),
-                realtime=_get_realtime_publisher(settings),
-            ),
-            audit=audit,
-        ).run()
+            run = await CollectionsService(
+                session=session,
+                invoice_service=invoice_service,
+                notifications=NotificationService(
+                    notifications=NotificationRepository(session),
+                    companies=CompanyRepository(session),
+                    realtime=_get_realtime_publisher(settings),
+                ),
+                audit=audit,
+            ).run()
 
-    if reconciled or run.notices_sent or run.suspended or run.reinstated:
-        logger.info(
-            "collections_sweep",
-            reconciled=reconciled,
-            marked_overdue=run.marked_overdue,
-            notices_sent=run.notices_sent,
-            suspended=[str(company_id) for company_id in run.suspended],
-            reinstated=[str(company_id) for company_id in run.reinstated],
-        )
-    return reconciled, run.summary()
-
+        if reconciled or run.notices_sent or run.suspended or run.reinstated:
+            logger.info(
+                "collections_sweep",
+                reconciled=reconciled,
+                marked_overdue=run.marked_overdue,
+                notices_sent=run.notices_sent,
+                suspended=[str(company_id) for company_id in run.suspended],
+                reinstated=[str(company_id) for company_id in run.reinstated],
+            )
+        return reconciled, run.summary()
+    finally:
+        # Required, not tidiness — see ``events/relay.py``. The engine is
+        # cached across invocations but each gets its own ``asyncio.run``
+        # loop, and a pooled asyncpg connection is bound to the loop that
+        # opened it. Without this the next run fails with "Future attached
+        # to a different loop".
+        if _engine is not None:
+            await _engine.dispose()
 
 @celery_app.task(name="blinkengage.billing.collections_sweep")  # type: ignore[misc]
 def collections_sweep() -> str:

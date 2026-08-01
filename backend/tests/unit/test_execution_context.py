@@ -183,25 +183,24 @@ class TestAnUnknownCustomerIsANormalCase:
         assert execution.customer is None
         assert execution.language is None
         assert execution.is_priority is False
-        assert execution.ai_may_engage is True
         assert "unknown customer" in execution.describe()
 
 
-class TestAiHasTwoGates:
-    def test_the_service_must_allow_it(self) -> None:
-        execution = an_execution(service=a_service(ai=AiPolicy(enabled=False)))
+class TestNoBusinessRuleLivesOnTheContract:
+    def test_priority_is_a_fact_not_a_decision(self) -> None:
+        """``is_priority`` says what is true of the customer. What the
+        platform may *do* about it is two different policies, and they do
+        not agree — VIP entry is granted, bypassing the queue is not."""
+        execution = an_execution(customer=a_customer(is_vip=True))
 
-        assert execution.ai_may_engage is False
+        assert execution.is_priority is True
 
-    def test_a_customer_may_refuse_automated_messages(self) -> None:
-        """Both gates in one place. Either alone is a rule somebody applies
-        in one module and forgets in another."""
-        execution = an_execution(
-            customer=a_customer(contact_preference=ContactPreference.NO_AUTOMATED_MESSAGES)
-        )
-
-        assert execution.service.ai.enabled is True
-        assert execution.ai_may_engage is False
+    def test_asking_the_contract_whether_ai_may_engage_is_impossible(self) -> None:
+        """This property existed and was removed. A business rule answerable
+        here is one the AI module reads, the automation module forgets, and
+        a third reimplements differently — and a bare boolean can never
+        explain itself in the Inspector."""
+        assert not hasattr(an_execution(), "ai_may_engage")
 
 
 class TestTheContractCarriesNoIdsToLookUpWith:

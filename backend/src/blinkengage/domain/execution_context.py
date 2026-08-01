@@ -68,6 +68,49 @@ class ConversationFacts:
 
 
 @dataclass(frozen=True, slots=True)
+class CompanyCapabilities:
+    """Company-wide switches that no service or customer may override.
+
+    The fourth member of an execution, and the one with a hard reason to
+    exist: some rules are not decided by the service or the customer at all.
+    ``ai_enabled`` is the master switch a compliance officer reaches for to
+    guarantee no AI-generated content reaches customers. It is not a routing
+    preference — it is a promise the company has made, and neither a service
+    configured for AI nor a customer happy to receive it may override it.
+
+    Every field defaults to the *unavailable* answer. A caller that forgets
+    to populate this gets a refusal, not an unintended AI reply — see
+    ``_ai_engagement`` for why that direction is the only safe one.
+    """
+
+    #: The company-wide "Enable AI features" switch.
+    ai_enabled: bool = False
+    #: Whether a provider is actually configured and reachable. Distinct from
+    #: the switch above: "turned off" and "turned on but never set up" are
+    #: different problems with different fixes.
+    ai_provider_configured: bool = False
+    #: Autopilot's own opt-in, separate from AI features generally — a
+    #: company may want agent-facing suggestions without AI answering
+    #: customers directly.
+    autopilot_enabled: bool = False
+
+    # There is deliberately no ``automation_enabled``. No such company-level
+    # switch exists today, and a capability with nothing behind it makes a
+    # policy look enforced when it is not — the same fiction as a fabricated
+    # reason. It gets added when the setting does.
+
+    @property
+    def ai_is_usable(self) -> bool:
+        return self.ai_enabled and self.ai_provider_configured
+
+
+#: What the engine assumes when an execution carries no capabilities: nothing
+#: is available. Named so the refusal reads as a deliberate default rather
+#: than an accident.
+NOTHING_AVAILABLE = CompanyCapabilities()
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutionContext:
     """Everything a module is allowed to need, resolved once.
 
@@ -86,6 +129,12 @@ class ExecutionContext:
     customer: CustomerContext | None
     conversation: ConversationFacts
 
+    #: Company-wide switches. ``None`` means the caller did not say, which
+    #: every policy treats as *nothing is available* rather than guessing —
+    #: the alternative is a forgotten field turning a compliance kill switch
+    #: back on by omission.
+    capabilities: CompanyCapabilities | None = None
+
     #: Anything an execution wants to hand downstream that is neither
     #: configuration nor conversation state — a correlation id, a trace
     #: handle, a dry-run flag. Not a place for business data: if two modules
@@ -97,13 +146,22 @@ class ExecutionContext:
         return self.conversation.company_id
 
     @property
-    def is_priority(self) -> bool:
-        """Whether this conversation should be treated as ahead of the queue.
+    def available(self) -> CompanyCapabilities:
+        """The company's switches, or nothing-available if none were given."""
+        return self.capabilities or NOTHING_AVAILABLE
 
-        Asked here so the VIP lane, the priority lane and SLA selection
-        cannot each answer it slightly differently. An unknown customer is
-        not priority — the honest default, since the alternative is treating
-        every stranger as a named account.
+    @property
+    def is_priority(self) -> bool:
+        """Whether the customer's standing puts them ahead of the queue.
+
+        A *derived fact*, not a decision — the distinction matters now that
+        the Policy Engine exists. This says what is true of the customer; it
+        does not say what the platform may do about it. A module wanting the
+        latter asks ``Policy.VIP_QUEUE_ENTRY`` or ``Policy.QUEUE_BYPASS``,
+        which are two different answers built on this one fact.
+
+        An unknown customer is not priority — the honest default, since the
+        alternative is treating every stranger as a named account.
         """
         return self.customer is not None and self.customer.deserves_priority
 
@@ -117,21 +175,13 @@ class ExecutionContext:
         """
         return self.customer.language if self.customer else None
 
-    @property
-    def ai_may_engage(self) -> bool:
-        """Whether AI is permitted to act at all in this execution.
-
-        Both gates in one place: the service must allow it, and the customer
-        must not have asked for no automated messages. Either alone would be
-        a rule somebody applies in one module and forgets in another.
-        """
-        if not self.service.ai.enabled:
-            return False
-        if self.customer is None:
-            return True
-        from blinkengage.domain.customer_context import ContactPreference
-
-        return self.customer.contact_preference is not ContactPreference.NO_AUTOMATED_MESSAGES
+    # There is deliberately no ``ai_may_engage`` here, and there was until the
+    # Policy Engine existed. "May AI act?" is a business rule, and a business
+    # rule answered on this object is one the AI module reads, the automation
+    # module forgets, and a third module reimplements slightly differently.
+    # Ask ``PolicyEngine.evaluate(Policy.AI_ENGAGEMENT, execution)`` instead:
+    # it answers with a reason and a source rather than a bare boolean, which
+    # is what makes a refusal explainable in the Routing Inspector.
 
     def describe(self) -> str:
         """One line for a log or a trace. Never for a customer to read."""

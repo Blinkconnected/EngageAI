@@ -23,10 +23,12 @@ celery_app = Celery(
         "blinkengage.infrastructure.events.relay",
         "blinkengage.infrastructure.tasks.sla_sweep_task",
         "blinkengage.infrastructure.tasks.billing_period_close_task",
+        "blinkengage.infrastructure.tasks.invoice_run_task",
         "blinkengage.infrastructure.tasks.billing_summary_sweep_task",
         "blinkengage.infrastructure.tasks.collections_sweep_task",
         "blinkengage.infrastructure.tasks.email_imap_poll_task",
         "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
+        "blinkengage.infrastructure.tasks.notification_push_dispatch_task",
         "blinkengage.infrastructure.tasks.channel_health_check_task",
     ],
 )
@@ -72,6 +74,22 @@ celery_app.conf.update(
             "task": "blinkengage.billing.close_due_periods",
             "schedule": 3600.0,
         },
+        # Bills every closed period that has no invoice yet — the monthly
+        # invoice run, see docs/architecture/billing.md. Closing a period
+        # and invoicing it are separate acts and only the first used to be
+        # scheduled, so a month would close by itself on the 1st and then
+        # sit there correctly closed and never billed until somebody
+        # pressed Generate for each company by hand.
+        #
+        # Runs after close-due-billing-periods in this dict for
+        # readability only — Celery beat gives no ordering guarantee, and
+        # none is needed: a period not yet closed simply is not picked up,
+        # and the next sweep an hour later bills it. Hourly and idempotent
+        # for the same reasons as the close itself.
+        "generate-pending-invoices": {
+            "task": "blinkengage.billing.generate_pending_invoices",
+            "schedule": 3600.0,
+        },
         # Rebuilds the daily billing aggregates and finalizes days that
         # have passed — see docs/architecture/billing.md. The dashboard
         # refreshes a company's own aggregates when somebody reads them,
@@ -106,6 +124,19 @@ celery_app.conf.update(
         "dispatch-notification-emails": {
             "task": "blinkengage.notifications.dispatch_pending_emails",
             "schedule": 30.0,
+        },
+        # See docs/architecture/notifications.md — pushes Notification rows
+        # with no push_dispatched_at yet. Faster than the email sweep
+        # above, and for a reason rather than by preference: an email that
+        # lands half a minute late is still an email, while a push is an
+        # interruption whose entire value is being current. The query is
+        # the same shape and cost as the outbox relay's (one indexed,
+        # limited SELECT against a partial index), which runs at 5s for
+        # exactly this reason, and a run with nothing pending — the common
+        # case — costs that one query and stops.
+        "dispatch-notification-pushes": {
+            "task": "blinkengage.notifications.dispatch_pending_pushes",
+            "schedule": 10.0,
         },
         # See docs/architecture/channel-integration-spec.md (Phase 1:
         # Channel Experience) — a slower cadence than the operational

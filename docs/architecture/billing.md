@@ -605,6 +605,33 @@ clock change — leaves every company's month unclosed until somebody
 notices. An hourly sweep that finds nothing costs one indexed query and
 self-heals, and each close being idempotent makes running it often free.
 
+### Every sweep must dispose its connection pool
+
+A hazard shared by all the billing tasks, worth stating once because it
+cost months of silent unreliability.
+
+A task module caches its engine at module level and runs its body inside
+`asyncio.run()`. Each invocation therefore gets a **new event loop**
+while reusing pooled asyncpg connections bound to the **previous** one.
+The next run then fails with `Future attached to a different loop` the
+moment `pool_pre_ping` touches a stale connection. The fix is one line —
+`await _engine.dispose()` in a `finally` — which closes pooled
+connections without discarding the engine, so the next call opens fresh
+ones on its own loop.
+
+`close_due_periods`, `collections_sweep` and `refresh_daily_summaries`
+each shipped without it and failed on roughly every other sweep for
+months. Nothing looked broken: every one of them is idempotent, so a
+failed run simply left its work for the next successful one. Periods
+still closed, dunning still went out — late, intermittently, and with
+132 stack traces in 48 hours that nobody was reading.
+
+The pattern cannot be caught by running a task once, which is what a
+test does. It appears only on the *second* invocation inside one worker
+process. So it is enforced structurally instead:
+`tests/unit/test_task_engine_disposal.py` parses every task module that
+caches an engine and asserts the dispose happens inside a `finally`.
+
 ### API
 
 Under `/api/v1/platform/usage`, gated by `get_platform_auth`:
@@ -635,6 +662,63 @@ Generation reads a **closed** period's frozen snapshot and copies each
 line. Nothing is re-aggregated from usage records; nothing is re-priced.
 An open period cannot be invoiced at all — billing a month whose usage
 is still accruing would bill a number that is still moving.
+
+### The invoice run
+
+`blinkengage.billing.generate_pending_invoices`, hourly.
+
+Closing a period and invoicing it are separate acts, and for a long time
+only the first was scheduled. A month would close by itself at 00:0x on
+the 1st and then sit there — correctly closed, never billed — until
+somebody opened the Billing Console and pressed Generate for each
+company in turn. That is not a finance module; that is a reminder to do
+the finance by hand.
+
+The sweep is driven off the **state of the document**
+(`BillingPeriodRepository.closed_needing_invoice`) rather than off
+"closed in the last hour", so it self-heals: a period missed during an
+outage is picked up on the next run instead of staying uninvoiced until
+somebody notices a month later. Once the invoice is *issued* the period
+stops matching, which is what stops the sweep working on it forever.
+Oldest first, so a backlog clears in the order the months actually
+happened.
+
+**It issues; it does not leave drafts.** A draft is an unfinished
+invoice, not a finished one of a different kind: it carries no invoice
+number, so the customer has nothing to quote and nothing to pay against,
+and the payment clock never starts. Generating without issuing bills the
+month halfway and leaves a console full of unnumbered documents nobody
+is chasing.
+
+Drafts therefore count as work still to do. A run that dies between
+generating and issuing would otherwise strand a month as a draft
+forever, which is precisely the state a self-healing sweep exists to
+fix. Issuing is guarded on `DRAFT`, so a re-run never tries to issue
+what it already issued.
+
+**Every customer gets a document, including a zero one.** Periods are
+opened lazily, on a company's first metered event — so a company that
+used nothing all month has no period at all, and a run that only walks
+periods would silently never bill the quietest customers. The run fills
+that gap first (`companies_missing_period` → `add_closed_period`),
+creating an empty closed period for the month that ended, so the invoice
+exists and says zero. A customer who cannot find last month's invoice
+has no way to tell *"you owed nothing"* from *"we forgot you"*.
+
+The backfilled period is inserted **already closed** rather than opened
+and then closed: one open period per company is a database constraint,
+and a company whose first usage landed this month already has an open
+one. A month with no usage has nothing to snapshot anyway.
+
+Two exclusions, both deliberate: soft-deleted companies, and companies
+created *after* the month ended — somebody who signed up in August is
+not sent a bill for July, and receiving one would be alarming rather
+than reassuring.
+
+Each period is generated in its own transaction, so a company with a
+broken snapshot fails alone and is logged with its company id; the rest
+of the run still bills everybody else. "The invoice run failed" is not
+actionable; "Acme's July invoice failed" is.
 
 Generation is idempotent: a period that already has an invoice returns
 it, backed by a unique constraint on `billing_period_id`. The failure

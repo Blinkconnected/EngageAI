@@ -94,27 +94,35 @@ def build_billing_summary_service(session: AsyncSession) -> BillingSummaryServic
 async def _refresh_daily_summaries_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
-    async with session_scope(session_factory) as session:
-        outcomes = await build_billing_summary_service(session).refresh_open_periods()
+    try:
+        async with session_scope(session_factory) as session:
+            outcomes = await build_billing_summary_service(session).refresh_open_periods()
 
-    finalized = sum(outcome.days_finalized for outcome in outcomes)
-    unpriced = {
-        metric for outcome in outcomes for metric in outcome.unpriced_metrics
-    }
-    logger.info(
-        "billing_daily_summaries_refreshed",
-        periods=len(outcomes),
-        days_written=sum(outcome.days_written for outcome in outcomes),
-        days_refreshed=sum(outcome.days_refreshed for outcome in outcomes),
-        days_finalized=finalized,
-    )
-    if unpriced:
-        # Reported at WARNING, not swallowed: usage with no price charts as
-        # zero, which reads as free rather than as unpriced, and the operator
-        # needs to know before the customer notices the gap.
-        logger.warning("billing_daily_summaries_unpriced_metrics", metrics=sorted(unpriced))
-    return finalized
-
+        finalized = sum(outcome.days_finalized for outcome in outcomes)
+        unpriced = {
+            metric for outcome in outcomes for metric in outcome.unpriced_metrics
+        }
+        logger.info(
+            "billing_daily_summaries_refreshed",
+            periods=len(outcomes),
+            days_written=sum(outcome.days_written for outcome in outcomes),
+            days_refreshed=sum(outcome.days_refreshed for outcome in outcomes),
+            days_finalized=finalized,
+        )
+        if unpriced:
+            # Reported at WARNING, not swallowed: usage with no price charts as
+            # zero, which reads as free rather than as unpriced, and the operator
+            # needs to know before the customer notices the gap.
+            logger.warning("billing_daily_summaries_unpriced_metrics", metrics=sorted(unpriced))
+        return finalized
+    finally:
+        # Required, not tidiness — see ``events/relay.py``. The engine is
+        # cached across invocations but each gets its own ``asyncio.run``
+        # loop, and a pooled asyncpg connection is bound to the loop that
+        # opened it. Without this the next run fails with "Future attached
+        # to a different loop".
+        if _engine is not None:
+            await _engine.dispose()
 
 @celery_app.task(name="blinkengage.billing.refresh_daily_summaries")  # type: ignore[misc]
 def refresh_daily_summaries() -> int:

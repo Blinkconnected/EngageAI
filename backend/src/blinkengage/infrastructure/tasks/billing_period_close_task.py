@@ -91,25 +91,38 @@ def build_usage_service(session: AsyncSession) -> UsageService:
 async def _close_due_periods_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
-    async with session_scope(session_factory) as session:
-        summaries = build_billing_summary_service(session)
+    try:
+        async with session_scope(session_factory) as session:
+            summaries = build_billing_summary_service(session)
 
-        # Price the period's final day *before* closing it. Afterwards the
-        # period is settled and its aggregates are deliberately frozen, so a
-        # last day that was never aggregated would stay missing from the chart
-        # of a month that has already been invoiced.
-        now = datetime.now(UTC)
-        for period in await BillingPeriodRepository(session).due_for_close(now=now):
-            await summaries.refresh_period(period_id=period.id, now=now)
+            # Price the period's final day *before* closing it. Afterwards the
+            # period is settled and its aggregates are deliberately frozen, so a
+            # last day that was never aggregated would stay missing from the chart
+            # of a month that has already been invoiced.
+            now = datetime.now(UTC)
+            for period in await BillingPeriodRepository(session).due_for_close(now=now):
+                await summaries.refresh_period(period_id=period.id, now=now)
 
-        outcomes = await build_usage_service(session).close_due_periods(now=now)
+            outcomes = await build_usage_service(session).close_due_periods(now=now)
 
-        # Freeze every day of what just closed. `finalize_days_before` leaves
-        # the current day open, which is right while a period is running and
-        # wrong the moment its invoice exists.
-        for outcome in outcomes:
-            if not outcome.already_closed:
-                await summaries.finalize_closed_period(period_id=outcome.period_id, now=now)
+            # Freeze every day of what just closed. `finalize_days_before` leaves
+            # the current day open, which is right while a period is running and
+            # wrong the moment its invoice exists.
+            for outcome in outcomes:
+                if not outcome.already_closed:
+                    await summaries.finalize_closed_period(period_id=outcome.period_id, now=now)
+    finally:
+        # Required, not tidiness — see ``events/relay.py`` for the full
+        # explanation. The engine is cached across invocations but each
+        # invocation gets its own ``asyncio.run`` loop, and a pooled asyncpg
+        # connection is bound to the loop that opened it. Without this the
+        # next run fails with "Future attached to a different loop" the
+        # moment ``pool_pre_ping`` touches a stale connection. This task
+        # ran for months without it and failed on roughly every other
+        # sweep; only its idempotency hid the damage.
+        if _engine is not None:
+            await _engine.dispose()
+
     for outcome in outcomes:
         if outcome.already_closed:
             continue
