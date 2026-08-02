@@ -505,6 +505,16 @@ async def _send(app: Any, company_id: str, *, count: int, offset: int = 0) -> No
         )
 
 
+async def _send_at(app: Any, company_id: str, *, count: int, at: datetime, offset: int = 0) -> None:
+    """``count`` messages metered at an exact moment — for the cases that are
+    *about* the date, rather than merely needing some usage to exist."""
+    for index in range(offset, offset + count):
+        await meter(
+            app,
+            inbound_message(company_id, str(uuid.uuid5(uuid.NAMESPACE_URL, f"at:{index}")), at),
+        )
+
+
 async def _close(client: AsyncClient, headers: dict, company_id: str) -> str:
     current = (
         await client.get(f"/api/v1/platform/usage/companies/{company_id}/current", headers=headers)
@@ -526,3 +536,65 @@ async def _close_and_read_line(
     lines = snapshot.json()["lines"]
     assert len(lines) == 1, "one metric, one line — the model charges messages only"
     return dict(lines[0])
+
+
+class TestOnePriceEverywhere:
+    """The rate a customer sees is the rate that billed them.
+
+    Three surfaces show a unit price — the billing dashboard, the estimate,
+    and the invoice — and a customer who finds two of them disagreeing has no
+    way to tell which one their money followed. The billing engine is the
+    single source of truth for all three.
+    """
+
+    async def test_a_day_with_no_price_does_not_blank_the_months_rate(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """The defect this class exists for.
+
+        The rate was read from the *newest* daily summary row. A day on which
+        no price was in effect stores none, so a single such day showed the
+        customer a blank rate for the whole month while their charges kept
+        accruing — a billing page that cannot be reconciled against anything.
+        """
+        headers = await platform_headers(client, app)
+        await seed_tiered_global(client, app, headers)
+        company_id = await company_id_of(client, owner_headers)
+
+        # Usage on a day before any price existed, and usage today.
+        await _send_at(app, company_id, count=10, at=datetime.now(UTC) - timedelta(days=2))
+        await _send(app, company_id, count=150, offset=10)
+
+        estimate = (await client.get("/api/v1/billing/estimate", headers=owner_headers)).json()
+        rates = {row["metric_code"]: row["unit_amount"] for row in estimate["month_to_date"]}
+
+        assert rates, "the month has usage, so it has a metric to price"
+        assert all(amount is not None for amount in rates.values()), (
+            f"an unpriced day must not blank the rate the rest of the month was "
+            f"billed at, but got {rates}"
+        )
+
+    async def test_the_estimate_and_the_invoice_quote_the_same_rate(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        """Once a period is invoiced, every surface shows the frozen figure.
+
+        Not what the resolver would quote today — a price edited after the
+        bill was issued must not change what the customer is told they were
+        charged.
+        """
+        headers = await platform_headers(client, app)
+        await seed_tiered_global(client, app, headers)
+        company_id = await company_id_of(client, owner_headers)
+
+        await _send(app, company_id, count=300)
+        line = await _close_and_read_line(client, headers, company_id)
+
+        estimate = (await client.get("/api/v1/billing/estimate", headers=owner_headers)).json()
+        for row in estimate["month_to_date"]:
+            if row["metric_code"] == line["metric_code"]:
+                assert row["unit_amount"] == line["unit_amount"], (
+                    "the dashboard and the invoice must never quote different "
+                    "unit prices for the same usage"
+                )
+                break

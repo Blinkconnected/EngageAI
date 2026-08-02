@@ -110,3 +110,34 @@ no hard-coded secrets or environment-specific values in source code.
   also depend on `black` itself; see `docs/security/hardening.md`'s
   dependency-scan notes for when/why it was dropped), `mypy --strict`
   (types). All must pass before a milestone is committed.
+
+## The application refuses to boot half-wired
+
+`core/wiring.py` builds every critical service through its **real** factory at
+start-up and raises `WiringError` if a collaborator is missing.
+
+It exists because four defects have had one shape: a service that works
+correctly alone, reached through an *optional* dependency production never
+passed. `SlaLifecycle(None)` returns quietly from every method;
+`ownership=None` skips the write. Nothing raises, nothing logs, every test
+that builds the service directly keeps passing — and the platform stops doing
+something it promises. Two of those ran in production and were found by
+walking a lifecycle, not by anything failing:
+
+- every AI reply settled no SLA clock, so conversations answered in seconds
+  were reported as missed targets;
+- pick, release and transfer wrote no ownership rows, so the timeline held
+  the platform's automatic decisions and none of the human ones.
+
+The dependencies stay optional: ~30 tests construct these services directly
+and have no business supplying a full object graph. The guard asserts that
+*production's* graph is complete, which is a different claim from "this
+argument is required".
+
+Two rules keep it honest. It calls the same factories production calls — a
+guard with its own copy of the wiring would pass while the real one stayed
+broken, which is why `build_conversation_service` was extracted so the HTTP
+path, the WebSocket path and the guard share one assembly. And
+`tests/unit/test_wiring.py` fails if a guarded service grows an optional
+collaborator that the guard's list does not name, because a check that
+silently stops covering something reads like coverage.

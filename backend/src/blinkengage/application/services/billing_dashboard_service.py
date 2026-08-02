@@ -554,8 +554,16 @@ class BillingDashboardService:
         currency = currency_for(company.billing_currency)
 
         rows = await self._summaries.for_period(period.id) if period is not None else []
+        rates = await self._effective_rates(
+            company_id=company_id, period=period, rows=rows, now=moment
+        )
         estimate = self._estimate(
-            rows=rows, period=period, now=moment, currency=currency, strategy=strategy
+            rows=rows,
+            period=period,
+            now=moment,
+            currency=currency,
+            strategy=strategy,
+            rates=rates,
         )
         invoices = await self._invoice_history(company_id, today=moment.date())
         outstanding = await self._ledger.outstanding(company_id)
@@ -586,6 +594,7 @@ class BillingDashboardService:
             ),
             unit_prices=await self._unit_prices(
                 company_id,
+                rates=rates,
                 at=moment,
                 # The volume decides the tier, so the rate shown has to be the
                 # one this period's own usage selects.
@@ -623,6 +632,9 @@ class BillingDashboardService:
             now=moment,
             currency=currency_for(company.billing_currency),
             strategy=strategy,
+            rates=await self._effective_rates(
+                company_id=company_id, period=period, rows=rows, now=moment
+            ),
         )
 
     async def daily(
@@ -768,6 +780,71 @@ class BillingDashboardService:
             if rows
         )
 
+    # --- The effective rate -----------------------------------------
+
+    async def _effective_rates(
+        self,
+        *,
+        company_id: uuid.UUID,
+        period: BillingPeriod | None,
+        rows: list[BillingDailySummary],
+        now: datetime,
+    ) -> dict[str, Decimal | None]:
+        """The rate that actually billed this period, per metric.
+
+        **One rate per metric per period, from the billing engine.** Not the
+        newest day's rate, and not the most recent day that happened to have
+        one: both of those read a *day* to answer a question about a
+        *period*, and both produce a number the invoice may not agree with.
+
+        Where it comes from:
+
+        - **Invoiced period** — the invoice line's own ``unit_amount``. This
+          is the frozen figure that generated the bill, so the dashboard, the
+          invoice preview and the customer's billing page cannot disagree
+          about what was charged. Nothing is re-derived.
+        - **Open period** — what the engine *would* charge for the usage so
+          far: ``charge()`` over the period's total volume, exactly the call
+          that will produce the invoice line when the period closes. For a
+          tiered rate that is the tier the volume selects, not the amount
+          stored on the parent row.
+
+        ``None`` for a metric with no price in effect — a real state, and
+        distinct from a rate of zero. A customer sees no rate because there
+        genuinely was none, rather than seeing a rate borrowed from a
+        different day.
+        """
+        if period is None:
+            return {}
+
+        invoice = await self._invoices.for_billing_period(period.id)
+        if invoice is not None:
+            # The bill exists. Whatever it says is what the customer was
+            # charged, and every surface must say the same thing.
+            return {
+                line.metric_code: line.unit_amount
+                for line in await self._invoices.lines_for(invoice.id)
+                if line.metric_code is not None
+            }
+
+        volume: dict[str, Decimal] = {}
+        for row in rows:
+            volume[row.metric_code] = volume.get(row.metric_code, zero()) + row.quantity
+
+        rates: dict[str, Decimal | None] = {}
+        items = await self._pricing.effective_pricing(at=now, company_id=company_id)
+        for item in items:
+            resolved = item.resolved
+            if resolved is None:
+                rates[item.metric_code] = None
+                continue
+            rates[item.metric_code] = charge(
+                resolved.terms(),
+                quantity=volume.get(item.metric_code, zero()),
+                default_included=allowance_for(item.metric_code),
+            ).unit_amount
+        return rates
+
     # --- Section builders -------------------------------------------
 
     def _estimate(
@@ -778,6 +855,7 @@ class BillingDashboardService:
         now: datetime,
         currency: Currency,
         strategy: ProjectionStrategy | None,
+        rates: dict[str, Decimal | None],
     ) -> EstimateSnapshot:
         today = now.date()
         # Netted once, over the whole period, then sliced: the allowance is
@@ -790,8 +868,8 @@ class BillingDashboardService:
             currency=currency.code,
             estimated_today=to_storage(total(net[row.id].cost for row in today_rows)),
             estimated_month_to_date=to_storage(total(net[row.id].cost for row in rows)),
-            today=self._metric_costs(today_rows, currency=currency, net=net),
-            month_to_date=self._metric_costs(rows, currency=currency, net=net),
+            today=self._metric_costs(today_rows, currency=currency, net=net, rates=rates),
+            month_to_date=self._metric_costs(rows, currency=currency, net=net, rates=rates),
             projection=self._projection(
                 rows=rows,
                 period=period,
@@ -809,6 +887,7 @@ class BillingDashboardService:
         *,
         currency: Currency,
         net: dict[uuid.UUID, _NetCost],
+        rates: dict[str, Decimal | None],
     ) -> tuple[MetricCost, ...]:
         """Per-metric totals, largest cost first.
 
@@ -831,9 +910,11 @@ class BillingDashboardService:
             quantity = to_storage(total(row.quantity for row in group))
             cost = to_storage(total(net[row.id].cost for row in group))
             included = to_storage(total(net[row.id].free_quantity for row in group))
-            # The most recent day's price, not an average of them: a customer
-            # asking "what am I paying per conversation" means now.
-            latest = max(group, key=lambda row: row.usage_date)
+            # The period's effective rate — see ``_effective_rates``. Read
+            # from the billing engine rather than from any one day's summary
+            # row: a day with no price in effect stores none, and taking the
+            # newest day meant a single such day blanked the rate for the
+            # whole month on a customer's billing page.
             costs.append(
                 MetricCost(
                     metric_code=metric_code,
@@ -843,7 +924,7 @@ class BillingDashboardService:
                     ),
                     unit=metric.unit.value if metric else "unit",
                     quantity=quantity,
-                    unit_amount=latest.unit_amount,
+                    unit_amount=rates.get(metric_code),
                     estimated_cost=cost,
                     currency=currency.code,
                     included_quantity=to_storage(included),
@@ -1157,6 +1238,7 @@ class BillingDashboardService:
         *,
         at: datetime,
         volume: dict[str, Decimal] | None = None,
+        rates: dict[str, Decimal | None] | None = None,
     ) -> tuple[UnitPriceView, ...]:
         """Every metric's current price, from the Pricing Resolver.
 
@@ -1184,6 +1266,13 @@ class BillingDashboardService:
                     quantity=(volume or {}).get(item.metric_code, zero()),
                     default_included=allowance_for(item.metric_code),
                 ).unit_amount
+            if rates is not None and item.metric_code in rates:
+                # The period's effective rate wins over a freshly computed
+                # one. Once a period is invoiced these differ — the invoice
+                # froze a rate, and the resolver would happily quote today's
+                # — and a page showing both numbers is a page a customer
+                # cannot reconcile against their bill.
+                applicable = rates[item.metric_code]
             views.append(
                 UnitPriceView(
                     metric_code=item.metric_code,

@@ -47,7 +47,34 @@ for more detail on how this page is put together.
   If the model is unavailable or unsure, the conversation stays in the queue
   for a human instead of being taken away from the people who could help.
 
+### Added
+
+- **The application now refuses to start if a critical service is missing
+  something it needs.** Several defects have shared one cause: a component
+  that works correctly on its own, connected through an optional dependency
+  that the running system was never actually given. Nothing errors — the
+  platform just quietly stops doing one of the things it promises, and it
+  shows up months later as a wrong number in a report.
+
+  Start-up now checks the real wiring and refuses to run, naming what is
+  missing and what would have silently stopped working. A missed connection
+  becomes a service that will not start rather than a figure nobody can
+  explain.
+
 ### Fixed
+
+- **Your billing page, estimate and invoice now always agree on the rate.**
+  The unit price shown is the one that actually billed that period: the
+  invoice's own frozen figure once a bill exists, and what the billing engine
+  would charge for the usage so far while the month is still open.
+
+  Previously the page took the rate from the most recent day that had one. A
+  day on which no price was in effect stores none — so a single such day
+  showed a blank rate for the whole month while charges kept accruing, on the
+  one page a customer goes to check what they are paying.
+
+  A price edited after a bill is issued no longer changes what that bill's
+  page says you were charged.
 
 - **The AI confidence threshold on the Services screen is now the one that
   decides.** It was displayed per service and enforced company-wide, so an

@@ -20,6 +20,7 @@ from blinkengage.core.correlation import CORRELATION_HEADER
 from blinkengage.core.exceptions import register_exception_handlers
 from blinkengage.core.logging import configure_logging, get_logger
 from blinkengage.core.security_headers import SecurityHeadersMiddleware
+from blinkengage.core.wiring import verify_wiring
 
 logger = get_logger(__name__)
 
@@ -66,6 +67,15 @@ def create_app() -> FastAPI:
 
     container = Container()
     app.state.container = container
+
+    # Refuses to boot with a critical collaborator missing. Four defects in
+    # this codebase have had the same shape — a service that works alone,
+    # reached through an optional dependency production never passed, failing
+    # silently rather than loudly. See ``core/wiring.py`` for what each one
+    # cost. Checked here, beside the version and CORS checks, for the same
+    # reason: an application that would produce wrong business behaviour is
+    # exactly as misconfigured as one with an unusable CORS policy.
+    verify_wiring(container.session_factory())
 
     # Fails fast at startup, not at request time: allow_credentials=True
     # (needed so a browser client can send its Authorization header)

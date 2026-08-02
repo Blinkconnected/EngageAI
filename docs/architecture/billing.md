@@ -2375,3 +2375,33 @@ Stated explicitly so nobody looks for them:
   corrects, which is where somebody reconciling the two looks.
 - **Contracts, taxes and discounts** — later phases.
 - **Partial-payment plans.**
+
+## One price, everywhere
+
+The unit rate a customer sees is **the rate that actually billed them**, and
+the same number appears on the billing dashboard, the estimate and the
+invoice. A customer who finds two of those disagreeing has no way to tell
+which one their money followed.
+
+`BillingDashboardService._effective_rates` is the only place that answers it:
+
+- **Invoiced period** — the invoice line's own `unit_amount`. Frozen. Nothing
+  is re-derived, so a price edited after the bill was issued cannot change
+  what a customer is told they were charged.
+- **Open period** — `charge()` over the period's total volume: exactly the
+  call that produces the invoice line when the period closes. For a tiered
+  rate that is the tier the volume selects, not the amount on the parent row.
+
+`None` where no price is in effect — a real state, distinct from a rate of
+zero, and never filled in from somewhere else.
+
+**What it deliberately is not.** It is not the newest daily summary row, and
+it is not the most recent day that happened to carry a price. Both read a
+*day* to answer a question about a *period*. The first shipped: a day on which
+no price was in effect stores none, so a single such day blanked the rate for
+the entire month on a customer's billing page while their charges kept
+accruing. The second would have been worse — quietly showing a rate from a
+different day, which is a number that looks right and cannot be reconciled.
+
+The billing engine stays the single source of truth. Every surface asks it;
+none of them re-derives.

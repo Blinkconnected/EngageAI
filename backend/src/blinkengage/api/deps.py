@@ -663,23 +663,33 @@ def get_web_chat_session_service(
     )
 
 
-def get_conversation_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-    settings: Annotated[Settings, Depends(get_settings_dep)],
-    attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store)],
-    provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
-    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
-    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
+def build_conversation_service(
+    *,
+    session: AsyncSession,
+    settings: Settings,
+    attachment_store: AttachmentStore | None = None,
+    provider_factory: ChannelProviderFactory | None = None,
+    events: OutboxEventPublisher | None = None,
+    realtime: RealtimePublisher | None = None,
 ) -> ConversationService:
+    """The one place a production ConversationService is assembled.
+
+    Extracted from the FastAPI dependencies below so the HTTP path, the
+    WebSocket path and the start-up wiring guard all build the *same* object.
+    A guard that constructed its own copy would pass while the real one stayed
+    half-wired, which is precisely the failure it exists to catch.
+
+    The four transport-shaped collaborators default to ``None`` only so the
+    guard can build this without a request; every caller that serves traffic
+    passes them.
+    """
     return ConversationService(
-        # Wired here rather than made a required constructor argument: the
+        # Wired here rather than made required constructor arguments: the
         # ~25 tests that build this service directly keep working, and
-        # production gets the clocks.
+        # production gets the clocks and the ownership timeline. The
+        # start-up guard (``core/wiring.py``) is what makes "production
+        # gets them" a fact rather than an intention.
         sla=SlaEngine(session, RoutingDecisionRepository(session)),
-        # And the ownership timeline, so picking up, releasing and
-        # transferring a conversation are recorded as the ownership
-        # changes they are. Without this the timeline showed only what
-        # the platform did automatically, never what a person did.
         ownership=OwnershipService(OwnershipRepository(session)),
         conversations=ConversationRepository(session),
         messages=MessageRepository(session),
@@ -700,6 +710,24 @@ def get_conversation_service(
     )
 
 
+def get_conversation_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store)],
+    provider_factory: Annotated[ChannelProviderFactory, Depends(get_channel_provider_factory)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher)],
+) -> ConversationService:
+    return build_conversation_service(
+        session=session,
+        settings=settings,
+        attachment_store=attachment_store,
+        provider_factory=provider_factory,
+        events=events,
+        realtime=realtime,
+    )
+
+
 def get_conversation_service_ws(
     session: Annotated[AsyncSession, Depends(get_db_session_ws)],
     settings: Annotated[Settings, Depends(get_settings_dep_ws)],
@@ -708,31 +736,12 @@ def get_conversation_service_ws(
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher_ws)],
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
 ) -> ConversationService:
-    return ConversationService(
-        # Wired here rather than made a required constructor argument: the
-        # ~25 tests that build this service directly keep working, and
-        # production gets the clocks.
-        sla=SlaEngine(session, RoutingDecisionRepository(session)),
-        # And the ownership timeline, so picking up, releasing and
-        # transferring a conversation are recorded as the ownership
-        # changes they are. Without this the timeline showed only what
-        # the platform did automatically, never what a person did.
-        ownership=OwnershipService(OwnershipRepository(session)),
-        conversations=ConversationRepository(session),
-        messages=MessageRepository(session),
-        attachments=MessageAttachmentRepository(session),
-        channel_configs=ChannelConfigRepository(session),
-        connection_logs=ChannelConnectionLogRepository(session),
-        customers=CustomerRepository(session),
+    return build_conversation_service(
+        session=session,
+        settings=settings,
         attachment_store=attachment_store,
         provider_factory=provider_factory,
         events=events,
-        settings=settings,
-        transfers=ConversationTransferRepository(session),
-        agents=AgentRepository(session),
-        departments=DepartmentRepository(session),
-        queues=QueueRepository(session),
-        agent_skills=AgentSkillRepository(session),
         realtime=realtime,
     )
 

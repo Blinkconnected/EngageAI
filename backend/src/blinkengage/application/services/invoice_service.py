@@ -877,6 +877,16 @@ class InvoiceService:
     async def get(self, invoice_id: uuid.UUID) -> Invoice:
         return await self._require(invoice_id)
 
+    async def for_billing_period(self, period_id: uuid.UUID) -> Invoice | None:
+        """The one invoice for a period, if it has been generated.
+
+        ``None`` while the period is still open. Exposed on the service so a
+        reader (the dashboard) can ask the billing engine what it charged
+        rather than re-deriving it from usage — the engine stays the single
+        source of truth for every surface that shows a price.
+        """
+        return await self._invoices.for_billing_period(period_id)
+
     async def lines_for(self, invoice_id: uuid.UUID) -> list[InvoiceLine]:
         return await self._lines.for_invoice(invoice_id)
 
