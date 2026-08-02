@@ -1,0 +1,114 @@
+{
+  "timeline": {
+    "label": "Conversation timeline",
+    "truncated": "{{count}} more events are not shown. Narrow the filters or search to see them."
+  },
+  "developerMode": "Developer details",
+  "event": {
+    "why": "Why",
+    "impact": "What happened next",
+    "metadata": "Details",
+    "decisionId": "Decision",
+    "expandAria": "Show details for {{title}}",
+    "collapseAria": "Hide details for {{title}}"
+  },
+  "search": {
+    "label": "Search the conversation story",
+    "placeholder": "Search events…"
+  },
+  "filters": {
+    "label": "Filter events by type",
+    "all": "All"
+  },
+  "stream": {
+    "conversation": "Messages",
+    "routing": "Routing",
+    "ownership": "Ownership",
+    "sla": "SLA",
+    "policy": "Policies",
+    "ai": "AI"
+  },
+  "empty": {
+    "title": "Nothing was recorded for this conversation",
+    "body": "It may predate the parts of the platform that keep a history.",
+    "filteredTitle": "No events match",
+    "filteredBody": "Clear the search or filters to see the whole story."
+  },
+  "error": {
+    "body": "The conversation story could not be loaded.",
+    "retry": "Try again"
+  },
+  "severity": {
+    "success": "Success",
+    "warning": "Warning",
+    "error": "Error",
+    "critical": "Critical"
+  },
+  "yes": "Yes",
+  "no": "No",
+  "summary": {
+    "status": "Status",
+    "owner": "Responsible",
+    "customer": "Customer",
+    "agent": "Assigned agent",
+    "service": "Service",
+    "queue": "Queue",
+    "slaHealth": "SLA health",
+    "age": "Age",
+    "noService": "No service"
+  },
+  "health": {
+    "healthy": "Healthy",
+    "attention": "Attention",
+    "at_risk": "At risk",
+    "breached": "Breached"
+  },
+  "cards": {
+    "ownership": "Ownership",
+    "sla": "SLA",
+    "ai": "AI",
+    "policies": "Policies",
+    "technical": "Technical details",
+    "nothingRecorded": "Nothing was recorded.",
+    "noClocks": "This service measures no SLA targets.",
+    "held": "held {{duration}}",
+    "counted": "counted {{duration}}",
+    "target": "target {{minutes}} min",
+    "waitingOn": "Waiting on {{who}}"
+  },
+  "clockState": {
+    "running": "Running",
+    "paused": "Paused",
+    "achieved": "Met",
+    "breached": "Missed",
+    "stopped": "Stopped",
+    "not_measured": "Not measured"
+  },
+  "aiState": {
+    "answering": "Answering",
+    "waiting_to_pick_up": "Waiting to pick up",
+    "handed_back": "Handed back to a human",
+    "not_engaged": "Not engaged"
+  },
+  "ai": {
+    "state": "AI state",
+    "pickupDelay": "Pickup delay",
+    "threshold": "Confidence threshold",
+    "thresholdSource": "Threshold set by",
+    "resumeEligible": "Could AI take it now?",
+    "blocked": "Blocked because",
+    "source": {
+      "service": "This service",
+      "company": "Company-wide setting"
+    }
+  },
+  "technical": {
+    "conversationId": "Conversation ID",
+    "customerId": "Customer ID",
+    "serviceVersionId": "Service version ID",
+    "serviceVersion": "Service version",
+    "customerContextVersionId": "Customer context version ID",
+    "boundAt": "Context bound at",
+    "unversioned": "Not versioned in this platform"
+  }
+}

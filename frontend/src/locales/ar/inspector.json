@@ -1,0 +1,114 @@
+{
+  "timeline": {
+    "label": "الخط الزمني للمحادثة",
+    "truncated": "لا تظهر {{count}} أحداث إضافية. ضيّق عوامل التصفية أو البحث لعرضها."
+  },
+  "developerMode": "تفاصيل المطوّر",
+  "event": {
+    "why": "السبب",
+    "impact": "ما حدث بعد ذلك",
+    "metadata": "التفاصيل",
+    "decisionId": "القرار",
+    "expandAria": "عرض تفاصيل {{title}}",
+    "collapseAria": "إخفاء تفاصيل {{title}}"
+  },
+  "search": {
+    "label": "ابحث في قصة المحادثة",
+    "placeholder": "ابحث في الأحداث…"
+  },
+  "filters": {
+    "label": "تصفية الأحداث حسب النوع",
+    "all": "الكل"
+  },
+  "stream": {
+    "conversation": "الرسائل",
+    "routing": "التوجيه",
+    "ownership": "المسؤولية",
+    "sla": "اتفاقية مستوى الخدمة",
+    "policy": "السياسات",
+    "ai": "الذكاء الاصطناعي"
+  },
+  "empty": {
+    "title": "لم يُسجَّل شيء لهذه المحادثة",
+    "body": "قد تكون أقدم من أجزاء المنصّة التي تحتفظ بالسجل.",
+    "filteredTitle": "لا توجد أحداث مطابقة",
+    "filteredBody": "امسح البحث أو عوامل التصفية لعرض القصة كاملة."
+  },
+  "error": {
+    "body": "تعذّر تحميل قصة المحادثة.",
+    "retry": "أعد المحاولة"
+  },
+  "severity": {
+    "success": "نجاح",
+    "warning": "تحذير",
+    "error": "خطأ",
+    "critical": "حرج"
+  },
+  "yes": "نعم",
+  "no": "لا",
+  "summary": {
+    "status": "الحالة",
+    "owner": "المسؤول",
+    "customer": "العميل",
+    "agent": "الموظف المُسنَد",
+    "service": "الخدمة",
+    "queue": "قائمة الانتظار",
+    "slaHealth": "حالة اتفاقية الخدمة",
+    "age": "العمر",
+    "noService": "لا توجد خدمة"
+  },
+  "health": {
+    "healthy": "سليمة",
+    "attention": "انتباه",
+    "at_risk": "في خطر",
+    "breached": "تم التجاوز"
+  },
+  "cards": {
+    "ownership": "المسؤولية",
+    "sla": "اتفاقية مستوى الخدمة",
+    "ai": "الذكاء الاصطناعي",
+    "policies": "السياسات",
+    "technical": "التفاصيل التقنية",
+    "nothingRecorded": "لم يُسجَّل شيء.",
+    "noClocks": "لا تقيس هذه الخدمة أي أهداف.",
+    "held": "استمرت {{duration}}",
+    "counted": "احتُسبت {{duration}}",
+    "target": "الهدف {{minutes}} دقيقة",
+    "waitingOn": "بانتظار {{who}}"
+  },
+  "clockState": {
+    "running": "قيد التشغيل",
+    "paused": "متوقفة مؤقتاً",
+    "achieved": "تحققت",
+    "breached": "لم تتحقق",
+    "stopped": "متوقفة",
+    "not_measured": "غير مُقاسة"
+  },
+  "aiState": {
+    "answering": "يجيب",
+    "waiting_to_pick_up": "بانتظار الاستلام",
+    "handed_back": "أعادها إلى موظف",
+    "not_engaged": "غير مُفعّل"
+  },
+  "ai": {
+    "state": "حالة الذكاء الاصطناعي",
+    "pickupDelay": "مهلة الاستلام",
+    "threshold": "حد الثقة",
+    "thresholdSource": "مصدر الحد",
+    "resumeEligible": "هل يمكنه الاستلام الآن؟",
+    "blocked": "سبب المنع",
+    "source": {
+      "service": "هذه الخدمة",
+      "company": "إعداد الشركة"
+    }
+  },
+  "technical": {
+    "conversationId": "معرّف المحادثة",
+    "customerId": "معرّف العميل",
+    "serviceVersionId": "معرّف إصدار الخدمة",
+    "serviceVersion": "إصدار الخدمة",
+    "customerContextVersionId": "معرّف إصدار سياق العميل",
+    "boundAt": "تاريخ الربط",
+    "unversioned": "غير مُصدَّرة بإصدارات في هذه المنصّة"
+  }
+}

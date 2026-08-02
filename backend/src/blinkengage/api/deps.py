@@ -37,6 +37,9 @@ from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.connector_certification_service import (
     ConnectorCertificationService,
 )
+from blinkengage.application.services.conversation_inspector import (
+    ConversationInspectorService,
+)
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.customer_internal_rating_service import (
@@ -77,6 +80,9 @@ from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.routing_rule_service import RoutingRuleService
 from blinkengage.application.services.scheduler_health_service import SchedulerHealthService
 from blinkengage.application.services.search_service import SearchService
+from blinkengage.application.services.service_context_resolver import (
+    ServiceContextResolver,
+)
 from blinkengage.application.services.service_directory_service import ServiceDirectoryService
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_policy_service import SlaPolicyService
@@ -211,6 +217,7 @@ from blinkengage.infrastructure.repositories.scheduler_run_repository import (
 )
 from blinkengage.infrastructure.repositories.search_repository import SearchRepository
 from blinkengage.infrastructure.repositories.service_directory_repository import (
+    ContextBindingRepository,
     ServiceRepository,
 )
 from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
@@ -743,6 +750,22 @@ def get_conversation_service_ws(
         provider_factory=provider_factory,
         events=events,
         realtime=realtime,
+    )
+
+
+def get_conversation_inspector(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ConversationInspectorService:
+    """The Black Box assembler. Reads only — it writes nothing anywhere."""
+    return ConversationInspectorService(
+        session=session,
+        ownership=OwnershipService(OwnershipRepository(session)),
+        sla=SlaEngine(session, RoutingDecisionRepository(session)),
+        decisions=RoutingDecisionRepository(session),
+        services=ServiceContextResolver(
+            bindings=ContextBindingRepository(session),
+            services=ServiceRepository(session),
+        ),
     )
 
 

@@ -290,6 +290,11 @@ class AutopilotService:
             attachment_ids=[],
             actor_user_id=actor_user_id,
             is_ai_generated=True,
+            # The number that decided whether this customer heard from AI
+            # or from a person. Previously published on an event and then
+            # forgotten, which made it unreadable beside the conversation
+            # it belongs to.
+            ai_confidence=result.confidence,
         )
 
         await self._events.publish(

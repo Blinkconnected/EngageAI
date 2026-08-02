@@ -49,6 +49,29 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **You can now see everything that happened to a conversation, on one
+  screen.** Open a conversation's story and read it top to bottom: the
+  customer's message arriving, which service and queue it went to and why, who
+  became responsible at each point, when AI stepped in and how sure it was,
+  every SLA clock starting, pausing and settling, and every business rule that
+  was asked along the way.
+
+  Each event says what happened, why it happened, and what happened next
+  because of it. Search covers the whole story, not just event names — looking
+  for "threshold" finds the moment AI decided it was confident enough. Filters
+  narrow by type and show how many of each there are, so "were any policies
+  evaluated?" is answered without clicking through.
+
+  Events are marked Success, Warning, Error or Critical by the platform
+  itself, so the same event looks the same everywhere it is shown.
+
+  A collapsible Technical section carries the identifiers an engineer needs,
+  out of the way of everyone else. Support teams should rarely need database
+  access to answer "what happened with this customer".
+
+  The platform had been recording all of this for months. None of it could be
+  read anywhere until now.
+
 - **The application now refuses to start if a critical service is missing
   something it needs.** Several defects have shared one cause: a component
   that works correctly on its own, connected through an optional dependency

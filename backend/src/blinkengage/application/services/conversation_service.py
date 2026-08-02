@@ -98,7 +98,9 @@ from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 #: would be whichever a reader found first.
 
 
-def _reply_metadata(*, is_ai_generated: bool, is_ai_assisted: bool) -> dict[str, bool]:
+def _reply_metadata(
+    *, is_ai_generated: bool, is_ai_assisted: bool, ai_confidence: float | None = None
+) -> dict[str, bool | float]:
     """Two distinct, non-overlapping AI provenance flags on an outbound
     message — an administrator has to be able to tell a fully automated
     reply from one a human wrote with AI's help from one written by hand:
@@ -111,12 +113,21 @@ def _reply_metadata(*, is_ai_generated: bool, is_ai_assisted: bool) -> dict[str,
     A key is omitted entirely when false, so a purely manual reply keeps
     its historical empty ``{}`` metadata rather than gaining noise, and
     the frontend's existing strict ``=== true`` checks keep working.
+
+    ``ai_confidence`` is kept for the same reason the rest of the decision
+    log is kept: it is *the* number that decided whether a customer heard
+    from AI or from a person, and it was previously published on an event
+    and then forgotten. "AI answered at 82% against a threshold of 60%" is
+    the sentence somebody investigating needs; the event stream cannot be
+    read beside the conversation it belongs to.
     """
-    metadata: dict[str, bool] = {}
+    metadata: dict[str, bool | float] = {}
     if is_ai_generated:
         metadata["is_ai_generated"] = True
     if is_ai_assisted:
         metadata["is_ai_assisted"] = True
+    if ai_confidence is not None:
+        metadata["ai_confidence"] = ai_confidence
     return metadata
 
 
@@ -952,6 +963,7 @@ class ConversationService:
         actor_user_id: UUID | None = None,
         is_ai_generated: bool = False,
         is_ai_assisted: bool = False,
+        ai_confidence: float | None = None,
     ) -> Message:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         config = await self._channel_configs.get_by_id(
@@ -1053,7 +1065,20 @@ class ConversationService:
                     message_type=MessageType.MEDIA if attachment_refs else MessageType.TEXT,
                     status=MessageStatus.FAILED,
                     body=body,
-                    message_metadata={"error": error_detail, "error_type": type(exc).__name__},
+                    # The failure is *added* to the message's provenance, not
+                    # substituted for it. Replacing it erased is_ai_generated
+                    # whenever a send failed — so a reply AI had composed came
+                    # back as an agent's, on the one screen built to explain
+                    # who said what to the customer.
+                    message_metadata={
+                        **_reply_metadata(
+                            is_ai_generated=is_ai_generated,
+                            is_ai_assisted=is_ai_assisted,
+                            ai_confidence=ai_confidence,
+                        ),
+                        "error": error_detail,
+                        "error_type": type(exc).__name__,
+                    },
                 )
             )
             for attachment in linked_attachments:
@@ -1087,7 +1112,9 @@ class ConversationService:
                 # in the loop — see ai_autopilot_consumer.py, the only
                 # caller that passes is_ai_generated=True.
                 message_metadata=_reply_metadata(
-                    is_ai_generated=is_ai_generated, is_ai_assisted=is_ai_assisted
+                    is_ai_generated=is_ai_generated,
+                    is_ai_assisted=is_ai_assisted,
+                    ai_confidence=ai_confidence,
                 ),
             )
         )

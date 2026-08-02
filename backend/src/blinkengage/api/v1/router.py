@@ -21,6 +21,7 @@ from blinkengage.api.v1.endpoints import (
     erp_configs,
     erp_webhooks,
     health,
+    inspector,
     knowledge,
     notifications,
     ownership,
@@ -71,6 +72,9 @@ api_router.include_router(platform_usage.router)
 api_router.include_router(platform_billing.router)
 api_router.include_router(ownership.router)
 api_router.include_router(sla_clocks.router)
+# The Conversation Black Box. Not feature-gated: explaining what the
+# platform did to a conversation is not a paid extra.
+api_router.include_router(inspector.router)
 api_router.include_router(platform_health.router)
 api_router.include_router(platform_invoicing.router)
 api_router.include_router(platform_ledger.router)

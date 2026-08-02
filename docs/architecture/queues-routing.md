@@ -536,3 +536,78 @@ created a queue, confirmed `GET /reports/live-dashboard` returns
 `assigned_count`/`throughput_24h` correctly (previously a
 `ValidationError` — see the release report) against the real running
 Postgres-backed stack, not just the test suite.
+
+## The Conversation Story
+
+`GET /api/v1/conversations/{id}/inspector` — everything that happened to one
+conversation, in one call.
+
+The platform had recorded all of this for several milestones and none of it
+was readable. Ownership had an endpoint, SLA had an endpoint, the decision log
+had none — so "every business decision is explainable" was true of the
+database and of nothing a person could open.
+
+**The timeline is the product.** It merges three sources, because no single
+table saw everything: the decision log holds what the platform decided, the
+ownership table holds who was answerable, and the messages are what people
+actually said. Read separately they are three stories about one conversation.
+
+Every event answers three questions: what happened (`title`, `detail`), why
+(`why`), and what happened next because of it (`impact`).
+
+### Impact is never inferred
+
+`impact` is derived **only from the event's own record**. An earlier version
+attributed consequences from neighbouring events — attaching whichever clocks
+moved next to whichever action preceded them. It read beautifully and it lied:
+"AI replied" was credited with starting the queue SLA, which had begun before
+AI ever saw the conversation.
+
+The record holds no causal links, so adjacency was standing in for one. A
+plausible false attribution is worse here than a missing one, because the
+whole value of this screen is that it can be trusted without checking. Two
+tests hold the line: a reply may not claim a clock, and a policy evaluation —
+a *gate*, recorded just before the act it authorises — claims nothing at all.
+
+Cross-event impact needs causal links recorded at write time. The platform
+does not record them, and inventing them at read time is not the same thing.
+
+### Severity is part of the contract
+
+`domain/severity.py` — `info`, `success`, `warning`, `error`, `critical` —
+assigned by the backend so web, mobile and any future integration classify
+the same event identically. A client that derived it from the wording would
+be forming a judgement the platform never made, and an invented flag is
+indistinguishable from one the platform raised.
+
+**Deliberate configuration is not an error.** A policy denying AI because a
+company switched AI off is the platform obeying it; marking that `error`
+would paint red across every conversation at every company that made the
+choice, and red on healthy conversations is red that people stop reading. A
+denial is `critical` only when the reason is something *missing* — no
+provider, unknown capabilities, no queue configured.
+
+### Ordering
+
+Events that share an instant are ordered causally, not arbitrarily:
+message → routing → policy → AI → ownership → SLA → reply. Responsibility and
+clocks come last because they are consequences — AI taking a conversation is
+what meets the queue target, not the reverse.
+
+This matters because `created_at` defaults to the database's `now()`, which
+PostgreSQL scopes to the *transaction*: everything written in one unit of work
+carries an identical timestamp, so a conversation's first second would
+otherwise arrive as an unordered heap.
+
+### What it will not do
+
+- It does not show a runtime queue. The table and domain model exist; nothing
+  creates lanes, so the summary says *not in use* rather than showing a blank
+  that reads as a failure.
+- It does not invent versions. Service and customer-context versions are real
+  and shown; routing rules, the policy engine and the execution context are
+  not versioned artefacts, and are listed as `unversioned` so an engineer
+  stops looking for a number that was never minted.
+- It does not hide what it does not know. `gaps` says when nothing was
+  recorded, because an empty section and an unrecorded one send an
+  investigator to very different places.

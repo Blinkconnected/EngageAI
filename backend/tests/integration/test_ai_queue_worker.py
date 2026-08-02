@@ -71,9 +71,11 @@ async def _run(
     ai_enabled: bool = False,
     confidence_threshold: str | None = None,
     sla_queue_minutes: int | None = None,
+    route: bool = True,
 ) -> tuple[Conversation, list[RoutingDecisionRecord]]:
     chat = await _web_chat_session(client, headers)
-    await _autopilot_queue(client, headers)
+    if route:
+        await _autopilot_queue(client, headers)
     company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
 
     factory = app.state.container.session_factory()
