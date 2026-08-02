@@ -31,6 +31,15 @@ const SEED_CONVERSATION: Conversation = {
   last_message_at: '2026-01-01T00:05:00Z',
   first_response_at: null,
   sla_health: 'healthy',
+  customer_name: MOCK_CUSTOMER.full_name,
+  state: 'waiting_for_pickup',
+  state_text: 'Waiting for pickup',
+  owner_kind: 'queue',
+  owner_label: 'the Support queue',
+  owner_since: '2026-01-01T00:00:00Z',
+  last_event: 'Routed to the "Support" queue.',
+  last_event_kind: 'queue_selected',
+  last_event_at: '2026-01-01T00:00:00Z',
   sla_first_response_breached_at: null,
   sla_resolution_breached_at: null,
   sla_first_response_warned_at: null,
@@ -88,6 +97,21 @@ export function resetConversationsMock() {
 }
 
 export const conversationsHandlers = [
+  // Ahead of /conversations/:conversationId deliberately: MSW matches in
+  // order, and the parameterised route would otherwise swallow "workload".
+  http.get(`${API_BASE_URL}/conversations/workload`, () =>
+    HttpResponse.json({
+      active: 3,
+      needs_attention: 1,
+      waiting_pickup: 1,
+      mine: 0,
+      ai_working: 0,
+      waiting_customer: 1,
+      at_risk: 0,
+      breached: 0,
+      resolved_today: 2,
+    }),
+  ),
   http.get(`${API_BASE_URL}/conversations`, ({ request }) => {
     const url = new URL(request.url)
     const statusFilter = url.searchParams.get('status_filter')
@@ -104,6 +128,16 @@ export const conversationsHandlers = [
     if (queueIdFilter && conversation.queue_id !== queueIdFilter) items = []
     if (priorityFilter && conversation.priority !== priorityFilter) items = []
     if (unassignedOnly && conversation.assigned_agent_id !== null) items = []
+
+    // Work queues are decided by the server, so the mock has to behave like
+    // one: a view the seed is not in returns nothing. Ignoring the parameter
+    // would make every queue look identical in tests, which is exactly the
+    // bug the views exist to prevent.
+    const view = url.searchParams.get('view')
+    if (view) {
+      const seedIsIn: string[] = ['active', 'needs_attention', 'waiting_pickup']
+      if (!seedIsIn.includes(view)) items = []
+    }
     return HttpResponse.json({ items, total: items.length, page: 1, page_size: 20 })
   }),
 

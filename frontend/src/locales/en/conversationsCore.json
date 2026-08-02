@@ -146,5 +146,56 @@
     "sendTooltip": "Send",
     "sendAriaLabel": "Send reply",
     "messageQueuedOfflineLabel": "You're offline — this message is queued and will send automatically once you're back online."
+  },
+  "Inbox": {
+    "summaryAria": "Today's workload",
+    "queuesAria": "Work queues",
+    "nobodyOwns": "Nobody",
+    "lastActivity": "Last activity",
+    "rowAria": "{{customer}} — {{state}}",
+    "view": {
+      "active": "Active",
+      "needs_attention": "Needs attention",
+      "waiting_pickup": "Waiting pickup",
+      "mine": "Assigned to me",
+      "ai_working": "AI working",
+      "waiting_customer": "Waiting customer",
+      "at_risk": "At risk",
+      "breached": "Breached",
+      "resolved_today": "Resolved today"
+    },
+    "viewMeaning": {
+      "active": "Everything not yet resolved or closed.",
+      "needs_attention": "Waiting on us, and either running out of time or with nobody on it.",
+      "waiting_pickup": "In a queue with nobody working it — not an agent, not AI.",
+      "mine": "Conversations assigned to you.",
+      "ai_working": "AI is answering, or waiting out its pickup delay before it does.",
+      "waiting_customer": "The ball is with the customer. Time here is not us being late.",
+      "at_risk": "Close enough to a target that it needs doing now.",
+      "breached": "A target was missed. Waiting does not improve these.",
+      "resolved_today": "Finished today."
+    },
+    "title": "Inbox",
+    "description": "Your operational workspace.",
+    "retry": "Try again",
+    "loadFailed": "Conversations could not be loaded.",
+    "emptyDescription": "Nothing in this queue right now.",
+    "empty": {
+      "generic": "Nothing here",
+      "needs_attention": "Nothing needs attention",
+      "waiting_pickup": "Nothing waiting for pickup",
+      "mine": "Nothing assigned to you",
+      "ai_working": "AI is not handling anything",
+      "waiting_customer": "Nothing waiting on a customer",
+      "at_risk": "Nothing at risk",
+      "breached": "Nothing has breached",
+      "resolved_today": "Nothing resolved yet today"
+    }
+  },
+  "health": {
+    "healthy": "Healthy",
+    "attention": "Attention",
+    "at_risk": "At risk",
+    "breached": "Breached"
   }
 }

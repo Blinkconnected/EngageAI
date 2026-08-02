@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { API_BASE_URL, apiClient } from '../../shared/api/client'
+import type { InboxView } from './inboxTypes'
 import type { Page, PageParams } from '../../shared/api/pagination'
 import type {
   Attachment,
@@ -40,6 +41,9 @@ export interface ConversationListParams {
   queue_id?: string
   priority?: ConversationPriority
   unassigned_only?: boolean
+  /** A work queue, not a filter — see `inboxTypes.ts`. The server decides
+   * what each one means, so every client shows the same work. */
+  view?: InboxView
 }
 
 async function fetchConversations(

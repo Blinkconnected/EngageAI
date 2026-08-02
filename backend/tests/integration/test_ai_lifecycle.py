@@ -422,9 +422,17 @@ class TestWhatTheLifecycleDoesNotYetDo:
                 "src/blinkengage/infrastructure/repositories/service_directory_repository.py",
                 "src/blinkengage/api/v1/endpoints/services.py",
                 "src/blinkengage/api/schemas/service_directory.py",
+                # Names it only to explain why nothing assigns the
+                # AI_RESUME_DELAY operational state — a reference that
+                # documents the absence rather than storing or obeying the
+                # setting. ``test_operational_state`` holds the other half:
+                # that no code path actually assigns that state.
+                "src/blinkengage/domain/operational_state.py",
             ]
         ), (
-            "if this list changed, either somebody implemented the resume delay — "
-            "in which case replace this test with one that exercises it — or it "
-            "grew another place that stores it without obeying it."
+            "if this list changed, one of three things happened: somebody "
+            "implemented the resume delay — in which case replace this test with "
+            "one that exercises it; or it grew another place that stores it "
+            "without obeying it; or a new file mentions it only to document that "
+            "it does nothing, which is fine and belongs in the list above."
         )

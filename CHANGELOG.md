@@ -49,6 +49,45 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The Inbox is becoming an operations screen rather than a message list.**
+  Conversations can now be opened as work queues — what needs attention, what
+  is waiting for pickup, what is assigned to you, what AI is working on, what
+  is waiting on the customer, what is at risk, what has breached, what was
+  resolved today — instead of building a filter out of three controls.
+
+  A single request now answers how many conversations are in each queue across
+  the whole company, so "how busy am I" can be read before opening anything.
+
+  Every row now carries what it needs to explain itself: the customer's name,
+  what the conversation is waiting on, who is answerable for it, and how long
+  it has been that way. Previously the customer's name — the thing an agent
+  scans for — was fetched one conversation at a time, so it appeared last and
+  in a staggered trickle.
+
+  The Inbox says what is true and leaves the decision to the agent. It reports
+  that a conversation is waiting for pickup; it does not instruct anybody to
+  pick it up.
+
+  The screen itself is now built in three layers, in the order the questions
+  are actually asked: what does my day look like, what requires my attention,
+  and only then which conversation to open. Opening the Inbox lands on what
+  needs attention rather than on an undifferentiated list.
+
+  Each conversation explains itself before showing its content — who the
+  customer is, what the conversation is waiting on, who is answerable, how
+  urgent it is, how long it has been that way, and what most recently changed.
+  The message text comes after all of that, because an agent should know why
+  something is in front of them before reading a word of it.
+
+  Empty queues stay visible with their zero. "Nothing has breached" is one of
+  the most useful things this screen can say.
+
+### Fixed
+
+- **"Assigned to me" no longer shows work that belongs to nobody.** For a
+  supervisor or owner without an agent profile, it returned every unassigned
+  conversation in the company as though it were theirs personally.
+
 - **You can now see everything that happened to a conversation, on one
   screen.** Open a conversation's story and read it top to bottom: the
   customer's message arriving, which service and queue it went to and why, who

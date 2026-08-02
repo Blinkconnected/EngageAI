@@ -68,8 +68,13 @@ const RolesPage = lazy(() =>
 const SlaBuilderPage = lazy(() =>
   import('../features/sla/SlaBuilderPage').then((m) => ({ default: m.SlaBuilderPage })),
 )
+// The agent's operational workspace. Replaces the conversation grid: the
+// Inbox answers "what does my day look like" before "which conversation
+// should I open", and a table could only ever answer the second.
 const InboxPage = lazy(() =>
-  import('../features/conversations/InboxPage').then((m) => ({ default: m.InboxPage })),
+  import('../features/conversations/InboxWorkspace').then((m) => ({
+    default: m.InboxWorkspace,
+  })),
 )
 const ConversationViewPage = lazy(() =>
   import('../features/conversations/ConversationViewPage').then((m) => ({

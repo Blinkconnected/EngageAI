@@ -47,18 +47,23 @@ it matters — a busy queue.
 
 ## What a row must answer
 
-Six questions, in this order:
+Seven questions, in this order — and the order is the design:
 
-1. **Who** — the customer, by name
-2. **How healthy** — SLA health, the dominant visual signal
-3. **Who owns it** — Queue, Agent, AI, Customer or Supervisor, explicitly
-4. **What happened** — the last *meaningful event*, not the last message
-5. **How long** — time waiting
-6. **What should I do** — pick up, reply, review, or nothing
+1. **Who is this?** — the customer, by name
+2. **Why am I seeing this?** — the operational state
+3. **Who owns it?** — Queue, Agent, AI, Customer or Supervisor, explicitly
+4. **How urgent is it?** — SLA health
+5. **How long has it been like this?** — time in the current state
+6. **What happened most recently?** — the last meaningful event
+7. **What did the customer actually say?** — the last message
 
-The previous row answered mostly metadata: channel, avatar, priority, status,
-timestamp, assignee. Seven columns of *description* and nothing that said
-"act on this".
+The last message is deliberately last. The previous row answered mostly
+metadata — channel, avatar, priority, status, timestamp, assignee — seven
+columns of *description*, and nothing that explained why the conversation was
+in front of anybody.
+
+An agent should understand why a conversation is here **before** reading its
+content.
 
 ### SLA dominates, priority does not
 
@@ -75,10 +80,11 @@ answerable for it. The row names the owner and their kind.
 
 ### AI is an operational state
 
-Not a badge hidden inside an assignee column. AI is either responding,
-waiting out a pickup delay, or has handed back — and an agent should never
-wonder which. The states come from the backend (`ai_state`), the same field
-the Conversation Story uses, so the two screens cannot disagree.
+Not a badge hidden inside an assignee column. AI is either responding or
+waiting out a pickup delay, and an agent should never wonder which. Both are
+values of `state`, beside every other thing a conversation can be waiting on
+— so AI is read in the same glance as everything else rather than in a
+separate place.
 
 ### The preview explains why the row is here
 
@@ -87,6 +93,45 @@ replied, AI responded, transferred to Billing, escalated, resolved — explains
 why this conversation is in front of you. That is the difference between a
 message list and an operations screen.
 
+## Operational state
+
+`domain/operational_state.py` names what a conversation is waiting on:
+waiting for pickup, ready for reply, waiting for customer, AI responding, AI
+pickup delay, escalated, transferred, resolved, awaiting feedback, closed.
+
+**Described, never prescribed.** A field that said "Pick up" or "Reply" would
+be the platform issuing instructions from a partial view — it does not know
+that this agent is already on a call, or that a supervisor asked for
+something else first. A field that says *waiting for pickup* is a fact, and an
+experienced agent reads a fact faster than they evaluate advice.
+
+Derived from facts already kept, never stored, so it cannot drift out of step
+with the conversation it describes. Computed on the server for the same reason
+severity is: every client must describe the same conversation the same way.
+
+The precedence is stated because a rule set this size is right by accident
+otherwise. A closed conversation is closed whatever else is true of it; AI
+holding one outranks the queue it came from; and *how* somebody came to own it
+— escalated, transferred — outranks the plain status, because that is what an
+agent scanning needs to notice rather than have buried among ordinary work.
+
+`AI_RESUME_DELAY` exists in the vocabulary and nothing assigns it:
+`ai.resume_delay_seconds` is configuration nothing reads yet. A conversation
+must never be described as waiting for a behaviour the platform does not have,
+and a test fails the day somebody wires resume without revisiting it.
+
+## Ownership comes from the timeline
+
+The row reads the current owner from the ownership history — a window function
+over `conversation_ownership`, not `assigned_agent_id`. Those are separate
+concepts, and an Inbox that showed one while calling it the other would undo
+the distinction the ownership model exists to make. `owner_since` is the
+closest thing the platform records to "how long has it been like this".
+
+A window function rather than `DISTINCT ON`: PostgreSQL has the latter and
+SQLite does not, and a query that only works in production is one that fails
+where it matters.
+
 ## What the server must send
 
 The Inbox must never make a request per row. `customer_name` on the list
@@ -94,11 +139,26 @@ response replaces one HTTP call per visible conversation — twenty rows meant
 twenty requests, each with its own skeleton, so the single most important
 identifier arrived last and staggered.
 
-Every derived field on the row (`sla_health`, `owner_*`, `ai_state`,
-`last_event`, `next_action`) is computed once on the server for the same
-reason severity is: every client must show the same answer, and a browser
-working it out from adjacent fields is a browser forming a judgement the
-platform never made.
+Every derived field on the row — `sla_health`, `state`, `owner_*`,
+`owner_since`, and the last meaningful event — is computed once on the server
+for the same reason severity is: every client must show the same answer, and a
+browser working it out from adjacent fields is a browser forming a judgement
+the platform never made.
+
+The Inbox and the Conversation Story describe the same conversation, and they
+must never disagree about it. Both read the same fields from the same place.
+
+## Two bugs the views found
+
+**"Assigned to me" returned the entire unassigned backlog.** `assigned_agent_id
+== agent_id` with a null id compiles to `IS NULL` in SQL, so anybody without an
+agent profile — an owner, a supervisor — was told every conversation nobody had
+picked up was personally theirs. No agent identity now means an empty list,
+which is the honest answer.
+
+**An unknown view returned everything.** Now a 422. A typo that quietly showed
+the wrong work is worse than an error, on a screen whose value is being trusted
+at a glance.
 
 ## What was deliberately removed
 

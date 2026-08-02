@@ -20,6 +20,8 @@ export type ConversationPriority = 'low' | 'normal' | 'high' | 'urgent'
 
 /** Matches the backend's `ConversationResponse`. */
 /** Ordered worst-first, matching the backend's HEALTH_ORDER. */
+import type { OperationalState } from './inboxTypes'
+
 export type SlaHealth = 'breached' | 'at_risk' | 'attention' | 'healthy'
 
 export interface Conversation {
@@ -44,6 +46,32 @@ export interface Conversation {
    * timestamps and answer a different question — *when* a specific
    * target was missed, not how the conversation is doing overall. */
   sla_health: SlaHealth
+  /** The customer's name, on the row.
+   *
+   * Before this the Inbox fetched it one conversation at a time — twenty
+   * rows was twenty requests, each with its own skeleton, so the single most
+   * important identifier arrived last and staggered. `null` only when the
+   * customer record has gone from under the conversation. */
+  customer_name: string | null
+  /** What the conversation is waiting on — the row's most important line.
+   * Decided by the backend so the Inbox and the Conversation Story can never
+   * describe the same conversation differently. */
+  state: OperationalState
+  state_text: string
+  /** Who is answerable, from the ownership timeline rather than from the
+   * assignment. Those are separate concepts. */
+  owner_kind: string
+  owner_label: string
+  /** When responsibility last moved — the platform's closest record of "how
+   * long has it been like this". */
+  owner_since: string | null
+  /** The last thing the platform decided about this conversation, in the
+   * words the engine that decided it already wrote. Distinct from the last
+   * message: an agent needs to know what changed since they last looked
+   * before they need the wording of it. */
+  last_event: string | null
+  last_event_kind: string | null
+  last_event_at: string | null
   sla_first_response_breached_at: string | null
   sla_resolution_breached_at: string | null
   /** Set once a conversation crosses its SLA policy's warning threshold

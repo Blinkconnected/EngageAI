@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from blinkengage.domain.media import MediaKind
+from blinkengage.domain.operational_state import OperationalState
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
     ConversationPriority,
@@ -72,6 +73,36 @@ class ConversationResponse(BaseModel):
     # missing value shown as breached would send agents to a conversation
     # that is fine, and after the second time nobody trusts the colour.
     sla_health: SlaHealth = SlaHealth.HEALTHY
+    # The customer's name, on the row. NOT an ORM column: joined by the
+    # same query that finds the conversation.
+    #
+    # Before this, the Inbox fetched it one row at a time — twenty rows was
+    # twenty requests, each with its own skeleton, so the single most
+    # important identifier on the screen arrived last and staggered while
+    # the metadata around it was already drawn. An operations screen cannot
+    # make a request per row to show who the customer is.
+    customer_name: str | None = None
+    # What the conversation is waiting on — the row's most important line,
+    # and the answer to "why is this in front of me". Described, never
+    # prescribed: the Inbox provides awareness, not instructions.
+    state: OperationalState = OperationalState.WAITING_FOR_PICKUP
+    state_text: str = ""
+    # Who is answerable. From the ownership timeline, not inferred from
+    # assigned_agent_id — assignment and ownership are separate concepts,
+    # and an Inbox that showed one while calling it the other would undo the
+    # distinction the ownership model exists to make.
+    owner_kind: str = "nobody"
+    owner_label: str = ""
+    # When responsibility last moved: the closest thing the platform records
+    # to "how long has it been like this".
+    owner_since: datetime | None = None
+    # The last thing the platform decided about this conversation, in the
+    # words whichever engine decided it already wrote. Distinct from the last
+    # message, which is what the customer said — an agent needs to know what
+    # changed since they last looked before they need its wording.
+    last_event: str | None = None
+    last_event_kind: str | None = None
+    last_event_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

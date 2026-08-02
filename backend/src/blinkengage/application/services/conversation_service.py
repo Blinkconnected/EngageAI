@@ -42,6 +42,7 @@ from blinkengage.domain.exceptions import (
     EntityNotFoundError,
     InvalidConversationStatusTransitionError,
 )
+from blinkengage.domain.inbox_views import InboxView
 from blinkengage.domain.lifecycle import can_move
 from blinkengage.domain.ownership import Owner, OwnerKind, OwnershipReason
 from blinkengage.domain.sla import SlaHealth
@@ -79,6 +80,7 @@ from blinkengage.infrastructure.repositories.channel_connection_log_repository i
 )
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
+    InboxRow,
 )
 from blinkengage.infrastructure.repositories.conversation_transfer_repository import (
     ConversationTransferRepository,
@@ -203,7 +205,9 @@ class ConversationService:
         queue_id: UUID | None = None,
         priority: ConversationPriority | None = None,
         unassigned_only: bool = False,
-    ) -> tuple[list[Conversation], int, dict[UUID, SlaHealth]]:
+        view: InboxView | None = None,
+        viewer_agent_id: UUID | None = None,
+    ) -> tuple[list[InboxRow], int]:
         return await self._conversations.list_for_company(
             company_id=company_id,
             offset=offset,
@@ -214,6 +218,29 @@ class ConversationService:
             queue_id=queue_id,
             priority=priority,
             unassigned_only=unassigned_only,
+            view=view,
+            viewer_agent_id=viewer_agent_id,
+        )
+
+    async def agent_id_for_user(self, *, company_id: UUID, user_id: UUID | None) -> UUID | None:
+        """The agent profile behind a signed-in user, if there is one.
+
+        ``None`` for an owner or supervisor who is not also an agent — a real
+        and common case, and the reason "assigned to me" has to mean *nobody*
+        rather than *unassigned* for them.
+        """
+        if user_id is None:
+            return None
+        agent = await self._agents.get_by_user_id(company_id=company_id, user_id=user_id)
+        return agent.id if agent is not None else None
+
+    async def workload(
+        self, *, company_id: UUID, viewer_agent_id: UUID | None = None
+    ) -> dict[InboxView, int]:
+        """How many conversations are in each work queue — the strip an agent
+        reads before anything else."""
+        return await self._conversations.workload(
+            company_id=company_id, viewer_agent_id=viewer_agent_id
         )
 
     async def sla_health(

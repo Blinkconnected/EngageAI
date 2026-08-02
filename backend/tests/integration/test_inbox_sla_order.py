@@ -31,6 +31,17 @@ from blinkengage.infrastructure.repositories.conversation_repository import (
 
 pytestmark = pytest.mark.asyncio
 
+
+def _health(rows: Any) -> dict[uuid.UUID, SlaHealth]:
+    """The page's health readings, keyed by conversation.
+
+    The repository returns rows that already carry their own health — see
+    ``InboxRow``. These tests were written against an earlier shape that
+    returned a separate map, and read more clearly keeping that view.
+    """
+    return {row.conversation.id: row.sla_health for row in rows}
+
+
 NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 
 
@@ -147,14 +158,14 @@ class TestTheWorstConversationIsFirst:
                 target_minutes=60,
             )
 
-            rows, total, health = await repo.list_for_company(
+            rows, total = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=50, status=None, now=NOW
             )
 
             assert total == 2
-            assert [row.id for row in rows] == [late, urgent]
-            assert health[late] is SlaHealth.BREACHED
-            assert health[urgent] is SlaHealth.HEALTHY
+            assert [row.conversation.id for row in rows] == [late, urgent]
+            assert _health(rows)[late] is SlaHealth.BREACHED
+            assert _health(rows)[urgent] is SlaHealth.HEALTHY
 
     async def test_the_order_is_the_company_not_the_page(self, app: Any) -> None:
         """The reason this is ranked in SQL rather than in Python.
@@ -196,12 +207,12 @@ class TestTheWorstConversationIsFirst:
                 target_minutes=60,
             )
 
-            rows, total, _ = await repo.list_for_company(
+            rows, total = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=1, status=None, now=NOW
             )
 
             assert total == 6
-            assert [row.id for row in rows] == [worst]
+            assert [row.conversation.id for row in rows] == [worst]
 
     async def test_a_conversation_with_no_clocks_stays_in_the_list(self, app: Any) -> None:
         """An outer join, not an inner one.
@@ -220,13 +231,13 @@ class TestTheWorstConversationIsFirst:
 
             unmeasured = await a_conversation(session, ids)
 
-            rows, total, health = await repo.list_for_company(
+            rows, total = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=50, status=None, now=NOW
             )
 
             assert total == 1
-            assert [row.id for row in rows] == [unmeasured]
-            assert health[unmeasured] is SlaHealth.HEALTHY
+            assert [row.conversation.id for row in rows] == [unmeasured]
+            assert _health(rows)[unmeasured] is SlaHealth.HEALTHY
 
     async def test_waiting_on_the_customer_is_not_an_emergency(self, app: Any) -> None:
         """A paused clock reads healthy, however long it has been paused.
@@ -256,11 +267,11 @@ class TestTheWorstConversationIsFirst:
                 pause_reason=PauseReason.WAITING_FOR_CUSTOMER,
             )
 
-            _, _, health = await repo.list_for_company(
+            rows, _ = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=50, status=None, now=NOW + timedelta(days=3)
             )
 
-            assert health[waiting] is SlaHealth.HEALTHY
+            assert _health(rows)[waiting] is SlaHealth.HEALTHY
 
     async def test_the_worst_clock_wins_not_the_average(self, app: Any) -> None:
         """One conversation, four clocks, one reading.
@@ -294,11 +305,11 @@ class TestTheWorstConversationIsFirst:
                 target_minutes=60,
             )
 
-            _, _, health = await repo.list_for_company(
+            rows, _ = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=50, status=None, now=NOW
             )
 
-            assert health[conversation_id] is SlaHealth.BREACHED
+            assert _health(rows)[conversation_id] is SlaHealth.BREACHED
 
 
 class TestTheTwoImplementationsAgree:
@@ -350,14 +361,14 @@ class TestTheTwoImplementationsAgree:
                 )
                 cases[conversation_id] = expected
 
-            _, _, from_sql = await repo.list_for_company(
+            rows, _ = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=50, status=None, now=NOW
             )
 
             for conversation_id, expected in cases.items():
                 from_python = (await engine.read(conversation_id, now=NOW)).health
                 assert (
-                    from_sql[conversation_id] is expected
+                    _health(rows)[conversation_id] is expected
                 ), f"SQL disagreed with the expectation for {conversation_id}"
                 assert (
                     from_python is expected
@@ -391,8 +402,162 @@ class TestTheTwoImplementationsAgree:
                 due_at=NOW - timedelta(minutes=1),
             )
 
-            _, _, health = await repo.list_for_company(
+            rows, _ = await repo.list_for_company(
                 company_id=company_id, offset=0, limit=50, status=None, now=NOW
             )
 
-            assert health[overdue] is SlaHealth.BREACHED
+            assert _health(rows)[overdue] is SlaHealth.BREACHED
+
+
+class TestTheRowCarriesWhatTheScreenNeeds:
+    """The Inbox must never make a request per row.
+
+    The customer's name — the single most important identifier on the screen —
+    was fetched one conversation at a time. Twenty rows meant twenty HTTP
+    requests, each with its own skeleton, so the name arrived last and
+    staggered while the metadata around it was already drawn. On a screen
+    whose success criterion is a one-second read, that is the whole second.
+    """
+
+    async def test_the_customers_name_arrives_with_the_row(self, app: Any) -> None:
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            ids = await a_company(session)
+            company_id, customer_id, _ = ids
+            repo = ConversationRepository(session)
+            await a_conversation(session, ids)
+
+            rows, _ = await repo.list_for_company(
+                company_id=company_id, offset=0, limit=50, status=None, now=NOW
+            )
+
+            assert rows
+            assert (
+                rows[0].customer_name == "Acme"
+            ), "the name comes from the same query that found the row"
+            assert rows[0].conversation.customer_id == customer_id
+
+    async def test_a_conversation_outlives_its_customer_row(self, app: Any) -> None:
+        """An outer join, deliberately.
+
+        A conversation whose customer record has gone is exactly the row
+        somebody needs to see. An inner join would have removed it from the
+        Inbox while the list still looked correct — the same failure the SLA
+        ranking avoids.
+        """
+        from blinkengage.infrastructure.database.models.conversation import Conversation
+        from blinkengage.infrastructure.database.models.customer import Customer
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            ids = await a_company(session)
+            company_id, customer_id, channel_id = ids
+            conversation = Conversation(
+                company_id=company_id,
+                customer_id=customer_id,
+                channel_config_id=channel_id,
+                status=ConversationStatus.WAITING,
+            )
+            session.add(conversation)
+            await session.flush()
+
+            # The customer row disappears from under it.
+            await session.delete(await session.get(Customer, customer_id))
+            await session.flush()
+
+            rows, total = await ConversationRepository(session).list_for_company(
+                company_id=company_id, offset=0, limit=50, status=None, now=NOW
+            )
+
+            assert total == 1, "the conversation is still in the Inbox"
+            assert rows[0].customer_name is None, "and says the name is missing"
+
+
+class TestEveryRowExplainsWhyItIsVisible:
+    """The Inbox is an operations screen, not a message list.
+
+    A row that shows a channel, an avatar and a timestamp describes a
+    conversation. A row that says *waiting for pickup, owned by Support, for
+    six minutes* explains why it is in front of somebody — which is the
+    difference between scanning and reading.
+    """
+
+    async def test_a_queued_conversation_says_it_is_waiting_for_pickup(self, app: Any) -> None:
+        from blinkengage.domain.operational_state import OperationalState
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            ids = await a_company(session)
+            company_id = ids[0]
+            await a_conversation(session, ids)
+
+            rows, _ = await ConversationRepository(session).list_for_company(
+                company_id=company_id, offset=0, limit=50, status=None, now=NOW
+            )
+
+            assert rows[0].state is OperationalState.WAITING_FOR_PICKUP
+
+    async def test_the_owner_comes_from_the_timeline_not_from_the_assignment(
+        self, app: Any
+    ) -> None:
+        """Assignment and ownership are separate concepts.
+
+        A conversation can be owned by its queue with nobody assigned, and
+        an Inbox that read `assigned_agent_id` and called it the owner would
+        undo the distinction the ownership model exists to make.
+        """
+        from blinkengage.application.services.ownership_service import (
+            OwnershipService,
+            queue_owner,
+        )
+        from blinkengage.domain.ownership import OwnerKind, OwnershipReason
+        from blinkengage.infrastructure.repositories.ownership_repository import (
+            OwnershipRepository,
+        )
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            ids = await a_company(session)
+            company_id = ids[0]
+            conversation_id = await a_conversation(session, ids)
+
+            await OwnershipService(OwnershipRepository(session)).transfer(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                to=queue_owner(uuid.uuid4(), "Support"),
+                reason=OwnershipReason.NEW_CONVERSATION,
+                now=NOW,
+            )
+
+            rows, _ = await ConversationRepository(session).list_for_company(
+                company_id=company_id, offset=0, limit=50, status=None, now=NOW
+            )
+
+            assert rows[0].owner.kind is OwnerKind.QUEUE
+            assert rows[0].owner.name == "Support"
+            assert rows[0].owner_since is not None, "how long it has been like this"
+
+    async def test_a_conversation_older_than_the_ownership_model_still_appears(
+        self, app: Any
+    ) -> None:
+        """An outer join, for the same reason as the customer name.
+
+        Conversations that predate the ownership model have no row at all,
+        and dropping them would remove exactly the oldest work from the
+        screen built to surface neglected work.
+        """
+        from blinkengage.domain.ownership import OwnerKind
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            ids = await a_company(session)
+            company_id = ids[0]
+            await a_conversation(session, ids)
+
+            rows, total = await ConversationRepository(session).list_for_company(
+                company_id=company_id, offset=0, limit=50, status=None, now=NOW
+            )
+
+            assert total == 1
+            assert rows[0].owner.kind is OwnerKind.NOBODY
+            assert rows[0].owner_since is None

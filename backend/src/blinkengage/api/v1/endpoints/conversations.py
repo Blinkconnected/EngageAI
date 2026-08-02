@@ -47,11 +47,13 @@ from blinkengage.application.services.internal_note_service import InternalNoteS
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.core.config import Settings
 from blinkengage.core.media_tokens import MediaTokenError, sign, verify
+from blinkengage.domain.inbox_views import InboxView
 from blinkengage.domain.media import (
     is_inline_renderable,
     kind_for,
     may_need_fallback,
 )
+from blinkengage.domain.operational_state import STATE_TEXT
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -59,6 +61,7 @@ from blinkengage.infrastructure.database.models.conversation import (
     ConversationStatus,
 )
 from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
+from blinkengage.infrastructure.repositories.conversation_repository import InboxRow
 
 #: How long a browser may keep an attachment's bytes. An attachment is
 #: immutable once uploaded, so this is bounded only by the signed URL's
@@ -139,9 +142,36 @@ def _to_conversation_response(
     conversation: Conversation,
     unread_count: int = 0,
     sla_health: SlaHealth = SlaHealth.HEALTHY,
+    customer_name: str | None = None,
+    row: InboxRow | None = None,
 ) -> ConversationResponse:
+    """One conversation, with the operational facts that are not on its row.
+
+    ``row`` is present for the Inbox, which needs every conversation to
+    explain why it is visible. The single-conversation endpoints pass none:
+    the detail screen shows the whole Conversation Story, which answers the
+    same question in far more depth.
+    """
     response = ConversationResponse.model_validate(conversation)
-    return response.model_copy(update={"unread_count": unread_count, "sla_health": sla_health})
+    update: dict[str, object] = {
+        "unread_count": unread_count,
+        "sla_health": sla_health,
+        "customer_name": customer_name,
+    }
+    if row is not None:
+        update.update(
+            {
+                "state": row.state,
+                "state_text": STATE_TEXT[row.state],
+                "owner_kind": row.owner.kind.value,
+                "owner_label": row.owner.describe(),
+                "owner_since": row.owner_since,
+                "last_event": row.last_event,
+                "last_event_kind": row.last_event_kind,
+                "last_event_at": row.last_event_at,
+            }
+        )
+    return response.model_copy(update=update)
 
 
 async def _one(service: ConversationService, conversation: Conversation) -> ConversationResponse:
@@ -162,6 +192,35 @@ async def _one(service: ConversationService, conversation: Conversation) -> Conv
     )
 
 
+async def _viewer_agent_id(service: ConversationService, auth: AuthContext) -> UUID | None:
+    """The agent profile of whoever is asking, if they have one.
+
+    ``None`` for a supervisor or owner with no agent profile — which makes
+    "assigned to me" empty rather than wrong. It used to be neither: a null
+    id compared with SQL equality matched every *unassigned* conversation, so
+    the whole backlog came back as somebody's personal list.
+    """
+    return await service.agent_id_for_user(company_id=auth.company_id, user_id=auth.user_id)
+
+
+@router.get("/workload", response_model=dict[str, int])
+async def read_workload(
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+) -> dict[str, int]:
+    """How many conversations are in each work queue.
+
+    Counted across the company in one query rather than over the loaded page:
+    a count taken from fifty rows is wrong in exactly the situation it matters,
+    which is a busy queue.
+    """
+    counts = await service.workload(
+        company_id=auth.company_id,
+        viewer_agent_id=await _viewer_agent_id(service, auth),
+    )
+    return {view.value: count for view, count in counts.items()}
+
+
 @router.get("", response_model=Page[ConversationResponse])
 async def list_conversations(
     auth: Annotated[AuthContext, Depends(require_permission("conversations.read"))],
@@ -173,8 +232,9 @@ async def list_conversations(
     queue_id: UUID | None = None,
     priority: ConversationPriority | None = None,
     unassigned_only: bool = False,
+    view: InboxView | None = None,
 ) -> Page[ConversationResponse]:
-    items, total, health = await service.list_conversations(
+    rows, total = await service.list_conversations(
         company_id=auth.company_id,
         offset=page_params.offset,
         limit=page_params.page_size,
@@ -184,14 +244,22 @@ async def list_conversations(
         queue_id=queue_id,
         priority=priority,
         unassigned_only=unassigned_only,
+        view=view,
+        viewer_agent_id=await _viewer_agent_id(service, auth),
     )
-    unread_counts = await service.unread_counts(conversation_ids=[item.id for item in items])
+    unread_counts = await service.unread_counts(
+        conversation_ids=[row.conversation.id for row in rows]
+    )
     return Page(
         items=[
             _to_conversation_response(
-                item, unread_counts.get(item.id, 0), health.get(item.id, SlaHealth.HEALTHY)
+                row.conversation,
+                unread_counts.get(row.conversation.id, 0),
+                row.sla_health,
+                row.customer_name,
+                row,
             )
-            for item in items
+            for row in rows
         ],
         total=total,
         page=page_params.page,

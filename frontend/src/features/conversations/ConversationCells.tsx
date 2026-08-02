@@ -13,7 +13,6 @@ import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
 import { useTranslation } from 'react-i18next'
-import { useCustomerQuery } from '../customers/api'
 import { channelTypeLabel } from '../channels/types'
 import type { Conversation, ConversationPriority, SlaHealth } from './types'
 
@@ -129,18 +128,10 @@ function avatarColorFor(seed: string): string {
  * here." */
 export function CustomerIdentityCell({ conversation }: { conversation: Conversation }) {
   const { t } = useTranslation('conversationsCore')
-  const customerQuery = useCustomerQuery(conversation.customer_id)
-
-  if (customerQuery.isPending) {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-        <Skeleton variant="circular" width={32} height={32} />
-        <Skeleton width={120} />
-      </Box>
-    )
-  }
-
-  const name = customerQuery.data?.full_name ?? conversation.customer_id
+  // The name arrives on the row. It used to be fetched here, once per
+  // conversation: twenty rows meant twenty requests and twenty skeletons,
+  // so the identifier an agent scans for was the last thing to appear.
+  const name = conversation.customer_name ?? conversation.customer_id
   const hasUnread = conversation.unread_count > 0
 
   return (
