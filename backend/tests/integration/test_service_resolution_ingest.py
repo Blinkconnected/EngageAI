@@ -54,6 +54,8 @@ async def a_service(
     queue_id: uuid.UUID | None = None,
     ai_pickup_delay_seconds: int | None = None,
     ai_enabled: bool = False,
+    ai_confidence_threshold: str | None = None,
+    sla_queue_minutes: int | None = None,
 ) -> Service:
     services = ServiceRepository(session)
     service = await services.add(
@@ -72,7 +74,9 @@ async def a_service(
             name=name,
             logical_queue_id=queue_id,
             sla_first_response_minutes=15,
+            sla_queue_minutes=sla_queue_minutes,
             ai_enabled=ai_enabled,
+            ai_confidence_threshold=ai_confidence_threshold,
             **(
                 {}
                 if ai_pickup_delay_seconds is None

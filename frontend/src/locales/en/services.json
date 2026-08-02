@@ -28,7 +28,8 @@
     "aiPickupDelay": "AI pickup delay (seconds)",
     "aiPickupDelayHelp": "How long AI waits before taking a conversation, so an agent can take it first. 0 means AI answers immediately.",
     "aiConfidence": "AI confidence threshold",
-    "aiConfidenceHelp": "Below this, AI hands the conversation to a human instead of answering. Between 0 and 1."
+    "aiConfidenceHelp": "Below this, AI hands the conversation to a human instead of answering. Between 0 and 1. Leave empty to use your company-wide setting.",
+    "aiConfidencePlaceholder": "Company default"
   },
   "editor": {
     "versionChip": "Version {{version}}",

@@ -43,6 +43,9 @@ from blinkengage.application.services.autopilot_service import AutopilotTrigger
 from blinkengage.application.services.company_capabilities import capabilities_for
 from blinkengage.application.services.ownership_service import AI_OWNER, OwnershipService
 from blinkengage.application.services.policy_recorder import RecordingPolicyEngine
+from blinkengage.application.services.service_context_resolver import (
+    ServiceContextResolver,
+)
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_lifecycle import SlaLifecycle
 from blinkengage.core.celery_app import celery_app
@@ -172,15 +175,10 @@ async def _settle_one(
         return "finished"
 
     # The service *version the conversation is bound to*, not the service's
-    # current one. A conversation's configuration is frozen when it starts,
-    # so a delay edited while this one waited must not change the answer it
-    # gets — the whole reason bindings are by version.
-    binding = await ContextBindingRepository(session).current(conversation_id)
-    service = (
-        await ServiceRepository(session).context_for_version(binding.service_version_id)
-        if binding is not None
-        else None
-    )
+    # current one — see ``ServiceContextResolver``.
+    service = await ServiceContextResolver(
+        bindings=ContextBindingRepository(session), services=ServiceRepository(session)
+    ).for_conversation(conversation_id)
     if service is None:
         return "no_service"
 

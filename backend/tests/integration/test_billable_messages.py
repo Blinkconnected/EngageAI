@@ -487,8 +487,17 @@ async def _send(app: Any, company_id: str, *, count: int, offset: int = 0) -> No
 
     Metered directly rather than sent through the channel stack: the point
     under test is the charge, and the ingest path has its own suites.
+
+    "An hour ago, but never yesterday." Between 00:00 and 01:00 UTC a plain
+    ``now - 1h`` lands on the *previous* day, while every figure these tests
+    assert on is this-day or month-to-date — so the suite passed all day and
+    failed for one hour each night. Caught when a full run happened to reach
+    this file at 00:42 and reported a null unit amount; it reproduced neither
+    in isolation nor with its whole alphabetical prefix, because both of
+    those ran at a different time of day.
     """
-    at = datetime.now(UTC) - timedelta(hours=1)
+    now = datetime.now(UTC)
+    at = max(now - timedelta(hours=1), now.replace(hour=0, minute=1, second=0, microsecond=0))
     for index in range(offset, offset + count):
         await meter(
             app,

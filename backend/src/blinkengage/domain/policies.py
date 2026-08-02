@@ -324,7 +324,11 @@ def _ai_engagement(execution: ExecutionContext) -> PolicyDecision:
         PolicyReason.SERVICE_ALLOWS,
         PolicySource.SERVICE_CONTEXT,
         pickup_delay_seconds=execution.service.ai.pickup_delay_seconds,
-        confidence_threshold=str(execution.service.ai.confidence_threshold),
+        confidence_threshold=(
+            None
+            if execution.service.ai.confidence_threshold is None
+            else str(execution.service.ai.confidence_threshold)
+        ),
     )
 
 

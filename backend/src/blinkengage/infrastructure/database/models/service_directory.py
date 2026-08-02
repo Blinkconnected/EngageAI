@@ -199,7 +199,9 @@ class ServiceVersion(UUIDPrimaryKeyMixin, Base):
     #: Stored as text, read back as ``Decimal``. A threshold compared against
     #: a model's confidence must not have two numbers differing in the last
     #: binary place straddle it — see ``domain/service_context.py``.
-    ai_confidence_threshold: Mapped[str] = mapped_column(String(16), nullable=False, default="0.75")
+    #: ``None`` — the default — means this service defers to the
+    #: company-wide threshold. See ``AiPolicy.confidence_threshold``.
+    ai_confidence_threshold: Mapped[str | None] = mapped_column(String(16), default=None)
 
     #: Namespaced settings for modules that did not exist when this version
     #: was written. Read through ``ServiceContext.setting()``, which answers

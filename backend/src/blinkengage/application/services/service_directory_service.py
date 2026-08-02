@@ -316,7 +316,11 @@ class ServiceDirectoryService:
                 ai_enabled=bool(configuration.get("ai_enabled", False)),
                 ai_pickup_delay_seconds=int(configuration.get("ai_pickup_delay_seconds", 30)),
                 ai_resume_delay_seconds=int(configuration.get("ai_resume_delay_seconds", 900)),
-                ai_confidence_threshold=str(configuration.get("ai_confidence_threshold", "0.75")),
+                ai_confidence_threshold=(
+                    None
+                    if configuration.get("ai_confidence_threshold") in (None, "")
+                    else str(configuration["ai_confidence_threshold"])
+                ),
                 extras=dict(configuration.get("extras") or {}),
                 created_by_user_id=actor_user_id,
                 change_note=change_note,
@@ -352,7 +356,11 @@ def _from_context(context: ServiceContext) -> dict[str, Any]:
         "ai_enabled": context.ai.enabled,
         "ai_pickup_delay_seconds": context.ai.pickup_delay_seconds,
         "ai_resume_delay_seconds": context.ai.resume_delay_seconds,
-        "ai_confidence_threshold": str(context.ai.confidence_threshold),
+        "ai_confidence_threshold": (
+            None
+            if context.ai.confidence_threshold is None
+            else str(context.ai.confidence_threshold)
+        ),
         "extras": dict(context.extras),
     }
 

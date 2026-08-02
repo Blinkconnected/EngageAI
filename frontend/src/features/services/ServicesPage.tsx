@@ -95,7 +95,10 @@ function ServiceEditor({
     enabled: version?.ai_enabled ?? false,
     pickup_delay_seconds: version?.ai_pickup_delay_seconds ?? 30,
     resume_delay_seconds: version?.ai_resume_delay_seconds ?? 900,
-    confidence_threshold: version?.ai_confidence_threshold ?? '0.75',
+    // Empty means "not set" — the company-wide threshold decides. Not
+    // pre-filled with a default, which would turn deferring into an
+    // explicit choice the moment anybody opened this screen.
+    confidence_threshold: version?.ai_confidence_threshold ?? '',
     ...(edits.ai ?? {}),
   }
 
@@ -246,6 +249,7 @@ function ServiceEditor({
             setEdits((c) => ({ ...c, ai: { ...ai, confidence_threshold: e.target.value } }))
           }
           disabled={!canManage || !ai.enabled}
+          placeholder={t('field.aiConfidencePlaceholder')}
           helperText={t('field.aiConfidenceHelp')}
           size="small"
           fullWidth

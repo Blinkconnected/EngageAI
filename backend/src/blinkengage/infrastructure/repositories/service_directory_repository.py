@@ -76,7 +76,11 @@ def to_service_context(row: ServiceVersion) -> ServiceContext:
             # Decimal, from the stored text. Never float: this is compared
             # against a configured threshold, and two numbers differing in
             # the last binary place must not straddle it.
-            confidence_threshold=Decimal(row.ai_confidence_threshold),
+            confidence_threshold=(
+                None
+                if row.ai_confidence_threshold is None
+                else Decimal(row.ai_confidence_threshold)
+            ),
         ),
         extras=dict(row.extras or {}),
     )

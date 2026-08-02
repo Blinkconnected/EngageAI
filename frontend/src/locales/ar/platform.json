@@ -52,7 +52,8 @@
     "featuresButton": "المزايا",
     "billingButton": "الفواتير",
     "usersButton": "المستخدمون",
-    "readOnlyAction": "هذا الحساب للاطلاع فقط. يمكنه عرض كل شيء هنا دون تغييره."
+    "readOnlyAction": "هذا الحساب للاطلاع فقط. يمكنه عرض كل شيء هنا دون تغييره.",
+    "actionsFor": "إجراءات {{name}}"
   },
   "CompanyFeaturesDialog": {
     "title": "مزايا {{companyName}}",

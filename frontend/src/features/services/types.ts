@@ -36,7 +36,8 @@ export interface ServiceVersion {
   ai_resume_delay_seconds: number
   /** A string, not a number: a float would let two values differing in the
    * last binary place straddle the threshold they are compared against. */
-  ai_confidence_threshold: string
+  /** `null` means this service defers to the company-wide threshold. */
+  ai_confidence_threshold: string | null
   extras: Record<string, unknown>
   created_at: string | null
   created_by_user_id: string | null

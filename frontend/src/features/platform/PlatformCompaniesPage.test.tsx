@@ -55,6 +55,16 @@ function mockCompanies(items = COMPANIES, { readOnly = false } = {}) {
   )
 }
 
+/** Opens one row's actions menu.
+ *
+ * The row's four inline buttons became a single menu — 400px of controls on
+ * every row, whether or not anybody was going to press one. Tests drive it the
+ * way an operator does rather than reaching past it. */
+async function openRowMenu(user: ReturnType<typeof userEvent.setup>, company: string) {
+  const row = screen.getByText(company).closest('[role="row"]') as HTMLElement
+  await user.click(within(row).getByRole('button', { name: new RegExp(company, 'i') }))
+}
+
 describe('PlatformCompaniesPage', () => {
   afterEach(() => {
     store.dispatch(loggedOut())
@@ -93,14 +103,17 @@ describe('PlatformCompaniesPage', () => {
   })
 
   it('offers Suspend on an active company and Reactivate on a suspended one', async () => {
+    const user = userEvent.setup()
     mockCompanies()
     renderAuthenticated(<PlatformCompaniesPage />)
     await screen.findByText('Acme Support')
 
-    const active = screen.getByText('Acme Support').closest('[role="row"]') as HTMLElement
-    const suspended = screen.getByText('Globex Care').closest('[role="row"]') as HTMLElement
-    expect(within(active).getByRole('button', { name: /suspend/i })).toBeInTheDocument()
-    expect(within(suspended).getByRole('button', { name: /reactivate/i })).toBeInTheDocument()
+    await openRowMenu(user, 'Acme Support')
+    expect(await screen.findByRole('menuitem', { name: /suspend/i })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await openRowMenu(user, 'Globex Care')
+    expect(await screen.findByRole('menuitem', { name: /reactivate/i })).toBeInTheDocument()
   })
 
   it('confirms before suspending, and says what suspension actually does', async () => {
@@ -109,8 +122,8 @@ describe('PlatformCompaniesPage', () => {
     renderAuthenticated(<PlatformCompaniesPage />)
     await screen.findByText('Acme Support')
 
-    const row = screen.getByText('Acme Support').closest('[role="row"]') as HTMLElement
-    await user.click(within(row).getByRole('button', { name: /suspend/i }))
+    await openRowMenu(user, 'Acme Support')
+    await user.click(await screen.findByRole('menuitem', { name: /suspend/i }))
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/acme support/i)).toBeInTheDocument()
@@ -137,8 +150,8 @@ describe('PlatformCompaniesPage', () => {
     renderAuthenticated(<PlatformCompaniesPage />)
     await screen.findByText('Acme Support')
 
-    const row = screen.getByText('Acme Support').closest('[role="row"]') as HTMLElement
-    await user.click(within(row).getByRole('button', { name: /suspend/i }))
+    await openRowMenu(user, 'Acme Support')
+    await user.click(await screen.findByRole('menuitem', { name: /suspend/i }))
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: /^suspend$/i }))
 
@@ -156,8 +169,8 @@ describe('PlatformCompaniesPage', () => {
     renderAuthenticated(<PlatformCompaniesPage />)
     await screen.findByText('Acme Support')
 
-    const row = screen.getByText('Acme Support').closest('[role="row"]') as HTMLElement
-    await user.click(within(row).getByRole('button', { name: /suspend/i }))
+    await openRowMenu(user, 'Acme Support')
+    await user.click(await screen.findByRole('menuitem', { name: /suspend/i }))
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: /^suspend$/i }))
 

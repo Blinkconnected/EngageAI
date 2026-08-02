@@ -676,6 +676,11 @@ def get_conversation_service(
         # ~25 tests that build this service directly keep working, and
         # production gets the clocks.
         sla=SlaEngine(session, RoutingDecisionRepository(session)),
+        # And the ownership timeline, so picking up, releasing and
+        # transferring a conversation are recorded as the ownership
+        # changes they are. Without this the timeline showed only what
+        # the platform did automatically, never what a person did.
+        ownership=OwnershipService(OwnershipRepository(session)),
         conversations=ConversationRepository(session),
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),
@@ -708,6 +713,11 @@ def get_conversation_service_ws(
         # ~25 tests that build this service directly keep working, and
         # production gets the clocks.
         sla=SlaEngine(session, RoutingDecisionRepository(session)),
+        # And the ownership timeline, so picking up, releasing and
+        # transferring a conversation are recorded as the ownership
+        # changes they are. Without this the timeline showed only what
+        # the platform did automatically, never what a person did.
+        ownership=OwnershipService(OwnershipRepository(session)),
         conversations=ConversationRepository(session),
         messages=MessageRepository(session),
         attachments=MessageAttachmentRepository(session),

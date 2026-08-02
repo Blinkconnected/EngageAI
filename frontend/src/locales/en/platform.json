@@ -52,7 +52,8 @@
     "featuresButton": "Features",
     "billingButton": "Billing",
     "usersButton": "Users",
-    "readOnlyAction": "This platform account has read-only access. It can view everything here, but not change it."
+    "readOnlyAction": "This platform account has read-only access. It can view everything here, but not change it.",
+    "actionsFor": "Actions for {{name}}"
   },
   "CompanyFeaturesDialog": {
     "title": "Features for {{companyName}}",

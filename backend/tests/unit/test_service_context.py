@@ -177,7 +177,20 @@ class TestTheAiPolicyRefusesNonsense:
     def test_the_threshold_is_decimal_not_float(self) -> None:
         """It is compared against a configured value; two numbers differing
         in the last binary place must not straddle it."""
-        assert isinstance(AiPolicy().confidence_threshold, Decimal)
+        assert isinstance(
+            AiPolicy(confidence_threshold=Decimal("0.9")).confidence_threshold, Decimal
+        )
+
+    def test_a_service_defines_no_threshold_until_somebody_sets_one(self) -> None:
+        """Not defaulted to 0.75, deliberately.
+
+        A default here is indistinguishable from a choice. A company that had
+        set 0.9 company-wide would have had it silently replaced the moment
+        somebody created a service — lowering a bar they raised on purpose,
+        with nothing to show it happened. ``None`` means "the company-wide
+        setting decides", which is a thing the platform can say out loud.
+        """
+        assert AiPolicy().confidence_threshold is None
 
 
 class TestAServiceThatCannotQueueAnything:

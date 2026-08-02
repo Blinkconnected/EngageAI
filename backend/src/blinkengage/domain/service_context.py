@@ -119,7 +119,15 @@ class AiPolicy:
     #: human. ``Decimal`` rather than ``float`` because it is compared
     #: against a threshold and two values differing in the last binary
     #: place must not straddle it.
-    confidence_threshold: Decimal = Decimal("0.75")
+    #:
+    #: ``None`` means **this service does not define one**, and the
+    #: company-wide setting decides. Genuinely optional rather than
+    #: defaulted, because a default here is indistinguishable from a
+    #: choice: a company that had deliberately set 0.9 company-wide would
+    #: have had it silently replaced by a service default of 0.75 the
+    #: moment somebody created a service — lowering a bar they had raised
+    #: on purpose, with nothing to show that it happened.
+    confidence_threshold: Decimal | None = None
     #: Phrases or conditions that hand the conversation to a human
     #: immediately, whatever the confidence.
     handover_rules: tuple[str, ...] = ()
@@ -127,7 +135,9 @@ class AiPolicy:
     def __post_init__(self) -> None:
         if self.pickup_delay_seconds < 0 or self.resume_delay_seconds < 0:
             raise ValueError("an AI delay cannot be negative")
-        if not (Decimal("0") <= self.confidence_threshold <= Decimal("1")):
+        if self.confidence_threshold is not None and not (
+            Decimal("0") <= self.confidence_threshold <= Decimal("1")
+        ):
             raise ValueError("a confidence threshold must be between 0 and 1")
 
 

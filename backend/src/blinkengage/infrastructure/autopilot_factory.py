@@ -20,6 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.ownership_service import OwnershipService
+from blinkengage.application.services.service_context_resolver import (
+    ServiceContextResolver,
+)
+from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.core.config import Settings
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -49,6 +53,13 @@ from blinkengage.infrastructure.repositories.ownership_repository import (
     OwnershipRepository,
 )
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
+from blinkengage.infrastructure.repositories.routing_decision_repository import (
+    RoutingDecisionRepository,
+)
+from blinkengage.infrastructure.repositories.service_directory_repository import (
+    ContextBindingRepository,
+    ServiceRepository,
+)
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 from blinkengage.infrastructure.storage.s3_client import create_minio_client
 
@@ -100,6 +111,12 @@ def build_autopilot_service(*, session: AsyncSession, settings: Settings) -> Aut
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
         realtime=get_realtime_publisher(settings),
+        # Without this, every reply AI sends settles no SLA clock: the
+        # customer gets an answer in seconds and the first-response target
+        # goes on running until it breaches. SlaLifecycle takes an optional
+        # engine and quietly does nothing when it is absent, which is what
+        # let this be missing without anything failing.
+        sla=SlaEngine(session, RoutingDecisionRepository(session)),
     )
     return AutopilotService(
         conversations=conversations,
@@ -112,4 +129,9 @@ def build_autopilot_service(*, session: AsyncSession, settings: Settings) -> Aut
         # service, because a service that built its own repository would be
         # reaching around the session this factory owns.
         ownership=OwnershipService(OwnershipRepository(session)),
+        # So the threshold on the Services screen is the one enforced.
+        service_contexts=ServiceContextResolver(
+            bindings=ContextBindingRepository(session),
+            services=ServiceRepository(session),
+        ),
     )

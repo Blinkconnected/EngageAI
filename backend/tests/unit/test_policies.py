@@ -295,7 +295,23 @@ class TestAiEngagement:
 
         assert decision.allowed is True
         assert decision.detail["pickup_delay_seconds"] == 30
-        assert decision.detail["confidence_threshold"] == "0.75"
+        # ``None`` where the service defines no threshold — which is the
+        # default, and is not the same as a threshold of zero. The caller
+        # falls back to the company-wide setting; a decision that reported
+        # "0.75" here would be inventing a number nobody configured.
+        assert decision.detail["confidence_threshold"] is None
+
+    def test_an_allowance_carries_the_service_threshold_when_there_is_one(self) -> None:
+        from decimal import Decimal
+
+        decision = ENGINE.evaluate(
+            Policy.AI_ENGAGEMENT,
+            an_execution(
+                service=a_service(ai=AiPolicy(enabled=True, confidence_threshold=Decimal("0.9")))
+            ),
+        )
+
+        assert decision.detail["confidence_threshold"] == "0.9"
 
 
 class TestRouting:

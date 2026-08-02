@@ -18,10 +18,16 @@ from uuid import UUID, uuid4
 
 from blinkengage.application.services.assignment_engine import filter_by_required_skills
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.ownership_service import (
+    OwnershipService,
+    agent_owner,
+    queue_owner,
+)
 from blinkengage.application.services.realtime_channels import company_realtime_channel_name
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_lifecycle import SlaLifecycle
 from blinkengage.core.config import Settings
+from blinkengage.core.logging import get_logger
 from blinkengage.domain.channels import AttachmentRef, OutboundMessage
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.exceptions import (
@@ -37,6 +43,7 @@ from blinkengage.domain.exceptions import (
     InvalidConversationStatusTransitionError,
 )
 from blinkengage.domain.lifecycle import can_move
+from blinkengage.domain.ownership import Owner, OwnerKind, OwnershipReason
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -113,6 +120,9 @@ def _reply_metadata(*, is_ai_generated: bool, is_ai_assisted: bool) -> dict[str,
     return metadata
 
 
+logger = get_logger(__name__)
+
+
 class ConversationService:
     def __init__(
         self,
@@ -127,6 +137,7 @@ class ConversationService:
         provider_factory: ChannelProviderFactory,
         events: DomainEventPublisher,
         sla: SlaEngine | None = None,
+        ownership: OwnershipService | None = None,
         settings: Settings,
         transfers: ConversationTransferRepository,
         agents: AgentRepository,
@@ -149,6 +160,10 @@ class ConversationService:
         #: absent, every SLA call below is a no-op and the service behaves
         #: exactly as it did before the clocks existed.
         self._sla = SlaLifecycle(sla)
+        # Optional for the same reason as ``sla`` above. Absent, the
+        # ownership timeline simply does not record this action — which
+        # is how it came to record none of the human ones at all.
+        self._ownership = ownership
         self._settings = settings
         self._transfers = transfers
         self._agents = agents
@@ -413,6 +428,23 @@ class ConversationService:
             conversation.assigned_agent_id = None
             conversation.department_id = None
 
+        # A transfer is the clearest possible ownership change, and until now
+        # the only record of it was the transfer table — which answers "who
+        # moved this" but not "who is answerable for it now".
+        await self._record_ownership(
+            conversation_id=conversation.id,
+            company_id=company_id,
+            to=(
+                agent_owner(to_agent_id, None)
+                if target_type is TransferTargetType.AGENT and to_agent_id is not None
+                else queue_owner(conversation.queue_id, None)
+                if conversation.queue_id is not None
+                else Owner(kind=OwnerKind.TEAM, id=to_department_id, name=None)
+            ),
+            reason=OwnershipReason.MANUAL_TRANSFER,
+            actor_user_id=actor_user_id,
+        )
+
         transfer = await self._transfers.add(
             ConversationTransfer(
                 company_id=company_id,
@@ -530,6 +562,23 @@ class ConversationService:
                 queue_entered_at = queue_entered_at.replace(tzinfo=UTC)
             wait_seconds = int((now - queue_entered_at).total_seconds())
 
+        # Ownership moves to the person now answerable for it. Recorded
+        # here rather than inferred from ``assigned_agent_id``, because
+        # assignment and ownership are deliberately separate concepts: a
+        # conversation can be owned by a queue with nobody assigned, and the
+        # timeline is what answers "who has had this, and when".
+        await self._record_ownership(
+            conversation_id=conversation.id,
+            company_id=company_id,
+            # No name: it lives on the related User and reading it here
+            # would be a lazy load inside an async session. The id is what
+            # the timeline is keyed on; the Inspector resolves names.
+            to=agent_owner(agent.id, None),
+            reason=OwnershipReason.PICKED_BY_AGENT,
+            actor_user_id=actor_user_id,
+            now=now,
+        )
+
         await self._events.publish(
             DomainEvent(
                 event_type="conversation.picked",
@@ -612,6 +661,42 @@ class ConversationService:
         )
         return conversation
 
+    async def _record_ownership(
+        self,
+        *,
+        conversation_id: UUID,
+        company_id: UUID,
+        to: Owner,
+        reason: OwnershipReason,
+        actor_user_id: UUID | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        """Writes one ownership transition, and never costs the action.
+
+        The same tradeoff every recorder here makes: the conversation
+        changing hands is the product, the row explaining it is evidence,
+        and evidence that would not write must not stop an agent taking a
+        conversation.
+        """
+        if self._ownership is None:
+            return
+        try:
+            await self._ownership.transfer(
+                conversation_id=conversation_id,
+                company_id=company_id,
+                to=to,
+                reason=reason,
+                actor_user_id=actor_user_id,
+                now=now,
+            )
+        except Exception:  # noqa: BLE001 — see the docstring.
+            logger.warning(
+                "ownership_transition_not_recorded",
+                conversation_id=str(conversation_id),
+                reason=reason.value,
+                exc_info=True,
+            )
+
     async def release(
         self,
         *,
@@ -663,6 +748,19 @@ class ConversationService:
         conversation.assigned_agent_id = None
         conversation.picked_up_at = None
         conversation.queue_entered_at = datetime.now(UTC)
+
+        # Back to the queue, never to nobody: a conversation owned by nobody
+        # is one nothing picks up and no escalation can find. A conversation
+        # with no queue has nothing honest to be handed to, so no row is
+        # written rather than an owner being invented.
+        if conversation.queue_id is not None:
+            await self._record_ownership(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                to=queue_owner(conversation.queue_id, None),
+                reason=OwnershipReason.RELEASED_BY_OWNER,
+                actor_user_id=actor_user_id,
+            )
 
         await self._events.publish(
             DomainEvent(

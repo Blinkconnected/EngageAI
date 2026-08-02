@@ -69,6 +69,8 @@ async def _run(
     provider: bool = True,
     pickup_delay_seconds: int | None = None,
     ai_enabled: bool = False,
+    confidence_threshold: str | None = None,
+    sla_queue_minutes: int | None = None,
 ) -> tuple[Conversation, list[RoutingDecisionRecord]]:
     chat = await _web_chat_session(client, headers)
     await _autopilot_queue(client, headers)
@@ -86,6 +88,8 @@ async def _run(
                 # test in this class is about what happens *after* the
                 # gates open, so they open it explicitly.
                 ai_enabled=ai_enabled,
+                ai_confidence_threshold=confidence_threshold,
+                sla_queue_minutes=sla_queue_minutes,
             )
         company = await session.get(Company, company_id)
         assert company is not None
@@ -747,3 +751,93 @@ class TestAiGivesTheConversationBack:
 
         after = await _reload(app, conversation.id)
         assert after.autopilot_active is False, "the hand-off happened regardless"
+
+
+class TestTheServicesScreenIsTheOneTheEngineObeys:
+    """The UI and the engine must never disagree.
+
+    The Services screen exposes an AI confidence threshold. Before this, the
+    engine enforced the company-wide one — so an administrator could set a
+    number, watch it save, and have the platform quietly ignore it. A screen
+    that lies about one setting costs the credibility of every setting on it.
+    """
+
+    async def test_the_service_threshold_decides_not_the_company_one(
+        self,
+        client: AsyncClient,
+        owner_headers: dict,
+        registered_owner: dict,
+        app: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A service demanding more certainty than the company does.
+
+        The company would have accepted this reply at 0.5; the service asks
+        for 0.95, so the conversation goes to a human instead.
+        """
+        conversation, _ = await _run(
+            client,
+            owner_headers,
+            registered_owner,
+            app,
+            settings={
+                "ai": {
+                    "enabled": True,
+                    "autopilot": {
+                        "enabled": True,
+                        "activate_on_new_conversation": True,
+                        "confidence_threshold": 0.5,
+                    },
+                }
+            },
+            ai_enabled=True,
+            confidence_threshold="0.95",
+        )
+        await _wind_back(app, conversation.id)
+
+        settled = await _sweep(app, monkeypatch, confidence=70)
+
+        assert settled == {
+            conversation.id: "not_answered"
+        }, "70% clears the company's 0.5 and not the service's 0.95 — the service decides"
+        assert (await _reload(app, conversation.id)).autopilot_active is False
+
+    async def test_the_company_threshold_is_the_fallback_not_the_rule(
+        self,
+        client: AsyncClient,
+        owner_headers: dict,
+        registered_owner: dict,
+        app: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A service that defines no threshold defers, rather than imposing a
+        default of its own.
+
+        This is the case that made the column nullable: a company that had
+        deliberately set 0.9 must not have it replaced by a service default
+        nobody chose.
+        """
+        conversation, _ = await _run(
+            client,
+            owner_headers,
+            registered_owner,
+            app,
+            settings={
+                "ai": {
+                    "enabled": True,
+                    "autopilot": {
+                        "enabled": True,
+                        "activate_on_new_conversation": True,
+                        "confidence_threshold": 0.9,
+                    },
+                }
+            },
+            ai_enabled=True,
+            confidence_threshold=None,
+        )
+        await _wind_back(app, conversation.id)
+
+        # 80% would clear the old hard-coded service default of 0.75, and
+        # does not clear the 0.9 this company actually asked for.
+        assert await _sweep(app, monkeypatch, confidence=80) == {conversation.id: "not_answered"}
+        assert (await _reload(app, conversation.id)).autopilot_active is False

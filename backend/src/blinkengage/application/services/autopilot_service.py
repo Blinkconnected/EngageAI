@@ -24,6 +24,7 @@ provider is configured", handled as a handoff rather than an error.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
@@ -34,9 +35,12 @@ from blinkengage.application.services.ownership_service import (
     OwnershipService,
     queue_owner,
 )
+from blinkengage.application.services.service_context_resolver import (
+    ServiceContextResolver,
+)
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.company_settings import (
-    autopilot_confidence_threshold,
+    effective_autopilot_confidence_threshold,
     is_ai_enabled,
     is_autopilot_agent_request_mode_enabled,
     is_autopilot_enabled,
@@ -104,6 +108,7 @@ class AutopilotService:
         events: DomainEventPublisher,
         conversation_service: ConversationService,
         ownership: OwnershipService | None = None,
+        service_contexts: ServiceContextResolver | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -114,6 +119,11 @@ class AutopilotService:
         # directly keep working. A missing one costs the ownership row, not
         # the reply — see ``_release_ownership``.
         self._ownership = ownership
+        # Optional for the same reason as ``ownership`` above. A missing
+        # resolver falls back to the company-wide threshold, which is the
+        # behaviour that predates per-service thresholds — never a
+        # threshold of zero, which would let every reply through.
+        self._service_contexts = service_contexts
 
     async def run(
         self,
@@ -240,7 +250,9 @@ class AutopilotService:
             conversation_history=history,
             actor_user_id=actor_user_id,
         )
-        threshold = autopilot_confidence_threshold(company.settings)
+        threshold = await self._threshold_for(
+            conversation_id=conversation_id, company_settings=company.settings
+        )
         handled_message_id = (
             dedupe_message_id if trigger is AutopilotTrigger.NEW_MESSAGE else newest_message_id
         )
@@ -301,6 +313,28 @@ class AutopilotService:
             )
         )
         return AutopilotOutcome(replied=True, confidence=result.confidence)
+
+    async def _threshold_for(
+        self, *, conversation_id: UUID, company_settings: dict[str, Any]
+    ) -> float:
+        """How sure AI has to be before it answers this conversation.
+
+        The service's own threshold when it defines one, the company-wide
+        setting otherwise — see ``effective_autopilot_confidence_threshold``
+        for why that order and not the other.
+
+        Read from the service **version the conversation is bound to**, so a
+        threshold edited mid-conversation does not retroactively change what
+        AI was allowed to send an hour ago.
+        """
+        service_threshold: Decimal | None = None
+        if self._service_contexts is not None:
+            service = await self._service_contexts.for_conversation(conversation_id)
+            if service is not None:
+                service_threshold = service.ai.confidence_threshold
+        return effective_autopilot_confidence_threshold(
+            service_threshold=service_threshold, settings=company_settings
+        )
 
     async def _release_ownership(
         self, *, conversation: Conversation, company_id: UUID, conversation_id: UUID

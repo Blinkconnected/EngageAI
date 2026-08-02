@@ -3,14 +3,16 @@ import { Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
   Box,
-  Button,
   Chip,
+  Divider,
+  IconButton,
+  Menu,
   MenuItem,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import type { GridColDef } from '@mui/x-data-grid'
 import { useTranslation } from 'react-i18next'
 import { DataTable } from '../../shared/components/DataTable'
@@ -39,6 +41,81 @@ const STATUS_OPTIONS: CompanyStatus[] = ['trial', 'active', 'suspended']
  * is built around (see docs/architecture/platform-admin.md), and this
  * page is where it would be most tempting to break it.
  */
+/** The row's actions, behind one control.
+ *
+ * Four inline buttons needed a 400px column — half the table's width spent on
+ * controls, on every row, whether or not anybody was going to press one. They
+ * also read as equally weighted, which suspending a company is not.
+ *
+ * The destructive action is separated below a divider and coloured, so it is
+ * reached deliberately rather than by aiming badly. */
+function CompanyActionsMenu({
+  company,
+  readOnly,
+  onEditFeatures,
+  onChangeStatus,
+}: {
+  company: CompanyOverview
+  readOnly: boolean
+  onEditFeatures: () => void
+  onChangeStatus: (next: 'active' | 'suspended') => void
+}) {
+  const { t } = useTranslation('platform')
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
+  const suspended = company.status === 'suspended'
+  const close = () => setAnchorEl(null)
+
+  return (
+    <>
+      <IconButton
+        size="small"
+        onClick={(e) => setAnchorEl(e.currentTarget)}
+        aria-label={t('PlatformCompaniesPage.actionsFor', { name: company.name })}
+        aria-haspopup="menu"
+        aria-expanded={anchorEl !== null}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={anchorEl} open={anchorEl !== null} onClose={close}>
+        <MenuItem component={RouterLink} to={`/platform/companies/${company.id}/users`}>
+          {t('PlatformCompaniesPage.usersButton')}
+        </MenuItem>
+        <MenuItem component={RouterLink} to={`/platform/billing/companies/${company.id}`}>
+          {t('PlatformCompaniesPage.billingButton')}
+        </MenuItem>
+        {/* A read-only operator may look at everything and change nothing.
+            The API refuses these with 403 — a disabled item with a reason is
+            honest, where an enabled one that fails teaches an operator that
+            this console's controls are unreliable. */}
+        <MenuItem
+          disabled={readOnly}
+          onClick={() => {
+            close()
+            onEditFeatures()
+          }}
+        >
+          {readOnly
+            ? t('PlatformCompaniesPage.readOnlyAction')
+            : t('PlatformCompaniesPage.featuresButton')}
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          disabled={readOnly}
+          sx={{ color: suspended ? 'success.main' : 'error.main' }}
+          onClick={() => {
+            close()
+            onChangeStatus(suspended ? 'active' : 'suspended')
+          }}
+        >
+          {suspended
+            ? t('PlatformCompaniesPage.reactivateButton')
+            : t('PlatformCompaniesPage.suspendButton')}
+        </MenuItem>
+      </Menu>
+    </>
+  )
+}
+
 export function PlatformCompaniesPage() {
   const { t } = useTranslation('platform')
   // Defaults to read-only until the profile answers: assuming the greater
@@ -118,61 +195,18 @@ export function PlatformCompaniesPage() {
     {
       field: 'actions',
       headerName: t('PlatformCompaniesPage.columnActions'),
-      width: 400,
+      width: 80,
       sortable: false,
-      renderCell: (params) => {
-        const suspended = params.row.status === 'suspended'
-        return (
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              component={RouterLink}
-              to={`/platform/companies/${params.row.id}/users`}
-            >
-              {t('PlatformCompaniesPage.usersButton')}
-            </Button>
-            {/* A read-only operator may look at everything and change
-                nothing. The API refuses both of these with 403 — showing
-                them enabled teaches an operator that this console's buttons
-                are unreliable, which is a worse lesson than the absence of
-                a button they were never allowed to press. */}
-            <Tooltip title={readOnly ? t('PlatformCompaniesPage.readOnlyAction') : ''}>
-              <span>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={readOnly}
-                  onClick={() => setFeaturesFor(params.row)}
-                >
-                  {t('PlatformCompaniesPage.featuresButton')}
-                </Button>
-              </span>
-            </Tooltip>
-            <Button
-              size="small"
-              variant="outlined"
-              component={RouterLink}
-              to={`/platform/billing/companies/${params.row.id}`}
-            >
-              {t('PlatformCompaniesPage.billingButton')}
-            </Button>
-            <Button
-              size="small"
-              color={suspended ? 'success' : 'error'}
-              variant="outlined"
-              disabled={readOnly}
-              onClick={() =>
-                setPending({ company: params.row, next: suspended ? 'active' : 'suspended' })
-              }
-            >
-              {suspended
-                ? t('PlatformCompaniesPage.reactivateButton')
-                : t('PlatformCompaniesPage.suspendButton')}
-            </Button>
-          </Stack>
-        )
-      },
+      align: 'right',
+      headerAlign: 'right',
+      renderCell: (params) => (
+        <CompanyActionsMenu
+          company={params.row}
+          readOnly={readOnly}
+          onEditFeatures={() => setFeaturesFor(params.row)}
+          onChangeStatus={(next) => setPending({ company: params.row, next })}
+        />
+      ),
     },
   ]
 

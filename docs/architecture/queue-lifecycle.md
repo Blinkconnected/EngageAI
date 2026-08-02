@@ -465,3 +465,38 @@ A lapsed hold does not release itself. The timeline is append-only, so
 `release-expired-ownership` (every five minutes) notices and writes the next
 row, handing the conversation back to its **queue**. It touches neither the
 status nor the queue itself.
+
+## Who writes an ownership transition
+
+Every path that changes who is answerable for a conversation, and the reason
+it records:
+
+| Action | Owner becomes | Reason |
+|---|---|---|
+| Conversation arrives in a queue | The queue | `new_conversation` |
+| Assignment engine picks an agent | That agent | `assigned_by_strategy` |
+| AI takes it from the queue | AI | `ai_engagement` |
+| **An agent picks it up** | **That agent** | **`picked_by_agent`** |
+| **An agent releases it** | **Its queue** | **`released_by_owner`** |
+| **A supervisor transfers it** | **The target** | **`manual_transfer`** |
+| AI hands back to humans | Its queue | `ai_released` |
+| A sticky window expires | Its queue | `ownership_expired` |
+
+The three in bold were missing until the M5 lifecycle verification looked for
+them. `ConversationService` had no ownership dependency at all, so pick,
+release and transfer — the most common actions in the product, and the only
+ones a *person* performs — left the timeline untouched. Only the automatic
+paths recorded anything, which meant a conversation an agent was holding still
+showed its last automatic owner: "who is responsible for this?" answered with
+whoever the platform last gave it to, not whoever actually had it.
+
+Recording never costs the action. Taking a conversation is the product; the
+row explaining it is evidence, and evidence that would not write must not stop
+an agent picking something up.
+
+**Still not recorded:** resolving and closing. `ReleasePolicy` has `ON_RESOLVE`
+and `ON_CLOSE` members and nothing consults them — whether a resolved
+conversation stays with its agent or returns to its queue is a per-service
+ownership rule that does not exist yet. Left deliberately rather than guessed
+at, since inventing the answer would bake a default nobody chose into the
+timeline.

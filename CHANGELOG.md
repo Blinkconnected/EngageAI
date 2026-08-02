@@ -49,6 +49,28 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **The AI confidence threshold on the Services screen is now the one that
+  decides.** It was displayed per service and enforced company-wide, so an
+  administrator could set a number, watch it save, and have the platform
+  ignore it. The service's threshold now governs; the company-wide setting
+  applies only where a service does not define one.
+
+  Leaving a service's threshold empty means "use our company setting", and
+  that is now a real, storable state rather than an invisible default — a
+  company that had deliberately chosen 0.9 will keep it instead of silently
+  inheriting a service default nobody picked.
+
+- **Picking up, releasing and transferring a conversation now show in its
+  history.** Only the platform's own automatic actions were recorded, so a
+  conversation an agent was holding still displayed whoever the system had
+  last given it to. Every human action now appears with the person and the
+  reason.
+
+- **AI replies now stop the SLA clock.** A conversation answered by AI in
+  seconds still had its first-response timer running, so it would go on to be
+  reported as a missed target the customer had in fact already been answered
+  on. This affected every AI-handled conversation, not only new ones.
+
 - **AI now shows as handing a conversation back.** When Autopilot hands off to
   a human — because it is not confident enough, or no AI provider is
   available — the conversation's history now records it returning to its

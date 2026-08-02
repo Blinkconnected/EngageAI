@@ -302,6 +302,27 @@ invented — and the hand-off itself still happens either way. The reply, or the
 notification that replaces it, is the product; the ownership row is the record
 of it, and a record that would not write must not cost a customer their answer.
 
+### How sure AI has to be
+
+**The service's threshold decides. The company-wide one is the fallback.**
+
+Service configuration is the operational source of truth, so a threshold shown
+on the Services screen is the one the engine enforces. Anything else means an
+administrator can set a number, watch it save, and have the platform quietly
+ignore it — and a screen that lies about one setting costs the credibility of
+every other setting on it.
+
+`service_versions.ai_confidence_threshold` is **nullable**, and null means
+"this service does not define one". Genuinely optional rather than defaulted,
+because a default is indistinguishable from a choice: with a NOT NULL column
+defaulting to 0.75, a company that had deliberately set 0.9 company-wide would
+have had it silently replaced the moment somebody created a service — lowering
+a bar they raised on purpose, with nothing to show it happened.
+
+Read from the service **version the conversation is bound to**, so a threshold
+edited mid-conversation does not retroactively change what AI was allowed to
+send an hour ago. `ServiceContextResolver` is the one place that lookup lives.
+
 ### The gates
 
 Autopilot is the one place in this system where AI output reaches a

@@ -14,6 +14,7 @@ already-stored data with safe defaults, since a row written before a
 given key existed must still resolve to a sensible default.
 """
 
+from decimal import Decimal
 from typing import Any
 
 DEFAULT_MIN_PASSWORD_LENGTH = 10
@@ -53,6 +54,26 @@ def _autopilot_section(settings: dict[str, Any]) -> dict[str, Any]:
 
 def is_autopilot_enabled(settings: dict[str, Any]) -> bool:
     return bool(_autopilot_section(settings).get("enabled", False))
+
+
+def effective_autopilot_confidence_threshold(
+    *, service_threshold: Decimal | None, settings: dict[str, Any]
+) -> float:
+    """The threshold that actually governs this conversation.
+
+    **The service wins.** Service configuration is the operational source of
+    truth, so a threshold shown on the Services screen is the one the engine
+    enforces — anything else means an administrator can set a number, watch
+    it saved, and have the platform quietly ignore it. A screen that lies
+    about one setting costs the credibility of every other setting on it.
+
+    The company-wide value is the fallback, and only when the service does
+    not define one — which is the default, and also the answer for every
+    conversation bound to no service at all.
+    """
+    if service_threshold is not None:
+        return float(service_threshold)
+    return autopilot_confidence_threshold(settings)
 
 
 def autopilot_confidence_threshold(settings: dict[str, Any]) -> float:
