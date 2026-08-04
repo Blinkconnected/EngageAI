@@ -31,6 +31,12 @@ from blinkengage.infrastructure.database.models.customer_channel_identity import
 )
 from blinkengage.infrastructure.database.models.department import Department
 from blinkengage.infrastructure.database.models.device_token import DeviceToken
+from blinkengage.infrastructure.database.models.embedding import (
+    OWNER_KNOWLEDGE_CHUNK,
+    Embedding,
+    KnowledgeChunk,
+    KnowledgeIndexState,
+)
 from blinkengage.infrastructure.database.models.erp import (
     ErpConfig,
     ErpCustomerLink,
@@ -187,9 +193,13 @@ __all__ = [
     "EventOutbox",
     "Holiday",
     "InternalNote",
+    "OWNER_KNOWLEDGE_CHUNK",
+    "Embedding",
     "KnowledgeArticle",
     "KnowledgeArticleTag",
     "KnowledgeCategory",
+    "KnowledgeChunk",
+    "KnowledgeIndexState",
     "Message",
     "MessageAttachment",
     "MessageDirection",

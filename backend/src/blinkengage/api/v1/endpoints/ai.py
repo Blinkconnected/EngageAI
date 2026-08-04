@@ -15,7 +15,7 @@ from blinkengage.api.deps import (
     enforce_ai_rate_limit,
     get_ai_service,
     get_conversation_service,
-    get_knowledge_service,
+    get_knowledge_retrieval_service,
     get_tag_repository,
 )
 from blinkengage.api.schemas.ai import (
@@ -34,7 +34,9 @@ from blinkengage.api.schemas.ai import (
 )
 from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.conversation_service import ConversationService
-from blinkengage.application.services.knowledge_service import KnowledgeService
+from blinkengage.application.services.knowledge_retrieval_service import (
+    KnowledgeRetrievalService,
+)
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.infrastructure.database.models.message import Message, MessageDirection
 from blinkengage.infrastructure.repositories.tag_repository import TagRepository
@@ -226,16 +228,31 @@ async def knowledge_search(
     payload: KnowledgeSearchRequest,
     auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
-    knowledge_service: Annotated[KnowledgeService, Depends(get_knowledge_service)],
+    retrieval: Annotated[KnowledgeRetrievalService, Depends(get_knowledge_retrieval_service)],
 ) -> KnowledgeSearchResponse:
-    articles, _ = await knowledge_service.list_articles(
-        company_id=auth.company_id,
-        offset=0,
-        limit=5,
-        search=payload.query,
-        category_id=None,
+    """Grounds an answer in hybrid retrieval rather than a substring match.
+
+    Two changes from what this endpoint used to do, both of which change
+    the answers it gives:
+
+    **It finds articles the customer did not word the way the author
+    did.** The previous implementation passed `search=` to a `ILIKE
+    '%query%'` list query, so "can I get my money back" retrieved nothing
+    from an article titled "Refund policy" — and the model, correctly and
+    uselessly, answered that no relevant articles were found.
+
+    **It grounds on the matching chunk, not the whole article.** A
+    4,000-word manual passed in full is mostly tokens about something
+    else, and a model given one relevant paragraph inside forty
+    irrelevant ones answers worse than one given the paragraph. The
+    excerpt is the chunk that actually matched; the body is the fallback
+    for a hit found lexically, where there is no matching chunk to point
+    at.
+    """
+    hits = await retrieval.grounding_passages(
+        company_id=auth.company_id, query=payload.query, limit=5
     )
-    candidates = [(article.title, article.body) for article in articles if article.is_published]
+    candidates = [(hit.article.title, hit.excerpt or hit.article.body) for hit in hits]
     answer = await ai_service.answer_from_knowledge_base(
         company_id=auth.company_id,
         conversation_id=None,

@@ -48,6 +48,7 @@ from blinkengage.application.services.customer_internal_rating_service import (
 from blinkengage.application.services.customer_service import CustomerService
 from blinkengage.application.services.department_service import DepartmentService
 from blinkengage.application.services.device_token_service import DeviceTokenService
+from blinkengage.application.services.embedding_service import EmbeddingService
 from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
 from blinkengage.application.services.feature_service import FeatureService
@@ -55,6 +56,9 @@ from blinkengage.application.services.financial_audit_service import FinancialAu
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.invoice_document_service import InvoiceDocumentService
 from blinkengage.application.services.invoice_service import InvoiceService
+from blinkengage.application.services.knowledge_retrieval_service import (
+    KnowledgeRetrievalService,
+)
 from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.ledger_service import (
     LedgerReconciliation,
@@ -111,6 +115,9 @@ from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.connectors.meta import META_APP
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
 from blinkengage.infrastructure.database.models.user import User
+from blinkengage.infrastructure.embeddings.factory import (
+    build_embedding_provider_for_company,
+)
 from blinkengage.infrastructure.events.outbox_publisher import OutboxEventPublisher
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
@@ -170,11 +177,19 @@ from blinkengage.infrastructure.repositories.invoicing_repository import (
     InvoiceRepository,
     PaymentRepository,
 )
+from blinkengage.infrastructure.repositories.knowledge_index_repository import (
+    EmbeddingRepository,
+    KnowledgeChunkRepository,
+    KnowledgeIndexStateRepository,
+)
 from blinkengage.infrastructure.repositories.knowledge_repository import (
     KnowledgeArticleRepository,
     KnowledgeCategoryRepository,
 )
 from blinkengage.infrastructure.repositories.ledger_repository import LedgerRepository
+from blinkengage.infrastructure.repositories.lexical_search_repository import (
+    LexicalSearchRepository,
+)
 from blinkengage.infrastructure.repositories.message_attachment_repository import (
     MessageAttachmentRepository,
 )
@@ -236,6 +251,7 @@ from blinkengage.infrastructure.repositories.workflow_run_repository import (
     WorkflowRunRepository,
 )
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
+from blinkengage.infrastructure.vector.factory import build_vector_index
 
 _bearer_scheme = HTTPBearer(auto_error=True)
 
@@ -1201,6 +1217,42 @@ def get_knowledge_service(
         categories=KnowledgeCategoryRepository(session),
         articles=KnowledgeArticleRepository(session),
         events=events,
+    )
+
+
+async def get_embedding_service(
+    auth: Annotated[AuthContext, Depends(get_current_auth)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> EmbeddingService:
+    """Prefers the calling company's own embedding override, falling back
+    to the platform default — the same precedence ``get_ai_provider`` uses,
+    resolved separately because the two providers are chosen separately."""
+    company = await CompanyRepository(session).get_by_id(auth.company_id)
+    company_ai_config = company.ai_config if company else None
+    return EmbeddingService(
+        provider=build_embedding_provider_for_company(settings, company_ai_config),
+        chunks=KnowledgeChunkRepository(session),
+        embeddings=EmbeddingRepository(session),
+        index_state=KnowledgeIndexStateRepository(session),
+        batch_size=settings.embedding_batch_size,
+        max_attempts=settings.embedding_index_max_attempts,
+    )
+
+
+async def get_knowledge_retrieval_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    embeddings: Annotated[EmbeddingService, Depends(get_embedding_service)],
+) -> KnowledgeRetrievalService:
+    return KnowledgeRetrievalService(
+        lexical=LexicalSearchRepository(session),
+        chunks=KnowledgeChunkRepository(session),
+        # Chosen by the session's dialect, not by configuration — which
+        # index can run is a fact about the database, not a preference.
+        vector_index=build_vector_index(session),
+        embeddings=embeddings,
+        candidate_pool=settings.retrieval_candidate_pool,
     )
 
 

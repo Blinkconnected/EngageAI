@@ -33,6 +33,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.notification_email_dispatch_task",
         "blinkengage.infrastructure.tasks.notification_push_dispatch_task",
         "blinkengage.infrastructure.tasks.channel_health_check_task",
+        "blinkengage.infrastructure.tasks.knowledge_index_sweep_task",
     ],
 )
 
@@ -190,6 +191,18 @@ celery_app.conf.update(
         "check-channel-health": {
             "task": "blinkengage.channels.check_channel_health",
             "schedule": 300.0,
+        },
+        # Keeps the semantic index caught up with the knowledge base — see
+        # docs/architecture/company-intelligence-engine.md. Every minute
+        # rather than every few seconds, because unlike the operational
+        # sweeps this one calls a metered external embedding API, and a
+        # knowledge article is not edited on a timescale where thirty
+        # seconds of staleness is felt by anybody. A run with an empty
+        # backlog — the overwhelmingly common case — costs one indexed
+        # query against a partial index and stops.
+        "reindex-pending-knowledge": {
+            "task": "blinkengage.knowledge.reindex_pending",
+            "schedule": 60.0,
         },
     },
 )

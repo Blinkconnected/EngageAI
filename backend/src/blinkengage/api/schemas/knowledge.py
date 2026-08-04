@@ -49,3 +49,49 @@ class KnowledgeArticleResponse(BaseModel):
     tags: list[str]
     created_at: datetime
     updated_at: datetime
+
+
+class KnowledgeSearchHit(BaseModel):
+    """One hybrid-retrieval result.
+
+    ``sources`` and ``ranks`` are returned rather than kept server-side
+    because the first question anybody asks of a search result is "why is
+    this here?" — and after replacing a substring match with a fused
+    ranking, an administrator comparing the two needs to see which half
+    found what. It is also what makes a bad ranking reportable rather than
+    merely felt.
+    """
+
+    article: KnowledgeArticleResponse
+    score: float
+    sources: list[str]
+    ranks: dict[str, int]
+    excerpt: str | None = None
+    chunk_id: UUID | None = None
+
+
+class KnowledgeSearchResponse(BaseModel):
+    """Results plus an honest account of how they were produced.
+
+    ``degraded``/``reason`` exist so a client can say "semantic search is
+    switched off" instead of silently showing keyword-only results that
+    look like the whole answer. A search that quietly halves its own
+    recall is worse than one that says it did.
+    """
+
+    hits: list[KnowledgeSearchHit]
+    sources: list[str]
+    degraded: bool
+    reason: str | None = None
+
+
+class KnowledgeIndexStatusResponse(BaseModel):
+    """Operator view of the semantic index for one company."""
+
+    embeddings_enabled: bool
+    model: str | None
+    dimensions: int
+    chunks_total: int
+    chunks_embedded: int
+    articles_pending: int
+    articles_failed: int

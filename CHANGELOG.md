@@ -14,6 +14,37 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **Knowledge search now understands what people mean, not just the words they
+  typed.** Searching your knowledge base used to be a plain "does this article
+  contain this text?" check, so a customer asking *"can I get my money back"*
+  found nothing in an article titled *"Refund policy"* — and the AI, reading
+  from that same search, correctly and uselessly replied that it could find no
+  relevant articles.
+
+  Search now combines two methods and merges their results: the original
+  text matching, which is still what finds an order number, a plan name or a
+  product code exactly; and semantic matching, which finds articles that
+  answer the question in different words, including across Arabic and English
+  in the same sentence. Each result shows which method found it.
+
+  AI answers are grounded in the specific passage that matched rather than the
+  whole article, so a question answered on page four of a long manual no
+  longer arrives buried in four pages of unrelated text.
+
+  This is off until you turn it on. Choose an embedding provider in your
+  environment configuration — a hosted one, or a self-hosted model for
+  installations where customer text may not leave the network — and your
+  articles are indexed in the background within a few minutes. Until then,
+  search behaves exactly as it did, and says so rather than quietly returning
+  less.
+
+  New: `GET /api/v1/knowledge/search` (hybrid search) and
+  `GET /api/v1/knowledge/index-status` (how much of your knowledge base is
+  indexed, what is still queued, and what failed). The existing article list
+  and its `search` parameter are unchanged.
+
 ### Fixed
 
 - **A conversation's history never shows you an internal identifier.** Where

@@ -34,6 +34,9 @@ duplicated rules were found; each is below with a recommendation.
 | **Event severity** | Inspector domain | Every client | `domain/severity.py` | ✅ backend-only by design |
 | **Customer identity** | Company | Conversation, Inbox, ERP | `customers` | ✅ |
 | **Unread count** | Conversation | Inbox | Derived from messages | ✅ |
+| **What the company officially states** | Knowledge *(designed)* | AI, agents, customers | Versioned articles | ⚠️ not built — [KMI](./knowledge-memory-intelligence.md) |
+| **What the platform has learned** | Memory *(designed)* | AI, analytics | Confidence-scored facts | ⚠️ not built — one writer, one erasure boundary |
+| **How the organization operates** | **Company Behavior** *(reserved)* | Policy, Workflow, Routing, SLA, Assignment | — | 🔒 **reserved, unbuilt — see the A3 warning below** |
 
 ---
 
@@ -209,3 +212,36 @@ the account. Listed here so the audit's record matches the plan.
 - **D3 is what Phase 1 exists to fix.**
 
 Everything else in the matrix has exactly one owner.
+
+---
+
+## Reserved: Company Behavior, and why A3 is its cautionary tale
+
+[Company Behavior](./knowledge-memory-intelligence.md#company-behavior-reserved)
+is a reserved bounded context that will own *how the organization chooses to
+operate* — named practices, procedures and the mapping from a practice to the
+configuration that enforces it. It is not built, not scheduled, and has no
+schema.
+
+It is recorded **here**, in the ownership audit, because A3 is precisely the
+failure it would repeat at scale.
+
+A3 is one business fact with two owners, and the cost was not a modelling
+opinion: zero SLA clocks across the entire installation, a permanently empty
+Breached queue, and nothing reporting a problem. Behavior compiles into the
+configuration of Policy, Workflow, Routing, SLA and Assignment — **five
+surfaces that are each already configurable directly today.** Introduced as a
+parallel authoring layer, it does not create one A3. It creates five, each
+invisible in the same way.
+
+The condition on ever building it, recorded now while it is cheap:
+
+> Behavior must become the **single writer** of the configuration it owns, and
+> the direct authoring path must be withdrawn in the same change — never left
+> alongside it.
+
+This is the Policy Engine's own migration rule (*"each migration deletes the
+local copy rather than leaving both"*) applied to a context that has not
+shipped. The hard part of Behavior is not its schema; it is migrating five
+existing configuration surfaces, and that cost belongs in the estimate on the
+day somebody proposes it.

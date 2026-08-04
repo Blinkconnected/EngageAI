@@ -18,6 +18,8 @@ from blinkengage.domain.exceptions import (
     ConversationAlreadyClaimedError,
     DomainError,
     EmailNotVerifiedError,
+    EmbeddingDimensionMismatchError,
+    EmbeddingNotConfiguredError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     ErpNotConfiguredError,
@@ -45,6 +47,11 @@ _STATUS_MAP: dict[type[Exception], int] = {
     AuthenticationError: status.HTTP_401_UNAUTHORIZED,
     AuthorizationError: status.HTTP_403_FORBIDDEN,
     AiNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    EmbeddingNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    # A deployment defect, not a client mistake: the configured model and
+    # the stored column disagree, and no request can succeed until an
+    # operator migrates. 500 is the honest signal.
+    EmbeddingDimensionMismatchError: status.HTTP_500_INTERNAL_SERVER_ERROR,
     ErpNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
     PricingNotConfiguredError: status.HTTP_503_SERVICE_UNAVAILABLE,
     AmbiguousPricingConfigurationError: status.HTTP_409_CONFLICT,

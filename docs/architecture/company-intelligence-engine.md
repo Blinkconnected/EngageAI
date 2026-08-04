@@ -14,7 +14,9 @@ twice.
 This document designs the engine that changes that, and states plainly which
 parts of the brief it declines and why.
 
-Status: **design, not built.** Nothing here has shipped. The build order is at
+Status: **stage 1 is built; stages 2–9 are design.** See
+[Stage 1, as shipped](#stage-1-as-shipped) for what actually exists in the
+code today and where it differs from the design below. The build order is at
 the end.
 
 ---
@@ -244,7 +246,7 @@ Knowledge always wins" needs a mechanism, not a sentence.
 | 2 | **Conversation Memory** | Memory (working) | Intelligence, per turn | — | With the conversation |
 | 3 | **Organizational Memory** | Memory | Memory Manager | `OBSERVED` | Aggregate — not individually |
 | 4 | **Customer Memory** | Memory | Memory Manager | `OBSERVED` | **Yes, on request** |
-| 5 | **Agent Experience** | Memory | Memory Manager | `OBSERVED` | Yes |
+| 5 | **Experience** | Memory | Memory Manager | `OBSERVED` | Aggregate — not individually |
 | 6 | **Knowledge Suggestions** | The Knowledge↔Memory bridge | Learning pipeline | `PROPOSED` | Yes |
 
 Memory is written by exactly one component. `MemoryManager` is the only writer
@@ -259,9 +261,9 @@ three separate points rather than trusted once:
    similarity.
 2. **Grounding** — every knowledge item carries a `KnowledgeClass`, and for
    the restricted classes (`PRICING`, `POLICY`, `LEGAL`, `MEDICAL`,
-   `SECURITY`) the retrieval layer **discards non-authoritative candidates
-   entirely** rather than ranking them lower. A learned pattern about pricing
-   is never a citation for a price.
+   `SECURITY`, `VOICE_CONSTRAINT`) the retrieval layer **discards
+   non-authoritative candidates entirely** rather than ranking them lower. A
+   learned pattern about pricing is never a citation for a price.
 3. **Verification** — the generated answer is checked against its citations
    before it is emitted, and any restricted-class claim without an
    authoritative citation blocks the send and hands to a human.
@@ -384,34 +386,59 @@ product value here, and it depends entirely on the promise being real.
 system of record beats an inference. Where ERPNext is connected, ERP is the
 answer and memory holds only what ERP does not know.
 
-### 5. Agent Experience
+### 5. Experience
 
-Learning from agents, with a quality gate the brief does not mention and needs.
+What has historically worked, and what has historically failed. A Memory tier
+rather than a peer domain — the argument is that erasure must have one owner,
+and it is made in
+[Knowledge, Memory and Intelligence](./knowledge-memory-intelligence.md#experience),
+which also owns the causal-inference guardrails this tier needs and no other
+tier does.
 
-"When agents repeatedly solve similar problems successfully" is the right
-instinct, but repetition alone learns the wrong things: agents also repeat
-workarounds, stale prices, promises they should not make, and the phrasing
-that generates the fewest follow-up questions rather than the most correct
-answer. A pipeline that clusters on frequency and calls the centroid a best
-practice will faithfully institutionalise a mistake.
+Learning from agents needs a quality gate. "When agents repeatedly solve
+similar problems successfully" is the right instinct, but repetition alone
+learns the wrong things: agents also repeat workarounds, stale prices,
+promises they should not make, and the phrasing that generates the fewest
+follow-up questions rather than the most correct answer. A pipeline that
+clusters on frequency and calls the centroid a best practice will faithfully
+institutionalise a mistake.
 
-So a conversation enters the Agent Experience corpus only if **all** hold:
+**But the corpus splits in two, and the second half was missing.** An earlier
+draft of this document admitted only conversations that went well — which
+means nothing could ever learn what *not* to say, because every conversation
+that went wrong was filtered out before clustering saw it. Learning from
+failure is the higher-value half: a phrasing that reliably precedes an
+escalation has a clear owner and a clear fix, where a phrasing correlated with
+success may just be correlated with easy tickets.
 
-- the conversation reached a resolved status,
-- it was not reopened within the reopen window,
-- CSAT is either absent or at/above the company's threshold (absent is
-  permitted — most conversations have no CSAT, and requiring one would learn
-  only from the surveyed minority, which is its own bias),
-- it was not escalated after the candidate response,
-- the response was not later contradicted by an official article,
-- the agent is not excluded from learning (a per-agent flag, for agents in
-  training).
+| Corpus | Gate | Produces |
+|---|---|---|
+| **Succeeded** | Resolved, not reopened, not escalated after the candidate response, not contradicted by an official article, CSAT ≥ threshold or absent | `EFFECTIVE_RESPONSE`, `EFFECTIVE_WORKFLOW`, `FCR_PATTERN` |
+| **Failed** | Escalated, reopened within the window, abandoned, or CSAT below threshold | `INEFFECTIVE_RESPONSE`, `ESCALATION_TRIGGER`, `CHURN_SIGNAL` |
 
-Clustering then runs over the *responses* in the surviving corpus, and a
-cluster becomes a candidate only above a support threshold spanning **distinct
-agents and distinct customers** — not distinct conversations. One agent
-answering the same question forty times is one person's habit; six agents
-converging independently is a practice.
+CSAT-absent is permitted in the succeeded corpus because most conversations
+have no CSAT, and requiring one would learn only from the surveyed minority —
+its own bias. Agents flagged as excluded from learning (agents in training)
+are in neither corpus.
+
+Clustering runs over the *responses* in each corpus, and a cluster becomes a
+candidate only above a support threshold spanning **distinct agents and
+distinct customers** — not distinct conversations. One agent answering the
+same question forty times is one person's habit; six agents converging
+independently is a practice.
+
+Every claim here is **causal, from observational data**, which is the one
+inference type nothing else in this engine makes. Effects are stratified
+before comparison, stated relative to a stratum baseline with its sample size,
+and worded as association rather than mechanism. The confounders that make the
+naive version confidently wrong — VIP customers rating everything higher, easy
+tickets resolving regardless of approach, escalation-linked phrasing being a
+symptom recorded as a cause — are enumerated in the companion document.
+
+**Negative experience is never a prompt instruction.** `INEFFECTIVE_RESPONSE`
+and `ESCALATION_TRIGGER` are applied as a re-ranking penalty on candidates and
+as a verifier check. Injecting "do not say X" into a generation prompt is a
+reliable way to make a model say X.
 
 The output is a `knowledge_suggestion`, never a published article.
 
@@ -521,7 +548,7 @@ knowledge_sources
 knowledge_articles                            -- EXISTING, extended
   + source_id → knowledge_sources (SET NULL)
   + current_version_id → knowledge_article_versions (SET NULL, deferred)
-  + knowledge_class    -- GENERAL | PRICING | POLICY | LEGAL | MEDICAL | SECURITY | HOWTO
+  + knowledge_class    -- GENERAL | HOWTO | PRICING | POLICY | LEGAL | MEDICAL | SECURITY | VOICE_CONSTRAINT
   + owner_user_id → users (SET NULL)          -- who is accountable for accuracy
   + review_due_at                             -- freshness; drives the staleness report
   + language                                  -- NULL = undetermined, never assumed English
@@ -607,18 +634,49 @@ memory_evidence                               -- shared by both memory tables
   -- pointers, not copies. Deleting a conversation removes its evidence, and
   -- a fact that drops below its support threshold is re-evaluated, not orphaned.
 
-response_patterns                             -- Agent Experience clusters
+experience_facts                              -- the Experience tier
+  id, company_id (CASCADE)
+  fact_type                                   -- EFFECTIVE_RESPONSE | INEFFECTIVE_RESPONSE
+                                              -- ESCALATION_TRIGGER | EFFECTIVE_WORKFLOW
+                                              -- FCR_PATTERN | CSAT_DRIVER | HANDLING_TIME_PATTERN
+  polarity                                    -- POSITIVE | NEGATIVE. Negative never prompts.
+  intent_key, pattern_id → response_patterns (SET NULL)
+  statement TEXT                              -- association, not mechanism
+
+  -- the causal-inference columns. No other memory table has these.
+  stratum JSON                                -- tier · intent · channel · language · complexity
+  effect_size, baseline_rate, sample_size     -- "18 pts above baseline (n=340)", never "87%"
+  distinct_agent_count, distinct_customer_count
+
+  confidence, confidence_computed_at, confidence_state, confidence_direction
+  lifecycle_state, contradiction_count
+  first_observed_at, last_observed_at, last_confirmed_at
+  human_state, human_state_by_user_id, steward_user_id
+  subject_agent_id → agents (SET NULL)        -- NULL unless agent-attributed
+  learning_run_id, pipeline_version
+  UNIQUE (company_id, fact_type, intent_key, stratum_hash) WHERE deleted_at IS NULL
+
+response_patterns                             -- response clusters, both corpora
   id, company_id
+  corpus                                      -- SUCCEEDED | FAILED
   intent_key, centroid_embedding_id
   canonical_response TEXT                     -- the representative, not a generated blend
   member_count, distinct_agent_count, distinct_customer_count
-  avg_csat, avg_resolution_seconds, reopen_rate
-  quality_score, status
+  avg_csat, avg_resolution_seconds, reopen_rate, escalation_rate
+  quality_score
   learning_run_id
 
 pattern_members
   pattern_id (CASCADE), conversation_id (CASCADE), message_id (SET NULL)
-  agent_id → agents (SET NULL), similarity, csat, resolved_at
+  agent_id → agents (SET NULL), similarity, csat, resolved_at, escalated
+
+memory_confidence_history                     -- feeds confidence_direction
+  id, company_id
+  memory_type, memory_id                      -- polymorphic, same shape as evidence
+  computed_at, confidence
+  supporting_delta, contradicting_delta        -- decay removed: the raw evidence movement
+  -- rolling window, pruned. Direction reads this, never the confidence column
+  -- differenced over time, or every quiet fact would read FALLING.
 
 conversation_insights                         -- one row per analysed conversation
   id, company_id, conversation_id (CASCADE)   -- UNIQUE per pipeline_version
@@ -926,9 +984,13 @@ learning strictly after the answer.
   │                classes, assemble IntelligenceContext (frozen) │
   ├───────────────────────────────────────────────────────────────┤
   │ 5. GENERATE    reasoning model, citations REQUIRED per claim  │
+  │                + Voice Profile for (channel, segment,         │
+  │                  situation, language). Style only.            │
   ├───────────────────────────────────────────────────────────────┤
   │ 6. VERIFY      every claim traced to a citation in context;   │
-  │                restricted claims must cite AUTHORITATIVE.     │
+  │                restricted claims must cite AUTHORITATIVE;     │
+  │                Voice Constraints satisfied; no negative-      │
+  │                experience pattern matched.                    │
   │                Fail → hand off. Never send unverified.        │
   ├───────────────────────────────────────────────────────────────┤
   │ 7. EMIT        reply, or suggestion to an agent, or handoff   │
@@ -995,6 +1057,23 @@ It fails closed, following the parsing convention `_parse_autopilot_reply`
 already established — every field starts at its unsafe-to-send default and is
 only relaxed by a cleanly parsed response. A malformed verifier response is a
 handoff, never a send.
+
+**Voice Constraints are checked here, not in the generation prompt**, and this
+is the whole reason Company DNA was split into two mechanisms. A mandatory
+regulatory disclaimer asked for in a prompt arrives most of the time; nobody
+can tell you the failure rate, and for a financial-services tenant "most of
+the time" is the difference between the product working and not. A reply
+missing a required disclaimer is blocked and handed off, exactly like an
+uncited restricted claim. Deterministic constraints (a required phrase, a
+prohibited phrase) are checked in code before the model call is even made —
+a regex is both cheaper and more reliable than an LLM for "does this string
+appear."
+
+Negative Experience is the third check: a candidate reply matching an
+`INEFFECTIVE_RESPONSE` or `ESCALATION_TRIGGER` pattern above threshold is
+blocked. This is where negative learning is applied, rather than in the
+generation prompt, because telling a model what not to say reliably produces
+it.
 
 A verification failure is not merely a blocked reply. It is the single most
 valuable learning signal the platform produces: it means a customer asked
@@ -1196,7 +1275,8 @@ so a retrieval service holds no method that could write.
 | `MemoryErasureService` | The erasure transaction and its audit record |
 | `ConversationMemoryService` | Working memory in Redis; distillation at resolution |
 | `InsightExtractionService` | Conversation → `ConversationInsight` |
-| `ResponseClusteringService` | Quality-gated clustering → `ResponsePattern` |
+| `ResponseClusteringService` | Clustering over both corpora → `ResponsePattern` |
+| `ExperienceService` | Stratified, baseline-relative effects → `ExperienceFact`, written **through** the Manager |
 | `IntelligenceGraphService` | Edge projection and inference |
 
 **`application/intelligence/`** — readers only, owns nothing
@@ -1211,7 +1291,9 @@ so a retrieval service holds no method that could write.
 | `AgentPatternRetriever` | Response patterns above quality threshold |
 | `GraphRetriever` | Bounded traversal and expansion |
 | `SystemOfRecordRetriever` | Live ERP/CRM/calendar lookups — queried, never stored |
-| `AnswerVerifier` | Step 6; groundedness and authority enforcement |
+| `ExperienceRetriever` | Positive patterns to rank up, negative to penalise |
+| `VoiceResolver` | Resolves Voice Profile for (channel, segment, situation, language) |
+| `AnswerVerifier` | Step 6; groundedness, authority, Voice Constraints, negative-experience |
 
 **Shared**
 
@@ -1580,6 +1662,18 @@ Two additions the brief does not name and that operating this engine requires:
 - **Learned-versus-official answer mix** — what proportion of answers were
   grounded in official knowledge alone. A drifting mix is the early warning
   that the brain is running on memory rather than fact.
+- **Falling trusted facts** — facts at high confidence with
+  `confidence_direction = FALLING`. Something in the business changed and
+  nobody told the platform. This is an alert, not a chart.
+- **Contested facts** — `CONTESTED` direction, meaning supporting and
+  contradicting evidence are both growing. The company is being inconsistent
+  about something, and this is usually the first place anyone notices.
+- **Approaches that stopped working** — Experience facts whose effect size is
+  degrading. The earliest signal that the product, the market or a competitor
+  moved.
+- **Voice Constraint block rate** — how often a reply was blocked for missing
+  required wording. A rising rate means the generator and the constraints have
+  drifted apart.
 
 Rollups follow the existing pattern: daily aggregate tables written by a
 reporting consumer, not `date_trunc` in a repository, keeping the repositories
@@ -1628,14 +1722,22 @@ the platform deployable — the sequencing rule `CLAUDE.md` already sets.
 
 | Stage | Delivers | Value on its own |
 |---|---|---|
-| **1. Foundation** | pgvector, `EmbeddingProvider` port + adapters, `embeddings`, `VectorIndex`, backfill | Semantic knowledge search replaces `ILIKE` |
+| **1. Foundation** ✅ **shipped** | pgvector, `EmbeddingProvider` port + adapters, `embeddings`, `VectorIndex`, hybrid retrieval, background indexing | Semantic knowledge search replaces `ILIKE` |
 | **2. Official Knowledge** | Versions, chunks, sources, classes, hybrid retrieval, `RetrievalOrchestrator`, `IntelligenceContext` | Grounded, citable answers with reproducible sources |
 | **3. Verification** | `AnswerVerifier`, gap detection, `KNOWLEDGE_USE`/`KNOWLEDGE_LEARNING` policies, traces | "Official knowledge wins" becomes enforced rather than promised |
 | **4. Memory foundation** | `MemoryManager`, the pure lifecycle/confidence/identity modules, evidence, erasure, Conversation Memory | The write path and its invariant exist before anything writes |
-| **5. Learning** | Insight extraction, distillation, organizational + customer memory, decay | The platform starts remembering |
-| **6. Suggestions** | Clustering, generation, state machine, review UI | Observation becomes proposed knowledge |
-| **7. Graph** | Edge projection and inference, graph retrieval | Reasoning across relationships |
-| **8. Analytics** | Every metric above | Managers can see and steer the brain |
+| **5. Learning** | Insight extraction, distillation, organizational + customer memory, decay, direction | The platform starts remembering |
+| **6. Experience** | Both corpora, clustering, stratified effects, negative-experience penalty | The platform learns what works and what backfires |
+| **7. Suggestions** | Generation, dedupe, state machine, review UI | Observation becomes proposed knowledge |
+| **8. Graph** | Edge projection and inference, graph retrieval | Reasoning across relationships |
+| **9. Analytics** | Every metric above | Managers can see and steer the brain |
+
+**Voice is not a stage.** Voice Constraints are a `KnowledgeClass` and a
+verifier check, shipping inside stages 2 and 3; Voice Profile is resolved
+configuration, shipping with generation in stage 2. Making Company DNA its own
+late stage would mean every answer generated before it sounds like a generic
+model — which is the specific complaint the concept exists to answer, so it
+ships with the first grounded answer rather than after.
 
 Two ordering decisions carry weight.
 
@@ -1652,6 +1754,114 @@ and a confidence somebody set by hand — and backfilling that is archaeology,
 not a migration. Erasure ships in the same stage as the first fact for the
 same reason: a memory store that cannot yet prove deletion is one that should
 not yet hold personal data.
+
+---
+
+## Stage 1, as shipped
+
+Everything above this line is design. This section is the record of what is
+actually in the code, and — more usefully — where building it changed the
+design.
+
+### What exists
+
+| Piece | Where |
+|---|---|
+| `EmbeddingProvider` ABC | `domain/embedding_provider.py` |
+| `VectorIndex` port + `VectorMatch` | `domain/vector_index.py` |
+| Chunking rules (pure) | `domain/chunking.py` |
+| Reciprocal Rank Fusion (pure) | `domain/retrieval.py` |
+| OpenAI / Ollama / hashing providers | `infrastructure/embeddings/providers/` |
+| Registry + platform/per-company factory | `infrastructure/embeddings/` |
+| `vector(n)` column, dialect-branched | `infrastructure/database/vector.py` |
+| pgvector HNSW adapter, exact adapter, factory | `infrastructure/vector/` |
+| `knowledge_chunks`, `embeddings`, article index state | migration `b1c7e94d3a52` |
+| Indexing pipeline | `application/services/embedding_service.py` |
+| Hybrid retrieval | `application/services/knowledge_retrieval_service.py` |
+| Trigram / substring lexical half | `infrastructure/repositories/lexical_search_repository.py` |
+| Re-index sweep (Celery beat, 60s) | `infrastructure/tasks/knowledge_index_sweep_task.py` |
+| `GET /knowledge/search`, `GET /knowledge/index-status` | `api/v1/endpoints/knowledge.py` |
+| pgvector verification harness | `scripts/verify_pgvector.py` |
+
+`POST /ai/knowledge-search` now grounds on retrieved **chunks** rather than
+whole article bodies, and finds articles whose wording differs from the
+customer's.
+
+### Where the design was wrong, and what the build changed
+
+**Chunks belong to articles, not versions.** The design has chunks hanging off
+an article *version*, so re-chunking cannot rewrite what an old citation
+pointed at. Versions arrive in stage 2, so stage 1 points at the article —
+honest rather than premature. The FK moves when versions land.
+
+**No `RetrievalOrchestrator`, no `IntelligenceContext`, no planner, no
+verifier.** Those belong to stages 2–3. Stage 1 ships the retrieval
+*mechanism*; the reasoning pipeline that consumes it does not exist yet.
+
+**The write path marks `PENDING`; a sweep does the embedding.** The design
+implied an event consumer. A consumer that awaited an embedding call would let
+one slow vendor back up the queue carrying every other knowledge event, and a
+provider outage would become redelivery storms rather than a number on a
+dashboard. Setting one column in the same transaction as the change, and
+letting a bounded sweep do the metered work, is the same division of labour as
+the outbox and its relay — and it buys retries and backpressure for free.
+
+**The claim query deliberately does not filter soft-deleted articles.** Found
+by a test: a deleted article is exactly the one whose vectors must come *out*
+of the index, and filtering it out of the queue left it searchable and
+quotable forever while invisible in every list its company could see.
+
+**No `pgvector` Python dependency.** The storage format is a documented text
+form PostgreSQL casts natively, and a `UserDefinedType` expresses the column in
+three lines — cheaper than rebuilding every image and adding dependency-scan
+surface.
+
+**`postgres:17-alpine` → `pgvector/pgvector:pg17`.** Same major version, so the
+existing data volume is read as-is. The migration creates `vector` and
+`pg_trgm` and fails loudly without them, rather than degrading to an
+unindexable text column that would appear to work and scan the whole corpus per
+query.
+
+### What the verification actually measured
+
+`scripts/verify_pgvector.py`, against the compose PostgreSQL: 10,000 embeddings
+across 20 tenants, the tenant under test holding 5%.
+
+| Measure | Result |
+|---|---|
+| Cross-tenant rows in ANN results | **0** |
+| Queries returning nothing for the small tenant | **0 / 40** |
+| recall@10 vs the exact index | **1.000** |
+| top-1 agreement | **40 / 40** |
+| ANN latency p50 / p95 / max | **9.2 / 9.9 / 11.2 ms** |
+
+An earlier version of that harness reported recall of 0.70 and was **wrong
+about its own subject**: it ran all forty queries inside one long-lived
+transaction. `PgVectorIndex` tunes each scan with `SET LOCAL`, which is
+transaction-scoped, so a shared transaction measures something the application
+never does — production gives every request its own session. Corrected to one
+session per query, the same index measures 1.000.
+
+That is worth recording because the failure mode is the one this whole adapter
+is arranged around: an approximate index degrades *silently*. A number that
+looks bad for the wrong reason is only one step better than a number that looks
+good for the wrong reason, and both are found the same way — by making the
+harness resemble production.
+
+### Known limitations
+
+- **The lexical halves differ by dialect.** PostgreSQL uses `word_similarity`
+  trigram scoring; SQLite uses the substring match this codebase already
+  shipped. The test suite exercises fusion, ranking and tenant isolation on the
+  SQLite path; trigram scoring itself is verified against real PostgreSQL.
+- **No frontend.** `GET /knowledge/search` has no UI yet; the admin article
+  table still uses `GET /articles?search=`, unchanged.
+- **Backfill is the sweep.** Existing articles are left `PENDING` and picked up
+  a batch at a time, so a large corpus takes several minutes to become
+  searchable after enabling a provider. `GET /knowledge/index-status` is how an
+  operator watches that.
+- **One embedding width per installation.** `EMBEDDING_DIMENSIONS` is a schema
+  commitment; changing it needs a migration and a full re-index.
 
 ---
 
@@ -1679,6 +1889,12 @@ not yet hold personal data.
 - **It does not remember what a system of record knows.** Stock, balances and
   order status are queried live. A remembered balance is wrong by the time it
   is retrieved.
+- **It does not own how the company operates.** Named practices, SOPs as
+  executable procedures and organizational habits belong to
+  [Company Behavior](./knowledge-memory-intelligence.md#company-behavior-reserved),
+  a reserved and unbuilt bounded context. This engine may *recommend* an
+  action; it does not hold the company's declared practice, and no part of it
+  should start to.
 
 ---
 

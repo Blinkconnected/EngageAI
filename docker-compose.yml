@@ -33,7 +33,16 @@ x-backend-env: &backend-env
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # pgvector, not stock postgres:17-alpine. The Company Intelligence
+    # Engine's semantic retrieval stores embeddings in a `vector` column
+    # with an HNSW index, and `CREATE EXTENSION vector` fails on the stock
+    # image — the migration is deliberately loud about it rather than
+    # degrading to an unindexable text column, which would appear to work
+    # and then scan the whole corpus on every query.
+    #
+    # Same PostgreSQL major version (17), so an existing data volume is
+    # read as-is; this is an image swap, not an upgrade.
+    image: pgvector/pgvector:pg17
     restart: unless-stopped
     # pg_stat_statements is the only way to attribute latency to individual
     # queries after the fact; without it a "the API feels slow" report has no

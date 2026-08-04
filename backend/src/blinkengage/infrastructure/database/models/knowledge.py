@@ -5,8 +5,10 @@ and their tag join — reusing the existing company-scoped ``Tag`` catalog
 """
 
 import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from blinkengage.infrastructure.database.base import (
@@ -17,6 +19,12 @@ from blinkengage.infrastructure.database.base import (
     UUIDPrimaryKeyMixin,
 )
 from blinkengage.infrastructure.database.models.customer import Tag
+
+if TYPE_CHECKING:
+    # Import-time only: `embedding.py` imports nothing from here, but a
+    # runtime import in this direction would still be a cycle waiting to
+    # happen the moment it does.
+    from blinkengage.infrastructure.database.models.embedding import KnowledgeChunk
 
 
 class KnowledgeCategory(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
@@ -45,6 +53,22 @@ class KnowledgeArticle(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Bas
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
+        # Exactly the rows the re-index sweep claims. `index_state` is
+        # `INDEXED` for almost every row almost all of the time, so a full
+        # index would be mostly dead weight — the same partial-index shape
+        # as the outbox's `WHERE dispatched_at IS NULL`, and it keeps
+        # claiming cheap however large the indexed majority grows.
+        Index(
+            "ix_knowledge_articles_index_pending",
+            "company_id",
+            "updated_at",
+            # No `deleted_at IS NULL` here, unlike the index above: a
+            # soft-deleted article marked PENDING is work the sweep must
+            # still find, because removing it from the semantic index is
+            # what that PENDING means.
+            postgresql_where=text("index_state = 'PENDING'"),
+            sqlite_where=text("index_state = 'PENDING'"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(
@@ -57,8 +81,31 @@ class KnowledgeArticle(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Bas
     body: Mapped[str] = mapped_column(Text, nullable=False)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # --- Semantic index state (Company Intelligence Engine, stage 1) ---
+    #
+    # Indexing is deliberately *not* done on the event path. Embedding
+    # calls an external, rate-limited, sometimes-slow API, and a consumer
+    # that awaited one would let a degraded provider back up the queue
+    # that also carries every other knowledge event. Instead a write marks
+    # the article PENDING — one cheap column update, in the same
+    # transaction as the change — and a sweep does the work, which buys
+    # retries, backpressure and a bounded batch size for free. Same
+    # division of labour as the outbox and its relay.
+    index_state: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # The hash of the title+body that was last successfully indexed. Lets
+    # the sweep skip an article marked PENDING by a change that did not
+    # touch its text — retagging or recategorising an article should not
+    # cost a re-embedding of every chunk.
+    indexed_content_hash: Mapped[str | None] = mapped_column(String(64), default=None)
+    index_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    index_error: Mapped[str | None] = mapped_column(Text, default=None)
+
     article_tags: Mapped[list["KnowledgeArticleTag"]] = relationship(
         back_populates="article", cascade="all, delete-orphan"
+    )
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(
+        "KnowledgeChunk", back_populates="article", cascade="all, delete-orphan"
     )
 
 

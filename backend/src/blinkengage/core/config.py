@@ -185,6 +185,47 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
+    # --- Semantic retrieval (Company Intelligence Engine, stage 1) ---
+    #
+    # Selected independently of `ai_provider`, and that is the normal case
+    # rather than an edge one: Anthropic publishes no embedding endpoint,
+    # so every company reasoning with Claude must embed somewhere else.
+    # "disabled" is the shipped default — a fresh deployment keeps the
+    # existing substring search until an operator turns semantic retrieval
+    # on, exactly as `ai_provider` defaults to off.
+    embedding_provider: Literal["openai", "ollama", "hashing", "disabled"] = "disabled"
+    embedding_model: str | None = None
+    # `embedding_api_key`/`embedding_base_url` fall back to the matching
+    # `openai_*`/`ollama_*` setting when unset, so a deployment already
+    # using OpenAI for completions does not restate its key to turn
+    # embeddings on — but a deployment that wants to embed through a
+    # different account or a private gateway can say so without disturbing
+    # the completion provider.
+    embedding_api_key: str | None = None
+    embedding_base_url: str | None = None
+    # **A schema commitment, not a preference.** The stored vector column
+    # is created at exactly this width and an HNSW index requires a fixed
+    # one, so changing this requires the migration to be rewritten and
+    # every row re-embedded. 1536 fits text-embedding-3-small natively and
+    # text-embedding-3-large truncated (its `dimensions` parameter), which
+    # covers the realistic hosted choices without a schema change; bge-m3
+    # via Ollama is 1024 and does need one.
+    embedding_dimensions: int = 1536
+    # How many chunks are sent to the provider per request. Every hosted
+    # provider charges and rate-limits per request, so this is a real cost
+    # lever, not a tuning detail.
+    embedding_batch_size: int = 64
+    # Articles re-indexed per sweep. Bounded so one enormous backfill
+    # cannot monopolise the worker or the provider's rate limit; the sweep
+    # simply picks up where it left off on its next run.
+    embedding_index_batch_size: int = 25
+    embedding_index_max_attempts: int = 5
+    # Retrieval candidates pulled from each retriever *before* fusion.
+    # Larger than the caller's limit on purpose: fusion can only rank what
+    # it was given, and a retriever that returns exactly `limit` rows
+    # contributes nothing the other could not have found alone.
+    retrieval_candidate_pool: int = 50
+
     # --- Provider apps for channel OAuth (see
     # docs/architecture/channel-connectors.md) ---
     #

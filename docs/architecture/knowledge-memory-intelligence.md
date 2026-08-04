@@ -5,23 +5,24 @@ different lifecycles. This is a platform-wide separation, not a structure
 inside one engine — every module that reads or writes what the company knows
 sits on one side of these lines.
 
-## Five questions, three owners
+## Six questions, three owners today
 
-The product vocabulary is five questions, and it is the right vocabulary —
-it is how a person explains this platform to another person:
+The product vocabulary is six questions, and it is the right vocabulary — it
+is how a person explains this platform to another person:
 
-| Question | Answered by |
-|---|---|
-| What is true? | **Knowledge** |
-| What do we know? | **Memory** |
-| What has historically worked? | **Experience** |
-| How do we sound? | **Company DNA** |
-| What should we do now? | **Intelligence** |
+| Question | Answered by | Status |
+|---|---|---|
+| What is true? | **Knowledge** | Designed |
+| What happened? | **Memory** | Designed |
+| What tends to work? | **Experience** | Designed — a Memory tier |
+| How do we sound? | **Company DNA** | Designed — splits across Knowledge and Memory |
+| **How do we choose to operate?** | **Company Behavior** | **Reserved — see below** |
+| What should we do now? | **Intelligence** | Designed |
 
 But a *domain* in this architecture is not a question. It is a **write path
 and an erasure boundary** — who may create a row, and who must be able to
-prove it is gone. On that test there are three, and Experience and Company DNA
-resolve into them rather than standing beside them:
+prove it is gone. On that test there are three today, and two of the six
+questions resolve into them rather than standing beside them:
 
 - **Experience is a Memory tier**, not a fourth peer. The argument is erasure,
   and it is developed in [Experience](#experience).
@@ -29,8 +30,15 @@ resolve into them rather than standing beside them:
   Knowledge, and characteristic style is Memory. Developed in
   [Company DNA](#company-dna).
 
-Five questions, three owners. The vocabulary survives intact; the ownership
-boundaries stay countable, which is what keeps erasure and audit provable.
+**Company Behavior is a genuine fourth bounded context**, and it passes the
+test that Experience failed — but it is deliberately not built. Its boundary
+is fixed now, in
+[Company Behavior (reserved)](#company-behavior-reserved), so that
+modules shipping before it do not each invent their own answer.
+
+Six questions, three owners today, four when Behavior lands. The vocabulary
+survives intact; the ownership boundaries stay countable, which is what keeps
+erasure and audit provable.
 
 | | **Knowledge** | **Memory** | **Intelligence** |
 |---|---|---|---|
@@ -82,13 +90,18 @@ In the style of `domain-ownership.md`, so the two read together.
 | What the company officially states | **Knowledge** | Intelligence, agents, customers | `knowledge_article_versions`, immutable |
 | Whether a statement is approved | **Knowledge** | Intelligence (authority filter) | `Authority.AUTHORITATIVE` |
 | What the platform has observed | **Memory** | Intelligence, analytics | `*_memory_facts`, confidence-scored |
+| What has historically worked | **Memory** (Experience tier) | Intelligence, analytics | `experience_facts`, baseline-relative |
+| Wording the company is bound to | **Knowledge** | Intelligence (**verifier**) | `KnowledgeClass.VOICE_CONSTRAINT` |
+| How the company sounds | **Knowledge** default + **Memory** learned | Intelligence (generator) | `voice` namespace + `OBSERVED_STYLE` |
 | How sure we are of an observation | **Memory** | Intelligence (ranking), review queues | Computed `confidence` |
+| Whether belief is rising or falling | **Memory** | Analytics, alerts | `confidence_direction`, decay-adjusted |
 | Why we believe an observation | **Memory** | Review, audit, erasure | `memory_evidence` |
 | What is true right now in this conversation | **Memory** (working) | Intelligence | Conversation Memory |
 | Live stock, invoices, balances | **Systems of Record** | Intelligence | Queried, never stored |
 | What may be said to this customer | **Policy Engine** | Intelligence | `PolicyDecision` |
 | What the answer should be | **Intelligence** | Conversation, agents | A response with citations |
 | What becomes official | **Humans** | — | `suggestion_reviews`, append-only |
+| How the organization operates | **Company Behavior** | Policy, Workflow, Routing, SLA | **Reserved — not built** |
 
 Read the last four rows together. They are the platform's actual chain of
 authority, and each link is owned by something different: **Systems of Record
@@ -431,6 +444,7 @@ The brief's list, with four corrections argued below.
 | Field | Meaning |
 |---|---|
 | `confidence` | **Computed** from evidence, never model-claimed |
+| `confidence_direction` | RISING / STABLE / FALLING / **CONTESTED** — decay-adjusted |
 | `confidence_state` | OBSERVED / CANDIDATE / CONFIRMED / TRUSTED |
 | `lifecycle_state` | ACTIVE / DORMANT / ARCHIVED / PURGED |
 | `evidence_count`, `distinct_customers`, `distinct_agents` | Support breadth |
@@ -507,6 +521,169 @@ matter:
   A fact that decays keeps its history and can be re-confirmed with its
   accumulated support intact, which the next section shows is the case a
   linear lifecycle cannot express.
+
+---
+
+### Correction 5 — direction must be decay-adjusted, or it is worthless
+
+**Adopted, with the one correction that decides whether the feature works.**
+
+Direction is more actionable than value, and that is the real insight in the
+brief. A fact at 0.85 **and falling** is more urgent than one at 0.45 and
+stable: the first means something in the business changed — a policy moved, a
+product changed, a supplier switched — and nobody told the platform. Falling
+confidence on a Trusted fact is a **business-change detector**, which is worth
+an alert rather than a badge.
+
+But the naive implementation destroys the signal entirely.
+
+Confidence already includes recency decay. So if direction is computed by
+differencing confidence over a window, **every fact that is not being actively
+re-observed reads FALLING** — which is most facts, most of the time. The
+column would then be a slower, noisier restatement of `lifecycle_state`, and
+the genuinely alarming case (evidence actively turning against a fact) would
+be indistinguishable from the ordinary one (a quiet quarter).
+
+So direction is computed from the **evidence stream, decay removed**:
+
+| Direction | Means |
+|---|---|
+| `RISING` | Supporting evidence arriving faster, or outcome quality improving |
+| `STABLE` | Arrival rate and outcome quality flat within tolerance |
+| `FALLING` | **Contradicting evidence arriving, or outcome quality degrading** |
+| `CONTESTED` | Supporting *and* contradicting evidence both growing |
+
+`FALLING` means the evidence is turning against the fact. It does not mean the
+fact has gone quiet — that is `DORMANT` on the lifecycle axis, and conflating
+them is the mistake this correction exists to prevent.
+
+`CONTESTED` is the fourth state the brief's three do not cover, and it is a
+distinct and useful finding: it means the company is being *inconsistent*
+about something, which is more actionable than either rising or falling. Two
+departments quoting different lead times produce a contested fact, and the
+contested fact is the first time anyone notices.
+
+Computing direction needs confidence history, which is one small append-only
+table (`fact_id`, `computed_at`, `confidence`, `evidence_delta`), pruned on a
+rolling window. Cheap, and it also answers "why is this 0.31 now when it was
+0.88 in March?" with a curve instead of a recomputation.
+
+Experience facts carry direction too, and there it is the highest-value alert
+in the system: **an approach that used to work and is now failing.** That is
+the earliest signal that something changed in the product, the market or the
+competition, and it is visible nowhere else in the platform.
+
+---
+
+## Company DNA
+
+**Adopted as a real gap. Declined as one domain** — it is two things, and
+merging them is the failure mode.
+
+The brief lists tone, terminology, writing style, compliance wording, legal
+wording, escalation style and communication principles as a single concept.
+Sort that list by what happens when a generated reply violates one:
+
+| Violated | Consequence |
+|---|---|
+| Tone, register, warmth, greeting style | Off-brand. A person notices, nothing breaks |
+| Terminology | Confusing. Sometimes wrong |
+| **Compliance wording, legal wording, mandatory disclaimers** | **A reportable incident** |
+
+Those are not one concept. They need different machinery, and the difference
+is not stylistic:
+
+> A style directive in a prompt is obeyed *most* of the time. That is
+> acceptable for warmth. It is not acceptable for a regulatory disclaimer, and
+> for a platform selling to financial institutions the gap between "usually"
+> and "always" is the entire value proposition.
+
+So Company DNA splits along the line between **constraints** and
+**characteristics**.
+
+### Voice Constraints — Knowledge, enforced by the verifier
+
+Binding wording: mandatory disclaimers, regulated phrasings, prohibited
+claims, required escalation language, jurisdictional notices.
+
+These are **Knowledge**. They are human-authored, approved, versioned,
+non-erasable and authoritative — the same profile as any other official
+statement — and they enter the existing schema as a new
+`KnowledgeClass.VOICE_CONSTRAINT`, restricted, requiring
+`knowledge.approve_restricted` to publish. Nothing new is needed to store or
+approve them.
+
+What *is* new is where they are enforced: **step 6, the verifier, not step 5,
+the generator.** A reply missing a mandatory disclaimer is blocked and handed
+off, exactly as an uncited restricted claim is. A constraint the generator was
+merely *asked* to honour is a constraint with a failure rate, and nobody can
+tell you what it is.
+
+This is the one place Voice Constraints differ from every other kind of
+Knowledge: they are **applied, never cited.** No answer quotes the tone guide.
+The verifier reads them as rules; the customer never sees a citation to them.
+
+### Voice Profile — characteristics, partly learned
+
+Tone, register, formality, sentence length, greeting and sign-off style,
+emoji policy, escalation manner, communication principles.
+
+Authored by humans as a baseline, and **partly learned** — this is where the
+brief's instinct connects to something already in the design. `TERMINOLOGY`
+was already an Organizational Memory fact type, and it is the highest-leverage
+one: retrieval that does not know "Silver" is a plan name embeds it as a
+colour. Observed style from top-performing agents joins it as
+`OBSERVED_STYLE`, learned through Experience and subject to every guardrail
+there — including that it never becomes a constraint automatically.
+
+Applied at generation as a style directive on the prompt. Wrong output here is
+off-brand, not a breach, and a prompt directive is the proportionate
+mechanism.
+
+### Voice is not one setting — it varies on four axes
+
+The correction that matters most in practice, and the brief's single "tone"
+does not survive it.
+
+| Axis | Why one value fails |
+|---|---|
+| **Channel** | WhatsApp is not email. A 400-word paragraph on WhatsApp reads as a wall; a two-word reply by email reads as rude |
+| **Segment** | A VIP, a first-time anonymous visitor and a debt-collection contact are not addressed alike |
+| **Situation** | Complaint, escalation, renewal and routine enquiry demand different registers |
+| **Language** | See below — the one that is not merely a preference |
+
+**Language is not a translation of tone.** Arabic formality is a register
+choice between Modern Standard Arabic and Jordanian dialect, and it does not
+map onto English formality at all. A company whose English voice is "friendly,
+informal" has not thereby chosen dialect Arabic — MSA can be simultaneously
+the formal register and the correct one for a warm brand, and dialect can read
+as either intimate or unprofessional depending on the customer. Given this
+platform's traffic, a single `tone: informal` flag applied across languages
+produces Arabic that is either stilted or inappropriately casual, and nobody
+reviewing the English will ever see it.
+
+So Voice Profile is resolved **per (channel, segment, situation, language)**,
+with a company-wide default and sparse overrides — not a matrix anyone fills
+in. Resolution order: most specific override wins, falling back to the
+default, which is exactly how `ServiceContext.setting(namespace, key,
+default)` already behaves for versioned service config.
+
+### Storage
+
+Voice Profile is versioned configuration, and this codebase already has the
+mechanism: `ServiceContext.extras` is "a namespaced bag read through
+`setting(namespace, key, default)`" whose explicit purpose is that "a version
+written before a module existed has no entry for it and answers with the
+caller's default rather than raising."
+
+So the company-wide default lives in `Company.settings` under a `voice`
+namespace, and per-service overrides live in `service_versions.extras` under
+the same namespace — which means a conversation bound to an older service
+version keeps the voice it started with, and a rebrand mid-conversation does
+not change how the platform sounds halfway through a complaint.
+
+Voice Constraints live in Knowledge, versioned as articles. Both are read by
+Intelligence, neither is written by it.
 
 ---
 
@@ -693,6 +870,13 @@ distinction above — one is a schedule, the other is a promise with a deadline.
 | Contradiction detection | `ContradictionDetectionService` |
 | Decay | `MemoryDecayService`, recompute not mutate |
 | Forgetting | `MemoryDecayService` (archive/purge) — **not** erasure |
+| Confidence direction | `domain/memory_confidence.py`, from evidence with decay removed |
+| Experience (outcome learning) | `ExperienceService`, writing **through** the Manager |
+
+`ExperienceService` computes stratified, baseline-relative effects and hands
+facts to the Manager to write. It holds no write path of its own — the whole
+point of declining Experience as a peer domain was that erasure has one owner,
+and a second writer would give it two.
 
 ---
 
@@ -745,21 +929,191 @@ domain/intelligence_context.py  frozen  the resolved retrieval result
 
 ## Where the three domains meet
 
-Exactly three sanctioned crossings. Anything else is a boundary violation.
+Exactly five sanctioned crossings. Anything else is a boundary violation.
 
 | Crossing | Mechanism | Direction |
 |---|---|---|
 | Memory → Knowledge | **Knowledge Suggestion**, human-approved | Never automatic |
 | Knowledge → Memory | **Contradiction**, demotes or retires a fact | Automatic, one-way |
 | Knowledge + Memory → Intelligence | **Read-only retrieval** into `IntelligenceContext` | Read only |
+| Knowledge → Intelligence (voice) | **Voice Constraints**, enforced at the verifier | Applied, never cited |
+| Memory → Intelligence (voice) | **Voice Profile**, a generation directive | Shapes phrasing, never facts |
 
-The second is worth stating explicitly because it is asymmetric and that
-asymmetry is the point: Knowledge may *invalidate* Memory automatically —
-publishing an official refund policy immediately demotes every learned fact
-that disagrees, with no human in the loop — while Memory may only ever
-*propose* to Knowledge. Official truth corrects observation on sight;
-observation asks permission. That single asymmetry is what "official knowledge
-wins" means when it is a mechanism rather than a sentence.
+**The first two are asymmetric, and the asymmetry is the point.** Knowledge
+may *invalidate* Memory automatically — publishing an official refund policy
+immediately demotes every learned fact that disagrees, with no human in the
+loop — while Memory may only ever *propose* to Knowledge. Official truth
+corrects observation on sight; observation asks permission. That single
+asymmetry is what "official knowledge wins" means when it is a mechanism
+rather than a sentence.
+
+**The last two are the Company DNA crossings**, and they differ from each
+other in the one way that matters: a Voice Constraint can **block a send**, a
+Voice Profile can only change how something is worded. That is the whole
+reason the two were separated.
+
+A sixth crossing is reserved but not built —
+[Company Behavior](#company-behavior-reserved) will consume all
+three domains and own none of them.
+
+---
+
+## Company Behavior (reserved)
+
+**Reserved as a fourth bounded context. Deliberately not designed, not
+scheduled and not given a table.** What follows fixes its boundary so that
+modules shipping before it do not each invent their own answer — the same
+reason `policy-engine.md` declares `SLA_PAUSE`, `AUTOMATION_EXECUTION` and
+`AUTO_CLOSE` as policies that answer `NOT_YET_ENFORCED` rather than omitting
+them: *"Rather than omit them — which would leave each future module free to
+invent its own answer — they exist."*
+
+### The question it owns
+
+> **How does this organization choose to operate?**
+
+Distinct from its neighbours, and the distinctions are load-bearing:
+
+| Domain | Question | Nature |
+|---|---|---|
+| Knowledge | What is true? | Declared, stated to customers |
+| Memory | What happened? | Observed |
+| Experience | What tends to work? | Observed, **descriptive** of outcomes |
+| **Behavior** | **How do we choose to operate?** | Decided, **normative** |
+
+Experience and Behavior are the pair most easily confused, and the line is
+clean: Experience says *"escalating after two failed attempts correlates with
+better CSAT (n=612, +14pts over baseline)."* Behavior says *"we escalate after
+two failed attempts."* One is an observation the platform made. The other is a
+commitment the company chose. The path between them is a human decision, which
+makes it **structurally the same crossing as Memory → Knowledge** — and it
+should reuse the same Suggestion machinery rather than inventing a parallel
+approval flow.
+
+### Why it is genuinely a fourth context and Experience was not
+
+Applying the same test that declined Experience:
+
+| Test | Experience | Behavior |
+|---|---|---|
+| Written by | Memory Manager, from evidence | **Humans, deliberately** |
+| Erasable on customer request | Yes, cascades | **No — organizational, not personal** |
+| Shares Memory's erasure transaction | **Yes — the reason it stayed** | **No — nothing to erase** |
+| Structure | A confidence-scored claim | **Trigger, conditions, steps** |
+| Verified for | Groundedness | **Compliance — was it followed?** |
+
+Experience failed the peer test because splitting it would have split the
+erasure transaction. Behavior has nothing personal to erase, so it splits
+nothing — and it carries two things no existing domain has: an *executable
+structure* (trigger, conditions, steps) and a *compliance question* ("did we
+follow our own procedure?") that groundedness verification cannot answer.
+
+That is a bounded context, not a Knowledge class.
+
+### What it would own, and the vocabulary trap
+
+The brief says Behavior owns "policies." **It must not**, and this is the one
+correction to record now rather than discover later.
+
+`policy-engine.md` opens with *"Every business rule in Blink Engage lives here,
+and only here"* — the most emphatic ownership claim in this codebase. Letting a
+second context own the word "policy" repeats exactly the collision already
+resolved once for "decisions", where Intelligence proposes and the Policy
+Engine decides.
+
+The vocabulary that works:
+
+| Layer | Owns | Runtime role |
+|---|---|---|
+| **Behavior** | The **practice** — the organizational statement of how something is done | Compiles into configuration. Not on the conversation path |
+| **Policy Engine** | The **decision** — may this happen? | Evaluated per conversation, pure, recorded |
+| **Workflow / Routing / SLA / Assignment** | The **mechanism** — when X, do Y | Executed |
+
+Behavior *declares*; Policy *decides*; the engines *execute*. Behavior is the
+intent layer **above** the mechanisms, and it compiles down into their
+configuration — it never evaluates anything at runtime.
+
+Concretely, it would own: named practices (escalation practice, refund
+handling practice, after-hours practice), the SOP-as-executable-procedure
+(trigger, preconditions, ordered steps, exit criteria), and the mapping from a
+practice to the policy/workflow/routing/SLA configuration that enforces it.
+
+**SOPs stay in Knowledge as documents.** The article a human reads is
+Knowledge, versioned and citable; the executable procedure is Behavior, and it
+*references* the article rather than copying its text. Two copies of one
+procedure would drift within a quarter.
+
+### The warning that must survive to whoever builds it
+
+This codebase already has a live production defect of exactly the shape
+Behavior risks creating, and it is documented as **A3** in
+[domain-ownership.md](./domain-ownership.md): SLA targets have two owners —
+the queue's attached policy and the service version — and the consequence was
+not subtle. `conversation_sla_clocks` holds **zero rows** across the entire
+installation. An administrator configures an SLA, attaches it to a queue, and
+gets a permanently empty Breached queue with nothing reporting a problem.
+
+Behavior compiles into the configuration of *at least five* engines that are
+each already configurable directly through their own screens. Introduced
+casually, it does not create one A3. It creates five.
+
+> **When Behavior lands, it must become the single writer of the configuration
+> it owns, and the direct path must be withdrawn in the same change.**
+
+Not a parallel authoring surface, not a "Behavior can also set this." The
+Policy Engine already states this migration rule for itself — *"each migration
+deletes the local copy rather than leaving both"* — and Behavior inherits it.
+A practice that says one thing while a queue screen says another is worse than
+no practice layer at all, because it looks authoritative.
+
+This is why Behavior is reserved rather than sketched. Its hard part is not
+the schema; it is a migration of five existing configuration surfaces, and
+that work should be costed honestly when somebody proposes it.
+
+### What it consumes, and owns none of
+
+Per the brief, and consistent with the crossing model above:
+
+| Consumes | For |
+|---|---|
+| Knowledge | The documented procedure a practice references |
+| Memory | What actually happened, to compare against |
+| Experience | Evidence that a practice works, or has stopped working |
+| Policy decisions | Whether the practice may be applied here |
+
+It owns **its own practice definitions** and nothing else. "Owns no Knowledge,
+Memory or Experience" is the invariant; a context that owned nothing at all
+would not be a context.
+
+### The capability that only exists once both exist
+
+Worth recording because it is the argument for eventually building this, and
+it is invisible until Behavior lands:
+
+> **Experience ⨯ Behavior = practice drift.**
+
+Behavior states the practice. Experience observes what agents actually do.
+The difference is *"the organization is not operating the way it says it
+does"* — a finding no module in this platform can produce today, and one that
+no amount of reporting on either half alone will surface. It is also the
+honest, non-punitive framing of agent-attributed learning: the finding is
+about the practice, not the person.
+
+Two further capabilities follow: per-conversation compliance checking ("was
+our escalation practice followed here?"), and Intelligence recommending a
+*next action* within the company's own declared practice rather than from
+general competence.
+
+### Reserved, explicitly
+
+- No tables, no services, no events, no permissions.
+- No entry in the build order.
+- The name `Company Behavior`, and the terms *practice*, *procedure* and
+  *step*, are reserved. A module needing one of these words before Behavior
+  exists should say so here rather than claim it.
+- This document keeps its title until Behavior is built; renaming it for an
+  unbuilt context would be the speculative move this codebase's own norms
+  reject.
 
 ---
 
@@ -784,6 +1138,19 @@ Intelligence layer's implementation, and needs these alignments before build:
    the start of stage 4, before any learning consumer writes a fact — a fact
    written before the Manager exists is one written outside the invariant, and
    backfilling an invariant is harder than starting with it.
+9. **Experience becomes a full Memory tier**, and its corpus splits into
+   succeeded and failed — the engine's quality gate currently filters out
+   every conversation that went wrong, so nothing can learn what not to say.
+10. **Negative experience is a re-ranking penalty and a verifier check, never
+    a prompt instruction.** "Do not say X" in a prompt is a reliable way to
+    make a model say X.
+11. **`KnowledgeClass.VOICE_CONSTRAINT`** joins the restricted classes, and
+    the verifier gains a constraint check — a missing mandatory disclaimer
+    blocks the send exactly as an uncited restricted claim does.
+12. **Voice Profile** resolved per (channel, segment, situation, language) from
+    the `voice` namespace, applied as a generation directive.
+13. `confidence_direction` on every fact, computed from the evidence stream
+    with decay removed, plus a small confidence-history table.
 
 ---
 

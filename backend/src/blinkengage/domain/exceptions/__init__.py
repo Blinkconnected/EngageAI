@@ -137,6 +137,44 @@ class AiNotConfiguredError(DomainError):
         super().__init__("AI features are not configured on this platform")
 
 
+class EmbeddingNotConfiguredError(DomainError):
+    """Raised when semantic retrieval is asked for but no embedding
+    provider is configured (``settings.embedding_provider`` is
+    ``"disabled"``, the default).
+
+    Distinct from ``AiNotConfiguredError`` even though both map to 503,
+    because they send an operator to different screens: a company can have
+    a perfectly good completion provider and no embedding provider — with
+    Claude that is the *normal* state, since Anthropic publishes no
+    embedding endpoint. Collapsing the two would tell somebody to
+    configure an AI provider they have already configured.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Semantic search is not configured on this platform")
+
+
+class EmbeddingDimensionMismatchError(DomainError):
+    """Raised when a provider's vector width disagrees with the stored
+    column's width.
+
+    Fails loudly and early rather than letting the database reject rows
+    partway through a batch: the fix is a migration plus a backfill, and a
+    half-written index is worse than an unwritten one because retrieval
+    would silently return only the rows that happened to fit.
+    """
+
+    def __init__(self, *, expected: int, actual: int, model: str) -> None:
+        super().__init__(
+            f"Embedding model {model!r} produces {actual}-dimensional vectors but the "
+            f"embeddings column is {expected}-dimensional. Changing width requires a "
+            f"schema migration and a full re-index."
+        )
+        self.expected = expected
+        self.actual = actual
+        self.model = model
+
+
 class InvalidNotificationPreferenceError(DomainError):
     """Raised when a preference update names a ``notification_type`` not
     in ``domain.notification_types.NOTIFICATION_TYPES`` or a ``channel``
