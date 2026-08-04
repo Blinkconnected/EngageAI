@@ -105,6 +105,44 @@ def is_autopilot_agent_request_mode_enabled(settings: dict[str, Any]) -> bool:
     return bool(_autopilot_section(settings).get("activate_on_agent_request", False))
 
 
+DEFAULT_MEMORY_ENABLED = True
+
+
+def is_memory_enabled(settings: dict[str, Any]) -> bool:
+    """Whether the platform may retain memory for this company.
+
+    Defaults to **on**, unlike the AI switches, and the difference is
+    deliberate. AI defaults off because it generates content a company may
+    not want sent; memory defaults on because it is how the Customer
+    Timeline, CRM and Reporting already describe a relationship, and
+    shipping it off would mean every existing company silently lost a
+    capability the moment the platform gained it. A company that must not
+    retain turns it off, and the policy engine records that refusal on
+    every attempt.
+    """
+    return bool(_section(settings, "memory").get("enabled", DEFAULT_MEMORY_ENABLED))
+
+
+def memory_retention_days(settings: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+    """``(dormant_after, archive_after, purge_after)`` in days.
+
+    ``None`` for any value the company has not set, so the caller applies
+    the platform default rather than this module inventing one — a default
+    invented in two places is a retention promise with two answers.
+    """
+    section = _section(settings, "memory")
+
+    def _positive(key: str) -> int | None:
+        value = section.get(key)
+        return int(value) if isinstance(value, int) and value > 0 else None
+
+    return (
+        _positive("dormant_after_days"),
+        _positive("archive_after_days"),
+        _positive("purge_after_days"),
+    )
+
+
 def is_notification_type_enabled(settings: dict[str, Any], notification_type: str) -> bool:
     return bool(_section(settings, "notifications").get(notification_type, True))
 

@@ -226,6 +226,21 @@ class Settings(BaseSettings):
     # contributes nothing the other could not have found alone.
     retrieval_candidate_pool: int = 50
 
+    # --- Memory Platform (Company Intelligence Engine, stage 2) ---
+    #
+    # How often a fact's confidence is re-evaluated. Decay is *computed*,
+    # not applied, so this is how stale a confidence number is allowed to
+    # be rather than how fast memory fades — the fade is a function of
+    # time and is correct the moment it is next read.
+    memory_recompute_interval_seconds: int = 21600
+    memory_decay_batch_size: int = 500
+    memory_purge_batch_size: int = 500
+    # Confidence history is the fastest-growing table here (one row per
+    # fact per sweep) and its value is entirely in the recent tail — long
+    # enough to explain a curve, not long enough to become a second copy
+    # of the fact table.
+    memory_confidence_history_days: int = 180
+
     # --- Provider apps for channel OAuth (see
     # docs/architecture/channel-connectors.md) ---
     #

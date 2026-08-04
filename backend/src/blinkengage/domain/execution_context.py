@@ -89,6 +89,14 @@ class CompanyCapabilities:
     #: the switch above: "turned off" and "turned on but never set up" are
     #: different problems with different fixes.
     ai_provider_configured: bool = False
+    #: Whether the platform may retain memory for this company. A
+    #: retention promise rather than a feature toggle, and deliberately
+    #: independent of `ai_enabled`: Memory is a platform context consumed
+    #: by Reporting, CRM and the Customer Timeline as well as by AI, so a
+    #: company turning AI off is not thereby asking for its Customer
+    #: Timeline to empty. Defaults to the unavailable answer like every
+    #: field here.
+    memory_enabled: bool = False
     #: Autopilot's own opt-in, separate from AI features generally — a
     #: company may want agent-facing suggestions without AI answering
     #: customers directly.

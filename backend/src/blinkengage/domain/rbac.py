@@ -98,6 +98,17 @@ PERMISSIONS: tuple[Permission, ...] = (
     # reuse conversations.read/manage rather than a new permission, since
     # a note is just another way to interact with a conversation the
     # agent already has access to. ---
+    # --- Memory Platform (see docs/architecture/memory-platform.md) ---
+    #
+    # Three permissions rather than one, and the split is by blast radius
+    # rather than by screen. Reading memory is ordinary work. Suppressing
+    # or correcting a fact changes what every consumer of the platform
+    # sees. Erasing a subject is irreversible by design and is the one a
+    # regulator asks who holds — so it is not something an Admin has
+    # merely by being an Admin.
+    Permission("memory.read", "View organizational, customer and experience memory"),
+    Permission("memory.manage", "Confirm, correct or suppress remembered facts"),
+    Permission("memory.erase", "Permanently erase everything memory holds about a subject"),
     Permission("knowledge_base.read", "View knowledge base categories and articles"),
     Permission(
         "knowledge_base.manage", "Create/edit/delete knowledge base categories and articles"
@@ -168,6 +179,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "workflows.manage",
             "knowledge_base.read",
             "knowledge_base.manage",
+            "memory.read",
+            "memory.manage",
             "quick_replies.read",
             "quick_replies.manage",
             "ai.use",
@@ -192,6 +205,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "queues.read",
             "workflows.read",
             "knowledge_base.read",
+            "memory.read",
             "quick_replies.read",
             "ai.use",
             "sla_policies.read",

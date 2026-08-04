@@ -35,7 +35,7 @@ duplicated rules were found; each is below with a recommendation.
 | **Customer identity** | Company | Conversation, Inbox, ERP | `customers` | ✅ |
 | **Unread count** | Conversation | Inbox | Derived from messages | ✅ |
 | **What the company officially states** | Knowledge *(designed)* | AI, agents, customers | Versioned articles | ⚠️ not built — [KMI](./knowledge-memory-intelligence.md) |
-| **What the platform has learned** | Memory *(designed)* | AI, analytics | Confidence-scored facts | ⚠️ not built — one writer, one erasure boundary |
+| **What the platform has learned** | **Memory** | AI, Workflow, CRM, Reporting, Timeline, Analytics | `memory_facts` + evidence | ✅ built — `MemoryManager` is the only writer, guarded by an AST test |
 | **How the organization operates** | **Company Behavior** *(reserved)* | Policy, Workflow, Routing, SLA, Assignment | — | 🔒 **reserved, unbuilt — see the A3 warning below** |
 
 ---

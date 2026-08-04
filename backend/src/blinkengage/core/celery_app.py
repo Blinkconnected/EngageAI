@@ -34,6 +34,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.notification_push_dispatch_task",
         "blinkengage.infrastructure.tasks.channel_health_check_task",
         "blinkengage.infrastructure.tasks.knowledge_index_sweep_task",
+        "blinkengage.infrastructure.tasks.memory_decay_sweep_task",
     ],
 )
 
@@ -203,6 +204,17 @@ celery_app.conf.update(
         "reindex-pending-knowledge": {
             "task": "blinkengage.knowledge.reindex_pending",
             "schedule": 60.0,
+        },
+        # Ages memory — see docs/architecture/memory-platform.md. Hourly,
+        # which is far more often than any fact's confidence meaningfully
+        # moves (half-lives here are measured in months) but keeps the
+        # backlog per run small and bounded. Decay is computed rather than
+        # applied, so a missed run costs nothing but staleness in the
+        # stored number; the next run is correct without needing to catch
+        # up on the ones it missed.
+        "age-memory": {
+            "task": "blinkengage.memory.age_memory",
+            "schedule": 3600.0,
         },
     },
 )

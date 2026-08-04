@@ -78,6 +78,14 @@ class Policy(StrEnum):
     AGENT_PICKUP = "agent_pickup"
     #: May this conversation be closed without a human doing it?
     AUTO_CLOSE = "auto_close"
+    #: May the platform *remember* anything from this conversation? The
+    #: Memory Platform's gate, and a genuinely separate question from
+    #: whether AI may answer: a hospital may happily let AI reply from
+    #: approved articles while forbidding any retention of what patients
+    #: said. One switch cannot express that, and a platform selling to
+    #: healthcare that offers only one switch will be asked to turn
+    #: everything off.
+    MEMORY_RECORDING = "memory_recording"
 
 
 class Effect(StrEnum):
@@ -127,6 +135,8 @@ class PolicyReason(StrEnum):
     COMPANY_DISABLED = "company_disabled"
     #: Switched on, but no provider was ever configured.
     NO_AI_PROVIDER = "no_ai_provider"
+    #: The company has memory retention switched off entirely.
+    MEMORY_DISABLED = "memory_disabled"
     #: AI features are on, but Autopilot itself is not. A company may want
     #: agent-facing suggestions without AI answering customers directly,
     #: and reporting that as "AI is off" would send an administrator to
@@ -162,6 +172,7 @@ REASON_TEXT: dict[PolicyReason, str] = {
     PolicyReason.NOT_YET_ENFORCED: "this policy is not yet enforced",
     PolicyReason.SERVICE_DISABLED: "the service has it switched off",
     PolicyReason.COMPANY_DISABLED: "the company has AI features switched off",
+    PolicyReason.MEMORY_DISABLED: "the company has memory switched off",
     PolicyReason.NO_AI_PROVIDER: "no AI provider is configured",
     PolicyReason.AUTOPILOT_DISABLED: "AI Autopilot is switched off for this company",
     PolicyReason.AUTOPILOT_MODE_EXCLUDES_THIS: (
@@ -434,6 +445,44 @@ def _ownership_continuation(execution: ExecutionContext) -> PolicyDecision:
     )
 
 
+def _memory_recording(execution: ExecutionContext) -> PolicyDecision:
+    """May the platform remember anything from this conversation?
+
+    **Fails closed**, like ``AI_ENGAGEMENT`` and for the same kind of
+    reason. ``memory_enabled`` is a retention promise a company makes to
+    its own customers and to its regulator, and a caller that forgot to
+    populate capabilities must not thereby be granted permission to retain
+    what somebody said. Refusing costs the platform a memory; the other
+    direction costs the promise, and nothing would fail, no test would go
+    red, and the company would be retaining data it told people it did not.
+
+    Deliberately independent of ``AI_ENGAGEMENT``. Memory is a platform
+    context consumed by Reporting, CRM, the Customer Timeline and
+    Analytics as well as by AI, so gating it on the AI switch would mean
+    turning AI off silently emptied the Customer Timeline — a consequence
+    nobody flipping that switch is asking for.
+
+    A customer who has asked for no automated messages is *not* refused
+    here. That preference is about being contacted by a machine, not about
+    the company keeping notes on its own relationship with them, and
+    conflating the two would let a contact preference quietly delete a
+    business record.
+    """
+    if execution.capabilities is None:
+        return _deny(
+            Policy.MEMORY_RECORDING,
+            PolicyReason.CAPABILITIES_UNKNOWN,
+            PolicySource.PLATFORM_DEFAULT,
+        )
+    if not execution.capabilities.memory_enabled:
+        return _deny(
+            Policy.MEMORY_RECORDING,
+            PolicyReason.MEMORY_DISABLED,
+            PolicySource.COMPANY_SETTINGS,
+        )
+    return _allow(Policy.MEMORY_RECORDING, PolicyReason.PERMITTED, PolicySource.COMPANY_SETTINGS)
+
+
 def _not_yet_enforced(policy: Policy) -> Callable[[ExecutionContext], PolicyDecision]:
     """A rule whose module has not shipped.
 
@@ -469,6 +518,7 @@ class PolicyEngine:
             Policy.SLA_PAUSE: _not_yet_enforced(Policy.SLA_PAUSE),
             Policy.AUTOMATION_EXECUTION: _not_yet_enforced(Policy.AUTOMATION_EXECUTION),
             Policy.AUTO_CLOSE: _not_yet_enforced(Policy.AUTO_CLOSE),
+            Policy.MEMORY_RECORDING: _memory_recording,
             **(rules or {}),
         }
 

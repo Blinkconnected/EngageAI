@@ -18,6 +18,7 @@ from blinkengage.domain.company_settings import (
     is_ai_enabled,
     is_autopilot_enabled,
     is_autopilot_new_conversation_mode_enabled,
+    is_memory_enabled,
 )
 from blinkengage.domain.execution_context import CompanyCapabilities
 from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
@@ -38,6 +39,7 @@ def capabilities_for(company: Company | None, *, settings: Settings) -> CompanyC
     return CompanyCapabilities(
         ai_enabled=is_ai_enabled(company.settings),
         ai_provider_configured=is_ai_available_for_company(settings, company.ai_config),
+        memory_enabled=is_memory_enabled(company.settings),
         autopilot_enabled=is_autopilot_enabled(company.settings),
         autopilot_on_new_conversation=is_autopilot_new_conversation_mode_enabled(company.settings),
     )

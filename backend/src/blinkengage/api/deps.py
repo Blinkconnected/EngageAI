@@ -40,6 +40,9 @@ from blinkengage.application.services.connector_certification_service import (
 from blinkengage.application.services.conversation_inspector import (
     ConversationInspectorService,
 )
+from blinkengage.application.services.conversation_memory_service import (
+    ConversationMemoryService,
+)
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
 from blinkengage.application.services.customer_internal_rating_service import (
@@ -64,6 +67,9 @@ from blinkengage.application.services.ledger_service import (
     LedgerReconciliation,
     LedgerService,
 )
+from blinkengage.application.services.memory_erasure_service import MemoryErasureService
+from blinkengage.application.services.memory_manager import MemoryManager
+from blinkengage.application.services.memory_query_service import MemoryQueryService
 from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
 )
@@ -189,6 +195,11 @@ from blinkengage.infrastructure.repositories.knowledge_repository import (
 from blinkengage.infrastructure.repositories.ledger_repository import LedgerRepository
 from blinkengage.infrastructure.repositories.lexical_search_repository import (
     LexicalSearchRepository,
+)
+from blinkengage.infrastructure.repositories.memory_repository import (
+    MemoryConfidenceSampleRepository,
+    MemoryEvidenceRepository,
+    MemoryFactRepository,
 )
 from blinkengage.infrastructure.repositories.message_attachment_repository import (
     MessageAttachmentRepository,
@@ -1218,6 +1229,59 @@ def get_knowledge_service(
         articles=KnowledgeArticleRepository(session),
         events=events,
     )
+
+
+def get_memory_manager(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> MemoryManager:
+    """The **only** writer of memory.
+
+    Every route that changes a fact takes this; none takes a memory
+    repository. That is what makes "one door" a property of the wiring
+    rather than a rule people are asked to remember — and an AST guard
+    fails the build if any module outside the Manager calls a memory
+    write method.
+    """
+    return MemoryManager(
+        facts=MemoryFactRepository(session),
+        evidence=MemoryEvidenceRepository(session),
+        samples=MemoryConfidenceSampleRepository(session),
+        events=events,
+    )
+
+
+def get_memory_query_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MemoryQueryService:
+    """Reading memory. Deliberately has no write method to reach for."""
+    return MemoryQueryService(
+        facts=MemoryFactRepository(session),
+        evidence=MemoryEvidenceRepository(session),
+        companies=CompanyRepository(session),
+    )
+
+
+def get_memory_erasure_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+    manager: Annotated[MemoryManager, Depends(get_memory_manager)],
+) -> MemoryErasureService:
+    """Erasure, which must complete — see the service's own docstring for
+    why it is separate from the Manager."""
+    return MemoryErasureService(
+        facts=MemoryFactRepository(session),
+        evidence=MemoryEvidenceRepository(session),
+        embeddings=EmbeddingRepository(session),
+        events=events,
+        recompute=manager,
+    )
+
+
+def get_conversation_memory_service(
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> ConversationMemoryService:
+    return ConversationMemoryService(redis)
 
 
 async def get_embedding_service(

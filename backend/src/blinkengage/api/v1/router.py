@@ -23,6 +23,7 @@ from blinkengage.api.v1.endpoints import (
     health,
     inspector,
     knowledge,
+    memory,
     notifications,
     ownership,
     payment_webhooks,
@@ -103,6 +104,11 @@ api_router.include_router(workflows.router, dependencies=[Depends(require_featur
 api_router.include_router(
     knowledge.router, dependencies=[Depends(require_feature("knowledge_base"))]
 )
+# No `require_feature` gate. Memory is platform infrastructure that the
+# Customer Timeline, CRM and Reporting read as ordinary product surface —
+# not a purchasable add-on like AI or SLA — and gating it would 402 an
+# agent looking at a customer's history.
+api_router.include_router(memory.router)
 api_router.include_router(quick_replies.router)
 api_router.include_router(search.router)
 api_router.include_router(notifications.router)

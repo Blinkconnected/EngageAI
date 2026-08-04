@@ -16,6 +16,46 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Blink Engage now remembers, and can tell you why.** A new platform
+  layer records what the system has observed — about your business, about
+  each customer, and about what has historically worked — with the evidence
+  behind every fact, a confidence that is calculated rather than asserted,
+  and an age.
+
+  Nothing here guesses. Every remembered fact must arrive with evidence
+  pointing at where it was observed, and the platform refuses to store one
+  without it. Confidence is computed from how much support a fact has, how
+  broadly that support is spread across different customers and different
+  agents, how the conversations behind it turned out, and how long ago it
+  was last seen — so a claim repeated forty times by one person is not
+  treated as the same thing as one six people arrived at independently.
+
+  Facts age. One nobody has seen for months goes quiet; one nobody has seen
+  for a year and a half leaves the working set; and one that goes quiet and
+  then comes back returns with the standing it had earned rather than
+  starting again. You can confirm a fact, correct its wording, or mute one
+  that is wrong — a muted fact stays muted rather than being quietly
+  re-learned next week.
+
+  **Erasing is separate from forgetting, and it completes.** Erasing a
+  customer removes every fact about them and every trace of their
+  contribution, and tells you exactly what it removed. Company-wide
+  patterns their conversations helped establish are kept — those are facts
+  about your business, not about them — but recalculated, so nothing is
+  left claiming support it no longer has.
+
+  Live conversations get a short-term memory of their own: the order
+  number, the question still unanswered, what was promised. It expires with
+  the conversation rather than being kept.
+
+  Memory is on by default and can be switched off per company, separately
+  from AI — turning AI off does not empty your customer history. Reading is
+  available to agents, changing facts to administrators, and erasing to
+  owners only.
+
+  New: `/api/v1/memory/*` for facts, subjects, status and conversation
+  memory.
+
 - **Knowledge search now understands what people mean, not just the words they
   typed.** Searching your knowledge base used to be a plain "does this article
   contain this text?" check, so a customer asking *"can I get my money back"*

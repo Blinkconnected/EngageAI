@@ -12,9 +12,9 @@ is how a person explains this platform to another person:
 
 | Question | Answered by | Status |
 |---|---|---|
-| What is true? | **Knowledge** | Designed |
-| What happened? | **Memory** | Designed |
-| What tends to work? | **Experience** | Designed — a Memory tier |
+| What is true? | **Knowledge** | Stage 1 shipped (retrieval); versioning designed |
+| What happened? | **Memory** | **Built** — [Memory Platform](./memory-platform.md) |
+| What tends to work? | **Experience** | **Built** as a Memory tier; its causal machinery designed |
 | How do we sound? | **Company DNA** | Designed — splits across Knowledge and Memory |
 | **How do we choose to operate?** | **Company Behavior** | **Reserved — see below** |
 | What should we do now? | **Intelligence** | Designed |
