@@ -76,6 +76,12 @@ class CompanyUserStatusRequest(BaseModel):
 
     is_active: bool
     reason: Reason
+    #: Proceed even where the platform would otherwise refuse to leave the
+    #: company without an owner who can sign in. Never the default: the
+    #: refusal exists so this cannot happen by accident, and the override
+    #: exists because platform staff are exactly who has to act when a
+    #: customer's owner has left the business — and who can restore one.
+    force: bool = False
 
 
 class CompanyUserActionRequest(BaseModel):
@@ -89,6 +95,12 @@ class CompanyUserActionRequest(BaseModel):
 class CompanyUserRoleRequest(BaseModel):
     role_id: UUID
     reason: Reason
+    #: Proceed even where the platform would otherwise refuse to leave the
+    #: company without an owner who can sign in. Never the default: the
+    #: refusal exists so this cannot happen by accident, and the override
+    #: exists because platform staff are exactly who has to act when a
+    #: customer's owner has left the business — and who can restore one.
+    force: bool = False
 
 
 class CompanyOwnerTransferRequest(BaseModel):

@@ -542,11 +542,23 @@ class TestTheClocksRunFromRealEvents:
         assert SlaTimer.FIRST_RESPONSE in started
         assert SlaTimer.NEXT_RESPONSE not in started
 
-    async def test_a_company_with_no_services_measures_nothing(
+    async def test_a_company_with_no_services_falls_back_to_the_platform_default(
         self, client: Any, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """Targets come from the service. A company that has not set one up
-        behaves exactly as it did before the clocks existed."""
+        """It used to measure nothing at all, and say so nowhere.
+
+        Targets came from the service directory alone, so a company that had
+        never opened the Services screen started no clocks — which left the
+        Breached queue permanently empty, SLA health out of Inbox ordering,
+        and no SLA events on any conversation's story. An administrator who
+        had configured an SLA policy and attached it to a queue saw exactly
+        the same nothing as one who had configured nothing.
+
+        Now the resolution runs service → queue → platform default, and this
+        company has neither of the first two, so it lands on the default:
+        conservative, and only the two targets every support desk would
+        recognise. See ``domain.sla.resolve_sla_targets``.
+        """
         from blinkengage.infrastructure.database.models.conversation import Conversation
         from tests.integration.test_routing_explainability import (
             _ingest,
@@ -566,7 +578,17 @@ class TestTheClocksRunFromRealEvents:
             conversation = (await session.execute(select(Conversation))).scalar_one()
             sla = await engine_for(session).read(conversation.id)
 
-        assert sla.clocks == []
+        running = {clock.timer: clock for clock in sla.clocks}
+        assert set(running) == {SlaTimer.FIRST_RESPONSE, SlaTimer.RESOLUTION}, (
+            "the platform default measures first response and resolution, and "
+            "deliberately not queue wait — how long a conversation may sit "
+            "before somebody accepts it is a promise a business makes, not one "
+            "the platform may make on its behalf"
+        )
+        assert running[SlaTimer.FIRST_RESPONSE].target_minutes == 60
+        assert running[SlaTimer.RESOLUTION].target_minutes == 24 * 60
+        # Generous on purpose: a company that never agreed to an SLA should
+        # not open the Inbox to a wall of red it did not choose.
         assert sla.health.value == "healthy"
 
     async def test_marking_it_waiting_on_the_customer_pauses_the_clocks(

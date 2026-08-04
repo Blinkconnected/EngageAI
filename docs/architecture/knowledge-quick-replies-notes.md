@@ -29,6 +29,13 @@ Basic substring search is honestly what "browse and filter articles"
 needs today; semantic search is a documented extension point for M22,
 not built speculatively here.
 
+**Since superseded in scope**, though not yet in code: the
+[Company Intelligence Engine](./company-intelligence-engine.md) designs the
+replacement — article versioning, chunking, embeddings and hybrid
+lexical/vector/graph retrieval, with this table kept and extended rather
+than migrated away. Nothing here has changed yet; that document is design
+only.
+
 ### A repository lesson worth documenting: loaded vs. unloaded collections
 
 Building `KnowledgeArticleRepository.set_tags` initially copied

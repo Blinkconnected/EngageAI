@@ -13,6 +13,7 @@ from uuid import UUID
 
 from blinkengage.application.workflow_actions.base import WorkflowAction, WorkflowExecutionContext
 from blinkengage.domain.events import DomainEvent
+from blinkengage.domain.ownership import OwnershipReason
 from blinkengage.infrastructure.database.models.conversation import ConversationStatus
 from blinkengage.infrastructure.database.models.customer import CustomerTag
 from blinkengage.infrastructure.repositories.customer_repository import CustomerRepository
@@ -66,6 +67,7 @@ class AssignToQueueAction(WorkflowAction):
             status=None,
             assigned_agent_id=None,
             queue_id=queue_id,
+            ownership_reason=OwnershipReason.ASSIGNED_BY_STRATEGY,
         )
         return {"conversation_id": str(conversation_id), "queue_id": str(queue_id)}
 
@@ -82,6 +84,10 @@ class AssignToAgentAction(WorkflowAction):
             conversation_id=conversation_id,
             status=None,
             assigned_agent_id=agent_id,
+            # The platform deciding, not a person — the distinction
+            # ``ASSIGNED_BY_STRATEGY`` exists to record, and what an operator
+            # tuning their rules needs to see in the timeline.
+            ownership_reason=OwnershipReason.ASSIGNED_BY_STRATEGY,
         )
         return {"conversation_id": str(conversation_id), "agent_id": str(agent_id)}
 

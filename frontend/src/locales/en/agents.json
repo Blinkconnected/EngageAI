@@ -8,7 +8,9 @@
     "initialPasswordHelperText": "At least 10 characters, including a letter and a digit.",
     "titleLabel": "Title",
     "departmentLabel": "Department",
-    "departmentNoneOption": "None"
+    "departmentNoneOption": "None",
+    "setPasswordManuallyLabel": "Set a password myself",
+    "inviteExplanation": "We'll email this person a sign-in link and a temporary password. You don't need to send them anything."
   },
   "AgentEditDialog": {
     "title": "Edit {{name}}",

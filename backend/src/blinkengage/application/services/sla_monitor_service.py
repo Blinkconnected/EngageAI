@@ -38,6 +38,7 @@ from blinkengage.domain.business_hours import (
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.lifecycle import ACTIVE, AWAITING_OTHERS
+from blinkengage.domain.ownership import OwnershipReason
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -366,6 +367,10 @@ class SlaMonitorService:
                 status=None,
                 assigned_agent_id=None,
                 queue_id=UUID(rule["target_queue_id"]),
+                # Not a supervisor handing it over — a target the company
+                # missed. The timeline has to say which, or "why did this
+                # move at 02:00" has no answer.
+                ownership_reason=OwnershipReason.ESCALATION,
             )
         elif action == "reassign_agent":
             await self._conversations.update(
@@ -373,6 +378,7 @@ class SlaMonitorService:
                 conversation_id=conversation.id,
                 status=None,
                 assigned_agent_id=UUID(rule["target_agent_id"]),
+                ownership_reason=OwnershipReason.ESCALATION,
             )
         elif action == "notify":
             for raw_user_id in rule.get("user_ids", []):

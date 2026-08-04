@@ -27,6 +27,7 @@
     "channelLabelEmail": "البريد الإلكتروني",
     "channelLabelBrowser": "المتصفح",
     "channelLabelSound": "الصوت",
+    "channelLabelPush": "الإشعارات الفورية",
     "toggleAriaLabel": "{{type}} عبر {{channel}}"
   },
   "NotificationsPage": {

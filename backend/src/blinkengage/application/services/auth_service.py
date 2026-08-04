@@ -38,11 +38,22 @@ from blinkengage.domain.money import DEFAULT_CURRENCY
 from blinkengage.domain.rbac import SystemRole
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
+from blinkengage.infrastructure.database.models.queue import Queue, RoutingRule
 from blinkengage.infrastructure.database.models.rbac import Role, UserRole
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
+
+#: What a brand-new company's queue is called. Named for what it is rather
+#: than for the company: an administrator renames it in one click, and "Acme
+#: Support" pre-filled by the platform reads as a decision somebody made.
+DEFAULT_QUEUE_NAME = "General"
+DEFAULT_QUEUE_DESCRIPTION = "Every conversation arrives here until you add queues of your own."
+#: Lower than any rule an administrator is likely to write, so their routing
+#: always wins and this only catches what nothing else claimed.
+DEFAULT_RULE_PRIORITY = 1000
+
 
 # A bcrypt hash of a random, never-used password. Verified against on a
 # failed lookup so login takes the same code path (and roughly the same
@@ -142,6 +153,7 @@ class AuthService:
 
         owner_role = await self._seed_default_roles(company_id=company.id)
         self._session.add(UserRole(user_id=user.id, role_id=owner_role.id))
+        await self._seed_default_routing(company_id=company.id)
         await self._session.flush()
 
         # Reload with relationships populated for the caller (e.g. to issue tokens immediately).
@@ -338,6 +350,49 @@ class AuthService:
         while await self._companies.get_by_slug(candidate) is not None:
             candidate = f"{base_slug}-{secrets.token_hex(3)}"
         return candidate
+
+    async def _seed_default_routing(self, *, company_id: uuid.UUID) -> None:
+        """Somewhere for the first message to land.
+
+        Without a queue and a rule pointing at it, an inbound conversation
+        reaches nothing: routing records ``LEFT_UNROUTED`` — which the Inbox
+        classifies *critical*, "it reached no queue at all, so nothing will
+        pick it up" — and the conversation sits where no agent is looking.
+
+        That was the state every new company started in. Registration created
+        the company, the owner and the roles, and onboarding walked the
+        administrator through team, channels and ERP without ever mentioning
+        that a queue was required. They finished setup believing they were
+        live, and found out otherwise when a real customer messaged them.
+
+        A catch-all rule rather than a narrow one: the point is that nothing
+        falls through on day one. An administrator who wants conversations
+        split by channel, language or keyword edits this rule or adds a
+        higher-priority one above it — which is a change to a working system
+        rather than the difference between working and not.
+        """
+        queue = Queue(
+            company_id=company_id,
+            name=DEFAULT_QUEUE_NAME,
+            description=DEFAULT_QUEUE_DESCRIPTION,
+        )
+        # Through the session rather than a repository: this runs inside
+        # registration's own transaction, and injecting two more
+        # collaborators to write two rows would grow a constructor the
+        # start-up wiring guard then has to know about.
+        self._session.add(queue)
+        await self._session.flush()
+        self._session.add(
+            RoutingRule(
+                company_id=company_id,
+                # The lowest precedence there is: every rule an administrator
+                # writes later outranks it, so this catches what nothing else
+                # claimed rather than competing with real routing.
+                priority=DEFAULT_RULE_PRIORITY,
+                conditions={},
+                target_queue_id=queue.id,
+            )
+        )
 
     async def _seed_default_roles(self, *, company_id: uuid.UUID) -> Role:
         """Delegates to the same generic sync used to backfill existing

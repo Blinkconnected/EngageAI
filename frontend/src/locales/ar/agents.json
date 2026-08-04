@@ -8,7 +8,9 @@
     "initialPasswordHelperText": "10 أحرف على الأقل، تتضمن حرفًا ورقمًا.",
     "titleLabel": "المسمى الوظيفي",
     "departmentLabel": "القسم",
-    "departmentNoneOption": "بلا"
+    "departmentNoneOption": "بلا",
+    "setPasswordManuallyLabel": "سأعيّن كلمة المرور بنفسي",
+    "inviteExplanation": "سنرسل إلى هذا الشخص رابط تسجيل الدخول وكلمة مرور مؤقتة بالبريد. لا حاجة لإرسال أي شيء بنفسك."
   },
   "AgentEditDialog": {
     "title": "تعديل {{name}}",

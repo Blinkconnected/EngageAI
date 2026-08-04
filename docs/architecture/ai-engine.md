@@ -462,6 +462,16 @@ found." without calling the provider at all when there are no candidate
 articles — no wasted API call for a search that can't possibly be
 grounded in anything.
 
+The candidate articles come from `KnowledgeService.list_articles(search=...)`,
+which is a case-insensitive `ILIKE` substring match — so this capability is
+only ever as good as the five rows a substring match happened to return, and a
+customer who phrases a question in words the article does not contain gets
+"no relevant articles found" about a question the knowledge base answers.
+Replacing that retrieval — and grounding these answers in citable, versioned
+sources with a verification step — is the subject of the
+[Company Intelligence Engine](./company-intelligence-engine.md), which is
+design only and has not shipped.
+
 ## Usage tracking via the event bus, not a new table
 
 Every `AiService` method publishes an `ai.completed` domain event

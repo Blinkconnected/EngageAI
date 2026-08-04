@@ -9,11 +9,13 @@ exactly the information the model exists to keep.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
+from sqlalchemy.orm.util import identity_key
 
 from blinkengage.domain.ownership import OwnerKind
+from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.ownership import ConversationOwnership
 
 
@@ -49,6 +51,45 @@ class OwnershipRepository:
         self._session.add(row)
         await self._session.flush()
         return row
+
+    async def project_assignment(
+        self, *, conversation_id: uuid.UUID, agent_id: uuid.UUID | None
+    ) -> None:
+        """Brings ``Conversation.assigned_agent_id`` in line with the owner.
+
+        The only write to that column that is not a compare-and-set claim —
+        see ``docs/architecture/ownership-consistency.md``. It is deliberately
+        here, beside the append-only history, so the two cannot be written
+        apart: a caller reaching for one gets the other.
+
+        Written through the ORM instance when this session already has one,
+        and by a Core UPDATE otherwise.
+
+        Not ``synchronize_session="fetch"``, which was the obvious choice and
+        the wrong one: it issues its own SELECT and expires attributes on
+        matched instances, so an ingest that had a ``Queue`` loaded found it
+        expired and lazy-loaded ``queue.name`` on the next line — inside an
+        argument list, outside the ``try`` that makes recording best-effort.
+        A failure that was supposed to cost only the evidence took the
+        conversation down with it.
+
+        Writing the loaded instance also keeps a caller's own object correct
+        without a reload, which is what ``assigned_agent_id`` being a
+        projection has to mean in practice: read it after a transition and it
+        is right.
+        """
+        instance = self._session.identity_map.get(
+            identity_key(Conversation, (conversation_id,)), None
+        )
+        if instance is not None:
+            instance.assigned_agent_id = agent_id
+            return
+        await self._session.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(assigned_agent_id=agent_id)
+            .execution_options(synchronize_session=False)
+        )
 
     async def expired_holds(
         self, *, now: datetime, limit: int = 500

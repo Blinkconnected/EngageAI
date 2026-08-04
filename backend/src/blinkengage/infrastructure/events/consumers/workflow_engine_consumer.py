@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 import blinkengage.application.workflow_actions  # noqa: F401 - registers built-in actions
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.application.services.workflow_engine import WorkflowEngine
 from blinkengage.application.workflow_actions.base import WorkflowExecutionContext
 from blinkengage.core.config import Settings, get_settings
@@ -60,6 +61,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
+)
+from blinkengage.infrastructure.repositories.ownership_repository import (
+    OwnershipRepository,
 )
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.workflow_repository import (
@@ -136,6 +140,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        ownership=OwnershipService(OwnershipRepository(session)),
         realtime=_get_realtime_publisher(settings),
     )
     notifications = NotificationService(

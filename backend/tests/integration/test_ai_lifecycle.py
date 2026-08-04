@@ -409,7 +409,12 @@ class TestWhatTheLifecycleDoesNotYetDo:
         import subprocess
 
         found = subprocess.run(
-            ["grep", "-rln", "resume_delay_seconds", "src/blinkengage"],
+            # ``--include=*.py``: without it this also matches the compiled
+            # bytecode beside each module, so the test passed on a clean
+            # checkout and failed the moment anything had been imported —
+            # a drift guard that depends on ``__pycache__`` reports drift
+            # that is not there and hides drift that is.
+            ["grep", "-rln", "--include=*.py", "resume_delay_seconds", "src/blinkengage"],
             capture_output=True,
             text=True,
         ).stdout.split()

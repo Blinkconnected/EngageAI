@@ -480,3 +480,125 @@ class TestSeverityIsTheBackendsJudgement:
 
         assert stranded, "a conversation nothing routed says so"
         assert all(entry["severity"] == "critical" for entry in stranded)
+
+
+class TestItNeverShowsAnIdentifierToAPerson:
+    """The Story is read by people, so every name in it must be a name.
+
+    Ownership rows copy the owner's name *by value*, so a timeline still
+    reads correctly after somebody leaves the company. Two writers cannot
+    afford the lookup and store ``NULL`` instead: ``pick()`` sits on the path
+    an agent waits for, and an agent's name lives on a related ``User`` whose
+    load would be a lazy fetch inside an async session.
+
+    ``Owner.describe()`` then fell through to ``"human_agent 93b777f2-…"``.
+    Found by reading a real conversation's Story on a live installation,
+    where two of five ownership rows rendered as raw UUIDs — on the one
+    screen whose entire purpose is explaining what happened.
+    """
+
+    async def test_an_owner_recorded_without_a_name_is_still_named(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        from blinkengage.application.services.ownership_service import (
+            OwnershipService,
+            agent_owner,
+        )
+        from blinkengage.domain.ownership import OwnershipReason
+        from blinkengage.infrastructure.repositories.ownership_repository import (
+            OwnershipRepository,
+        )
+        from tests.integration.test_routing_explainability import _agent
+
+        conversation, _ = await _run(
+            client, owner_headers, registered_owner, app, settings=_AUTOPILOT_ON, ai_enabled=True
+        )
+        agent_id = uuid.UUID(
+            await _agent(
+                client,
+                owner_headers,
+                email="grace.hopper@example.com",
+                name="Grace Hopper",
+                status="online",
+            )
+        )
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            # Exactly what pick() writes: an owner, and no name.
+            await OwnershipService(OwnershipRepository(session)).transfer(
+                conversation_id=conversation.id,
+                company_id=uuid.UUID(registered_owner["user"]["company"]["id"]),
+                to=agent_owner(agent_id, None),
+                reason=OwnershipReason.PICKED_BY_AGENT,
+            )
+            await session.commit()
+
+        box = await _inspect(client, owner_headers, conversation.id)
+        ownership = [entry for entry in box["timeline"] if entry["stream"] == "ownership"]
+
+        assert ownership, "the transition is on the timeline"
+        assert any(
+            "Grace Hopper" in entry["detail"] for entry in ownership
+        ), "the agent is named, rather than described by the id the row happened to store"
+        assert box["summary"]["owner_label"] == "Grace Hopper"
+
+    async def test_no_ownership_entry_ever_renders_a_raw_identifier(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """The general property, not just the one case above.
+
+        A UUID reaching a reader is the same defect as a raw translation key
+        reaching one: the screen is technically correct and humanly useless.
+
+        Deliberately built on a *nameless* transition — a queue handed over
+        with no name copied, which is what ``_hand_off`` writes. Without one
+        this sweeps a timeline whose rows all happen to carry names and would
+        pass whether or not the resolver existed.
+        """
+        import re
+
+        from blinkengage.application.services.ownership_service import (
+            OwnershipService,
+            agent_owner,
+        )
+        from blinkengage.domain.ownership import OwnershipReason
+        from blinkengage.infrastructure.repositories.ownership_repository import (
+            OwnershipRepository,
+        )
+        from tests.integration.test_routing_explainability import _agent
+
+        conversation, _ = await _run(
+            client, owner_headers, registered_owner, app, settings=_AUTOPILOT_ON, ai_enabled=True
+        )
+        agent_id = uuid.UUID(
+            await _agent(
+                client,
+                owner_headers,
+                email="ada.sweep@example.com",
+                name="Ada Lovelace",
+                status="online",
+            )
+        )
+
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            await OwnershipService(OwnershipRepository(session)).transfer(
+                conversation_id=conversation.id,
+                company_id=uuid.UUID(registered_owner["user"]["company"]["id"]),
+                to=agent_owner(agent_id, None),
+                reason=OwnershipReason.PICKED_BY_AGENT,
+            )
+            await session.commit()
+
+        box = await _inspect(client, owner_headers, conversation.id)
+        uuid_shaped = re.compile(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
+        )
+        offenders = [
+            entry["detail"]
+            for entry in box["timeline"]
+            if entry["stream"] == "ownership" and uuid_shaped.search(entry["detail"])
+        ]
+
+        assert not offenders, f"identifiers shown to a reader: {offenders}"

@@ -289,8 +289,10 @@ class TestLiveDashboard:
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["agents"]["offline"] == 1
-        assert body["queues"][0]["queue_name"] == "Support"
-        assert body["queues"][0]["open_conversations"] == 0
+        # By name: the seeded queue every company now starts with is in this
+        # list too, and which one sorts first is not what this test is about.
+        support = next(row for row in body["queues"] if row["queue_name"] == "Support")
+        assert support["open_conversations"] == 0
 
     async def test_live_dashboard_reports_waiting_count_distinct_from_open_conversations(
         self, client: AsyncClient, owner_headers: dict, app: Any

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.application.services.sla_monitor_service import SlaMonitorService
 from blinkengage.core.celery_app import celery_app
 from blinkengage.core.config import Settings, get_settings
@@ -58,6 +59,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
+)
+from blinkengage.infrastructure.repositories.ownership_repository import (
+    OwnershipRepository,
 )
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
@@ -124,6 +128,7 @@ async def _check_sla_breaches_async() -> int:
                 departments=DepartmentRepository(session),
                 queues=QueueRepository(session),
                 agent_skills=AgentSkillRepository(session),
+                ownership=OwnershipService(OwnershipRepository(session)),
                 realtime=_get_realtime_publisher(settings),
             )
             notifications = NotificationService(

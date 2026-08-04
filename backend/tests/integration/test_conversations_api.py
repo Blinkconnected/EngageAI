@@ -17,6 +17,18 @@ from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer im
 )
 
 
+async def _unroute_every_conversation(client: AsyncClient, owner_headers: dict) -> None:
+    """Removes the catch-all rule registration seeds.
+
+    A company now always has somewhere for a message to land, so "this
+    conversation reached no queue" is a state a test has to create on
+    purpose. The handful of tests below are specifically about that state.
+    """
+    listing = (await client.get("/api/v1/routing-rules", headers=owner_headers)).json()
+    for rule in listing["items"] if isinstance(listing, dict) else listing:
+        await client.delete(f"/api/v1/routing-rules/{rule['id']}", headers=owner_headers)
+
+
 async def _create_web_chat_session(client: AsyncClient, owner_headers: dict) -> dict:
     config_response = await client.post(
         "/api/v1/channel-configs",
@@ -83,7 +95,12 @@ async def test_list_and_get_conversation(
         f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
     )
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "new"
+    # "waiting", not "new": registration seeds a catch-all rule, so an
+    # inbound message reaches a queue and the conversation is immediately in
+    # the platform's resting state — in a queue, waiting for somebody to take
+    # it. "new" is the brief pre-routing state, and a conversation still
+    # sitting in it after ingest is a routing failure.
+    assert get_response.json()["status"] == "waiting"
 
 
 async def test_new_conversation_defaults_to_normal_priority(
@@ -236,11 +253,19 @@ async def test_list_conversations_filters_by_status(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:
     conversation = await _create_conversation(client, owner_headers, registered_owner, app)
-    await client.patch(
-        f"/api/v1/conversations/{conversation['id']}",
-        json={"status": "waiting_customer"},
-        headers=owner_headers,
-    )
+    # Through IN_PROGRESS, because WAITING -> WAITING_CUSTOMER is not a legal
+    # move and should not be: a conversation nobody has picked up cannot be
+    # waiting on the customer, since nobody has said anything to them yet.
+    # The conversation starts WAITING now that registration seeds a catch-all
+    # rule, so the route this test takes to a filterable status changed even
+    # though what it checks did not.
+    for status in ("in_progress", "waiting_customer"):
+        moved = await client.patch(
+            f"/api/v1/conversations/{conversation['id']}",
+            json={"status": status},
+            headers=owner_headers,
+        )
+        assert moved.status_code == 200, moved.text
 
     open_response = await client.get(
         "/api/v1/conversations", params={"status_filter": "waiting"}, headers=owner_headers
@@ -305,7 +330,9 @@ async def test_resolving_a_conversation_publishes_a_dedicated_event(
         events = list(result.scalars().all())
     assert len(events) == 1
     assert events[0].payload["conversation_id"] == conversation["id"]
-    assert events[0].payload["previous_status"] == "new"
+    # The conversation was WAITING, not NEW: it reached a queue on ingest
+    # via the catch-all rule registration seeds.
+    assert events[0].payload["previous_status"] == "waiting"
 
 
 async def test_closing_a_conversation_publishes_a_dedicated_event(
@@ -328,7 +355,9 @@ async def test_closing_a_conversation_publishes_a_dedicated_event(
         events = list(result.scalars().all())
     assert len(events) == 1
     assert events[0].payload["conversation_id"] == conversation["id"]
-    assert events[0].payload["previous_status"] == "new"
+    # The conversation was WAITING, not NEW: it reached a queue on ingest
+    # via the catch-all rule registration seeds.
+    assert events[0].payload["previous_status"] == "waiting"
 
 
 async def test_reassigning_an_already_resolved_conversation_does_not_republish_resolved(
@@ -1130,7 +1159,9 @@ async def test_pick_requires_conversations_pick_permission(
 async def test_pick_400s_when_conversation_has_no_queue(
     client: AsyncClient, owner_headers: dict, registered_owner: dict, app
 ) -> None:
+    await _unroute_every_conversation(client, owner_headers)
     conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+    assert conversation["queue_id"] is None, "the premise: nothing placed it in a queue"
     _, agent_headers = await _create_agent_with_headers(
         client, owner_headers, "no-queue-agent@acme.example"
     )
@@ -1647,7 +1678,11 @@ async def test_update_rejects_a_queue_id_belonging_to_another_company(
     get_response = await client.get(
         f"/api/v1/conversations/{conversation['id']}", headers=owner_headers
     )
-    assert get_response.json()["queue_id"] is None
+    # Unchanged, rather than empty: the conversation is already in this
+    # company's own seeded queue. What matters is that a rejected write left
+    # it exactly where it was, not that it was nowhere to begin with.
+    assert get_response.json()["queue_id"] == conversation["queue_id"]
+    assert get_response.json()["queue_id"] != other_queue["id"]
 
 
 async def test_conversations_list_filters_by_queue_id_and_unassigned_only(

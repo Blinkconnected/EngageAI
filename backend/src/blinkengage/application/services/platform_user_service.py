@@ -189,6 +189,12 @@ class PlatformUserService:
         is_active: bool,
         reason: str,
         actor_user_id: UUID,
+        #: Proceed even when this would leave the company without an owner
+        #: who can sign in. Refused by default so it is never a slip;
+        #: available because platform staff are exactly the people who have
+        #: to act when a customer's owner has left the business, and are
+        #: also the people who can restore one afterwards.
+        force: bool = False,
     ) -> CompanyUserView:
         """Locks an account out, or lets it back in.
 
@@ -216,14 +222,24 @@ class PlatformUserService:
         minutes; the tradeoff ``auth-rbac.md`` documents and accepts).
         """
         user = await self._get_company_user(company_id=company_id, user_id=user_id)
-        if not is_active and user.is_company_owner:
+        if not is_active and user.is_company_owner and not force:
+            # Refused by default, and overridable — the two are different
+            # things. Deactivating the last owner leaves the company unable
+            # to manage its own roles, so it must never be a slip. But it is
+            # *recoverable by whoever is doing it*: platform staff can
+            # reactivate the account or transfer ownership afterwards. A
+            # permanent refusal would mean a support engineer holding a
+            # customer whose owner has left the business, with no way to act
+            # and no explanation to give them.
             await self._require_another_active_owner(
                 company_id=company_id,
                 excluding=user.id,
                 remedy=(
                     "This is the only owner of this company who can still sign in. "
                     "Transfer ownership to another active user of the company first, "
-                    "then deactivate this account."
+                    "then deactivate this account — or repeat this with force to "
+                    "proceed anyway, which leaves the company unable to manage its "
+                    "own roles until platform staff restore an owner."
                 ),
             )
 
@@ -301,6 +317,8 @@ class PlatformUserService:
         role_id: UUID,
         reason: str,
         actor_user_id: UUID,
+        #: Move the company owner off the Owner role anyway. See ``set_active``.
+        force: bool = False,
     ) -> CompanyUserView:
         """Moves a user to one of their own company's roles.
 
@@ -326,12 +344,13 @@ class PlatformUserService:
         if role is None or role.company_id != company_id:
             raise EntityNotFoundError("Role", role_id)
 
-        if user.is_company_owner and role.name != SystemRole.OWNER.value:
+        if user.is_company_owner and role.name != SystemRole.OWNER.value and not force:
             raise CompanyOwnershipError(
                 "The company owner holds the Owner role, the only one granted every "
                 "permission — moving them off it would leave the company unable to "
                 "manage its own roles. Transfer ownership to another user of this "
-                "company first; that account can then change this one's role."
+                "company first; that account can then change this one's role — or "
+                "repeat this with force to proceed anyway."
             )
 
         previous = await self._roles.get_role_for_user(company_id=company_id, user_id=user.id)

@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy import JSON, Enum, ForeignKey, Index, Integer, Interval, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from blinkengage.domain.sla import PauseReason, SlaState, SlaTimer
+from blinkengage.domain.sla import PauseReason, SlaState, SlaTargetSource, SlaTimer
 from blinkengage.infrastructure.database.base import (
     GUID,
     Base,
@@ -78,6 +78,20 @@ class ConversationSlaClock(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     #: of everything already running — and copying is what makes that true
     #: without a join to a version table on every sweep.
     target_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
+
+    #: Which tier of configuration supplied ``target_minutes`` — the
+    #: service, the queue, or the platform default. Frozen here for the same
+    #: reason the target itself is: "why is this due in three minutes?" is
+    #: asked about a specific conversation, and answering it by re-reading a
+    #: service version, a queue and a policy *as they stand now* would
+    #: describe a configuration that may have changed since.
+    #:
+    #: Nullable because clocks started before this column existed genuinely
+    #: do not know, and guessing a source for them would be worse than
+    #: saying so.
+    target_source: Mapped[SlaTargetSource | None] = mapped_column(
+        Enum(SlaTargetSource, native_enum=False, length=20), default=None
+    )
 
     #: Time counted so far, excluding every pause.
     elapsed: Mapped[timedelta] = mapped_column(Interval, nullable=False, default=timedelta)

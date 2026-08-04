@@ -108,6 +108,20 @@ describe('InboxWorkspace', () => {
     expect(within(row).getByText(/Routed to the "Support" queue/i)).toBeInTheDocument()
   })
 
+  it('stays scrollable when a queue holds more than fits the window', async () => {
+    renderAuthenticated(<InboxWorkspace />)
+
+    // `main` is a bounded flex column, so this section is a flex item, and
+    // its `overflow: hidden` (which clips the rows to the rounded border)
+    // gives it an automatic minimum size of zero. Left shrinkable it was
+    // squeezed into the leftover space instead of overflowing, and every row
+    // past the fold was clipped with nothing to scroll — the whole page had
+    // no scrollbar because, as far as layout was concerned, nothing overflowed.
+    const workspace = await screen.findByRole('region', { name: /needs attention/i })
+
+    expect(workspace).toHaveStyle({ flexShrink: '0' })
+  })
+
   it('is operable from the keyboard', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<InboxWorkspace />)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MenuItem, TextField } from '@mui/material'
+import { Alert, FormControlLabel, MenuItem, Switch, TextField } from '@mui/material'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useAllDepartmentsQuery } from '../departments/api'
@@ -10,6 +10,11 @@ export function AgentCreateDialog({ open, onClose }: { open: boolean; onClose: (
   const { t } = useTranslation('agents')
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
+  // Off by default. The API has always supported omitting the password —
+  // it generates one and emails the agent — but this dialog required the
+  // administrator to invent one and then transmit it out of band, over chat
+  // or in person, for every agent they ever added.
+  const [setPasswordManually, setSetPasswordManually] = useState(false)
   const [password, setPassword] = useState('')
   const [title, setTitle] = useState('')
   const [departmentId, setDepartmentId] = useState('')
@@ -21,6 +26,7 @@ export function AgentCreateDialog({ open, onClose }: { open: boolean; onClose: (
     setEmail('')
     setFullName('')
     setPassword('')
+    setSetPasswordManually(false)
     setTitle('')
     setDepartmentId('')
     createMutation.reset()
@@ -36,7 +42,10 @@ export function AgentCreateDialog({ open, onClose }: { open: boolean; onClose: (
       {
         email,
         full_name: fullName,
-        password,
+        // Omitted entirely rather than sent empty: the backend treats
+        // "absent" as "invite them", and an empty string as a password that
+        // fails validation.
+        password: setPasswordManually ? password : undefined,
         title: title || null,
         department_id: departmentId || null,
       },
@@ -71,15 +80,28 @@ export function AgentCreateDialog({ open, onClose }: { open: boolean; onClose: (
         required
         fullWidth
       />
-      <TextField
-        label={t('AgentCreateDialog.initialPasswordLabel')}
-        type="password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-        required
-        fullWidth
-        helperText={t('AgentCreateDialog.initialPasswordHelperText')}
+      <FormControlLabel
+        control={
+          <Switch
+            checked={setPasswordManually}
+            onChange={(event) => setSetPasswordManually(event.target.checked)}
+          />
+        }
+        label={t('AgentCreateDialog.setPasswordManuallyLabel')}
       />
+      {setPasswordManually ? (
+        <TextField
+          label={t('AgentCreateDialog.initialPasswordLabel')}
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+          fullWidth
+          helperText={t('AgentCreateDialog.initialPasswordHelperText')}
+        />
+      ) : (
+        <Alert severity="info">{t('AgentCreateDialog.inviteExplanation')}</Alert>
+      )}
       <TextField
         label={t('AgentCreateDialog.titleLabel')}
         value={title}

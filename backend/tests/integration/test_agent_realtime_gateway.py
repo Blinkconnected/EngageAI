@@ -18,6 +18,7 @@ from blinkengage.api.v1.endpoints.realtime import agent_gateway
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.channels.providers.web_chat import session_channel_name
@@ -55,6 +56,7 @@ from blinkengage.infrastructure.repositories.message_repository import MessageRe
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.user_repository import UserRepository
@@ -180,6 +182,7 @@ def _build_services(session, container):
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        ownership=OwnershipService(OwnershipRepository(session)),
         realtime=realtime,
     )
     agent_service = AgentService(

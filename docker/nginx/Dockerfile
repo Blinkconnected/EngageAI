@@ -17,6 +17,9 @@ RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime
 COPY --from=frontend-build /app/dist /usr/share/nginx/html
+# 00- prefix is load-bearing: conf.d/*.conf is globbed in sorted order and the
+# log_format defined here must be parsed before default.conf references it.
+COPY docker/nginx/logging.conf /etc/nginx/conf.d/00-logging.conf
 COPY docker/nginx/nginx.prod.conf /etc/nginx/conf.d/default.conf
 
 # 127.0.0.1, not localhost: this image's /etc/hosts maps "localhost" to

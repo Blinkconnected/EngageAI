@@ -291,14 +291,41 @@ class ConversationInspection:
     gaps: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _owner_of(row: ConversationOwnership) -> Owner:
-    return Owner(kind=row.owner_kind, id=row.owner_id, name=row.owner_name)
+#: Names resolved for owners whose row stored none, keyed by ``(kind, id)``.
+OwnerNames = dict[tuple[OwnerKind, uuid.UUID], str]
 
 
-def _previous_of(row: ConversationOwnership) -> Owner | None:
+def _named(owner: Owner, names: OwnerNames) -> Owner:
+    """The owner, with a name if one can be found for it.
+
+    Ownership rows copy the owner's name **by value**, so a timeline still
+    reads correctly after somebody leaves the company. Two writers cannot
+    afford the lookup and store ``NULL`` instead: ``pick()`` is on the path
+    an agent waits for, and an agent's name lives on a related ``User``
+    whose load would be a lazy fetch inside an async session.
+
+    ``Owner.describe()`` then falls back to ``"human_agent 93b777f2-…"`` —
+    a raw identifier, shown to a person, on the screen whose whole purpose
+    is explaining what happened. This fills that gap and only that gap: a
+    row that stored a name keeps it, so a queue renamed since remains
+    described the way it was at the time.
+    """
+    if owner.name or owner.id is None:
+        return owner
+    found = names.get((owner.kind, owner.id))
+    return Owner(kind=owner.kind, id=owner.id, name=found) if found else owner
+
+
+def _owner_of(row: ConversationOwnership, names: OwnerNames | None = None) -> Owner:
+    owner = Owner(kind=row.owner_kind, id=row.owner_id, name=row.owner_name)
+    return _named(owner, names) if names else owner
+
+
+def _previous_of(row: ConversationOwnership, names: OwnerNames | None = None) -> Owner | None:
     if row.previous_kind is None:
         return None
-    return Owner(kind=row.previous_kind, id=row.previous_id, name=row.previous_name)
+    owner = Owner(kind=row.previous_kind, id=row.previous_id, name=row.previous_name)
+    return _named(owner, names) if names else owner
 
 
 class ConversationInspectorService:
@@ -330,7 +357,12 @@ class ConversationInspectorService:
         binding = await self._binding(conversation.id)
         messages = await self._messages(conversation.id)
 
-        owner = _owner_of(ownership_rows[-1]) if ownership_rows else Owner(kind=OwnerKind.NOBODY)
+        owner_names = await self._owner_names(ownership_rows)
+        owner = (
+            _owner_of(ownership_rows[-1], owner_names)
+            if ownership_rows
+            else Owner(kind=OwnerKind.NOBODY)
+        )
         ai = self._ai_story(conversation, decisions=decisions, service=service, now=moment)
 
         return ConversationInspection(
@@ -351,16 +383,22 @@ class ConversationInspectorService:
                 ownership=ownership_rows,
                 messages=messages,
                 service=service,
+                owner_names=owner_names,
             ),
             decisions=tuple(decisions),
-            ownership=self._ownership_spans(ownership_rows, now=moment),
+            ownership=self._ownership_spans(ownership_rows, now=moment, names=owner_names),
             clocks=self._clocks(sla, owner=owner, notes=pause_notes, now=moment),
             sla_health=sla.health.value,
             ai=ai,
             policies=self._policies(decisions),
             technical=self._technical(conversation, service=service, binding=binding),
             generated_at=moment,
-            gaps=self._gaps(decisions=decisions, ownership=ownership_rows, sla_clocks=sla.clocks),
+            gaps=self._gaps(
+                decisions=decisions,
+                ownership=ownership_rows,
+                sla_clocks=sla.clocks,
+                service=service,
+            ),
         )
 
     # --- Sections ----------------------------------------------------
@@ -417,6 +455,7 @@ class ConversationInspectorService:
         ownership: list[ConversationOwnership],
         messages: list[Message],
         service: Any,
+        owner_names: OwnerNames,
     ) -> tuple[TimelineEntry, ...]:
         """Every recorded event, merged and in order.
 
@@ -436,7 +475,7 @@ class ConversationInspectorService:
             entries.append(self._decision_entry(row))
 
         for row in ownership:
-            entries.append(self._ownership_entry(row))
+            entries.append(self._ownership_entry(row, owner_names))
 
         entries.sort(key=lambda entry: (entry.at, entry.sequence))
         return tuple(entries)
@@ -569,9 +608,11 @@ class ConversationInspectorService:
             sequence=_SEQUENCE_FOR_STREAM.get(stream, _SEQUENCE_ROUTING),
         )
 
-    def _ownership_entry(self, row: ConversationOwnership) -> TimelineEntry:
-        owner = _owner_of(row)
-        previous = _previous_of(row)
+    def _ownership_entry(
+        self, row: ConversationOwnership, names: OwnerNames | None = None
+    ) -> TimelineEntry:
+        owner = _owner_of(row, names)
+        previous = _previous_of(row, names)
         reason_text = OWNERSHIP_REASON_TEXT.get(row.reason, row.reason.value)
 
         facts: list[tuple[str, str]] = [
@@ -613,7 +654,7 @@ class ConversationInspectorService:
         )
 
     def _ownership_spans(
-        self, rows: list[ConversationOwnership], *, now: datetime
+        self, rows: list[ConversationOwnership], *, now: datetime, names: OwnerNames | None = None
     ) -> tuple[OwnershipSpan, ...]:
         spans: list[OwnershipSpan] = []
         for index, row in enumerate(rows):
@@ -621,7 +662,7 @@ class ConversationInspectorService:
             # the same rule the ownership metrics use, so a duration here and
             # a duration in a report cannot disagree.
             until = self._utc(rows[index + 1].owned_from) if index + 1 < len(rows) else now
-            owner = _owner_of(row)
+            owner = _owner_of(row, names)
             previous = _previous_of(row)
             spans.append(
                 OwnershipSpan(
@@ -794,6 +835,7 @@ class ConversationInspectorService:
         decisions: list[RoutingDecisionRecord],
         ownership: list[ConversationOwnership],
         sla_clocks: list[Any],
+        service: Any,
     ) -> tuple[str, ...]:
         """What is missing, said out loud.
 
@@ -818,6 +860,18 @@ class ConversationInspectorService:
                 "No SLA clocks were started. Its service measures none, or it "
                 "predates the SLA engine."
             )
+        if service is None:
+            # Worth saying even though nothing looks broken. The conversation
+            # is being measured and governed by fallbacks — the platform's
+            # default targets and the company-wide AI settings — rather than
+            # by anything anybody chose for it. An investigator asking "why is
+            # this due in an hour?" would otherwise go looking for a service
+            # that was never there.
+            gaps.append(
+                "This conversation is not bound to a service. Its SLA targets "
+                "and AI policy come from fallbacks rather than from anything "
+                "configured for it."
+            )
         return tuple(gaps)
 
     # --- Reads -------------------------------------------------------
@@ -828,6 +882,46 @@ class ConversationInspectorService:
         )
 
         return await ContextBindingRepository(self._session).current(conversation_id)
+
+    async def _owner_names(self, rows: list[ConversationOwnership]) -> OwnerNames:
+        """Display names for owners whose rows stored none.
+
+        Two queries at most, whatever the length of the timeline — a
+        conversation that changed hands twenty times must not cost twenty
+        round trips on a troubleshooting screen.
+        """
+        from sqlalchemy import select
+
+        from blinkengage.infrastructure.database.models.agent import Agent
+        from blinkengage.infrastructure.database.models.queue import Queue
+        from blinkengage.infrastructure.database.models.user import User
+
+        wanted: set[tuple[OwnerKind, uuid.UUID]] = set()
+        for row in rows:
+            for kind, owner_id, name in (
+                (row.owner_kind, row.owner_id, row.owner_name),
+                (row.previous_kind, row.previous_id, row.previous_name),
+            ):
+                if kind is not None and owner_id is not None and not name:
+                    wanted.add((kind, owner_id))
+
+        names: OwnerNames = {}
+        queue_ids = [i for kind, i in wanted if kind is OwnerKind.QUEUE]
+        if queue_ids:
+            found = await self._session.execute(
+                select(Queue.id, Queue.name).where(Queue.id.in_(queue_ids))
+            )
+            names.update({(OwnerKind.QUEUE, i): n for i, n in found if n})
+
+        agent_ids = [i for kind, i in wanted if kind is OwnerKind.HUMAN_AGENT]
+        if agent_ids:
+            found = await self._session.execute(
+                select(Agent.id, User.full_name)
+                .join(User, User.id == Agent.user_id)
+                .where(Agent.id.in_(agent_ids))
+            )
+            names.update({(OwnerKind.HUMAN_AGENT, i): n for i, n in found if n})
+        return names
 
     async def _queue_name(self, conversation: Conversation) -> str | None:
         if conversation.queue_id is None:

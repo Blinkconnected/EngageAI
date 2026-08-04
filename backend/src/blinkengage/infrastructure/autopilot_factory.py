@@ -110,6 +110,7 @@ def build_autopilot_service(*, session: AsyncSession, settings: Settings) -> Aut
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        ownership=OwnershipService(OwnershipRepository(session)),
         realtime=get_realtime_publisher(settings),
         # Without this, every reply AI sends settles no SLA clock: the
         # customer gets an answer in seconds and the first-response target

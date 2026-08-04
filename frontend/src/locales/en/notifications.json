@@ -27,6 +27,7 @@
     "channelLabelEmail": "Email",
     "channelLabelBrowser": "Browser",
     "channelLabelSound": "Sound",
+    "channelLabelPush": "Mobile push",
     "toggleAriaLabel": "{{type}} via {{channel}}"
   },
   "NotificationsPage": {

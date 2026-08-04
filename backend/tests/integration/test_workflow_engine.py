@@ -14,6 +14,7 @@ from sqlalchemy import select
 import blinkengage.application.workflow_actions  # noqa: F401 - registers built-in actions
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.application.services.workflow_engine import WorkflowEngine
 from blinkengage.application.workflow_actions.base import WorkflowExecutionContext
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -52,6 +53,7 @@ from blinkengage.infrastructure.repositories.message_repository import MessageRe
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.repositories.workflow_repository import (
     WorkflowDefinitionRepository,
@@ -165,6 +167,7 @@ async def _run_engine(app: Any, event: dict) -> None:
             departments=DepartmentRepository(session),
             queues=QueueRepository(session),
             agent_skills=AgentSkillRepository(session),
+            ownership=OwnershipService(OwnershipRepository(session)),
             realtime=RealtimePublisher(app.state.container.redis()),
         )
         context = WorkflowExecutionContext(

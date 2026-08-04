@@ -14,6 +14,72 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A conversation's history never shows you an internal identifier.** Where
+  the timeline said who took a conversation over, it could print something like
+  `human_agent 93b777f2-c048-4c10-9d84-5b17c6813d63` instead of the person's
+  name — on the one screen whose entire purpose is explaining what happened.
+
+  Names are stored on each entry as they were at the time, so a history still
+  reads correctly after somebody leaves. Two places could not afford that
+  lookup while an agent was waiting and stored nothing instead, and the display
+  fell back to the identifier. Those entries now resolve the name when the
+  history is read, and entries that recorded a name keep it — so a queue
+  renamed since is still described the way it was on the day.
+
+- **Your SLA policy now actually measures conversations.** Deadlines were read
+  only from the service directory, so a company that had built an SLA and
+  attached it to a queue measured nothing at all: an empty Breached list, no
+  SLA ordering in the Inbox, and no SLA events on any conversation's history —
+  with nothing anywhere saying why.
+
+  Targets now resolve from the service, then the queue's own policy, then a
+  conservative platform default, and each conversation records which of the
+  three it used.
+
+- **Conversations no longer disappear when nothing matches a routing rule.**
+  Every existing company now has a catch-all rule and a queue for it to point
+  at, so a message that matches none of your specific rules lands somewhere an
+  agent is looking instead of reaching nothing at all.
+
+  Before this, a conversation that matched no rule was recorded accurately —
+  "it reached no queue, so nothing will pick it up" — on a screen nobody had a
+  reason to open, and was then invisible everywhere else. AI never saw it
+  either: Autopilot works a queue, so a conversation in no queue is one AI is
+  never offered. The symptom people actually hit was configuring AI, sending a
+  test message, and waiting for a reply that was never coming.
+
+  New companies have had this since registration started seeding a queue; this
+  brings every company that existed before that in line. The seeded rule has
+  the lowest possible priority, so every rule you have already written still
+  wins — it only claims what nothing else claimed — and it is ordinary
+  configuration you can rename, edit or delete.
+
+- **Assignment and ownership can no longer disagree about who has a
+  conversation.** Assigning a conversation through an automation rule, an SLA
+  escalation, or by taking one back from AI updated who it was assigned to
+  without recording the handover — so the Inbox could show a conversation as
+  owned by its queue while it was in fact assigned to an agent, and nothing
+  reported the contradiction.
+
+  Every way a conversation can change hands now writes one entry to its
+  history, and who it is assigned to follows from that entry rather than being
+  set separately. The conversation's timeline gains the transitions that were
+  previously missing, including a human taking a conversation off AI — the one
+  that matters most, because it is what tells AI to stop.
+
+  Releasing a conversation that belongs to no queue is now recorded as
+  genuinely unowned rather than silently leaving the previous owner's name on
+  it.
+
+### Changed
+
+- **The default queue every company starts with is named "General".** New
+  companies already got this; installations carrying an older default now
+  match. It is ordinary configuration — rename, edit or delete it like any
+  other queue.
+
 ### Added
 
 - **AI now waits, so your agents get first refusal.** When a conversation
@@ -83,6 +149,27 @@ for more detail on how this page is put together.
   the most useful things this screen can say.
 
 ### Fixed
+
+- **Conversations no longer vanish in companies created before this
+  release.** Registration seeds a `General` queue and a catch-all routing rule
+  so a new company is operable the moment it exists — but companies that
+  already existed never got one. Any message that matched none of their
+  specific rules reached no queue at all: invisible to agents, and never
+  offered to AI, because Autopilot only picks up from a queue.
+
+  On this installation that was **every existing company**. A one-off upgrade
+  step now gives each of them a catch-all rule at the lowest possible
+  precedence, pointing at their oldest existing queue — or a new `General` one
+  if they had none. Routing that already worked is untouched: the new rule
+  only claims what nothing else claimed.
+
+  The queue and the rule are ordinary configuration from that point on —
+  rename, edit or delete them like any other.
+
+- **The Inbox can be scrolled again when a queue is fuller than the
+  window.** Any work queue holding more conversations than fitted on screen
+  simply cut off at the bottom, with no scrollbar and no way to reach the rest
+  — the conversations were loaded and rendered, and unreachable.
 
 - **"Assigned to me" no longer shows work that belongs to nobody.** For a
   supervisor or owner without an agent profile, it returned every unassigned

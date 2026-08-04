@@ -27,7 +27,7 @@ describe('AgentsPage', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
-  it('creates a new agent through the dialog', async () => {
+  it('invites a new agent by email without the admin inventing a password', async () => {
     const user = userEvent.setup()
     renderAuthenticated(<AgentsPage />)
     await screen.findByText('Grace Hopper')
@@ -35,11 +35,32 @@ describe('AgentsPage', () => {
     await user.click(screen.getByRole('button', { name: /new agent/i }))
     await user.type(await screen.findByLabelText(/full name/i), 'Ada Lovelace')
     await user.type(screen.getByLabelText(/^email/i), 'ada@example.com')
-    await user.type(screen.getByLabelText(/initial password/i), 'correct-horse-1')
+
+    // No password field by default. The API has always generated one and
+    // emailed it; this dialog used to require the administrator to invent a
+    // password and then transmit it out of band, for every agent they added.
+    expect(screen.queryByLabelText(/initial password/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/we'll email this person/i)).toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: /create agent/i }))
 
     expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
     expect(screen.getByText('ada@example.com')).toBeInTheDocument()
+  })
+
+  it('still allows setting a password directly when that is wanted', async () => {
+    const user = userEvent.setup()
+    renderAuthenticated(<AgentsPage />)
+    await screen.findByText('Grace Hopper')
+
+    await user.click(screen.getByRole('button', { name: /new agent/i }))
+    await user.type(await screen.findByLabelText(/full name/i), 'Ada Lovelace')
+    await user.type(screen.getByLabelText(/^email/i), 'ada@example.com')
+    await user.click(screen.getByLabelText(/set a password myself/i))
+    await user.type(await screen.findByLabelText(/initial password/i), 'correct-horse-1')
+    await user.click(screen.getByRole('button', { name: /create agent/i }))
+
+    expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
   })
 
   it('edits an agent title', async () => {

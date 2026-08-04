@@ -24,7 +24,14 @@ async def test_create_and_list_routing_rules(client: AsyncClient, owner_headers:
 
     list_response = await client.get("/api/v1/routing-rules", headers=owner_headers)
     assert list_response.status_code == 200
-    assert len(list_response.json()) == 1
+    rules = list_response.json()
+    # Two: the one just created, and the catch-all registration seeds so a
+    # company's first message always lands somewhere. The rule under test
+    # outranks it — priority is lowest-number-first — which is the point of
+    # seeding it at 1000.
+    assert len(rules) == 2
+    assert rules[0]["priority"] == 10
+    assert rules[0]["conditions"] == {"body_contains": "invoice"}
 
 
 async def test_update_and_delete_routing_rule(client: AsyncClient, owner_headers: dict) -> None:

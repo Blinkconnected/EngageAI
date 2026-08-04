@@ -32,6 +32,7 @@ export function NotificationPreferencesPanel() {
     email: t('NotificationPreferencesPanel.channelLabelEmail'),
     browser: t('NotificationPreferencesPanel.channelLabelBrowser'),
     sound: t('NotificationPreferencesPanel.channelLabelSound'),
+    push: t('NotificationPreferencesPanel.channelLabelPush'),
   }
 
   if (preferencesQuery.isPending) {

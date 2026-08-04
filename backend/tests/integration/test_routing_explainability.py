@@ -64,6 +64,20 @@ async def _queue(client: AsyncClient, owner_headers: dict, **fields: Any) -> str
     return str(response.json()["id"])
 
 
+async def _delete_every_routing_rule(client: AsyncClient, owner_headers: dict) -> None:
+    """Removes the catch-all registration seeds.
+
+    Registration gives every company a rule that matches everything, so its
+    first conversation has somewhere to land. The tests below are about what
+    happens when routing finds nothing — a state an administrator now has to
+    create on purpose, and which still has to be recorded when they do.
+    """
+    listing = (await client.get("/api/v1/routing-rules", headers=owner_headers)).json()
+    rules = listing["items"] if isinstance(listing, dict) else listing
+    for rule in rules:
+        await client.delete(f"/api/v1/routing-rules/{rule['id']}", headers=owner_headers)
+
+
 async def _routing_rule(
     client: AsyncClient, owner_headers: dict, *, queue_id: str, conditions: dict | None = None
 ) -> None:
@@ -105,6 +119,23 @@ async def _decisions(session: Any) -> list[RoutingDecisionRecord]:
     )
 
 
+async def _routing_decisions(session: Any) -> list[RoutingDecisionRecord]:
+    """Only the decisions about *routing*.
+
+    One conversation's decision log holds every kind of decision, and since
+    SLA targets started resolving through a platform-default fallback, an
+    ordinary routed conversation also carries the clocks that began with it.
+    A test about which queue was chosen should not have to be updated every
+    time a different subsystem learns to explain itself, so the ones that
+    assert an exact sequence filter to their own subject.
+    """
+    return [
+        decision
+        for decision in await _decisions(session)
+        if not decision.kind.value.startswith("sla_")
+    ]
+
+
 class TestWhyThisQueue:
     async def test_a_routed_conversation_records_the_rule_that_matched(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
@@ -134,7 +165,9 @@ class TestWhyThisQueue:
         assert decision.matched_rule_priority == 1
         assert decision.matched_rule_id is not None
         assert decision.details["rule_conditions"] == {"body_contains": "refund"}
-        assert decision.rules_evaluated == 1
+        # Two: this test's rule, and the catch-all registration seeds so a
+        # brand-new company is never routing conversations nowhere.
+        assert decision.rules_evaluated == 2
         assert 'message contains "refund"' in decision.sentence
 
     async def test_a_conversation_nobody_routed_is_recorded_not_silent(
@@ -146,8 +179,14 @@ class TestWhyThisQueue:
         this milestone that produced no queue, no assignment and no trace
         — and "there is no row" is indistinguishable from "the recorder
         was broken".
+
+        Reaching this state now takes deliberate effort: registration seeds a
+        catch-all rule precisely so a company cannot start here. Deleting it
+        is what an administrator would have to do, so that is what this does
+        — the unrouted path still exists and still has to be recorded.
         """
         company_id = registered_owner["user"]["company"]["id"]
+        await _delete_every_routing_rule(client, owner_headers)
         chat = await _web_chat_session(client, owner_headers)
 
         async with app.state.container.session_factory()() as session:
@@ -170,6 +209,9 @@ class TestWhyThisQueue:
     ) -> None:
         """Same symptom, different fix — so a different reason code."""
         company_id = registered_owner["user"]["company"]["id"]
+        # The seeded catch-all matches everything by design, so it has to go
+        # for "every rule missed" to be reachable at all.
+        await _delete_every_routing_rule(client, owner_headers)
         queue_id = await _queue(client, owner_headers, name="WhatsApp")
         await _routing_rule(
             client, owner_headers, queue_id=queue_id, conditions={"channel_type": "whatsapp"}
@@ -202,7 +244,7 @@ class TestWhyThisQueue:
         async with app.state.container.session_factory()() as session:
             await _ingest(session, company_id=company_id, chat=chat)
             await session.commit()
-            decisions = await _decisions(session)
+            decisions = await _routing_decisions(session)
 
         assert [d.reason for d in decisions] == [
             RoutingDecisionReason.RULE_MATCHED,
@@ -480,7 +522,7 @@ class TestVolumeAndImmutability:
             for i in range(5):
                 await _ingest(session, company_id=company_id, chat=chat, external_id=f"ext-{i}")
             await session.commit()
-            decisions = await _decisions(session)
+            decisions = await _routing_decisions(session)
 
         # Exactly two: which queue, and which agent.
         assert [d.kind for d in decisions] == [

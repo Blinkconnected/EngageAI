@@ -10,7 +10,14 @@ export interface Notification {
   created_at: string
 }
 
-export const NOTIFICATION_CHANNELS = ['email', 'browser', 'sound'] as const
+/**
+ * Order is the order the columns appear in, weakest interruption first.
+ * `push` is last because it is the only one that can reach somebody who
+ * isn't looking at the app — worth being the rightmost, most deliberate
+ * toggle rather than sitting next to `browser`, which it is often
+ * confused with.
+ */
+export const NOTIFICATION_CHANNELS = ['email', 'browser', 'sound', 'push'] as const
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
 
 /** Matches the backend's `NotificationPreferenceItem`. */

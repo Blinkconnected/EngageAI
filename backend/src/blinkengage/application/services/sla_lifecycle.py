@@ -23,7 +23,7 @@ from uuid import UUID
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.domain.lifecycle import ConversationStatus
 from blinkengage.domain.service_context import SlaTargets
-from blinkengage.domain.sla import PauseReason, SlaState, SlaTimer
+from blinkengage.domain.sla import PauseReason, SlaState, SlaTargetSource, SlaTimer
 
 #: The clocks a conversation starts with when it enters a queue. Not the next
 #: response clock: nobody is waiting for a *next* reply before the first one
@@ -57,6 +57,7 @@ class SlaLifecycle:
         conversation_id: UUID,
         company_id: UUID,
         targets: SlaTargets,
+        source: SlaTargetSource | None = None,
         now: datetime | None = None,
     ) -> None:
         """A conversation entered a queue.
@@ -74,6 +75,7 @@ class SlaLifecycle:
                 company_id=company_id,
                 timer=timer,
                 targets=targets,
+                source=source,
                 now=now,
             )
 

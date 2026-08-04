@@ -44,7 +44,7 @@ from blinkengage.domain.exceptions import (
 )
 from blinkengage.domain.inbox_views import InboxView
 from blinkengage.domain.lifecycle import can_move
-from blinkengage.domain.ownership import Owner, OwnerKind, OwnershipReason
+from blinkengage.domain.ownership import NOBODY, Owner, OwnerKind, OwnershipReason
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -150,7 +150,7 @@ class ConversationService:
         provider_factory: ChannelProviderFactory,
         events: DomainEventPublisher,
         sla: SlaEngine | None = None,
-        ownership: OwnershipService | None = None,
+        ownership: OwnershipService,
         settings: Settings,
         transfers: ConversationTransferRepository,
         agents: AgentRepository,
@@ -173,9 +173,12 @@ class ConversationService:
         #: absent, every SLA call below is a no-op and the service behaves
         #: exactly as it did before the clocks existed.
         self._sla = SlaLifecycle(sla)
-        # Optional for the same reason as ``sla`` above. Absent, the
-        # ownership timeline simply does not record this action — which
-        # is how it came to record none of the human ones at all.
+        #: **Required**, unlike ``sla`` above. Ownership stopped being
+        #: evidence about an action and became the action: a transition is
+        #: what moves ``assigned_agent_id`` (see ``OwnershipService``), so a
+        #: service without one would accept an assignment and quietly not
+        #: perform it. It was optional while it was only a record, and that
+        #: is how it came to record none of the human actions at all.
         self._ownership = ownership
         self._settings = settings
         self._transfers = transfers
@@ -281,7 +284,16 @@ class ConversationService:
         priority: ConversationPriority | None = None,
         queue_id: UUID | None = None,
         actor_user_id: UUID | None = None,
+        ownership_reason: OwnershipReason = OwnershipReason.MANUAL_TRANSFER,
     ) -> Conversation:
+        """``ownership_reason`` is why, and the caller is the only thing that
+        knows it. A supervisor reassigning from the Inbox, an SLA rule
+        escalating a breach and a workflow rule firing on a keyword all reach
+        this one method, and a timeline that recorded them identically would
+        answer "who has this" while losing the question people actually ask,
+        which is why. The default suits the human case; the automated callers
+        pass their own.
+        """
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         previous_status = conversation.status
         if priority is not None:
@@ -314,7 +326,23 @@ class ConversationService:
                 conversation.closed_at = datetime.now(UTC)
         previous_agent_id = conversation.assigned_agent_id
         if assigned_agent_id is not None:
-            conversation.assigned_agent_id = assigned_agent_id
+            # Through ownership, not by writing the column. This is the path
+            # every *indirect* assignment takes — the PATCH endpoint, the
+            # ``assign_conversation`` workflow action, SLA escalation rules —
+            # and until this call existed it was the one assignment path that
+            # never recorded a transition. A workflow that assigned a
+            # conversation left the column saying "an agent" and the timeline
+            # still saying "the queue", and the Inbox believed the timeline.
+            #
+            # ``project_assignment`` inside the transfer sets the column, so
+            # the ORM instance is refreshed rather than assigned to here.
+            await self._record_ownership(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                to=agent_owner(assigned_agent_id, None),
+                reason=ownership_reason,
+                actor_user_id=actor_user_id,
+            )
             # A human being assigned always takes this back from AI
             # Autopilot — see Conversation.autopilot_active's docstring.
             conversation.autopilot_active = False
@@ -332,6 +360,23 @@ class ConversationService:
                 raise EntityNotFoundError("Queue", queue_id)
             conversation.queue_id = queue_id
             conversation.queue_entered_at = datetime.now(UTC)
+
+            # Moving the queue moves the *owner* only when the queue is who
+            # currently holds it. If an agent has the conversation, changing
+            # which queue it belongs to does not take it off their desk, and
+            # writing a transition would be recording a handover that did not
+            # happen. This is the distinction that makes ownership worth
+            # having: "which queue is this in" and "who is answerable" are
+            # different questions with different answers.
+            held_by = await self._ownership.current(conversation.id)
+            if held_by is not None and held_by.owner.kind is OwnerKind.QUEUE:
+                await self._record_ownership(
+                    conversation_id=conversation.id,
+                    company_id=company_id,
+                    to=queue_owner(queue_id, queue.name),
+                    reason=ownership_reason,
+                    actor_user_id=actor_user_id,
+                )
 
         await self._events.publish(
             DomainEvent(
@@ -427,7 +472,12 @@ class ConversationService:
 
         SLA timers (``first_response_at``, ``sla_*_breached_at``) and
         conversation history (messages, notes) are untouched — this only
-        ever writes ``assigned_agent_id``/``department_id``/``queue_id``.
+        ever writes ``department_id``/``queue_id`` and the ownership the
+        assignment column is projected from.
+
+        ``assigned_agent_id`` is not set here. It follows from the ownership
+        transition recorded below — see ``OwnershipService.transfer`` — which
+        is what keeps the two from ever describing different people.
         """
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         from_agent_id = conversation.assigned_agent_id
@@ -443,7 +493,6 @@ class ConversationService:
             agent = await self._agents.get_by_id(company_id=company_id, agent_id=to_agent_id)
             if agent is None:
                 raise EntityNotFoundError("Agent", to_agent_id)
-            conversation.assigned_agent_id = to_agent_id
             conversation.department_id = None
             recipient_was_online = agent.status != AgentStatus.OFFLINE
         elif target_type is TransferTargetType.DEPARTMENT:
@@ -454,7 +503,6 @@ class ConversationService:
             )
             if department is None:
                 raise EntityNotFoundError("Department", to_department_id)
-            conversation.assigned_agent_id = None
             conversation.department_id = to_department_id
             department_agents = await self._agents.list_for_department(
                 company_id=company_id, department_id=to_department_id
@@ -463,7 +511,6 @@ class ConversationService:
         else:
             # QUEUE — future-ready architecture only, not reachable via
             # the API schema today (see ConversationTransferRequest).
-            conversation.assigned_agent_id = None
             conversation.department_id = None
 
         # A transfer is the clearest possible ownership change, and until now
@@ -669,6 +716,7 @@ class ConversationService:
         # returns to the queue unassigned rather than to them. Failing
         # here instead would leave AI running with no way to stop it.
         previously_unassigned = conversation.assigned_agent_id is None
+        held_by = conversation.assigned_agent_id
         agent = (
             await self._agents.get_by_user_id(company_id=company_id, user_id=actor_user_id)
             if previously_unassigned
@@ -676,12 +724,48 @@ class ConversationService:
         )
 
         conversation.autopilot_active = False
+        now = datetime.now(UTC)
         if agent is not None:
-            now = datetime.now(UTC)
-            conversation.assigned_agent_id = agent.id
             conversation.picked_up_at = now
             if conversation.first_picked_up_at is None:
                 conversation.first_picked_up_at = now
+
+        # A human taking a conversation off AI is an ownership change, and it
+        # is the single most important one in the product: everything that
+        # keeps AI from speaking after a person has stepped in reads the
+        # owner. Until this call existed, the column moved to the agent and
+        # the timeline still said AI held it — so the Inspector, the Inbox and
+        # every future rule that asks "is a human on this" were reading a
+        # timeline that said no.
+        #
+        # Three cases, and the middle one is the subtle one.
+        #
+        # The caller took it: they own it. Nobody took it but somebody was
+        # already assigned — the agent-request case, where an agent handed
+        # their *own* chat to Autopilot — so AI hands it back to **them**,
+        # not to the queue. Getting that wrong would take the conversation
+        # off the desk of the person who parked it there, which is the exact
+        # opposite of resuming. Otherwise it returns to its queue, and if
+        # there is no queue either there is nothing honest to name, so no row
+        # is written rather than an owner being invented.
+        new_owner = (
+            agent_owner(agent.id, None)
+            if agent is not None
+            else agent_owner(held_by, None)
+            if held_by is not None
+            else queue_owner(conversation.queue_id, None)
+            if conversation.queue_id is not None
+            else None
+        )
+        if new_owner is not None:
+            await self._record_ownership(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                to=new_owner,
+                reason=OwnershipReason.AI_RELEASED,
+                actor_user_id=actor_user_id,
+                now=now,
+            )
 
         await self._events.publish(
             DomainEvent(
@@ -709,31 +793,27 @@ class ConversationService:
         actor_user_id: UUID | None = None,
         now: datetime | None = None,
     ) -> None:
-        """Writes one ownership transition, and never costs the action.
+        """Performs one ownership transition. Failure fails the caller.
 
-        The same tradeoff every recorder here makes: the conversation
-        changing hands is the product, the row explaining it is evidence,
-        and evidence that would not write must not stop an agent taking a
-        conversation.
+        This used to swallow, on the reasoning that the conversation changing
+        hands was the product and the row was evidence — and evidence that
+        would not write must not stop an agent taking a conversation.
+
+        That reasoning expired when ownership became the source of truth.
+        The transition is no longer a note *about* the handover; it is the
+        handover, and ``assigned_agent_id`` follows from it. Swallowing now
+        would mean reporting a conversation assigned to somebody who does not
+        have it — the exact class of silent disagreement the ownership model
+        exists to make impossible.
         """
-        if self._ownership is None:
-            return
-        try:
-            await self._ownership.transfer(
-                conversation_id=conversation_id,
-                company_id=company_id,
-                to=to,
-                reason=reason,
-                actor_user_id=actor_user_id,
-                now=now,
-            )
-        except Exception:  # noqa: BLE001 — see the docstring.
-            logger.warning(
-                "ownership_transition_not_recorded",
-                conversation_id=str(conversation_id),
-                reason=reason.value,
-                exc_info=True,
-            )
+        await self._ownership.transfer(
+            conversation_id=conversation_id,
+            company_id=company_id,
+            to=to,
+            reason=reason,
+            actor_user_id=actor_user_id,
+            now=now,
+        )
 
     async def release(
         self,
@@ -783,15 +863,24 @@ class ConversationService:
                     "may release this conversation"
                 )
 
-        conversation.assigned_agent_id = None
         conversation.picked_up_at = None
         conversation.queue_entered_at = datetime.now(UTC)
 
-        # Back to the queue, never to nobody: a conversation owned by nobody
-        # is one nothing picks up and no escalation can find. A conversation
-        # with no queue has nothing honest to be handed to, so no row is
-        # written rather than an owner being invented.
-        if conversation.queue_id is not None:
+        # Back to the queue where there is one. A conversation owned by
+        # nobody is one nothing picks up and no escalation can find — which
+        # is precisely why ``NOBODY`` is a real owner kind rather than an
+        # absent row: it makes the state *findable*. Releasing a queue-less
+        # conversation used to write no row at all, which left the timeline
+        # saying the agent still held it while the column said otherwise.
+        if conversation.queue_id is None:
+            await self._record_ownership(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                to=NOBODY,
+                reason=OwnershipReason.RELEASED_BY_OWNER,
+                actor_user_id=actor_user_id,
+            )
+        else:
             await self._record_ownership(
                 conversation_id=conversation.id,
                 company_id=company_id,

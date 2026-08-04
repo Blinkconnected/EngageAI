@@ -42,6 +42,7 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
 from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from tests.integration.test_routing_explainability import (
     _agent,
+    _delete_every_routing_rule,
     _ingest,
     _queue,
     _routing_rule,
@@ -76,6 +77,13 @@ async def _run(
     chat = await _web_chat_session(client, headers)
     if route:
         await _autopilot_queue(client, headers)
+    else:
+        # "Nothing routed this" is now a state an administrator has to
+        # create on purpose: registration seeds a catch-all rule so a new
+        # company's first message always lands somewhere. Without this the
+        # callers below would silently be testing a *routed* conversation
+        # and their whole premise would be gone.
+        await _delete_every_routing_rule(client, headers)
     company_id = uuid.UUID(registered_owner["user"]["company"]["id"])
 
     factory = app.state.container.session_factory()
@@ -321,6 +329,7 @@ async def _sweep(
     wrapper is `asyncio.run` around this and a module-level engine, neither
     of which is the behaviour under test.
     """
+    from blinkengage.infrastructure import autopilot_factory
     from blinkengage.infrastructure.tasks import ai_pickup_sweep_task as sweep
 
     monkeypatch.setattr(
@@ -328,6 +337,13 @@ async def _sweep(
         "build_ai_provider_for_company",
         lambda settings, config: _FakeAiProvider(confidence=confidence),
     )
+    # The sweep builds its *own* Autopilot service from settings rather than
+    # from the container, so it reaches past the fake Redis every other test
+    # uses and opens a real connection. Where none answers, delivering the
+    # reply fails, ``send_reply`` returns at its failed-send branch, and the
+    # first-response clock is never settled -- so "AI answered the customer"
+    # quietly became a claim about whether Redis happened to be reachable.
+    monkeypatch.setattr(autopilot_factory, "_redis", app.state.container.redis())
     factory = app.state.container.session_factory()
     settled: dict[uuid.UUID, str] = {}
     async with factory() as session:

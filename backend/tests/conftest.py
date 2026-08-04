@@ -13,6 +13,7 @@ import blinkengage.infrastructure.database.models  # noqa: F401 - populates Base
 from blinkengage.api.deps import get_attachment_store, get_attachment_store_ws
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.application.services.sla_monitor_service import SlaMonitorService
 from blinkengage.domain.events import DomainEventPublisher
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -46,6 +47,7 @@ from blinkengage.infrastructure.repositories.message_repository import MessageRe
 from blinkengage.infrastructure.repositories.notification_repository import (
     NotificationRepository,
 )
+from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.main import create_app
 
@@ -146,6 +148,7 @@ def make_sla_monitor(
             departments=DepartmentRepository(session),
             queues=QueueRepository(session),
             agent_skills=AgentSkillRepository(session),
+            ownership=OwnershipService(OwnershipRepository(session)),
             realtime=realtime,
         )
         notifications = NotificationService(

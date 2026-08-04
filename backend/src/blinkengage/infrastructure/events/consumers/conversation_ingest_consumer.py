@@ -33,6 +33,7 @@ from blinkengage.application.services.resolution_strategies import default_stage
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_lifecycle import SlaLifecycle
+from blinkengage.application.services.sla_target_resolver import SlaTargetResolver
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.company_settings import (
@@ -113,6 +114,7 @@ from blinkengage.infrastructure.repositories.service_directory_repository import
     CustomerContextRepository,
     ServiceRepository,
 )
+from blinkengage.infrastructure.repositories.sla_policy_repository import SlaPolicyRepository
 
 logger = get_logger(__name__)
 
@@ -650,19 +652,39 @@ async def _start_clocks(
     *,
     conversation: Conversation,
     company_id: UUID,
-    targets: SlaTargets | None,
+    queue_id: UUID | None,
+    service_targets: SlaTargets | None,
 ) -> None:
     """Starts the clocks a queued conversation gets, and never costs it.
 
     Same tradeoff as every other recorder here. A clock that would not
     start must not stop a customer being answered — an SLA is a promise
     about the answer, not a precondition for it.
+
+    Targets are *resolved*, not read from one place. This used to take the
+    service's targets and return immediately when there were none, which is
+    why an installation-wide ``conversation_sla_clocks`` held zero rows: the
+    SLA a company had configured lived on their queue, and nothing here ever
+    looked at it. See ``SlaTargetResolver``.
     """
-    if targets is None:
-        return
     try:
+        resolved = await SlaTargetResolver(
+            queues=QueueRepository(session), policies=SlaPolicyRepository(session)
+        ).for_conversation(company_id=company_id, queue_id=queue_id, service=service_targets)
         await SlaLifecycle(SlaEngine(session, RoutingDecisionRepository(session))).queued(
-            conversation_id=conversation.id, company_id=company_id, targets=targets
+            conversation_id=conversation.id,
+            company_id=company_id,
+            targets=resolved.targets,
+            source=resolved.source,
+        )
+        # Which tier answered. Without it "due in three minutes" is a number
+        # with no author, and a supervisor asking where it came from has to
+        # re-read a service version, a queue and a policy as they stand now
+        # rather than as they stood when the clock started.
+        logger.info(
+            "sla_clocks_started",
+            conversation_id=str(conversation.id),
+            source=str(resolved.source),
         )
     except Exception:  # noqa: BLE001 — see the docstring: never fatal.
         logger.warning(
@@ -843,13 +865,15 @@ async def _route_and_assign(
     # somebody to take it, for a first reply, and for the whole thing to be
     # over — all true at once, which is why they are separate clocks.
     #
-    # Targets come from the *service*, which owns them. A company with no
-    # service directory measures nothing, exactly as before this shipped.
+    # Targets are resolved across all three tiers — service, then queue, then
+    # the platform default. They used to come from the service alone, so a
+    # company whose SLA lived on its queue measured nothing at all.
     await _start_clocks(
         session,
         conversation=conversation,
         company_id=company_id,
-        targets=service.sla if service is not None else None,
+        queue_id=queue_id,
+        service_targets=service.sla if service is not None else None,
     )
 
     # The queue becomes answerable the moment the conversation enters it.
@@ -1021,9 +1045,12 @@ async def _route_and_assign(
     )
     agent_id = assignment.agent_id
     if agent_id is not None:
-        conversation.assigned_agent_id = agent_id
         conversation.status = ConversationStatus.IN_PROGRESS
         await _accepted(session, conversation=conversation)
+        # ``assigned_agent_id`` is not set here — the ownership transition
+        # below projects it (see ``OwnershipService.transfer``). Setting it
+        # too is how the column and the timeline came to be two independently
+        # maintained answers to the same question.
         await _own(
             session,
             conversation=conversation,

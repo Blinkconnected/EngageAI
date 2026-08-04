@@ -213,9 +213,12 @@ class TestLiveDashboardQueries:
             repo = ReportingRepository(session)
             depth = await repo.live_queue_depth(company_id=company_id)
 
-        assert len(depth) == 1
-        assert depth[0].queue_name == "Billing"
-        assert depth[0].open_conversations == 0
+        # By name rather than by position: the company also has the queue
+        # registration seeds, so "the only queue" is no longer a thing a
+        # test can assume, and an index would be asserting ordering this
+        # test does not care about.
+        billing = next(row for row in depth if row.queue_name == "Billing")
+        assert billing.open_conversations == 0
 
     async def test_live_conversation_counts_reports_unassigned_total_and_active(
         self, client: AsyncClient, owner_headers: dict, app: Any

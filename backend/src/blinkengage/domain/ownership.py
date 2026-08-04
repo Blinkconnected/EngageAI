@@ -403,6 +403,28 @@ def releases_on(status_finished: bool, resolved: bool, rules: OwnershipRules) ->
     return False
 
 
+def assigned_agent(owner: Owner) -> uuid.UUID | None:
+    """``Conversation.assigned_agent_id`` for an owner — the projection rule.
+
+    ``assigned_agent_id`` is a **projection of ownership**, not a fact of its
+    own. Ownership answers "who is answerable"; the column answers "which
+    human has this on their screen", and there is exactly one honest way to
+    get from the first to the second: a person, or nobody.
+
+    A queue, a team and the AI queue worker all project to ``None`` — and
+    that is the distinction the whole module exists for. ``None`` here means
+    *no human is assigned*, which is not the same as unowned: the timeline
+    still names the queue or AI as answerable. Reading the column alone can
+    never tell those apart, which is why it is the derived value and the
+    timeline is the source.
+
+    Total by construction: every ``OwnerKind`` has an answer, so a kind added
+    later cannot silently fall through to "leave whatever was there", which
+    is the failure mode that let assignment and ownership disagree.
+    """
+    return owner.id if owner.kind is OwnerKind.HUMAN_AGENT else None
+
+
 __all__ = [
     "DEFAULT_STICKY_HOURS",
     "NOBODY",
@@ -416,6 +438,7 @@ __all__ = [
     "OwnershipRules",
     "ReleasePolicy",
     "Responsibility",
+    "assigned_agent",
     "hold_until",
     "releases_on",
 ]

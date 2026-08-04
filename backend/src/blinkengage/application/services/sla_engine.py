@@ -35,6 +35,7 @@ from blinkengage.domain.sla import (
     PauseReason,
     SlaHealth,
     SlaState,
+    SlaTargetSource,
     SlaTimer,
     as_routing_decision,
     overall,
@@ -85,6 +86,7 @@ class SlaEngine:
         company_id: uuid.UUID,
         timer: SlaTimer,
         targets: SlaTargets,
+        source: SlaTargetSource | None = None,
         now: datetime | None = None,
     ) -> Clock | None:
         """Starts a clock, if the service measures it.
@@ -121,6 +123,11 @@ class SlaEngine:
             self._session.add(row)
 
         row.target_minutes = target
+        # Recorded beside the target it explains. Optional so the many
+        # callers that restart a clock (next-response, chiefly) do not have
+        # to re-resolve a source that has not changed.
+        if source is not None:
+            row.target_source = source
         row.state = SlaState.RUNNING
         row.running_since = moment
         row.started_at = row.started_at or moment
@@ -278,15 +285,25 @@ class SlaEngine:
         Same tradeoff as every other recorder here: the clock moving is the
         product, the row explaining it is evidence, and evidence that would
         not write must not stop a customer being answered.
+
+        **Inside a SAVEPOINT**, for the reason spelled out in the ingest
+        consumer's ``_record_decision``: catching the exception is not enough.
+        On PostgreSQL a failed statement poisons its whole transaction, so a
+        swallowed failure here would take down every later statement — the
+        routing, the assignment, the message itself — and the conversation
+        would be lost to an audit row. The clock's own pending writes are
+        flushed first so the rollback undoes only this insert.
         """
         clock = _to_clock(row)
         kind, reason = RECORDED_AS[state]
+        await self._session.flush()
         try:
-            await self._decisions.record(
-                company_id=row.company_id,
-                conversation_id=row.conversation_id,
-                decision=as_routing_decision(clock, kind=kind, reason=reason, now=now),
-            )
+            async with self._session.begin_nested():
+                await self._decisions.record(
+                    company_id=row.company_id,
+                    conversation_id=row.conversation_id,
+                    decision=as_routing_decision(clock, kind=kind, reason=reason, now=now),
+                )
         except Exception:  # noqa: BLE001 — see the docstring: never fatal.
             logger.warning(
                 "sla_transition_not_recorded",

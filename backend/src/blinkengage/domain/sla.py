@@ -41,6 +41,85 @@ from blinkengage.domain.routing_decisions import (
     RoutingDecisionReason,
     SlaEvent,
 )
+from blinkengage.domain.service_context import SlaTargets
+
+
+class SlaTargetSource(StrEnum):
+    """Which configuration a conversation's deadlines came from.
+
+    Carried rather than inferred, because "why is this conversation due in
+    three minutes?" is a question a supervisor asks about a specific
+    conversation, and reconstructing the answer later means re-reading a
+    service version, a queue and a policy as they are *now* rather than as
+    they were when the clock started.
+    """
+
+    #: The service version the conversation is bound to.
+    SERVICE = "service"
+    #: The queue's attached SLA policy, or its own legacy minute targets.
+    QUEUE = "queue"
+    #: Nothing was configured anywhere. See ``PLATFORM_DEFAULT_SLA_TARGETS``.
+    PLATFORM_DEFAULT = "platform_default"
+
+
+#: What the platform measures when a company has configured nothing.
+#:
+#: The tier exists because "no configuration" used to mean "no clocks", and a
+#: company that had never opened the Services screen got an Inbox whose
+#: ordering, Breached queue and SLA health were permanently empty — with
+#: nothing anywhere saying why.
+#:
+#: Deliberately conservative. Only the two targets every support desk would
+#: recognise, both generous: a company that never agreed to an SLA should not
+#: open the Inbox to a wall of red it did not choose. ``queue_minutes`` stays
+#: unmeasured because "how long may this sit before somebody accepts it" is an
+#: operational promise a business makes, not one the platform may make for it.
+PLATFORM_DEFAULT_SLA_TARGETS: Final[SlaTargets] = SlaTargets(
+    queue_minutes=None,
+    first_response_minutes=60,
+    next_response_minutes=None,
+    resolution_minutes=24 * 60,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedSlaTargets:
+    """Targets, and the answer to "says who?"."""
+
+    targets: SlaTargets
+    source: SlaTargetSource
+
+
+def resolve_sla_targets(
+    *, service: SlaTargets | None, queue: SlaTargets | None
+) -> ResolvedSlaTargets:
+    """The deadlines that apply, and where they came from.
+
+    Most specific first: **service, then queue, then the platform.** The same
+    rule already governs the AI confidence threshold — the narrower
+    configuration wins, and the broader one is a *fallback* rather than an
+    override, so configuring a service never silently discards what a queue
+    already promised, and vice versa.
+
+    **A tier is taken whole or not at all.** Filling in a service's missing
+    resolution target from the queue underneath it would produce a pair of
+    deadlines nobody authored — the objection ``SlaTargets`` already makes
+    about folding its four clocks into one — and would leave "where did this
+    deadline come from?" without a single answer.
+
+    A source that measures nothing is not a source. A service with every
+    target left blank means *unconfigured* far more often than it means
+    "measure nothing here, and ignore the queue's policy too"; reading it as
+    the latter would switch measurement off for the queue beneath it, which is
+    exactly the silent failure this function exists to end.
+    """
+    if service is not None and service.measures_anything:
+        return ResolvedSlaTargets(targets=service, source=SlaTargetSource.SERVICE)
+    if queue is not None and queue.measures_anything:
+        return ResolvedSlaTargets(targets=queue, source=SlaTargetSource.QUEUE)
+    return ResolvedSlaTargets(
+        targets=PLATFORM_DEFAULT_SLA_TARGETS, source=SlaTargetSource.PLATFORM_DEFAULT
+    )
 
 
 class SlaTimer(StrEnum):

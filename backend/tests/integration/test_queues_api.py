@@ -134,4 +134,8 @@ async def test_queues_are_scoped_to_company(client: AsyncClient, owner_headers: 
     other_headers = {"Authorization": f"Bearer {other.json()['tokens']['access_token']}"}
 
     response = await client.get("/api/v1/queues", headers=other_headers)
-    assert response.json()["total"] == 0
+    # Its own seeded queue and nothing else. Registration gives every company
+    # a General queue so its first conversation has somewhere to land; the
+    # point of this test is that it does not also see the other company's.
+    names = {queue["name"] for queue in response.json()["items"]}
+    assert names == {"General"}

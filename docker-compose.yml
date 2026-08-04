@@ -35,6 +35,23 @@ services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    # pg_stat_statements is the only way to attribute latency to individual
+    # queries after the fact; without it a "the API feels slow" report has no
+    # server-side evidence to work from. It must be preloaded at startup
+    # (shared_preload_libraries is not settable at runtime), which is why this
+    # lives here rather than in a migration — the extension itself is then
+    # created once with `CREATE EXTENSION IF NOT EXISTS pg_stat_statements`.
+    # track=all counts statements inside PL/pgSQL functions too, not just
+    # top-level ones. Cost is a fixed ~a few MB of shared memory and a small
+    # per-statement bookkeeping overhead.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - pg_stat_statements.max=5000
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-blinkengage}
       POSTGRES_USER: ${POSTGRES_USER:-blinkengage}
@@ -459,6 +476,11 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     volumes:
+      # 00- prefix is load-bearing: conf.d/*.conf is globbed in sorted order
+      # and the log_format defined here must be parsed before default.conf
+      # references it. The prod overlay clears this service's volumes, so the
+      # prod image COPYs the same file in docker/nginx/Dockerfile instead.
+      - ./docker/nginx/logging.conf:/etc/nginx/conf.d/00-logging.conf:ro
       - ./docker/nginx/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
       - ./docker/nginx/certs:/etc/nginx/certs:ro
       # ACME HTTP-01 webroot — certbot (on the host) writes challenge tokens

@@ -93,7 +93,29 @@ export function InboxWorkspace() {
       <Box
         component="section"
         aria-label={t(`Inbox.view.${view}`)}
-        sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}
+        sx={{
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 1,
+          // Clips the rows to the rounded border. It is also why the next
+          // line exists.
+          overflow: 'hidden',
+          // Without this, a queue holding more conversations than fit the
+          // window could not be scrolled to the bottom of.
+          //
+          // `main` is a bounded flex column (see AppLayout), so everything
+          // here is a flex item. A flex item whose `overflow` is not
+          // `visible` has an automatic minimum size of *zero* rather than
+          // its content's height — so this section did not overflow `main`
+          // and trigger its scrollbar. It was silently compressed into
+          // whatever space was left over, and the `overflow: hidden` above
+          // then clipped every row past the fold with no way to reach them.
+          //
+          // Refusing to shrink restores the natural order: the section keeps
+          // its full height, `main` overflows, and `main`'s own `overflowY:
+          // auto` scrolls the page as it does on every other list screen.
+          flexShrink: 0,
+        }}
       >
         <Stack
           direction="row"

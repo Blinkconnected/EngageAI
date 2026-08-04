@@ -12,6 +12,15 @@ That is the point of the milestone: a conversation can be resolved and still
 owned, waiting and owned by its queue, in progress and owned by nobody. A
 method here that also set a status would be re-coupling the two things this
 exists to separate, and it would do it in the place nobody thinks to look.
+
+It *does* maintain ``Conversation.assigned_agent_id``, and that is not an
+exception to the rule above — it is the same fact, not another one. Status and
+queue are independent facts owned elsewhere; the assignment column is the
+answer to "who is answerable" written a second time, in a shape a query can
+use. Leaving it to callers is what let the two disagree: a workflow could
+assign a conversation to an agent while the timeline still said the queue held
+it, and the Inbox — built to make responsibility obvious — showed the queue.
+See ``docs/architecture/ownership-consistency.md``.
 """
 
 import uuid
@@ -24,6 +33,7 @@ from blinkengage.domain.ownership import (
     Ownership,
     OwnershipReason,
     OwnershipRules,
+    assigned_agent,
     hold_until,
 )
 from blinkengage.infrastructure.database.models.ownership import ConversationOwnership
@@ -59,6 +69,12 @@ class OwnershipService:
     ) -> Ownership:
         """Hands responsibility to somebody, recording both sides.
 
+        **This is the only place conversation ownership changes.** Every
+        transition in the product — pick, release, transfer, workflow
+        assignment, SLA escalation, AI pickup, AI hand-off, the lapsed-hold
+        sweep — arrives here, and arriving here is what makes it real. See
+        ``docs/architecture/ownership-consistency.md``.
+
         Idempotent on the owner: handing a conversation to whoever already
         holds it changes nothing and writes nothing. A timeline with
         "Sara took over from Sara" in it is a timeline people stop reading,
@@ -70,6 +86,12 @@ class OwnershipService:
         previous = _to_owner(existing) if existing is not None else NOBODY
 
         if previous.kind is to.kind and previous.id == to.id:
+            # Still projected. The no-op is about not writing *history* twice;
+            # a column that had drifted from the timeline would otherwise stay
+            # drifted forever, since no later transition would ever correct it.
+            await self._repository.project_assignment(
+                conversation_id=conversation_id, agent_id=assigned_agent(to)
+            )
             return _to_ownership(existing) if existing is not None else _fresh(to, moment, reason)
 
         row = await self._repository.add(
@@ -88,6 +110,14 @@ class OwnershipService:
                 actor_user_id=actor_user_id,
                 note=note,
             )
+        )
+        # After the history row, in the same transaction. The order is not
+        # cosmetic: the timeline is the record and the column is the
+        # consequence, so a failure between them leaves the truth written and
+        # a projection to rebuild — never a projection with no history behind
+        # it, which is the state nothing can diagnose.
+        await self._repository.project_assignment(
+            conversation_id=conversation_id, agent_id=assigned_agent(to)
         )
         return _to_ownership(row)
 

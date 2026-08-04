@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.csat_service import CsatService
+from blinkengage.application.services.ownership_service import OwnershipService
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
 from blinkengage.infrastructure.cache.redis import create_redis_client
@@ -70,6 +71,9 @@ from blinkengage.infrastructure.repositories.message_attachment_repository impor
     MessageAttachmentRepository,
 )
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.ownership_repository import (
+    OwnershipRepository,
+)
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 from blinkengage.infrastructure.storage.s3_client import create_minio_client
@@ -158,6 +162,7 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         departments=DepartmentRepository(session),
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
+        ownership=OwnershipService(OwnershipRepository(session)),
         realtime=_get_realtime_publisher(settings),
     )
     csat_service = CsatService(
