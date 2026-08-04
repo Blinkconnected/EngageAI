@@ -40,8 +40,8 @@ companies simply have no usage, which is what they had before.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from blinkengage.infrastructure.database.base import GUID
 
 revision: str = "3cca1f08ef5d"

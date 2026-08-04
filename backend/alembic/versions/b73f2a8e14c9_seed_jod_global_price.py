@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "b73f2a8e14c9"

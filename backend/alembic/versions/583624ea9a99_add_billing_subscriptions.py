@@ -38,8 +38,8 @@ before this migration.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from blinkengage.infrastructure.database.base import GUID
 
 revision: str = "583624ea9a99"

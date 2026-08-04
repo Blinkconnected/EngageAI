@@ -22,6 +22,7 @@ in application code.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "040a7da326b5"

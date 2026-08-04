@@ -33,8 +33,8 @@ No data migration: every table is new and starts empty.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from blinkengage.infrastructure.database.base import GUID
 
 revision: str = "21fac8ed2cd2"

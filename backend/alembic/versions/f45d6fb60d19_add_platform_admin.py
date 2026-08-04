@@ -29,6 +29,7 @@ resolves an email to exactly one identity.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "f45d6fb60d19"

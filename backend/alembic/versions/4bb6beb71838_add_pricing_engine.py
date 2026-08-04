@@ -47,8 +47,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from blinkengage.infrastructure.database.base import GUID
 
 revision: str = "4bb6beb71838"

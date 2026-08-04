@@ -30,6 +30,7 @@ being usable, not when this migration happened to run.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "6b6f167ff303"

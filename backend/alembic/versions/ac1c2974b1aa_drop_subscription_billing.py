@@ -34,8 +34,8 @@ never released, so on any real installation these tables are empty.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from blinkengage.infrastructure.database.base import GUID
 
 revision: str = "ac1c2974b1aa"

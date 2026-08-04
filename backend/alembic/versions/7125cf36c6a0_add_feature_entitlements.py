@@ -30,6 +30,7 @@ No data migration and nothing to backfill.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "7125cf36c6a0"
