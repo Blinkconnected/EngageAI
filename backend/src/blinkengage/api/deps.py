@@ -41,6 +41,7 @@ from blinkengage.application.services.conversation_inspector import (
     ConversationInspectorService,
 )
 from blinkengage.application.services.conversation_memory_service import (
+    ConversationMemoryErasureParticipant,
     ConversationMemoryService,
 )
 from blinkengage.application.services.conversation_service import ConversationService
@@ -198,6 +199,7 @@ from blinkengage.infrastructure.repositories.lexical_search_repository import (
 )
 from blinkengage.infrastructure.repositories.memory_repository import (
     MemoryConfidenceSampleRepository,
+    MemoryContradictionRepository,
     MemoryEvidenceRepository,
     MemoryFactRepository,
 )
@@ -262,6 +264,7 @@ from blinkengage.infrastructure.repositories.workflow_run_repository import (
     WorkflowRunRepository,
 )
 from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
+from blinkengage.infrastructure.storage.s3_client import create_minio_client
 from blinkengage.infrastructure.vector.factory import build_vector_index
 
 _bearer_scheme = HTTPBearer(auto_error=True)
@@ -697,6 +700,11 @@ def get_web_chat_session_service(
     )
 
 
+
+def _attachment_store_from(settings: Settings) -> AttachmentStore:
+    return AttachmentStore(create_minio_client(settings), bucket=settings.s3_bucket_attachments)
+
+
 def build_conversation_service(
     *,
     session: AsyncSession,
@@ -713,10 +721,19 @@ def build_conversation_service(
     A guard that constructed its own copy would pass while the real one stayed
     half-wired, which is precisely the failure it exists to catch.
 
-    The four transport-shaped collaborators default to ``None`` only so the
-    guard can build this without a request; every caller that serves traffic
-    passes them.
+    The four transport-shaped collaborators may be omitted, and are then
+    built from settings rather than passed as ``None``. That is what makes the
+    start-up guard meaningful: it assembles the *same* object a request does,
+    so a collaborator missing in production is missing in the guard too.
+    Passing ``None`` through would have given the guard a different, weaker
+    service than the one serving traffic — the exact blind spot it exists to
+    close. All four are lazy: creating a client opens no connection.
     """
+    attachment_store = attachment_store or _attachment_store_from(settings)
+    provider_factory = provider_factory or ChannelProviderFactory(
+        realtime=realtime, attachments=attachment_store
+    )
+    events = events or OutboxEventPublisher(EventOutboxRepository(session))
     return ConversationService(
         # Wired here rather than made required constructor arguments: the
         # ~25 tests that build this service directly keep working, and
@@ -1247,25 +1264,35 @@ def get_memory_manager(
         facts=MemoryFactRepository(session),
         evidence=MemoryEvidenceRepository(session),
         samples=MemoryConfidenceSampleRepository(session),
+        contradictions=MemoryContradictionRepository(session),
         events=events,
     )
 
 
 def get_memory_query_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> MemoryQueryService:
     """Reading memory. Deliberately has no write method to reach for."""
     return MemoryQueryService(
         facts=MemoryFactRepository(session),
         evidence=MemoryEvidenceRepository(session),
         companies=CompanyRepository(session),
+        recompute_interval_seconds=settings.memory_recompute_interval_seconds,
     )
+
+
+def get_conversation_memory_service(
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> ConversationMemoryService:
+    return ConversationMemoryService(redis)
 
 
 def get_memory_erasure_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
     manager: Annotated[MemoryManager, Depends(get_memory_manager)],
+    working_memory: Annotated[ConversationMemoryService, Depends(get_conversation_memory_service)],
 ) -> MemoryErasureService:
     """Erasure, which must complete — see the service's own docstring for
     why it is separate from the Manager."""
@@ -1275,13 +1302,17 @@ def get_memory_erasure_service(
         embeddings=EmbeddingRepository(session),
         events=events,
         recompute=manager,
+        # Every context holding data about the subject registers here.
+        # Working memory is keyed by conversation, so erasing a *customer*
+        # needs their conversations resolved first — which is the
+        # Conversation context's lookup, not Memory's, and is why this is
+        # a participant rather than a branch inside the erasure service.
+        participants=(
+            ConversationMemoryErasureParticipant(
+                memory=working_memory, conversations=ConversationRepository(session)
+            ),
+        ),
     )
-
-
-def get_conversation_memory_service(
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> ConversationMemoryService:
-    return ConversationMemoryService(redis)
 
 
 async def get_embedding_service(

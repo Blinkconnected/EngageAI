@@ -14,6 +14,48 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Fixed
+
+- **What the platform remembers can no longer become more certain on its
+  own.** An internal review found that re-delivering the same observation
+  — which happens routinely, because the message system guarantees
+  at-least-once delivery — made a remembered fact look freshly observed. A
+  fact nobody had seen in months could be pushed back to full confidence
+  by a duplicate that carried no new information at all, measured at more
+  than four times its correct value.
+
+  Confidence now moves only when genuinely new evidence arrives. A
+  duplicate is recognised as a duplicate and changes nothing.
+
+  Three related corrections came with it. Something contradicting a fact
+  is now recorded once however many times the notification arrives, so a
+  true fact is no longer marked down repeatedly for the same
+  disagreement. The "rising / falling" indicator can now actually report
+  *falling* and *contested* — both were unreachable before, meaning the
+  signal designed to tell you a fact is going out of date could never
+  do so. And evidence claiming to come from an agent or a connected
+  system must now identify which, so nothing can claim a stronger source
+  than it has.
+
+- **Memory ages evenly across every company.** The job that keeps
+  confidence current worked through a single global queue, so one company
+  with a very large history could consume it entirely and every other
+  company's memory would stop ageing. It now serves each company in turn,
+  sizes its own workload to the amount of history it has to get through,
+  and gives up on an individual record that keeps failing instead of
+  retrying it forever.
+
+  Confidence you read is now correct at the moment you read it rather
+  than at the moment it was last recalculated, and `GET /memory/status`
+  reports how much of your history is waiting to be recalculated.
+
+- **Erasure now proves it finished.** Erasing everything held about a
+  customer clears their live conversation memory too — previously it did
+  not, and the response said so incorrectly — and every part of the
+  platform holding data about them must confirm before the erasure is
+  reported as complete. Anything that cannot confirm is named in the
+  response rather than quietly omitted.
+
 ### Added
 
 - **Blink Engage now remembers, and can tell you why.** A new platform

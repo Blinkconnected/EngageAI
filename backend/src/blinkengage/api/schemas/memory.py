@@ -55,7 +55,12 @@ class MemoryFactResponse(BaseModel):
     attributes: dict[str, Any]
     attributes_schema_version: int
 
+    #: The stored value, as last swept.
     confidence: float
+    #: What a consumer should act on: the stored value with decay finished
+    #: at read time. Equal to ``confidence`` immediately after a sweep and
+    #: lower as the cache ages.
+    effective_confidence: float
     confidence_state: ConfidenceState
     confidence_direction: ConfidenceDirection
     lifecycle_state: LifecycleState
@@ -147,7 +152,20 @@ class ErasureResponse(BaseModel):
     aggregate_facts_recomputed: int
     aggregate_facts_archived: int
     embeddings_deleted: int
-    working_memory_cleared: bool
+    #: Conversations whose live working memory was dropped. Previously a
+    #: hardcoded ``False``: working memory is keyed by conversation, so
+    #: erasing a customer needs their conversations resolved first, and
+    #: until that existed a customer's live working memory survived until
+    #: its TTL.
+    working_memory_cleared: int
+    #: What every other participating context removed, by name.
+    participants: dict[str, dict[str, int]]
+    #: Contexts that were asked and did not confirm. **Non-empty means the
+    #: erasure did not complete** — a report that quietly omitted a context
+    #: would be a false proof of deletion, and this is the response
+    #: somebody forwards to a regulator.
+    incomplete: list[str]
+    complete: bool
     erased_at: datetime
 
 
@@ -157,6 +175,11 @@ class MemoryStatusResponse(BaseModel):
     memory_enabled: bool
     facts_by_tier: dict[str, int]
     facts_by_lifecycle: dict[str, int]
+    #: Facts whose stored confidence is older than the recompute interval
+    #: promises. A number that stays near zero means the sweep is keeping
+    #: up; one that grows without bound is the failure that was previously
+    #: invisible.
+    facts_awaiting_recompute: int
     retention_dormant_after_days: int
     retention_archive_after_days: int
     retention_purge_after_days: int

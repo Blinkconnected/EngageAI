@@ -200,6 +200,17 @@ class MemoryFact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     #: rolled back rather than hunted for.
     pipeline_version: Mapped[str | None] = mapped_column(String(64), default=None)
 
+    #: How many times recomputing this fact has failed. A circuit breaker,
+    #: not a silent drop: a fact at the cap stops being claimed and stays
+    #: visible for an operator, so one poison row cannot be reclaimed on
+    #: every sweep forever while healthy rows behind it are never reached.
+    #: The knowledge index sweep already carries this guard, added after
+    #: the relay-starvation incident; the decay sweep shipped without it.
+    recompute_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    recompute_error: Mapped[str | None] = mapped_column(Text, default=None)
+
     evidence: Mapped[list["MemoryEvidence"]] = relationship(
         back_populates="fact", cascade="all, delete-orphan"
     )
@@ -268,6 +279,44 @@ class MemoryEvidence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     fact: Mapped["MemoryFact"] = relationship(back_populates="evidence")
 
 
+class MemoryContradiction(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One thing that disagrees with a fact.
+
+    **Rows, not a counter.** ``contradiction_count`` was an increment, and
+    an increment is wrong for exactly the reason this codebase already
+    documents about evidence: it cannot be replayed. Contradiction enters
+    the confidence function as a negative term, so a redelivered
+    ``ContradictionDetected`` demoted a true fact on no new information —
+    and at-least-once delivery makes redelivery routine, not exceptional.
+
+    The shape is deliberately the same as ``memory_evidence``: a
+    uniqueness constraint on the source, and the count recomputed from the
+    rows rather than tracked alongside them. Two tables, one rule — every
+    input to confidence is a ``COUNT`` over rows protected by a unique
+    constraint.
+    """
+
+    __tablename__ = "memory_contradictions"
+    __table_args__ = (
+        UniqueConstraint(
+            "fact_id", "source_type", "source_id", name="uq_memory_contradictions_source"
+        ),
+        Index("ix_memory_contradictions_fact", "fact_id"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    fact_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("memory_facts.id", ondelete="CASCADE"), nullable=False
+    )
+    #: What disagreed — a published article, a system of record, a human.
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), default=None)
+
+
 class MemoryConfidenceSample(UUIDPrimaryKeyMixin, Base):
     """One recomputation of a fact's confidence.
 
@@ -297,8 +346,27 @@ class MemoryConfidenceSample(UUIDPrimaryKeyMixin, Base):
     )
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
-    #: Evidence movement since the previous sample, with decay excluded —
-    #: the inputs to direction, kept so direction is reproducible.
+    #: The **running totals** at the moment of the sample. Deltas are
+    #: derived by subtracting the previous sample's totals.
+    #:
+    #: The first version of this table stored only the deltas, and the
+    #: delta was then computed as `current_total - previous_delta` —
+    #: a total minus a delta, which is dimensionally meaningless and
+    #: drifted upward as soon as support grew by more than one between
+    #: sweeps. Totals are self-describing and a delta derived from two of
+    #: them cannot drift.
+    support_total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    contradiction_total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    #: Movement **across the direction window**, not since the previous
+    #: sample: ``total - oldest_total_in_window``. A sample is written on
+    #: every mutation, so a per-step delta would only ever show whichever
+    #: single dimension the last write touched — and `CONTESTED`, which
+    #: needs both moving, could never be observed. Derived from the
+    #: totals above, which remain the source of truth.
     supporting_delta: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     contradicting_delta: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -313,6 +381,7 @@ OWNER_MEMORY_FACT = "MEMORY_FACT"
 __all__ = [
     "OWNER_MEMORY_FACT",
     "MemoryConfidenceSample",
+    "MemoryContradiction",
     "MemoryEvidence",
     "MemoryFact",
 ]

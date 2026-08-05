@@ -47,7 +47,10 @@ from blinkengage.application.services.conversation_memory_service import (
 )
 from blinkengage.application.services.memory_erasure_service import MemoryErasureService
 from blinkengage.application.services.memory_manager import MemoryManager
-from blinkengage.application.services.memory_query_service import MemoryQueryService
+from blinkengage.application.services.memory_query_service import (
+    MemoryQueryService,
+    effective_confidence,
+)
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.conversation_memory import (
     Commitment,
@@ -85,6 +88,7 @@ def _fact_to_response(
         attributes=dict(fact.attributes or {}),
         attributes_schema_version=fact.attributes_schema_version,
         confidence=float(fact.confidence),
+        effective_confidence=effective_confidence(fact),
         confidence_state=fact.confidence_state,
         confidence_direction=fact.confidence_direction,
         lifecycle_state=LifecycleState(fact.lifecycle_state),
@@ -338,7 +342,10 @@ async def erase_subject(
         aggregate_facts_recomputed=report.aggregate_facts_recomputed,
         aggregate_facts_archived=report.aggregate_facts_archived,
         embeddings_deleted=report.embeddings_deleted,
-        working_memory_cleared=False,
+        working_memory_cleared=report.working_memory_cleared,
+        participants=report.participants,
+        incomplete=list(report.incomplete),
+        complete=report.complete,
         erased_at=report.erased_at,
     )
 

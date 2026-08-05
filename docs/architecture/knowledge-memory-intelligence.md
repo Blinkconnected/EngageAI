@@ -947,6 +947,14 @@ corrects observation on sight; observation asks permission. That single
 asymmetry is what "official knowledge wins" means when it is a mechanism
 rather than a sentence.
 
+**This half is built; the other is not.** Knowledge invalidating Memory
+works today — ``MemoryManager.contradict`` demotes on sight. The
+answer-side guarantee, where a generated reply is refused unless its
+restricted claims cite an authoritative source, waits on a verifier that
+stage 1 did not build (**B8** in
+[the freeze review](./architecture-freeze-review.md)). Authority is
+advisory on that path until it exists.
+
 **The last two are the Company DNA crossings**, and they differ from each
 other in the one way that matters: a Voice Constraint can **block a send**, a
 Voice Profile can only change how something is worded. That is the whole

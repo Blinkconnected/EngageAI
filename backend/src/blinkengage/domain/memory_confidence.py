@@ -151,6 +151,37 @@ def recency_factor(*, last_observed_at: datetime, now: datetime, fact_type: str)
     return float(0.5 ** (age_days / half_life_days(fact_type)))
 
 
+def decayed_confidence(
+    *,
+    stored: float,
+    computed_at: datetime | None,
+    now: datetime,
+    fact_type: str,
+) -> float:
+    """The confidence a reader should act on, right now.
+
+    The stored column is a **cache**: it was correct at
+    ``confidence_computed_at`` and has been decaying since. A reader that
+    trusted it directly would rank a fact nobody has re-observed in a year
+    exactly as it ranked the day it was last swept — and at any real
+    corpus size the sweep cannot revisit every row often enough for that
+    gap to be small.
+
+    So decay is finished here, at read time. This is the correctness half
+    of the fix for the sweep's throughput ceiling: the sweep keeps the
+    cache warm and bounds how much work this has to do, but a stale cache
+    now produces a *slightly conservative* number rather than a wrong one.
+
+    ``computed_at`` of ``None`` means never swept, so there is nothing to
+    decay from and the stored value stands.
+    """
+    if computed_at is None:
+        return max(0.0, min(1.0, stored))
+    elapsed_days = max(0.0, (now - computed_at).total_seconds() / 86400.0)
+    factor = float(0.5 ** (elapsed_days / half_life_days(fact_type)))
+    return max(0.0, min(1.0, stored * factor))
+
+
 def compute_confidence(inputs: ConfidenceInputs) -> float:
     """The number, in ``[0, 1]``.
 
@@ -285,6 +316,7 @@ __all__ = [
     "ConfidenceInputs",
     "DirectionInputs",
     "compute_confidence",
+    "decayed_confidence",
     "compute_direction",
     "half_life_days",
     "next_confidence_state",

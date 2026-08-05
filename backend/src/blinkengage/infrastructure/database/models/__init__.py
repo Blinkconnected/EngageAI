@@ -63,6 +63,7 @@ from blinkengage.infrastructure.database.models.ledger import LedgerEntry
 from blinkengage.infrastructure.database.models.memory import (
     OWNER_MEMORY_FACT,
     MemoryConfidenceSample,
+    MemoryContradiction,
     MemoryEvidence,
     MemoryFact,
 )
@@ -208,6 +209,7 @@ __all__ = [
     "KnowledgeIndexState",
     "OWNER_MEMORY_FACT",
     "MemoryConfidenceSample",
+    "MemoryContradiction",
     "MemoryEvidence",
     "MemoryFact",
     "Message",

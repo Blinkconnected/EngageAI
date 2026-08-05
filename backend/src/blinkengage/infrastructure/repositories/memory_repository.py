@@ -28,6 +28,7 @@ from blinkengage.domain.memory import (
 )
 from blinkengage.infrastructure.database.models.memory import (
     MemoryConfidenceSample,
+    MemoryContradiction,
     MemoryEvidence,
     MemoryFact,
 )
@@ -151,19 +152,68 @@ class MemoryFactRepository:
         ).scalars()
         return list(rows.all()), int(total)
 
-    async def claim_for_recompute(self, *, limit: int, stale_before: datetime) -> list[MemoryFact]:
-        """Facts whose confidence has not been recomputed recently.
+    async def companies_with_stale_facts(
+        self, *, stale_before: datetime, max_attempts: int, limit: int
+    ) -> list[UUID]:
+        """Which tenants have work, oldest-starved first.
 
-        Not company-scoped, because the decay sweep is a platform job that
-        must reach every tenant — the one deliberate exception to the rule
-        above, and it is a *read* that then writes through the Manager
-        per company. ``FOR UPDATE SKIP LOCKED`` on PostgreSQL so overlapping
-        sweeps take disjoint batches, exactly as the outbox relay does.
+        The first half of tenant-fair claiming. Asking *which companies*
+        before asking *which facts* is what stops one enormous tenant
+        owning every batch — under a single global ``ORDER BY
+        confidence_computed_at`` a company with ten million facts holds
+        the claim until its own backlog clears, and every other company's
+        memory stops ageing entirely.
+
+        That is not a hypothetical: it is the exact shape of the
+        relay-starvation incident this codebase already documents, where
+        the oldest rows monopolised every claim and healthy rows behind
+        them were never reached.
+
+        Ordered by each company's *most starved* fact, so a tenant that
+        has been waiting longest is served first among equals.
+        """
+        rows = await self._session.execute(
+            select(MemoryFact.company_id)
+            .where(
+                MemoryFact.lifecycle_state != LifecycleState.PURGED.value,
+                MemoryFact.recompute_attempts < max_attempts,
+                or_(
+                    MemoryFact.confidence_computed_at.is_(None),
+                    MemoryFact.confidence_computed_at < stale_before,
+                ),
+            )
+            .group_by(MemoryFact.company_id)
+            .order_by(func.min(MemoryFact.confidence_computed_at).nulls_first())
+            .limit(limit)
+        )
+        return [row[0] for row in rows]
+
+    async def claim_for_recompute(
+        self,
+        *,
+        company_id: UUID,
+        limit: int,
+        stale_before: datetime,
+        max_attempts: int,
+    ) -> list[MemoryFact]:
+        """One company's slice of the recompute queue.
+
+        Company-scoped, unlike the first version of this method, which
+        claimed globally and starved small tenants. ``max_attempts`` is a
+        circuit breaker rather than a silent drop: a fact that keeps
+        failing stops being claimed and stays visible with its error, so
+        one poison row costs a bounded number of wasted claims instead of
+        an unbounded number.
+
+        ``FOR UPDATE SKIP LOCKED`` on PostgreSQL so overlapping sweeps
+        take disjoint batches, exactly as the outbox relay does.
         """
         statement = (
             select(MemoryFact)
             .where(
+                MemoryFact.company_id == company_id,
                 MemoryFact.lifecycle_state != LifecycleState.PURGED.value,
+                MemoryFact.recompute_attempts < max_attempts,
                 or_(
                     MemoryFact.confidence_computed_at.is_(None),
                     MemoryFact.confidence_computed_at < stale_before,
@@ -175,6 +225,44 @@ class MemoryFactRepository:
         if self._session.get_bind().dialect.name == "postgresql":
             statement = statement.with_for_update(skip_locked=True)
         return list((await self._session.execute(statement)).scalars().all())
+
+    async def total_count(self) -> int:
+        """Every non-purged fact on the installation.
+
+        Read by the sweep to size its own batch: a fixed batch cannot keep
+        up with a corpus that grows, and a sweep that silently falls
+        behind leaves retrieval ranking on a confidence number that is
+        years stale.
+        """
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(MemoryFact)
+                    .where(MemoryFact.lifecycle_state != LifecycleState.PURGED.value)
+                )
+            ).scalar_one()
+        )
+
+    async def stale_count(self, *, company_id: UUID, stale_before: datetime) -> int:
+        """How far behind this company's memory is — the number that makes
+        a not-keeping-up failure visible instead of silent."""
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(MemoryFact)
+                    .where(
+                        MemoryFact.company_id == company_id,
+                        MemoryFact.lifecycle_state != LifecycleState.PURGED.value,
+                        or_(
+                            MemoryFact.confidence_computed_at.is_(None),
+                            MemoryFact.confidence_computed_at < stale_before,
+                        ),
+                    )
+                )
+            ).scalar_one()
+        )
 
     async def list_purgeable(self, *, limit: int) -> list[MemoryFact]:
         """Rows decay has marked ``PURGED`` and which the sweep may delete.
@@ -387,6 +475,74 @@ class MemoryEvidenceRepository:
         return int(result.rowcount or 0)
 
 
+class MemoryContradictionRepository:
+    """Rows that disagree with a fact.
+
+    Deliberately the same shape as ``MemoryEvidenceRepository``: an
+    idempotent add and a count derived from the rows. The symmetry is the
+    point — every input to confidence is a COUNT over a uniquely
+    constrained table, which is what makes "confidence cannot move without
+    a row" a property rather than a hope.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def exists(self, *, fact_id: UUID, source_type: str, source_id: UUID | None) -> bool:
+        statement = select(MemoryContradiction.id).where(
+            MemoryContradiction.fact_id == fact_id,
+            MemoryContradiction.source_type == source_type,
+        )
+        statement = (
+            statement.where(MemoryContradiction.source_id.is_(None))
+            if source_id is None
+            else statement.where(MemoryContradiction.source_id == source_id)
+        )
+        return (await self._session.execute(statement.limit(1))).scalar_one_or_none() is not None
+
+    async def add(self, contradiction: MemoryContradiction) -> MemoryContradiction:
+        self._session.add(contradiction)
+        await self._session.flush()
+        return contradiction
+
+    async def count_for_fact(self, *, fact_id: UUID) -> int:
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count(MemoryContradiction.id)).where(
+                        MemoryContradiction.fact_id == fact_id
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def list_for_fact(self, *, fact_id: UUID, limit: int = 50) -> list[MemoryContradiction]:
+        return list(
+            (
+                await self._session.execute(
+                    select(MemoryContradiction)
+                    .where(MemoryContradiction.fact_id == fact_id)
+                    .order_by(MemoryContradiction.detected_at.desc())
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    async def delete_for_facts(self, *, company_id: UUID, fact_ids: Sequence[UUID]) -> int:
+        if not fact_ids:
+            return 0
+        result = await self._session.execute(
+            delete(MemoryContradiction).where(
+                MemoryContradiction.company_id == company_id,
+                MemoryContradiction.fact_id.in_(list(fact_ids)),
+            )
+        )
+        await self._session.flush()
+        return int(result.rowcount or 0)
+
+
 class MemoryConfidenceSampleRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -438,6 +594,7 @@ class MemoryConfidenceSampleRepository:
 
 __all__ = [
     "MemoryConfidenceSampleRepository",
+    "MemoryContradictionRepository",
     "MemoryEvidenceRepository",
     "MemoryFactRepository",
 ]

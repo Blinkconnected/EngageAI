@@ -36,13 +36,17 @@ line real rather than asserted.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
 
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.memory import SubjectRef, SubjectType
-from blinkengage.domain.memory_ports import SupportsFactRecompute, SupportsOwnerDeletion
+from blinkengage.domain.memory_ports import (
+    ErasureParticipant,
+    SupportsFactRecompute,
+    SupportsOwnerDeletion,
+)
 from blinkengage.infrastructure.database.models.memory import OWNER_MEMORY_FACT
 from blinkengage.infrastructure.repositories.memory_repository import (
     MemoryEvidenceRepository,
@@ -69,10 +73,25 @@ class ErasureReport:
     aggregate_facts_archived: int
     embeddings_deleted: int
     erased_at: datetime
+    #: What every other participating context removed, by name. Empty
+    #: until another context registers — but present in the shape from the
+    #: start, so adding Learning is a registration rather than a change to
+    #: what a completed erasure looks like.
+    participants: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: Participants that were asked and did not confirm. **Non-empty means
+    #: the erasure did not complete**, and the caller must treat it as a
+    #: failure rather than a partial success — a report that quietly
+    #: omitted a context would be a false proof of deletion.
+    incomplete: tuple[str, ...] = ()
+    working_memory_cleared: int = 0
 
     @property
     def anything_removed(self) -> bool:
         return bool(self.facts_deleted or self.evidence_deleted or self.embeddings_deleted)
+
+    @property
+    def complete(self) -> bool:
+        return not self.incomplete
 
 
 class MemoryErasureService:
@@ -99,11 +118,16 @@ class MemoryErasureService:
         embeddings: SupportsOwnerDeletion | None,
         events: DomainEventPublisher,
         recompute: SupportsFactRecompute | None = None,
+        participants: tuple[ErasureParticipant, ...] = (),
     ) -> None:
         self._facts = facts
         self._evidence = evidence
         self._embeddings = embeddings
         self._events = events
+        # Other contexts holding data about the same subject. Empty today;
+        # Learning registers here rather than erasure growing a new branch
+        # per context.
+        self._participants = participants
         # The Memory Manager, when one is available. Optional because
         # erasure must succeed even in a context that has no Manager wired
         # — an aggregate fact left with stale counters is a lesser failure
@@ -171,6 +195,8 @@ class MemoryErasureService:
                     # the company's own history to be rewritten.
                     archived += 1
 
+        participant_counts, incomplete = await self._fan_out(company_id=company_id, subject=subject)
+
         report = ErasureReport(
             subject=subject,
             facts_deleted=facts_deleted,
@@ -179,6 +205,11 @@ class MemoryErasureService:
             aggregate_facts_archived=archived,
             embeddings_deleted=embeddings_deleted,
             erased_at=moment,
+            participants=participant_counts,
+            incomplete=incomplete,
+            working_memory_cleared=participant_counts.get("conversation_memory", {}).get(
+                "conversations_cleared", 0
+            ),
         )
 
         # Audited with counts and ids only. An erasure event naming what
@@ -242,6 +273,7 @@ class MemoryErasureService:
         )
         facts_deleted = await self._facts.delete_by_ids(company_id=company_id, fact_ids=own_facts)
 
+        participant_counts, incomplete = await self._fan_out(company_id=company_id, subject=subject)
         report = ErasureReport(
             subject=subject,
             facts_deleted=facts_deleted,
@@ -250,6 +282,8 @@ class MemoryErasureService:
             aggregate_facts_archived=0,
             embeddings_deleted=embeddings_deleted,
             erased_at=moment,
+            participants=participant_counts,
+            incomplete=incomplete,
         )
         await self._events.publish(
             DomainEvent(
@@ -266,6 +300,37 @@ class MemoryErasureService:
             )
         )
         return report
+
+    async def _fan_out(
+        self, *, company_id: UUID, subject: SubjectRef
+    ) -> tuple[dict[str, dict[str, int]], tuple[str, ...]]:
+        """Ask every other context holding this subject to clear it.
+
+        A participant that raises is recorded as **incomplete** rather
+        than allowed to fail silently. An erasure that half-happened and
+        reported success is worse than one that failed loudly: the first
+        produces a document asserting deletion that is not true, and
+        nobody looks again.
+        """
+        counts: dict[str, dict[str, int]] = {}
+        incomplete: list[str] = []
+        for participant in self._participants:
+            try:
+                counts[participant.participant_name] = await participant.erase_subject(
+                    company_id=company_id,
+                    subject_type=subject.subject_type.value,
+                    subject_id=subject.subject_id,
+                )
+            except Exception:  # noqa: BLE001
+                incomplete.append(participant.participant_name)
+                logger.exception(
+                    "memory_erasure_participant_failed",
+                    extra={
+                        "participant": participant.participant_name,
+                        "company_id": str(company_id),
+                    },
+                )
+        return counts, tuple(incomplete)
 
 
 __all__ = ["ErasureReport", "MemoryErasureService"]

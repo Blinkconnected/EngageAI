@@ -10,9 +10,13 @@ consumer among several — the Workflow Engine, CRM, Reporting, the Customer
 Timeline and Analytics are the others — and none of them writes here
 except through the Memory Manager.
 
-Status: **built.** Domain boundaries are in
+Status: **built, and stabilised.** Domain boundaries are in
 [Knowledge, Memory and Intelligence](./knowledge-memory-intelligence.md);
-this document is the implementation.
+this document is the implementation. The
+[architecture freeze review](./architecture-freeze-review.md) found four
+live defects in the first cut — see
+[What stabilisation changed](#what-stabilisation-changed) — and the
+invariant they falsified is now stated and tested rather than assumed.
 
 ---
 
@@ -465,8 +469,71 @@ company does not touch another company holding the same customer id.
 
 ---
 
+## What stabilisation changed
+
+The freeze review demonstrated that the platform's foundational property —
+*confidence cannot inflate without new evidence* — was false. Four defects
+shared one shape: **a number that was tracked instead of derived.**
+
+| Finding | Was | Is |
+|---|---|---|
+| **B1** | ``record()`` refreshed ``last_observed_at`` before knowing whether evidence was new, so a replay reset recency and inflated confidence **4.7×** on nothing | Recency and revival are gated on ``evidence_added``. A replay changes nothing |
+| **B2** | ``contradiction_count += 1`` — a redelivered contradiction demoted a true fact | ``memory_contradictions`` rows, unique per source; the count is derived |
+| **B3** | ``contradicting_delta`` hard-coded to zero, so ``FALLING`` and ``CONTESTED`` were unreachable code | Real deltas, measured across a window rather than since the last write |
+| **B4** | The delta was ``total − previous_delta`` — a total minus a delta, drifting upward | Samples carry running totals; deltas are derived from two of them |
+| **E3** | Corroboration was a string a caller could claim | ``AGENT_STATEMENT`` needs an agent, ``SYSTEM_RECORD`` needs a source |
+| **B6** | 500 facts/hour — 2.3 years for one pass at 10M facts, with retrieval ranking on a years-stale column | Batch derived from corpus size; decay finished at read time |
+| **B7** | Global claim ordering starved small tenants, repeating the relay incident | Tenant-fair rotation plus a recompute circuit breaker |
+| **B5** | Erasure could not include other contexts; ``working_memory_cleared`` was a hardcoded ``False`` | Participant fan-out with acknowledgement; a context that cannot confirm makes the erasure **incomplete** |
+
+### The invariant, stated
+
+> **Every input to confidence is a ``COUNT`` over rows protected by a
+> uniqueness constraint, and no code path may advance a time-based input
+> without inserting one of those rows.**
+
+- ``support_count``, ``distinct_customer_count``, ``distinct_agent_count``
+  — ``COUNT`` over ``memory_evidence``, unique on
+  ``(fact_id, source_type, source_id)``.
+- ``contradiction_count`` — ``COUNT`` over ``memory_contradictions``, same
+  shape, same constraint.
+- ``last_observed_at`` — advanced only inside ``if evidence_added``.
+- ``outcome_quality`` — supplied by the caller, and derived once by
+  ``domain/conversation_outcome.py`` rather than recomputed per consumer.
+
+That is provable, and ``tests/integration/test_memory_stabilization.py``
+proves it. Before the fix the same probe measured +0.1006 on a replay;
+after it, +0.0000.
+
+### Why direction is measured over a window
+
+A sample is written on every mutation, so comparing against the
+*immediately previous* sample means the window is "since the last write" —
+and a single write moves a single dimension. ``CONTESTED`` needs support
+*and* contradiction both growing, so even with B3's delta fixed it could
+never be observed. Direction is measured across the recent history
+instead, which is the question it was always meant to answer: what has
+been happening to this fact lately.
+
+### One definition of an outcome
+
+``domain/conversation_outcome.py`` is now the single derivation of
+resolved / reopened / escalated / first-contact / handling time, because
+Reporting and the future Learning context were about to have two — the
+shape of the **A3** defect that produced zero SLA clocks platform-wide.
+
+It carries two things the first design lacked. ``resolved_by``
+distinguishes a human ending a conversation from a workflow auto-closing
+it, so a rule firing is not read as evidence that something worked — a
+feedback loop the AI-provenance mitigation does not touch, because a
+workflow is not AI. And ``settled`` says whether the outcome may still
+change, so nothing learns from a conversation whose CSAT has not landed.
+
+---
+
 ## See also
 
+- [Architecture freeze review](./architecture-freeze-review.md) — the findings this stabilisation closed
 - [Knowledge, Memory and Intelligence](./knowledge-memory-intelligence.md) — the domain boundaries
 - [Company Intelligence Engine](./company-intelligence-engine.md) — stage 1, semantic retrieval
 - [Policy Engine](./policy-engine.md)

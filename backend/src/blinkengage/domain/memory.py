@@ -282,6 +282,33 @@ class UnknownFactTypeError(MemoryError_):
         self.fact_type = fact_type
 
 
+class UnsupportedCorroborationError(MemoryError_):
+    """Raised when evidence claims a corroborating source without carrying
+    what that claim requires.
+
+    The prompt-injection defence rests entirely on this classification
+    being honest: ``AGENT_STATEMENT`` and ``SYSTEM_RECORD`` are what lift a
+    fact past ``CANDIDATE``, and everything else is capped there however
+    often it is repeated. Before this check, a caller could claim
+    corroboration by setting a string — a buggy extractor labelling
+    customer-derived observations ``AGENT_STATEMENT`` would have defeated
+    the ceiling silently, which is the worst kind of security failure
+    because nothing looks wrong.
+
+    So the claim must be backed: an agent statement names an agent, and a
+    system record names the record. Both are facts the caller already has
+    if the claim is true, and cannot fabricate if it is not.
+    """
+
+    def __init__(self, *, source_type: EvidenceSourceType, missing: str) -> None:
+        super().__init__(
+            f"evidence of type {source_type.value!r} corroborates a fact and must "
+            f"carry {missing}"
+        )
+        self.source_type = source_type
+        self.missing = missing
+
+
 class SubjectTierMismatchError(MemoryError_):
     """Raised when a subject does not match its tier.
 
@@ -401,6 +428,15 @@ def validate_fact_shape(
     if not evidence:
         raise EvidenceRequiredError()
 
+    for ref in evidence:
+        # Corroboration is the one claim in this contract that buys
+        # belief, so it is the one claim that must be backed. See
+        # ``UnsupportedCorroborationError``.
+        if ref.source_type is EvidenceSourceType.AGENT_STATEMENT and ref.agent_id is None:
+            raise UnsupportedCorroborationError(source_type=ref.source_type, missing="an agent_id")
+        if ref.source_type is EvidenceSourceType.SYSTEM_RECORD and ref.source_id is None:
+            raise UnsupportedCorroborationError(source_type=ref.source_type, missing="a source_id")
+
 
 __all__ = [
     "CORROBORATING_SOURCES",
@@ -425,5 +461,6 @@ __all__ = [
     "SubjectTierMismatchError",
     "SubjectType",
     "UnknownFactTypeError",
+    "UnsupportedCorroborationError",
     "validate_fact_shape",
 ]

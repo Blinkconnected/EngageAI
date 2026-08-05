@@ -16,12 +16,14 @@ What is left is reading, filtering and shaping — which is this.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from blinkengage.api.schemas.memory import MemoryStatusResponse
 from blinkengage.domain.company_settings import is_memory_enabled, memory_retention_days
 from blinkengage.domain.exceptions import EntityNotFoundError
 from blinkengage.domain.memory import LifecycleState, MemoryTier, SubjectRef
+from blinkengage.domain.memory_confidence import decayed_confidence
 from blinkengage.domain.memory_lifecycle import RetentionPolicy
 from blinkengage.infrastructure.database.models.memory import MemoryEvidence, MemoryFact
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
@@ -31,6 +33,35 @@ from blinkengage.infrastructure.repositories.memory_repository import (
 )
 
 
+def effective_confidence(fact: MemoryFact, *, now: datetime | None = None) -> float:
+    """What a consumer should act on.
+
+    The stored column is a cache that was correct when the sweep last
+    touched it. Finishing the decay here means a stale cache produces a
+    slightly conservative number rather than a wrong one — which is what
+    makes the sweep's throughput a performance concern instead of a
+    correctness one.
+
+    One function, so the AI Engine, the Customer Timeline, Reporting and
+    Analytics cannot disagree about how confident the platform is.
+    """
+    # SQLite returns naive datetimes where PostgreSQL returns aware ones,
+    # and comparing the two raises. The same storage artifact
+    # ``UtcDateTime`` corrects for the pricing tables and ``MemoryManager``
+    # corrects at its own boundary — corrected here rather than inside the
+    # pure function, which has no business knowing which backend it ran on.
+    computed_at = fact.confidence_computed_at
+    if computed_at is not None and computed_at.tzinfo is None:
+        computed_at = computed_at.replace(tzinfo=UTC)
+
+    return decayed_confidence(
+        stored=float(fact.confidence),
+        computed_at=computed_at,
+        now=now or datetime.now(UTC),
+        fact_type=fact.fact_type,
+    )
+
+
 class MemoryQueryService:
     def __init__(
         self,
@@ -38,10 +69,12 @@ class MemoryQueryService:
         facts: MemoryFactRepository,
         evidence: MemoryEvidenceRepository,
         companies: CompanyRepository,
+        recompute_interval_seconds: int = 21600,
     ) -> None:
         self._facts = facts
         self._evidence = evidence
         self._companies = companies
+        self._recompute_interval_seconds = recompute_interval_seconds
 
     async def list_for_company(
         self,
@@ -106,10 +139,17 @@ class MemoryQueryService:
         default = RetentionPolicy()
         dormant, archive, purge = memory_retention_days(settings)
 
+        # The number that would have made a not-keeping-up sweep visible
+        # immediately instead of never: how many facts are carrying a
+        # confidence older than the recompute interval promises.
+        stale_before = datetime.now(UTC) - timedelta(seconds=self._recompute_interval_seconds)
         return MemoryStatusResponse(
             memory_enabled=is_memory_enabled(settings),
             facts_by_tier=await self._facts.counts_by_tier(company_id=company_id),
             facts_by_lifecycle=await self._facts.counts_by_state(company_id=company_id),
+            facts_awaiting_recompute=await self._facts.stale_count(
+                company_id=company_id, stale_before=stale_before
+            ),
             retention_dormant_after_days=dormant or default.dormant_after_days,
             retention_archive_after_days=archive or default.archive_after_days,
             retention_purge_after_days=purge or default.purge_after_days,

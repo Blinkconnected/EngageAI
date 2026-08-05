@@ -156,4 +156,50 @@ class ConversationMemoryService:
         return bool(removed)
 
 
-__all__ = ["DEFAULT_TTL_SECONDS", "ConversationMemoryService", "working_memory_key"]
+class ConversationMemoryErasureParticipant:
+    """Clears a customer's live working memory during an erasure.
+
+    Working memory is keyed by *conversation*, so erasing a *customer*
+    needs their conversations resolved first — which is why this is a
+    participant rather than a line inside the erasure service: the lookup
+    belongs to the Conversation context, not to Memory.
+
+    Before this existed, the erasure endpoint returned
+    ``working_memory_cleared=False`` as a hardcoded literal and a
+    customer's live working memory survived until its TTL. Twelve hours is
+    not an acceptable answer to a deletion request, and a hardcoded
+    ``False`` in a report described as regulator-facing is worse than the
+    gap it was reporting.
+    """
+
+    participant_name = "conversation_memory"
+
+    def __init__(self, *, memory: ConversationMemoryService, conversations: object) -> None:
+        self._memory = memory
+        # A repository exposing ``ids_for_customer``; typed loosely so this
+        # module does not import the Conversation context's repository and
+        # invert the dependency it is trying to respect.
+        self._conversations = conversations
+
+    async def erase_subject(
+        self, *, company_id: UUID, subject_type: str, subject_id: UUID
+    ) -> dict[str, int]:
+        if subject_type != "customer":
+            return {"conversations_cleared": 0}
+
+        conversation_ids = await self._conversations.ids_for_customer(  # type: ignore[attr-defined]
+            company_id=company_id, customer_id=subject_id
+        )
+        cleared = 0
+        for conversation_id in conversation_ids:
+            if await self._memory.clear(company_id=company_id, conversation_id=conversation_id):
+                cleared += 1
+        return {"conversations_cleared": cleared}
+
+
+__all__ = [
+    "DEFAULT_TTL_SECONDS",
+    "ConversationMemoryErasureParticipant",
+    "ConversationMemoryService",
+    "working_memory_key",
+]

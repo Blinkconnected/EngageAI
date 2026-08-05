@@ -233,7 +233,23 @@ class Settings(BaseSettings):
     # be rather than how fast memory fades — the fade is a function of
     # time and is correct the moment it is next read.
     memory_recompute_interval_seconds: int = 21600
+    # How often the sweep runs, and how long a full pass over the corpus
+    # may take. The batch is *derived* from these and the row count rather
+    # than fixed: a constant batch cannot keep up with a growing corpus,
+    # and the failure is silent — retrieval keeps ranking on a confidence
+    # number that quietly becomes years stale.
+    memory_sweep_interval_seconds: int = 3600
+    memory_target_pass_hours: int = 24
+    #: Floor and ceiling on the derived batch. The ceiling stops one
+    #: enormous tenant making a single run unbounded.
     memory_decay_batch_size: int = 500
+    memory_decay_batch_max: int = 20000
+    #: Companies served per run. The budget is split between them, so a
+    #: large tenant cannot starve small ones.
+    memory_sweep_companies_per_run: int = 50
+    #: Circuit breaker: a fact that fails this many recomputes stops being
+    #: claimed and stays visible with its error.
+    memory_recompute_max_attempts: int = 5
     memory_purge_batch_size: int = 500
     # Confidence history is the fastest-growing table here (one row per
     # fact per sweep) and its value is entirely in the recent tail — long

@@ -48,6 +48,7 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
 )
 from blinkengage.infrastructure.repositories.memory_repository import (
     MemoryConfidenceSampleRepository,
+    MemoryContradictionRepository,
     MemoryEvidenceRepository,
     MemoryFactRepository,
 )
@@ -95,6 +96,28 @@ async def _retention_for(session: AsyncSession, company_id: UUID) -> RetentionPo
         return default
 
 
+def _batch_for(total_facts: int, *, settings: Settings) -> int:
+    """How many facts this run must touch to finish a pass on schedule.
+
+    A **fixed** batch cannot keep up with a corpus that grows, and the
+    failure is silent: at 500 facts an hour a ten-million-fact corpus takes
+    2.3 years for one pass, while retrieval keeps ranking on a stored
+    confidence number that is years stale. Nothing errors; the decay model
+    simply stops being real.
+
+    So the batch is derived from the corpus and the target pass interval,
+    with a ceiling so one enormous tenant cannot make a single run
+    unbounded. The remaining staleness between sweeps is finished at read
+    time by ``decayed_confidence`` — the two halves of the same fix.
+    """
+    runs_per_pass = max(
+        1,
+        (settings.memory_target_pass_hours * 3600) // settings.memory_sweep_interval_seconds,
+    )
+    needed = -(-total_facts // runs_per_pass)  # ceiling division
+    return max(settings.memory_decay_batch_size, min(needed, settings.memory_decay_batch_max))
+
+
 async def _sweep_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
@@ -104,20 +127,35 @@ async def _sweep_async() -> int:
             stale_before = now - timedelta(seconds=settings.memory_recompute_interval_seconds)
 
             async with session_scope(session_factory) as session:
-                claimed = await MemoryFactRepository(session).claim_for_recompute(
-                    limit=settings.memory_decay_batch_size, stale_before=stale_before
+                facts = MemoryFactRepository(session)
+                budget = _batch_for(await facts.total_count(), settings=settings)
+                companies = await facts.companies_with_stale_facts(
+                    stale_before=stale_before,
+                    max_attempts=settings.memory_recompute_max_attempts,
+                    limit=settings.memory_sweep_companies_per_run,
                 )
-                # Ids only across the transaction boundary — carrying ORM
-                # instances between sessions is how a detached-instance
-                # error reaches production and never a test.
-                by_company: dict[UUID, list[UUID]] = defaultdict(list)
-                for fact in claimed:
-                    by_company[fact.company_id].append(fact.id)
+
+            # **Tenant-fair.** The budget is divided between the companies
+            # that have work rather than spent on whoever happens to hold
+            # the oldest rows. Under a single global ordering a tenant with
+            # ten million facts owns every batch until its own backlog
+            # clears and every other company's memory stops ageing — the
+            # exact shape of the relay-starvation incident.
+            per_company = max(1, budget // max(1, len(companies)))
 
             recomputed = 0
             failures = 0
-            for company_id, fact_ids in by_company.items():
-                retention = None
+            for company_id in companies:
+                retention: RetentionPolicy | None = None
+                async with session_scope(session_factory) as session:
+                    claimed = await MemoryFactRepository(session).claim_for_recompute(
+                        company_id=company_id,
+                        limit=per_company,
+                        stale_before=stale_before,
+                        max_attempts=settings.memory_recompute_max_attempts,
+                    )
+                    fact_ids = [fact.id for fact in claimed]
+
                 for fact_id in fact_ids:
                     try:
                         async with session_scope(session_factory) as session:
@@ -131,10 +169,11 @@ async def _sweep_async() -> int:
                                 continue
                             await manager.recompute(fact=claimed_fact, now=now)
                             recomputed += 1
-                    except Exception:  # noqa: BLE001
-                        # One fact failing must not abandon the rest. The
-                        # next sweep will find it again — it is claimed by
-                        # staleness, not by a flag that could get stuck.
+                    except Exception as exc:  # noqa: BLE001
+                        # One fact failing must not abandon the rest, and a
+                        # fact that keeps failing must stop being claimed —
+                        # otherwise it is reclaimed on every run forever
+                        # while healthy rows behind it are never reached.
                         failures += 1
                         report.record_failure()
                         logger.exception(
@@ -142,10 +181,28 @@ async def _sweep_async() -> int:
                             fact_id=str(fact_id),
                             company_id=str(company_id),
                         )
+                        try:
+                            async with session_scope(session_factory) as session:
+                                failed = await MemoryFactRepository(session).get_by_id(
+                                    company_id=company_id, fact_id=fact_id
+                                )
+                                if failed is not None:
+                                    await _build_manager(
+                                        session, retention=retention or RetentionPolicy()
+                                    ).record_recompute_failure(
+                                        fact=failed, error=f"{type(exc).__name__}: {exc}"
+                                    )
+                        except Exception:  # noqa: BLE001
+                            logger.exception(
+                                "memory_recompute_failure_not_recorded",
+                                fact_id=str(fact_id),
+                            )
 
             purged = await _purge(session_factory, limit=settings.memory_purge_batch_size)
             pruned = await _prune_samples(session_factory, settings=settings, now=now)
 
+            report.count("companies_swept", len(companies))
+            report.count("batch_budget", budget)
             report.count("facts_recomputed", recomputed)
             report.count("facts_purged", purged)
             report.count("samples_pruned", pruned)
@@ -162,6 +219,7 @@ def _build_manager(session: AsyncSession, *, retention: RetentionPolicy) -> Memo
         facts=MemoryFactRepository(session),
         evidence=MemoryEvidenceRepository(session),
         samples=MemoryConfidenceSampleRepository(session),
+        contradictions=MemoryContradictionRepository(session),
         events=OutboxEventPublisher(EventOutboxRepository(session)),
         retention=retention,
     )

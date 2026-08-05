@@ -552,3 +552,21 @@ class ConversationRepository:
             .limit(self._MAX_AGENT_REMOVAL_CONVERSATIONS)
         )
         return list(result.scalars().all())
+
+    async def ids_for_customer(self, *, company_id: UUID, customer_id: UUID) -> list[UUID]:
+        """Every conversation belonging to one customer.
+
+        Used by erasure to reach working memory, which is keyed by
+        conversation and therefore unreachable from a customer id alone.
+        Deliberately *not* filtered by ``deleted_at``: a soft-deleted
+        conversation's working memory is exactly as much the customer's
+        data as a live one's, and an erasure that skipped it would leave
+        the thing it was asked to remove.
+        """
+        rows = await self._session.execute(
+            select(Conversation.id).where(
+                Conversation.company_id == company_id,
+                Conversation.customer_id == customer_id,
+            )
+        )
+        return [row[0] for row in rows]

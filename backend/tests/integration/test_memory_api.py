@@ -29,7 +29,15 @@ def _record_payload(company_id: UUID, **overrides: object) -> dict[str, object]:
         "topic": "Silver plan",
         "statement": "'Silver' is the mid pricing tier, not a colour.",
         "created_from": "agent",
-        "evidence": [{"source_type": "agent_statement", "source_id": str(uuid4())}],
+        # ``agent_statement`` corroborates, and corroboration is what lifts
+        # a fact past CANDIDATE — so it must name the agent. See E3.
+        "evidence": [
+            {
+                "source_type": "agent_statement",
+                "source_id": str(uuid4()),
+                "agent_id": str(uuid4()),
+            }
+        ],
     }
     payload.update(overrides)
     return payload

@@ -67,16 +67,28 @@ from blinkengage.domain.memory_lifecycle import (
 )
 from blinkengage.infrastructure.database.models.memory import (
     MemoryConfidenceSample,
+    MemoryContradiction,
     MemoryEvidence,
     MemoryFact,
 )
 from blinkengage.infrastructure.repositories.memory_repository import (
     MemoryConfidenceSampleRepository,
+    MemoryContradictionRepository,
     MemoryEvidenceRepository,
     MemoryFactRepository,
 )
 
 logger = logging.getLogger(__name__)
+
+#: How much recent history direction is measured across.
+#:
+#: A sample is written on every mutation, so a window of one would mean
+#: direction only ever saw whichever single dimension the last write
+#: touched. Six is enough to span a burst of related activity — a
+#: contradiction arriving alongside fresh supporting evidence — without
+#: reaching so far back that a fact's distant past keeps colouring its
+#: present.
+DIRECTION_WINDOW_SAMPLES = 6
 
 
 @dataclass(frozen=True)
@@ -106,12 +118,14 @@ class MemoryManager:
         facts: MemoryFactRepository,
         evidence: MemoryEvidenceRepository,
         samples: MemoryConfidenceSampleRepository,
+        contradictions: MemoryContradictionRepository,
         events: DomainEventPublisher,
         retention: RetentionPolicy | None = None,
     ) -> None:
         self._facts = facts
         self._evidence = evidence
         self._samples = samples
+        self._contradictions = contradictions
         self._events = events
         self._retention = retention or RetentionPolicy()
 
@@ -203,12 +217,25 @@ class MemoryManager:
                 fact.due_at = due_at
             if steward_user_id is not None:
                 fact.steward_user_id = steward_user_id
-            fact.last_observed_at = moment
-            fact.lifecycle_state = revive_on_observation(LifecycleState(fact.lifecycle_state)).value
 
         evidence_added = await self._attach_evidence(
             company_id=company_id, fact=fact, refs=evidence, now=moment
         )
+
+        if evidence_added:
+            # **Only new evidence moves time.** Recency is a multiplicative
+            # term in the confidence function, so refreshing it on a call
+            # that added nothing reset decay to 1.0 and inflated
+            # confidence on no information at all — measured at 4.7x on a
+            # 200-day-old fact. At-least-once delivery makes that replay
+            # the normal case, not an edge one, so a quiet fact could be
+            # held at full confidence forever by a pipeline observing
+            # nothing.
+            #
+            # Revival is gated for the same reason: a duplicate delivery
+            # must not bring a dormant fact back to life.
+            fact.last_observed_at = moment
+            fact.lifecycle_state = revive_on_observation(LifecycleState(fact.lifecycle_state)).value
 
         confidence_before = float(fact.confidence or 0)
         state_before = fact.confidence_state
@@ -294,32 +321,37 @@ class MemoryManager:
     # -- confidence and lifecycle ---------------------------------------
 
     async def _recompute(self, *, fact: MemoryFact, now: datetime) -> None:
-        """Recompute belief and liveness from the evidence as it stands.
+        """Recompute belief and liveness from the rows as they stand.
 
-        Counters are recomputed from the evidence rows rather than
-        incremented. An increment is wrong the moment anything deletes
-        evidence — which erasure does — and a counter that has drifted from
-        its evidence is a confidence nobody can justify.
+        **Every input is a COUNT over a uniquely constrained table.** That
+        is the invariant that makes "confidence cannot move without a row"
+        provable rather than hoped for: support and breadth come from
+        ``memory_evidence`` (unique per source), contradictions from
+        ``memory_contradictions`` (unique per source), and recency only
+        advances when one of those rows is actually inserted.
+
+        Counters are recomputed, never incremented. An increment is wrong
+        the moment anything deletes a row — which erasure does,
+        constantly — and it is wrong the moment anything is redelivered,
+        which the broker does routinely.
         """
         support, customers, agents, corroborated = await self._evidence.support_counts(
             fact_id=fact.id
         )
+        contradictions = await self._contradictions.count_for_fact(fact_id=fact.id)
+
         fact.support_count = support
         fact.distinct_customer_count = customers
         fact.distinct_agent_count = agents
         fact.has_corroboration = corroborated
-
-        previous = await self._samples.recent_for_fact(fact_id=fact.id, limit=1)
-        previous_support = None
-        if previous:
-            previous_support = previous[0]
+        fact.contradiction_count = contradictions
 
         confidence = compute_confidence(
             ConfidenceInputs(
                 support_count=support,
                 distinct_customer_count=customers,
                 distinct_agent_count=agents,
-                contradiction_count=fact.contradiction_count,
+                contradiction_count=contradictions,
                 last_observed_at=_aware(fact.last_observed_at),
                 now=now,
                 fact_type=fact.fact_type,
@@ -338,15 +370,38 @@ class MemoryManager:
             has_corroboration=corroborated,
         ).value
 
-        samples = await self._samples.recent_for_fact(fact_id=fact.id, limit=6)
-        supporting_delta = support - (
-            0 if previous_support is None else _support_at(previous_support)
+        # Direction is derived from **totals over a window**, and both
+        # halves of that phrase are corrections.
+        #
+        # *Totals*, because the first version subtracted a delta from a
+        # total — dimensionally meaningless, and it drifted upward as soon
+        # as support grew by more than one between sweeps.
+        #
+        # *Over a window*, because a sample is written on every mutation.
+        # Comparing against the immediately previous sample means the
+        # window is "since the last write", and a single write moves a
+        # single dimension — so `CONTESTED`, which needs support *and*
+        # contradiction both growing, could never be observed even after
+        # the delta was fixed. Measuring across the recent history instead
+        # asks "what has been happening to this fact lately", which is the
+        # question direction is meant to answer.
+        history = await self._samples.recent_for_fact(
+            fact_id=fact.id, limit=DIRECTION_WINDOW_SAMPLES
         )
+        baseline = history[-1] if history else None
+        supporting_delta = support - (int(baseline.support_total) if baseline else 0)
+        contradicting_delta = contradictions - (
+            int(baseline.contradiction_total) if baseline else 0
+        )
+
         fact.confidence_direction = compute_direction(
             DirectionInputs(
                 supporting_delta=max(0, supporting_delta),
-                contradicting_delta=0,
-                samples=len(samples) + 1,
+                # Previously hard-coded to zero, which made FALLING and
+                # CONTESTED unreachable code — the business-change
+                # detector could not detect a business change.
+                contradicting_delta=max(0, contradicting_delta),
+                samples=len(history) + 1,
             )
         ).value
 
@@ -364,14 +419,19 @@ class MemoryManager:
         if fact.lifecycle_state == LifecycleState.ARCHIVED.value and fact.archived_at is None:
             fact.archived_at = now
 
+        fact.recompute_attempts = 0
+        fact.recompute_error = None
+
         await self._samples.add(
             MemoryConfidenceSample(
                 company_id=fact.company_id,
                 fact_id=fact.id,
                 computed_at=now,
                 confidence=fact.confidence,
+                support_total=support,
+                contradiction_total=contradictions,
                 supporting_delta=max(0, supporting_delta),
-                contradicting_delta=0,
+                contradicting_delta=max(0, contradicting_delta),
             )
         )
 
@@ -387,6 +447,20 @@ class MemoryManager:
                 {"from": before, "to": fact.lifecycle_state},
             )
         return fact
+
+    async def record_recompute_failure(
+        self, *, fact: MemoryFact, error: str, now: datetime | None = None
+    ) -> None:
+        """A recompute that could not complete.
+
+        Counted rather than retried forever. The knowledge index sweep
+        already carries this guard, added after a poison row was reclaimed
+        and re-failed every five seconds for twenty hours while healthy
+        rows behind it were never claimed; the decay sweep had the same
+        shape and none of the guard.
+        """
+        fact.recompute_attempts += 1
+        fact.recompute_error = error[:1000]
 
     # -- human intervention ---------------------------------------------
 
@@ -469,7 +543,9 @@ class MemoryManager:
         *,
         company_id: UUID,
         fact_id: UUID,
-        source: str,
+        source_type: str,
+        source_id: UUID | None = None,
+        note: str | None = None,
         now: datetime | None = None,
     ) -> MemoryFact:
         """Something authoritative disagrees with this fact.
@@ -479,16 +555,44 @@ class MemoryManager:
         learned fact that disagrees, with no human in the loop — while
         Memory may only ever *propose* to Knowledge. Official truth
         corrects observation on sight; observation asks permission.
+
+        **Idempotent**, which the first version was not. It incremented a
+        counter, so a redelivered event demoted a true fact on no new
+        information — the mirror image of a replay inflating one. A
+        contradiction is now a row with a uniqueness constraint on its
+        source, and the count is derived from the rows.
+
+        The signature changed with that fix: callers name *what*
+        disagreed, not just that something did. That is a breaking change
+        to an internal service with no HTTP surface, and it is the point —
+        a contradiction whose source cannot be identified cannot be
+        deduplicated, which is the defect.
         """
         moment = now or datetime.now(UTC)
         fact = await self._require(company_id=company_id, fact_id=fact_id)
-        fact.contradiction_count += 1
-        await self._recompute(fact=fact, now=moment)
-        await self._publish(
-            fact,
-            "memory.fact_contradicted",
-            {"source": source, "contradictions": fact.contradiction_count},
-        )
+
+        if not await self._contradictions.exists(
+            fact_id=fact.id, source_type=source_type, source_id=source_id
+        ):
+            await self._contradictions.add(
+                MemoryContradiction(
+                    company_id=company_id,
+                    fact_id=fact.id,
+                    source_type=source_type,
+                    source_id=source_id,
+                    detected_at=moment,
+                    note=note,
+                )
+            )
+            await self._recompute(fact=fact, now=moment)
+            await self._publish(
+                fact,
+                "memory.fact_contradicted",
+                {
+                    "source_type": source_type,
+                    "contradictions": fact.contradiction_count,
+                },
+            )
         return fact
 
     # -- forgetting (never erasure) -------------------------------------
@@ -553,15 +657,6 @@ def _aware(value: datetime) -> datetime:
 
 def _aware_or_none(value: datetime | None) -> datetime | None:
     return None if value is None else _aware(value)
-
-
-def _support_at(sample: MemoryConfidenceSample) -> int:
-    """Support implied by a stored sample.
-
-    Samples record the *delta*, so the running total is reconstructed by
-    the caller; this exists so the reconstruction has one definition.
-    """
-    return int(sample.supporting_delta)
 
 
 __all__ = ["MemoryManager", "RecordOutcome"]

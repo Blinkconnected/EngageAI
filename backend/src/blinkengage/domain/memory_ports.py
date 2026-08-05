@@ -53,4 +53,33 @@ class SupportsFactRecompute(Protocol):
     async def recompute(self, *, fact: Any, now: Any | None = None) -> Any: ...
 
 
-__all__ = ["SupportsFactRecompute", "SupportsOwnerDeletion"]
+@runtime_checkable
+class ErasureParticipant(Protocol):
+    """A context that holds data about a subject and must clear it.
+
+    Erasure was previously complete only because Memory was the only
+    context holding subject data. The moment Learning exists it will hold
+    observations, cluster memberships and candidates referencing the same
+    customer, and an ``ErasureReport`` that did not include them would be
+    a document asserting complete deletion while four tables still held
+    the subject — the report is described as the thing somebody forwards
+    to a regulator.
+
+    So erasure is a **fan-out with acknowledgement**, and a participant
+    that cannot confirm is a failure rather than a silence. Each context
+    erases its own store, which is the same rule that keeps
+    ``MemoryManager`` the only writer of memory.
+    """
+
+    #: Stable identifier used in the report, so a partial erasure names
+    #: which context did not finish.
+    participant_name: str
+
+    async def erase_subject(
+        self, *, company_id: UUID, subject_type: str, subject_id: UUID
+    ) -> dict[str, int]:
+        """Remove everything held about this subject. Returns counts."""
+        ...
+
+
+__all__ = ["ErasureParticipant", "SupportsFactRecompute", "SupportsOwnerDeletion"]

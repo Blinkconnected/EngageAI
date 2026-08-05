@@ -253,8 +253,14 @@ Memory is written by exactly one component. `MemoryManager` is the only writer
 to memory tables, which is what makes confidence, evidence and lifecycle
 guarantees hold at all — see the companion document.
 
-Authority is a column, it is carried through retrieval, and it is enforced at
-three separate points rather than trusted once:
+Authority is a column, it is carried through retrieval, and it is designed to
+be enforced at three separate points rather than trusted once.
+
+> **Two of the three are built.** Ranking and the class filter ship with
+> stage 1; verification does not. Until it does, an answer can cite
+> nothing and still be sent, so authority is advisory rather than
+> enforced. Recorded as **B8** in
+> [the architecture freeze review](./architecture-freeze-review.md).
 
 1. **Ranking** — `AUTHORITATIVE` sources receive a fixed rank boost after
    fusion, so an official article outranks a learned pattern of equal semantic
@@ -267,6 +273,13 @@ three separate points rather than trusted once:
 3. **Verification** — the generated answer is checked against its citations
    before it is emitted, and any restricted-class claim without an
    authoritative citation blocks the send and hands to a human.
+   **Not built.** Stage 1 shipped retrieval only, so today authority is
+   *advisory*: it boosts ranking and filters restricted classes out of the
+   candidate pool, and nothing checks that the emitted answer is actually
+   supported by what came back. Until the verifier exists, "official
+   knowledge wins" is a retrieval preference, not an enforced guarantee.
+   Tracked as **B8** in
+   [the architecture freeze review](./architecture-freeze-review.md).
 
 Ranking alone would have been the easy version, and it is the version that
 eventually quotes a price the AI inferred from a conversation.

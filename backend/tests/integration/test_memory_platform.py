@@ -37,6 +37,7 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
 )
 from blinkengage.infrastructure.repositories.memory_repository import (
     MemoryConfidenceSampleRepository,
+    MemoryContradictionRepository,
     MemoryEvidenceRepository,
     MemoryFactRepository,
 )
@@ -49,6 +50,7 @@ def _manager(session, *, retention: RetentionPolicy | None = None) -> MemoryMana
         facts=MemoryFactRepository(session),
         evidence=MemoryEvidenceRepository(session),
         samples=MemoryConfidenceSampleRepository(session),
+        contradictions=MemoryContradictionRepository(session),
         events=OutboxEventPublisher(EventOutboxRepository(session)),
         retention=retention or RetentionPolicy(),
     )
@@ -86,7 +88,11 @@ class TestRecording:
                 topic="Silver plan",
                 statement="'Silver' is the mid pricing tier, not a colour.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
@@ -138,7 +144,7 @@ class TestRecording:
                         EvidenceRef(
                             source_type=EvidenceSourceType.AGENT_STATEMENT,
                             source_id=uuid4(),
-                            agent_id=None,
+                            agent_id=uuid4(),
                         ),
                     ),
                     created_from=CreatedFrom.AGENT,
@@ -230,7 +236,11 @@ class TestRecording:
                 topic="Silver",
                 statement="Silver is a tier.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
@@ -327,7 +337,11 @@ class TestHumanIntervention:
                 topic="Refund window is 30 days",
                 statement="The refund window is 30 days.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
@@ -337,7 +351,8 @@ class TestHumanIntervention:
             fact = await manager.contradict(
                 company_id=company_id,
                 fact_id=outcome.fact.id,
-                source="knowledge_article",
+                source_type="knowledge_article",
+                source_id=uuid4(),
                 now=NOW,
             )
             await session.commit()
@@ -394,7 +409,11 @@ class TestDecayIsNotErasure:
                 topic="Silver",
                 statement="Silver is a tier.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW - timedelta(days=200),
@@ -411,7 +430,11 @@ class TestDecayIsNotErasure:
                 topic="Silver",
                 statement="Silver is a tier.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
@@ -420,8 +443,16 @@ class TestDecayIsNotErasure:
 
         assert revived.fact.lifecycle_state == LifecycleState.ACTIVE.value
         # It came back with the standing it earned, not demoted to the
-        # bottom of the belief axis.
-        assert revived.fact.confidence_state >= state_when_dormant
+        # bottom of the belief axis. Compared on the *ordering* of the
+        # states rather than their names — 'candidate' sorts before
+        # 'observed' alphabetically, which is the opposite of the truth.
+        order = [
+            ConfidenceState.OBSERVED.value,
+            ConfidenceState.CANDIDATE.value,
+            ConfidenceState.CONFIRMED.value,
+            ConfidenceState.TRUSTED.value,
+        ]
+        assert order.index(revived.fact.confidence_state) >= order.index(state_when_dormant)
 
 
 class TestErasure:
@@ -443,6 +474,7 @@ class TestErasure:
                     EvidenceRef(
                         source_type=EvidenceSourceType.AGENT_STATEMENT,
                         source_id=uuid4(),
+                        agent_id=uuid4(),
                         customer_id=None,
                     ),
                 ),
@@ -628,7 +660,11 @@ class TestTenantIsolation:
                 topic="Silver",
                 statement="Ours.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
@@ -657,7 +693,11 @@ class TestTenantIsolation:
                 topic="Silver",
                 statement="Ours.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
@@ -690,7 +730,11 @@ class TestTenantIsolation:
                 topic="prefers arabic",
                 statement="Prefers Arabic.",
                 evidence=(
-                    EvidenceRef(source_type=EvidenceSourceType.AGENT_STATEMENT, source_id=uuid4()),
+                    EvidenceRef(
+                        source_type=EvidenceSourceType.AGENT_STATEMENT,
+                        source_id=uuid4(),
+                        agent_id=uuid4(),
+                    ),
                 ),
                 created_from=CreatedFrom.AGENT,
                 now=NOW,
