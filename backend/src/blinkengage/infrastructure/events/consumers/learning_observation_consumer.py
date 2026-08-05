@@ -253,6 +253,7 @@ async def _turns_for(session: AsyncSession, *, conversation_id: UUID) -> tuple[T
                 text=message.body or "",
                 is_ai_generated=metadata.get("is_ai_generated") is True,
                 is_ai_assisted=metadata.get("is_ai_assisted") is True,
+                is_system_generated=metadata.get("is_system_generated") is True,
                 kind=ContentRefKind.MESSAGE,
             )
         )

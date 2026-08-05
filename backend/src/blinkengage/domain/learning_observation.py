@@ -33,7 +33,17 @@ from uuid import UUID
 #: ``(source_id, pipeline_version)``, so a bump produces a parallel
 #: generation rather than overwriting — which is what makes a bad
 #: extractor rollback-able instead of permanent.
-PIPELINE_VERSION = 1
+#:
+#: **2** — phase 1.5 validation against production data. Two extraction
+#: rules changed, and both change what a topic list contains, so v1 and
+#: v2 rows are not comparable:
+#:
+#: - URLs and identifier fragments no longer become topics. A CSAT link
+#:   was putting UUID and JWT pieces (``9d1d``, ``gl9pwqnk``) into the
+#:   topic list of every conversation that received one.
+#: - Platform templates (``is_system_generated``) are no longer read as
+#:   human-authored content, so their wording no longer becomes topics.
+PIPELINE_VERSION = 2
 
 #: An observation is bounded. An envelope that grew with conversation
 #: length would eventually not fit anything downstream, and the bound is

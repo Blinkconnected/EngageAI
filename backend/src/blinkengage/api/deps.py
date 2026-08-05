@@ -134,7 +134,10 @@ from blinkengage.infrastructure.events.realtime_publisher import RealtimePublish
 from blinkengage.infrastructure.payments.registry import PaymentProviderRegistry
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
 from blinkengage.infrastructure.repositories.agent_skill_repository import AgentSkillRepository
-from blinkengage.infrastructure.repositories.audit_log_repository import AuditLogRepository
+from blinkengage.infrastructure.repositories.audit_log_repository import (
+    AuditLogRepository,
+    LearningErasureCounter,
+)
 from blinkengage.infrastructure.repositories.billable_event_repository import (
     BillableEventRepository,
 )
@@ -1265,6 +1268,7 @@ def get_learning_query_service(
         observations=LearningObservationRepository(session),
         runs=LearningRunRepository(session),
         companies=CompanyRepository(session),
+        erasures=LearningErasureCounter(session),
     )
 
 

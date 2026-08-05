@@ -230,6 +230,13 @@ class MemoryErasureService:
                     "aggregate_facts_recomputed": recomputed,
                     "aggregate_facts_archived": archived,
                     "embeddings_deleted": embeddings_deleted,
+                    # What every other context deleted, carried here so the
+                    # audit trail says the same thing the report did. The
+                    # report is handed to a regulator and then discarded;
+                    # this is what remains, and a trail that recorded only
+                    # Memory's numbers would understate the erasure.
+                    "participants": participant_counts,
+                    "incomplete": list(incomplete),
                 },
             )
         )
@@ -298,6 +305,8 @@ class MemoryErasureService:
                     "facts_deleted": facts_deleted,
                     "evidence_deleted": evidence_deleted,
                     "embeddings_deleted": embeddings_deleted,
+                    "participants": participant_counts,
+                    "incomplete": list(incomplete),
                 },
             )
         )

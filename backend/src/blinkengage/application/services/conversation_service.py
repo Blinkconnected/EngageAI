@@ -101,16 +101,31 @@ from blinkengage.infrastructure.storage.attachment_store import AttachmentStore
 
 
 def _reply_metadata(
-    *, is_ai_generated: bool, is_ai_assisted: bool, ai_confidence: float | None = None
+    *,
+    is_ai_generated: bool,
+    is_ai_assisted: bool,
+    ai_confidence: float | None = None,
+    is_system_generated: bool = False,
 ) -> dict[str, bool | float]:
-    """Two distinct, non-overlapping AI provenance flags on an outbound
+    """Three distinct, non-overlapping provenance flags on an outbound
     message — an administrator has to be able to tell a fully automated
-    reply from one a human wrote with AI's help from one written by hand:
+    reply from one a human wrote with AI's help from one written by hand,
+    and the Learning Platform has to be able to tell all three from a
+    template the platform sent on nobody's behalf:
 
     - ``is_ai_generated``: AI Autopilot composed and sent it with no
       human in the loop (only ``AutopilotService`` sets this).
     - ``is_ai_assisted``: an agent's own reply whose draft started as an
       AI suggestion, edited or not.
+    - ``is_system_generated``: the platform's own template — a CSAT
+      invitation, an automated notice. Nobody wrote it *to this
+      customer*, so it is not evidence of anything about them.
+
+      Found in production during phase 1.5 validation: the CSAT survey
+      message was being counted as human-authored content, which put its
+      template vocabulary ("feedback", "moment", "share") into the topics
+      of every conversation that received one. At clustering that is a
+      spurious pattern present in a large, arbitrary slice of the corpus.
 
     A key is omitted entirely when false, so a purely manual reply keeps
     its historical empty ``{}`` metadata rather than gaining noise, and
@@ -128,6 +143,8 @@ def _reply_metadata(
         metadata["is_ai_generated"] = True
     if is_ai_assisted:
         metadata["is_ai_assisted"] = True
+    if is_system_generated:
+        metadata["is_system_generated"] = True
     if ai_confidence is not None:
         metadata["ai_confidence"] = ai_confidence
     return metadata
@@ -1080,6 +1097,7 @@ class ConversationService:
         is_ai_generated: bool = False,
         is_ai_assisted: bool = False,
         ai_confidence: float | None = None,
+        is_system_generated: bool = False,
     ) -> Message:
         conversation = await self.get(company_id=company_id, conversation_id=conversation_id)
         config = await self._channel_configs.get_by_id(
@@ -1190,6 +1208,7 @@ class ConversationService:
                         **_reply_metadata(
                             is_ai_generated=is_ai_generated,
                             is_ai_assisted=is_ai_assisted,
+                            is_system_generated=is_system_generated,
                             ai_confidence=ai_confidence,
                         ),
                         "error": error_detail,
@@ -1231,6 +1250,7 @@ class ConversationService:
                     is_ai_generated=is_ai_generated,
                     is_ai_assisted=is_ai_assisted,
                     ai_confidence=ai_confidence,
+                    is_system_generated=is_system_generated,
                 ),
             )
         )

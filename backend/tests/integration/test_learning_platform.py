@@ -475,6 +475,43 @@ class TestAiProvenance:
             refs = (await session.execute(select(LearningObservationRef))).scalars().all()
             assert len(refs) == 2
 
+    async def test_a_platform_template_is_not_evidence(self, app: Any) -> None:
+        """Phase 1.5, from production.
+
+        The CSAT survey message was being read as human-authored content,
+        which put its template wording into the topics of every
+        conversation that received one — a token shared by an arbitrary
+        slice of the corpus, which at clustering is a pattern that is not
+        there. A template is written by nobody to this customer, so it
+        counts as neither human nor AI.
+        """
+        company_id = await _company_id(app)
+        conversation_id, _ = await _a_conversation(
+            app,
+            company_id=company_id,
+            turns=(
+                (MessageDirection.INBOUND, CUSTOMER_TEXT, None),
+                (
+                    MessageDirection.OUTBOUND,
+                    "please take a moment to share your feedback",
+                    {"is_system_generated": True},
+                ),
+            ),
+        )
+
+        await _consume(app, _resolved_event(company_id=company_id, conversation_id=conversation_id))
+
+        row = await _observation(app, conversation_id)
+        assert row is not None
+        assert row.human_authored_count == 1
+        assert row.ai_generated_count == 0
+        assert row.ai_assisted_count == 0
+
+        async with app.state.container.session_factory()() as session:
+            features = (await session.execute(select(LearningObservationFeature))).scalar_one()
+            assert "feedback" not in features.topics
+            assert "refund" in features.topics
+
     async def test_ai_assisted_content_is_admitted(self, app: Any) -> None:
         """A human read the draft and pressed send, so it is real content.
 
@@ -924,6 +961,68 @@ class TestReadApi:
         assert len(items) == 1
         assert items[0]["source_id"] == str(refused_id)
         assert items[0]["exclusion_reason"] == ExclusionReason.POLICY_DENIED.value
+
+    async def test_health_reports_the_five_operator_counters(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """The dashboard phase 1.5 asked for.
+
+        ``replayed`` is the one worth testing rather than eyeballing: it
+        must stay at zero through ordinary redelivery and rise only when a
+        pipeline version is bumped, or it is counting at-least-once
+        delivery and telling an operator nothing.
+        """
+        company_id = await _company_id(app)
+        observed_id, _ = await _a_conversation(app, company_id=company_id)
+        event = _resolved_event(company_id=company_id, conversation_id=observed_id)
+        await _consume(app, event)
+        await _consume(app, event)  # redelivery, not a replay
+
+        await _set_learning(app, company_id, enabled=False)
+        refused_id, _ = await _a_conversation(app, company_id=company_id)
+        await _consume(app, _resolved_event(company_id=company_id, conversation_id=refused_id))
+
+        response = await client.get("/api/v1/intelligence/health", headers=owner_headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+
+        assert body["pending"] == 1
+        assert body["settled"] == 0
+        assert body["failed"] == 0
+        assert body["replayed"] == 0, "redelivery is not a replay"
+        assert body["erased"] == 0
+        assert body["observations_by_state"][ObservationState.EXCLUDED.value] == 1
+
+    async def test_replayed_counts_superseded_generations(self, app: Any) -> None:
+        """A second generation of the same source, which is what a
+        pipeline bump produces."""
+        company_id = await _company_id(app)
+        conversation_id, customer_id = await _a_conversation(app, company_id=company_id)
+        await _consume(app, _resolved_event(company_id=company_id, conversation_id=conversation_id))
+
+        async with app.state.container.session_factory()() as session:
+            session.add(
+                LearningObservation(
+                    company_id=company_id,
+                    source_kind=SourceKind.CONVERSATION.value,
+                    source_id=conversation_id,
+                    observed_at=NOW,
+                    customer_id=customer_id,
+                    # The next generation, written alongside rather than
+                    # over — which is what makes a bad extractor
+                    # recoverable instead of permanent.
+                    pipeline_version=PIPELINE_VERSION + 1,
+                    state=ObservationState.READY.value,
+                    extras={},
+                )
+            )
+            await session.commit()
+
+        async with app.state.container.session_factory()() as session:
+            assert (
+                await LearningObservationRepository(session).replayed_count(company_id=company_id)
+                == 1
+            )
 
     async def test_health_reports_the_feedback_ratio(
         self, app: Any, client: Any, owner_headers: dict[str, str]

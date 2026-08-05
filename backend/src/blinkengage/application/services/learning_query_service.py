@@ -19,6 +19,9 @@ from blinkengage.infrastructure.database.models.learning import (
     LearningObservation,
     LearningRun,
 )
+from blinkengage.infrastructure.repositories.audit_log_repository import (
+    LearningErasureCounter,
+)
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.learning_repository import (
     LearningObservationRepository,
@@ -33,10 +36,12 @@ class LearningQueryService:
         observations: LearningObservationRepository,
         runs: LearningRunRepository,
         companies: CompanyRepository,
+        erasures: LearningErasureCounter,
     ) -> None:
         self._observations = observations
         self._runs = runs
         self._companies = companies
+        self._erasures = erasures
 
     async def list_observations(
         self,
@@ -76,10 +81,18 @@ class LearningQueryService:
         return await self._runs.recent(limit=limit)
 
     async def health(self, *, company_id: UUID) -> LearningHealthResponse:
+        """Is Learning healthy, is it dangerous, and what is it doing?
+
+        One payload, because an operator asking any of the three is about
+        to ask the other two. ``feedback_ratio`` sits beside the counters
+        rather than behind another call for the reason charter §17 gives:
+        it is the number most likely to be quietly wrong.
+        """
         company = await self._companies.get_by_id(company_id)
         settings = company.settings if company is not None else {}
         counts = await self._observations.counts_by_state(company_id=company_id)
         recent = await self._runs.recent(limit=10)
+        run_errors = sum(run.errors for run in recent)
 
         return LearningHealthResponse(
             learning_enabled=is_learning_enabled(settings),
@@ -88,7 +101,16 @@ class LearningQueryService:
             feedback_ratio=await self._observations.feedback_ratio(company_id=company_id),
             observations_awaiting_settlement=counts.get(ObservationState.PENDING.value, 0),
             last_run_at=recent[0].started_at if recent else None,
-            recent_run_errors=sum(run.errors for run in recent),
+            recent_run_errors=run_errors,
+            pending=counts.get(ObservationState.PENDING.value, 0),
+            settled=counts.get(ObservationState.READY.value, 0),
+            # A failure is a fact about a *run*, not a state an observation
+            # can be in: one that failed to settle is still a correct
+            # pending observation, and giving it a FAILED state would make
+            # a transient database blip look like corrupted data.
+            failed=run_errors,
+            replayed=await self._observations.replayed_count(company_id=company_id),
+            erased=await self._erasures.count_for_company(company_id=company_id),
         )
 
 

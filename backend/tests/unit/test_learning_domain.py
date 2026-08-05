@@ -7,7 +7,7 @@ and that extraction is deterministic enough for ``pipeline_version`` to
 mean something.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -250,13 +250,63 @@ class TestTopicExtraction:
         assert extract_topics("zebra apple mango") == ("apple", "mango", "zebra")
 
     def test_topics_are_bounded(self) -> None:
-        text = " ".join(f"token{index:03d}" for index in range(MAX_TOPICS * 3))
+        # Word-shaped, not identifier-shaped: a token mixing letters and
+        # digits is dropped as an identifier fragment, which is the point
+        # of the rule and would make this measure nothing.
+        alphabet = "abcdefghijklmnopqrstuvwxyz"
+        text = " ".join(
+            f"{alphabet[index % 26]}{alphabet[(index // 26) % 26]}word"
+            for index in range(MAX_TOPICS * 3)
+        )
         assert len(extract_topics(text)) == MAX_TOPICS
 
     def test_arabic_tokenises_like_anything_else(self) -> None:
         topics = extract_topics("استرجاع المبلغ استرجاع الطلب شكرا")
         assert "استرجاع" in topics
         assert "شكرا" not in topics
+
+
+class TestProductionFoundDefects:
+    """Regressions for what phase 1.5 validation found in real traffic.
+
+    Both were invisible to the labelled corpus, because the corpus was
+    written by the same hand as the extractor. That is the argument for
+    validating against production data rather than against a benchmark.
+    """
+
+    def test_a_url_contributes_nothing_to_topics(self) -> None:
+        """The defect, exactly as it appeared.
+
+        A CSAT survey link put UUID segments and JWT fragments through the
+        tokeniser, and they became topics. At clustering, a token present
+        in every conversation that happened to receive a survey link is a
+        pattern that is not there.
+        """
+        body = (
+            "please take a moment to share your feedback: "
+            "https://10.0.0.1/feedback/e8aa3a07-e1b9-4350-9d1d-bc0a287c1184"
+            "?token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
+        )
+        topics = extract_topics(body)
+        for fragment in ("e8aa3a07", "e1b9", "9d1d", "bc0a287c1184", "eyjhbgcioijiuzi1nij9"):
+            assert fragment not in topics
+        # The URL itself is still kept — as an entity, where it belongs.
+        assert any(entity.startswith("url:") for entity in extract_entities(body))
+
+    def test_a_word_that_happens_to_be_hexadecimal_survives(self) -> None:
+        """Why the rule is "letters and digits", not "looks like hex".
+
+        ``cafe``, ``dead``, ``decade`` and ``face`` are all valid
+        hexadecimal and all ordinary English. A hex test would silently
+        delete them from every topic list on the platform.
+        """
+        topics = extract_topics("the cafe order was dead on arrival, a decade of decay")
+        assert "cafe" in topics
+        assert "dead" in topics
+        assert "decade" in topics
+
+    def test_identifier_fragments_are_dropped_but_words_are_not(self) -> None:
+        assert extract_topics("gl9pwqnk refund a1b2c3 shipping") == ("refund", "shipping")
 
 
 class TestExtract:
@@ -282,3 +332,62 @@ class TestExtract:
         assert (
             extract(human_text="\n\n  \n", inbound_turns=4, outbound_turns=0).human_char_count == 0
         )
+
+
+class TestSettleRunWindows:
+    """The run row is a window, and the window must match the cadence.
+
+    Found in phase 1.5: the sweep truncated its window to the hour while
+    running every fifteen minutes, so three runs in four collided on the
+    unique constraint and recorded nothing — including their failures,
+    which is what made it worth finding. An operator watching ``failed``
+    would have seen zero through a sweep that was failing every time.
+    """
+
+    @pytest.mark.parametrize(
+        ("moment", "expected"),
+        [
+            ("13:00:45", "13:00:00"),
+            ("13:13:10", "13:00:00"),
+            ("13:14:59", "13:00:00"),
+            ("13:15:00", "13:15:00"),
+            ("13:29:59", "13:15:00"),
+        ],
+    )
+    def test_consecutive_sweeps_get_their_own_window(self, moment: str, expected: str) -> None:
+        from blinkengage.infrastructure.tasks.learning_settle_sweep_task import (
+            _window_start,
+        )
+
+        hour, minute, second = (int(part) for part in moment.split(":"))
+        floored = _window_start(datetime(2026, 8, 5, hour, minute, second, tzinfo=UTC), seconds=900)
+        assert floored.strftime("%H:%M:%S") == expected
+
+    def test_a_cadence_that_does_not_divide_an_hour_still_tiles(self) -> None:
+        """Epoch-anchored, not hour-anchored.
+
+        A 7-minute cadence anchored to the hour would leave a short,
+        overlapping window at the top of every hour — and an overlap is a
+        collision, which is a run that records nothing.
+        """
+        from blinkengage.infrastructure.tasks.learning_settle_sweep_task import (
+            _window_start,
+        )
+
+        step = 7 * 60
+        base = datetime(2026, 8, 5, 13, 0, tzinfo=UTC)
+        windows = sorted(
+            {
+                _window_start(base + timedelta(seconds=offset), seconds=step)
+                for offset in range(0, step * 6, 30)
+            }
+        )
+
+        # Contiguous and exactly one step apart: no gap where a run would
+        # be unrecorded, no overlap where two would collide.
+        assert len(windows) >= 6
+        gaps = {
+            (later - earlier).total_seconds()
+            for earlier, later in zip(windows, windows[1:], strict=False)
+        }
+        assert gaps == {float(step)}

@@ -110,6 +110,7 @@ async def _sweep_async() -> int:
                 items_in=len(pending),
                 items_out=settled,
                 errors=failures,
+                interval_seconds=settings.learning_settle_interval_seconds,
             )
 
             report.count("observations_due", len(pending))
@@ -122,6 +123,17 @@ async def _sweep_async() -> int:
             await _engine.dispose()
 
 
+def _window_start(moment: datetime, *, seconds: int) -> datetime:
+    """Floor ``moment`` to the start of its window.
+
+    Epoch-anchored rather than anchored to the hour, so a cadence that
+    does not divide an hour still produces contiguous, non-overlapping
+    windows.
+    """
+    epoch_seconds = int(moment.timestamp())
+    return datetime.fromtimestamp(epoch_seconds - (epoch_seconds % seconds), tz=UTC)
+
+
 async def _record_run(
     session_factory: async_sessionmaker[AsyncSession],
     *,
@@ -129,6 +141,7 @@ async def _record_run(
     items_in: int,
     items_out: int,
     errors: int,
+    interval_seconds: int,
 ) -> None:
     """The Learning-owned record of this execution.
 
@@ -144,10 +157,17 @@ async def _record_run(
             company_id=None,
             run_type=RUN_TYPE_SETTLE,
             pipeline_version=PIPELINE_VERSION,
-            # Truncated to the hour so overlapping sweeps within one hour
-            # collide on the unique constraint instead of writing a row
-            # each — the run is a window, not a heartbeat.
-            window_start=started.replace(minute=0, second=0, microsecond=0),
+            # Truncated to the sweep's own cadence, so two sweeps racing
+            # inside one window collide on the unique constraint — the run
+            # is a window, not a heartbeat — while consecutive sweeps each
+            # get a row.
+            #
+            # This used to truncate to the hour, against a 15-minute
+            # cadence, so three runs in four silently recorded nothing and
+            # their failures never reached the health dashboard. The
+            # window and the schedule now come from the same setting,
+            # which is what stops them disagreeing again.
+            window_start=_window_start(started, seconds=interval_seconds),
             now=started,
         )
         if run is None:

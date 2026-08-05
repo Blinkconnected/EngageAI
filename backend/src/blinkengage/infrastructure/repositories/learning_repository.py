@@ -222,6 +222,27 @@ class LearningObservationRepository:
         total = ai + int(row[2] or 0)
         return ai / total if total else 0.0
 
+    async def replayed_count(self, *, company_id: UUID) -> int:
+        """Superseded generations — rows whose source has a newer version.
+
+        Total rows minus distinct sources. Exact rather than sampled, and
+        cheap: both sides come from one grouped scan of a company's own
+        rows.
+
+        Zero until somebody bumps ``PIPELINE_VERSION``, and that is the
+        point — a replay counter that ticked on ordinary redelivery would
+        be counting at-least-once delivery, which is not a replay.
+        """
+        rows = (
+            await self._session.execute(
+                select(
+                    func.count(LearningObservation.id),
+                    func.count(func.distinct(LearningObservation.source_id)),
+                ).where(LearningObservation.company_id == company_id)
+            )
+        ).one()
+        return int(rows[0] or 0) - int(rows[1] or 0)
+
     async def delete_for_customer(self, *, company_id: UUID, customer_id: UUID) -> dict[str, int]:
         """Erasure. Everything Learning holds about one subject.
 

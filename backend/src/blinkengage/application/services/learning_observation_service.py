@@ -83,6 +83,13 @@ class TurnInput:
     text: str
     is_ai_generated: bool = False
     is_ai_assisted: bool = False
+    #: A platform template — a CSAT invitation, an automated notice.
+    #: Nobody wrote it to this customer, so it is not evidence about
+    #: them. Excluded from extraction for the same reason machine-written
+    #: content is: found in production during phase 1.5, where the CSAT
+    #: survey's own wording was becoming a topic on every conversation
+    #: that received one.
+    is_system_generated: bool = False
     kind: ContentRefKind = ContentRefKind.MESSAGE
 
 
@@ -135,7 +142,9 @@ class LearningObservationService:
         # I-5: extraction sees human-authored text only. Filtered here,
         # before extraction, rather than from the results afterwards.
         human_text = "\n".join(
-            turn.text for turn in turns if not turn.is_ai_generated and turn.text
+            turn.text
+            for turn in turns
+            if not turn.is_ai_generated and not turn.is_system_generated and turn.text
         )
         features = extract(
             human_text=human_text,
@@ -177,8 +186,18 @@ class LearningObservationService:
                 detail=f"source {source.source_id} already observed for another company"
             )
 
-        row = existing or await self._observations.add(
-            LearningObservation(
+        settle_due_at = _settle_due(outcome_inputs, hours=self._settle_hours)
+
+        if existing is None:
+            # Built complete, then inserted once. Applying the outcome
+            # *after* the insert would cost an UPDATE per observation on
+            # top of every INSERT — measured at 2.0 writes per row against
+            # PostgreSQL, where 1.0 will do (see
+            # ``scripts/validate_learning_pipeline.py``). At platform scale
+            # that is half the write volume of the largest table here, and
+            # under MVCC it is also a dead tuple per row for autovacuum to
+            # clear.
+            row = LearningObservation(
                 company_id=company_id,
                 source_kind=source.kind.value,
                 source_id=source.source_id,
@@ -189,10 +208,13 @@ class LearningObservationService:
                 state=state.value,
                 extras={},
             )
-        )
-
-        _apply(row, state=state, exclusion=exclusion, provenance=provenance, outcome=outcome)
-        row.settle_due_at = _settle_due(outcome_inputs, hours=self._settle_hours)
+            _apply(row, state=state, exclusion=exclusion, provenance=provenance, outcome=outcome)
+            row.settle_due_at = settle_due_at
+            row = await self._observations.add(row)
+        else:
+            row = existing
+            _apply(row, state=state, exclusion=exclusion, provenance=provenance, outcome=outcome)
+            row.settle_due_at = settle_due_at
 
         features_written = await self._write_features(
             company_id=company_id, row=row, features=features
@@ -312,6 +334,12 @@ def _provenance(turns: tuple[TurnInput, ...]) -> Provenance:
             human += 1
         elif turn.is_ai_generated:
             ai_generated += 1
+        elif turn.is_system_generated:
+            # Counted as neither. A template is not the platform reasoning
+            # (which is what the feedback ratio watches) and it is not a
+            # person writing (which is what makes an observation evidence),
+            # so adding it to either number would make that number lie.
+            continue
         elif turn.is_ai_assisted:
             ai_assisted += 1
         else:

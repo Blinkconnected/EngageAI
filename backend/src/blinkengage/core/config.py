@@ -263,6 +263,14 @@ class Settings(BaseSettings):
     # and no model calls. These bound the settle sweep, which promotes
     # observations whose outcome can no longer change.
     learning_settle_batch_size: int = 500
+    #: How often the settle sweep runs, and — the reason it is a setting
+    #: rather than a literal in the beat schedule — the width of the
+    #: window a run claims. The two must agree: a run row is a *window*,
+    #: so a window wider than the cadence means most sweeps record
+    #: nothing at all, and the failures of the ones that recorded nothing
+    #: are invisible on the health dashboard. Found in phase 1.5
+    #: validation, where three sweeps in four left no trace.
+    learning_settle_interval_seconds: int = 900
     #: How long an observation's outcome may still change. CSAT settles it
     #: immediately; this is the wait for the ones nobody rates, which is
     #: most of them. Deliberately far shorter than the 14-day CSAT token

@@ -179,6 +179,10 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
         conversation_id=conversation_id,
         body=_SURVEY_MESSAGE_TEMPLATE.format(url=url),
         attachment_ids=[],
+        # A template the platform sent, not something a person wrote to
+        # this customer. Marked so the Learning Platform does not read it
+        # as evidence — see ``_reply_metadata``.
+        is_system_generated=True,
     )
     conversation.csat_survey_sent_at = datetime.now(UTC)
 

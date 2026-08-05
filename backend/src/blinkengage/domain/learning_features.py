@@ -42,6 +42,10 @@ from blinkengage.domain.learning_observation import (
 #: Word-ish runs, Unicode-aware so Arabic tokenises like anything else.
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 
+#: URLs, named because two things need them: the entity extractor keeps
+#: them, and the topic extractor must remove them first.
+_URL = re.compile(r"https?://\S+")
+
 #: Things worth pulling out by shape rather than by meaning. Deliberately
 #: conservative: a false positive here becomes a topic token that pollutes
 #: every comparison downstream, and a missed one costs only a feature.
@@ -52,7 +56,7 @@ _ENTITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # Money with a currency marker on either side. JOD first because this
     # is a Jordan-based platform; the rest are what its customers see.
     ("money", re.compile(r"\b(?:JOD|USD|EUR|SAR|AED)\s?\d[\d,.]*|\d[\d,.]*\s?(?:JOD|USD|EUR)\b")),
-    ("url", re.compile(r"https?://\S+")),
+    ("url", _URL),
 )
 
 #: Tokens that carry no topical signal in any of the languages this
@@ -120,6 +124,17 @@ _STOPWORDS: frozenset[str] = frozenset(
 _MIN_TOPIC_TOKEN = 3
 _MAX_TOPIC_TOKEN = 32
 
+#: A token mixing letters and digits is an identifier fragment, not a
+#: word: ``9d1d``, ``bc0a287c1184``, ``gl9pwqnk``. Found in production —
+#: a CSAT survey link put a UUID and a JWT through the tokeniser and its
+#: pieces became "topics", which at phase 2 would make every conversation
+#: carrying a link look distinctive from every other.
+#:
+#: Not a hex test, deliberately: ``cafe``, ``face``, ``dead`` and
+#: ``decade`` are hex and are also words. Words do not contain digits;
+#: identifiers do.
+_IDENTIFIER_FRAGMENT = re.compile(r"(?=.*\d)(?=.*[^\W\d_])", re.UNICODE)
+
 #: Arabic block. Language detection here is a *script* decision, not a
 #: linguistic one — enough to route retrieval and to stratify, and honest
 #: about being no more than that.
@@ -179,11 +194,18 @@ def extract_topics(text: str) -> tuple[str, ...]:
     same text must produce the same topics on every run, or
     ``pipeline_version`` stops meaning anything.
     """
+    # URLs go first. Their path segments are identifiers, their hostnames
+    # are infrastructure, and the whole URL is already kept as an entity —
+    # so everything a URL contributes to a topic list is noise.
+    without_urls = _URL.sub(" ", text)
+
     counts: dict[str, int] = {}
-    for raw in _TOKEN.findall(unicodedata.normalize("NFKC", text).casefold()):
+    for raw in _TOKEN.findall(unicodedata.normalize("NFKC", without_urls).casefold()):
         if not (_MIN_TOPIC_TOKEN <= len(raw) <= _MAX_TOPIC_TOKEN):
             continue
         if raw in _STOPWORDS or raw.isdigit():
+            continue
+        if _IDENTIFIER_FRAGMENT.match(raw):
             continue
         counts[raw] = counts.get(raw, 0) + 1
 

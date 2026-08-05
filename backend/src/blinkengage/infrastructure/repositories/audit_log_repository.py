@@ -6,6 +6,45 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
 
+#: The audit action an erasure leaves behind. Written by the audit-log
+#: consumer from the ``memory.subject_erased`` domain event.
+ERASURE_ACTION = "memory.subject_erased"
+
+
+class LearningErasureCounter:
+    """How many erasures reached Learning.
+
+    Counted from the audit trail rather than from Learning's own tables,
+    for the reason that makes the counter worth having at all: after an
+    erasure there is nothing left in those tables to count. The audit log
+    outlives the rows it describes, which is exactly what a deletion
+    record is for.
+
+    A count of *erasures*, not of rows removed — the rows are gone. The
+    per-context row counts live in the event payload and in the
+    ``ErasureReport`` handed to whoever asked.
+
+    Every customer erasure fans out to Learning, since Learning is a
+    registered ``ErasureParticipant``, so a company's erasure count is
+    Learning's participation count.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def count_for_company(self, *, company_id: UUID) -> int:
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count(AuditLog.id)).where(
+                        AuditLog.company_id == company_id,
+                        AuditLog.action == ERASURE_ACTION,
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+
 
 class AuditLogRepository:
     def __init__(self, session: AsyncSession) -> None:

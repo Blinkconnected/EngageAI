@@ -130,6 +130,15 @@ Everything in `domain/learning_features.py` is deterministic: same text,
 same features, every run. That is what makes `pipeline_version` a
 rollback boundary rather than a label on a moving target.
 
+Two rules exist because production text broke the earlier ones (phase
+1.5). **URLs are stripped before topic extraction** — they are already
+kept as entities, and their path segments are identifiers. And **a token
+mixing letters and digits is rejected** as an identifier fragment: a CSAT
+link put UUID and JWT pieces (`9d1d`, `gl9pwqnk`) into the topic list of
+every conversation that received one, consuming six of twenty topic slots
+and displacing real signal. The rule is deliberately not a hex test —
+`cafe`, `dead` and `decade` are hexadecimal and also words.
+
 Language detection is script-based and honest about it — `ar`, `en`,
 `mixed`, or nothing. `mixed` is a first-class answer rather than a
 tie-break, because Arabic/English code-switching in one message is normal
@@ -142,13 +151,22 @@ produced. Observing those as evidence is circular by construction:
 confidence rises on no new information, and **every counter looks healthy
 while it happens**.
 
-Three mechanisms, at three different layers:
+Four mechanisms, at four different layers:
 
 | Mechanism | Where | Effect |
 |---|---|---|
 | Provenance counts | `Provenance` on the envelope | An all-AI exchange is `is_evidence_bearing == False` → excluded |
 | Extraction filter (**I-5**) | `LearningObservationService.assemble` | Machine-written turns are removed **before** extraction, not filtered from the results after |
+| Template exclusion | `is_system_generated` on message metadata | A platform template — a CSAT invitation, an automated notice — is neither human nor AI, and is not evidence |
 | Feedback ratio | `GET /intelligence/health` | The share of observed content the platform wrote, on the operator's screen |
+
+The template rule was added in phase 1.5 after production data showed the
+loop being closed by something the AI filter was never going to catch.
+The CSAT invitation carried no provenance marker, so its wording —
+"feedback", "moment", "share" — was being read as human-authored content
+and entered the topics of every conversation that received one. Nobody
+wrote it *to this customer*; it counts as neither human nor AI, because
+adding it to either number would make that number lie.
 
 The filter's placement matters more than it looks. Filtering afterwards
 would still let a conversation Autopilot answered contribute the
@@ -361,7 +379,7 @@ because there are no candidates.
 | `GET /intelligence/observations/{conversation_id}` | *What did Learning extract from this conversation, and from what?* — with content refs |
 | `GET /intelligence/observations` | Paged, filterable by `state` |
 | `GET /intelligence/runs` | Execution history |
-| `GET /intelligence/health` | §15 health **and** §17's feedback ratio |
+| `GET /intelligence/health` | §15 health, the five operator counters, **and** §17's feedback ratio |
 
 The traceability endpoint is the one that matters most: it is the whole
 audit story in one call. Content refs are included there and omitted from
@@ -373,12 +391,27 @@ Health and danger appear on one payload deliberately. `feedback_ratio` is
 the number most likely to be quietly wrong, and an operator should not
 have to know it lives somewhere else.
 
+The five counters are `pending`, `settled`, `failed`, `replayed` and
+`erased`. Two of them are not columns:
+
+- **`failed`** is a fact about a *run*. An observation that failed to
+  settle is still a correct pending observation, and a `FAILED` state
+  would make a transient database blip look like corrupted data.
+- **`erased`** is counted from the audit trail, because after an erasure
+  there is nothing left in Learning's tables to count. The audit log
+  outlives the rows it describes, which is what a deletion record is for.
+
+`replayed` counts superseded generations — rows whose source has since
+been observed under a newer pipeline version. It stays at zero through
+ordinary redelivery, which is what makes it worth watching.
+
 ## Configuration
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `LEARNING_SETTLE_HOURS` | 72 | How long an outcome may still change |
 | `LEARNING_SETTLE_BATCH_SIZE` | 500 | Observations promoted per sweep |
+| `LEARNING_SETTLE_INTERVAL_SECONDS` | 900 | How often the sweep runs **and** the width of the window a run claims — one setting because the two must agree |
 | `memory.learning_enabled` (per company) | `true` | The kill switch |
 
 Nothing here costs money in phase 1: no clustering, no detection, no
@@ -386,8 +419,8 @@ candidates, no model calls.
 
 ## What is verified
 
-`tests/unit/test_learning_domain.py` (28) — the envelope and extraction in
-isolation: policy-before-content ordering, an empty observation answering
+`tests/unit/test_learning_domain.py` (37) — the envelope and extraction in
+isolation, including regressions for both defects production data found: policy-before-content ordering, an empty observation answering
 `0.0` rather than `1.0` for its human fraction, deterministic topics,
 bounded envelopes, Arabic tokenisation.
 
@@ -397,13 +430,20 @@ guards: no foreign model constructed, no foreign `insert`/`update`/
 cyclic routing key. Includes a test that watches the guard fire, because
 a guard nobody has watched fail is a guard nobody knows works.
 
-`tests/integration/test_learning_platform.py` (32) — the platform end to
+`tests/integration/test_learning_platform.py` (35) — the platform end to
 end: traceability, content-never-copied, redelivery not duplicating,
 run-window claimed once, all-AI exclusion, machine-written turns not
 reaching the extractor, the policy gate reading no content at all, settle
 gating and the sweep, signals never un-excluding, outcome attribution,
 tenant isolation in the repository *and* through the API, cross-tenant
-source refusal, erasure of a customer and non-erasure of an agent, RBAC.
+source refusal, erasure of a customer and non-erasure of an agent, RBAC,
+the five health counters, and `replayed` staying at zero through ordinary
+redelivery.
+
+And once, against the deployed stack over real conversations — see the
+[Production Readiness Report](./learning-platform-production-readiness.md).
+That run is what found the two extraction defects the 5 000-sample
+benchmark scored 1.000 on.
 
 ## Deviations from the charter
 
@@ -435,4 +475,5 @@ deploy-time act.
 - [Intelligence Platform](./intelligence-platform.md) — the Stage 3 design
 - [Memory Platform](./memory-platform.md) — where candidates will go in phase 4
 - [Company Intelligence Engine](./company-intelligence-engine.md) — Stage 1
+- [Production Readiness Report](./learning-platform-production-readiness.md) — phase 1.5, what running it measured
 - [Architecture Freeze Review 2](./architecture-freeze-review-2.md) — the approval this builds on

@@ -97,3 +97,25 @@ class LearningHealthResponse(BaseModel):
     observations_awaiting_settlement: int
     last_run_at: datetime | None
     recent_run_errors: int
+
+    # --- the five counters an operator watches (phase 1.5) --------------
+    #
+    # Named for the question each answers rather than for the column each
+    # reads, because two of them are not columns at all: a failure is
+    # recorded on the *run*, and an erasure leaves no row behind to count.
+    #: Assembled, outcome not yet final.
+    pending: int
+    #: Settled and eligible for everything downstream.
+    settled: int
+    #: Observations the settle sweep could not promote, across recent runs.
+    #: There is no failed *state* — a failure is a fact about a run, and an
+    #: observation that failed is still a correct pending observation.
+    failed: int
+    #: Superseded generations: rows whose source has since been observed
+    #: again under a newer pipeline version. Zero until a version is
+    #: bumped, which is what makes it the honest replay counter.
+    replayed: int
+    #: Erasures that reached Learning, from the audit trail. Counted there
+    #: rather than here because the rows themselves are gone — that being
+    #: the point of an erasure.
+    erased: int

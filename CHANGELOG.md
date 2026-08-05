@@ -16,6 +16,34 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **The platform no longer learns from its own paperwork.** Before the
+  observation layer was let near real traffic it was run against it, and
+  two things came back wrong.
+
+  The satisfaction survey the platform sends after a conversation was
+  being counted as though a person had written it. Its wording — "share
+  your feedback", "take a moment" — was being recorded as what the
+  conversation was *about*, on every conversation that received one. It
+  is now marked as what it is: a message the platform sent on nobody's
+  behalf, and not evidence of anything.
+
+  Links were worse. A survey link contains a long unique code, and the
+  pieces of that code were being recorded as subjects of the
+  conversation. Six of the twenty subjects kept per conversation were
+  fragments of a web address, crowding out the words that actually
+  described the problem — on one real conversation, "wrong", "twice" and
+  "want" only appeared once the noise was removed.
+
+  Both are fixed, and everything observed before the fix has been
+  re-observed rather than overwritten, so the old and new readings can be
+  compared side by side.
+
+- **A background job that failed could report success.** The job that
+  finalises observations runs every fifteen minutes but recorded its
+  result once an hour, so three runs in four left no trace — including
+  their failures. The health page could therefore show no failures
+  through a job that was failing every time. Each run is now recorded.
+
 - **What the platform remembers can no longer become more certain on its
   own.** An internal review found that re-delivering the same observation
   — which happens routinely, because the message system guarantees
@@ -229,6 +257,18 @@ for more detail on how this page is put together.
   it.
 
 ### Changed
+
+- **The observation layer now shows an operator what it is doing.** One
+  page reports how many observations are waiting, how many are final, how
+  many runs failed, how many have been re-observed after a change to how
+  observation works, and how many have been erased at a customer's
+  request — alongside the figure that matters most: how much of what the
+  platform observed the platform itself wrote.
+
+  Erasures are counted from the audit trail rather than from the
+  observations, because after an erasure there is nothing left to count.
+  The erasure record now also lists what each part of the platform
+  removed, so the trail says the same thing the erasure report said.
 
 - **The default queue every company starts with is named "General".** New
   companies already got this; installations carrying an older default now

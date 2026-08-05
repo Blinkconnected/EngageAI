@@ -224,7 +224,12 @@ celery_app.conf.update(
         # nothing due costs one indexed query against a partial index.
         "settle-learning-observations": {
             "task": "blinkengage.learning.settle_observations",
-            "schedule": 900.0,
+            # From the setting rather than a literal, because the sweep
+            # truncates its run window to the same number. Two literals
+            # that must agree eventually do not, and when they disagree
+            # here the symptom is a health dashboard reporting no
+            # failures because most runs were never recorded.
+            "schedule": float(settings.learning_settle_interval_seconds),
         },
     },
 )
