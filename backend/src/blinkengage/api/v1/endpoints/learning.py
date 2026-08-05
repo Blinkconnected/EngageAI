@@ -11,7 +11,7 @@ Learning extract from this conversation, and from what?* — the
 traceability the charter requires, in one call.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -19,11 +19,13 @@ from fastapi import APIRouter, Depends, Query
 from blinkengage.api.deps import (
     get_learning_pattern_query_service,
     get_learning_query_service,
+    get_learning_shadow_service,
     require_permission,
 )
 from blinkengage.api.schemas.learning import (
     AnomalyResponse,
     ClusterMemberResponse,
+    ClusterNeighbourResponse,
     ClusterResponse,
     LearningHealthResponse,
     LearningMetricsResponse,
@@ -32,12 +34,14 @@ from blinkengage.api.schemas.learning import (
     ObservationRefResponse,
     ObservationResponse,
     TrendResponse,
+    UnclusteredObservationResponse,
 )
 from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.application.services.learning_pattern_query_service import (
     LearningPatternQueryService,
 )
 from blinkengage.application.services.learning_query_service import LearningQueryService
+from blinkengage.application.services.learning_shadow_service import LearningShadowService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.learning_cluster import ClusterState
 from blinkengage.domain.learning_observation import ObservationState
@@ -384,3 +388,73 @@ async def learning_metrics(
 ) -> LearningMetricsResponse:
     """Phase 2's own numbers: what it built, and how settled it is."""
     return await service.metrics(company_id=auth.company_id)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.5 — operator inspection. Read-only, like everything above it.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/shadow")
+async def shadow_metrics(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningShadowService, Depends(get_learning_shadow_service)],
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> dict[str, Any]:
+    """Everything shadow validation measures, in one payload.
+
+    Deliberately untyped at the edges: this is a diagnostic surface whose
+    shape will change as the questions change, and pinning it to a
+    response model now would make every future measurement a breaking
+    change to an endpoint only operators read.
+
+    Where a number cannot be computed honestly it is **null with a
+    reason**, never zero. "Cluster stability: 0.0" on an installation
+    with nothing to measure would read as churn.
+    """
+    return await service.metrics(company_id=auth.company_id, days=days)
+
+
+@router.get("/unclustered", response_model=list[UnclusteredObservationResponse])
+async def unclustered_observations(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningShadowService, Depends(get_learning_shadow_service)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[UnclusteredObservationResponse]:
+    """What the platform observed and could not group, and why.
+
+    Answers "which observations are never clustered?" — a question the
+    cluster list cannot, because it is by construction a list of things
+    that *did* group.
+    """
+    return [
+        UnclusteredObservationResponse(
+            observation_id=item.observation_id,
+            observed_at=item.observed_at,
+            topics=item.topics,
+            entities=item.entities,
+            reason=item.reason,
+        )
+        for item in await service.unclustered(company_id=auth.company_id, limit=limit)
+    ]
+
+
+@router.get("/clusters/{cluster_id}/neighbours", response_model=list[ClusterNeighbourResponse])
+async def cluster_neighbours(
+    cluster_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningShadowService, Depends(get_learning_shadow_service)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> list[ClusterNeighbourResponse]:
+    """The clusters most similar to this one.
+
+    Answers "which clusters are clearly wrong?" from the other side: two
+    neighbours that a human reads as the same thing, sitting below the
+    merge threshold, *is* the evidence that the threshold is wrong.
+    """
+    return [
+        ClusterNeighbourResponse(**item)
+        for item in await service.neighbours(
+            company_id=auth.company_id, cluster_id=cluster_id, limit=limit
+        )
+    ]

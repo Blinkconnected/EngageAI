@@ -346,4 +346,5 @@ model provider imported at all.
 - [Learning Platform (phase 1)](./learning-platform.md)
 - [Production Readiness Report (phase 1.5)](./learning-platform-production-readiness.md)
 - [Phase 2 Review](./learning-platform-phase-2-review.md)
+- [Shadow Validation Report (phase 2.5)](./learning-platform-shadow-validation.md)
 - [Learning Platform Charter](./learning-platform-charter.md)

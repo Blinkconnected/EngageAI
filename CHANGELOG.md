@@ -16,6 +16,28 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **You can now inspect what the pattern detection is doing, and what it
+  is not.** Three operator pages: a shadow summary of everything the
+  detection pipeline measured about itself, a list of completed
+  conversations it could not group — with the reason for each — and, for
+  any group, the other groups most similar to it and whether the platform
+  would have merged them.
+
+  The last one exists because judging a grouping is a human job. Two
+  groups that a person reads as the same thing, sitting just below the
+  threshold that would have combined them, is the clearest possible
+  evidence that the threshold is wrong — and no summary figure can show
+  it.
+
+  Numbers that cannot honestly be computed are reported as **empty with
+  a reason**, never as zero. "Stability: 0" on an installation with
+  nothing settled yet would read as churn where the truth is newness, and
+  somebody would eventually act on it.
+
+  New: `/api/v1/intelligence/shadow`, `/api/v1/intelligence/unclustered`
+  and `/api/v1/intelligence/clusters/{id}/neighbours`, for owners and
+  administrators.
+
 - **The platform now notices when the same problem keeps coming back.**
   Completed conversations that are alike are grouped together, and each
   group is measured over time: how many customers it involves, how many

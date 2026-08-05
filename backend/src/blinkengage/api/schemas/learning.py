@@ -229,3 +229,44 @@ class LearningMetricsResponse(BaseModel):
     last_analysis_run_at: datetime | None
     algorithm_version: int
     pipeline_version: int
+
+
+# --- phase 2.5: operator inspection -------------------------------------
+#
+# Shadow validation is a question, not a feature: "is this worth turning
+# on?" These are the shapes an operator needs to answer it, and every one
+# of them is read-only.
+
+
+class UnclusteredObservationResponse(BaseModel):
+    """An eligible observation in no cluster, with why.
+
+    The topics are included because the count alone is a threshold
+    question nobody can answer. Seeing *what* did not cluster lets a
+    reader tell "genuinely unlike anything else" from "the threshold is
+    too tight" in seconds.
+    """
+
+    observation_id: UUID
+    observed_at: datetime
+    topics: list[str]
+    entities: list[str]
+    reason: str
+
+
+class ClusterNeighbourResponse(BaseModel):
+    """A nearby cluster, and whether the algorithm would fold it in.
+
+    The threshold diagnostic that actually helps. A pair sitting just
+    under the merge threshold is either two things that genuinely differ
+    or one thing the algorithm failed to join, and nobody can tell which
+    from a number — so the pair is shown with what each is about.
+    """
+
+    cluster_id: UUID
+    signature: str
+    similarity: float
+    size: int
+    state: str
+    would_merge_at_default: bool
+    feature_summary: dict[str, Any]

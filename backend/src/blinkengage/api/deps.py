@@ -71,6 +71,7 @@ from blinkengage.application.services.learning_pattern_query_service import (
     LearningPatternQueryService,
 )
 from blinkengage.application.services.learning_query_service import LearningQueryService
+from blinkengage.application.services.learning_shadow_service import LearningShadowService
 from blinkengage.application.services.ledger_service import (
     LedgerReconciliation,
     LedgerService,
@@ -1298,6 +1299,20 @@ def get_learning_pattern_query_service(
     """Reading what phase 2 discovered. No writer is exposed: clusters,
     trends and anomalies are produced by sweeps, never by a request."""
     return LearningPatternQueryService(
+        clusters=LearningClusterRepository(session),
+        trends=LearningTrendRepository(session),
+        anomalies=LearningAnomalyRepository(session),
+        observations=LearningObservationRepository(session),
+        runs=LearningRunRepository(session),
+    )
+
+
+def get_learning_shadow_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LearningShadowService:
+    """Shadow validation. Read-only by construction: it holds repositories
+    and calls none of their write methods."""
+    return LearningShadowService(
         clusters=LearningClusterRepository(session),
         trends=LearningTrendRepository(session),
         anomalies=LearningAnomalyRepository(session),

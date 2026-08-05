@@ -888,6 +888,165 @@ async def ensure_validation_company(
 
 
 # ---------------------------------------------------------------------------
+# Phase 2.5 — threshold sensitivity
+# ---------------------------------------------------------------------------
+#
+# The one question shadow validation must answer that production traffic
+# cannot answer alone: **are the thresholds right?**
+#
+# Production tells you what the current threshold produced. It cannot tell
+# you what a different one would have produced without re-running the
+# corpus, and it cannot tell you whether the grouping was *correct*
+# because nobody labelled the truth. A corpus with known group structure
+# can answer both: sweep the threshold, and measure the clustering
+# against the structure it was built from.
+#
+# The measurements are the standard ones and each catches a different
+# failure:
+#
+# - **purity** — of the members in a cluster, the share from its
+#   dominant true group. Low purity means the threshold is too loose and
+#   distinct problems are being merged into one finding.
+# - **fragmentation** — how many clusters a true group was split across.
+#   High fragmentation means the threshold is too tight; the platform has
+#   the evidence and cannot see it, because each piece sits below the
+#   floors.
+# - **singleton rate** — the share of clusters with one member. The
+#   fastest read on "too tight", and the one an operator can see in the
+#   cluster list without any of this machinery.
+
+
+def _known_groups(
+    *, groups: int, per_group: int, noise_terms: int, seed: int
+) -> tuple[list[Any], dict[str, int]]:
+    """A corpus whose true grouping is known by construction.
+
+    Each group has a core vocabulary its members share, plus per-member
+    noise drawn from a common pool. The noise is what makes this a test
+    rather than a tautology: without it every member of a group would be
+    identical and any threshold below 1.0 would score perfectly.
+    """
+    from blinkengage.domain.learning_cluster import ObservationFeatures
+
+    rng = random.Random(seed)
+    pool = [f"w{index:03d}" for index in range(200)]
+    rows: list[Any] = []
+    truth: dict[str, int] = {}
+
+    for group in range(groups):
+        core = [f"core{group}_{index}" for index in range(3)]
+        for member in range(per_group):
+            observation_id = uuid.uuid5(uuid.NAMESPACE_URL, f"{seed}:{group}:{member}")
+            topics = [*core, *rng.sample(pool, k=noise_terms)]
+            rows.append(
+                ObservationFeatures(
+                    observation_id=observation_id,
+                    company_id=VALIDATION_COMPANY,
+                    customer_id=uuid.uuid5(uuid.NAMESPACE_DNS, f"{group}:{member}"),
+                    observed_at=datetime(2026, 8, 1, tzinfo=UTC)
+                    + timedelta(hours=group * per_group + member),
+                    topics=tuple(topics),
+                    entities=(),
+                    language="en",
+                )
+            )
+            truth[str(observation_id)] = group
+    return rows, truth
+
+
+def threshold_sweep(
+    *, groups: int = 12, per_group: int = 8, noise_terms: int = 4, seed: int = 20260805
+) -> dict[str, Any]:
+    """Cluster a known corpus at a range of join thresholds.
+
+    Pure and in-memory: this measures the algorithm, and putting a
+    database in the way would measure the database.
+    """
+    from blinkengage.domain.learning_cluster import (
+        DEFAULT_JOIN_THRESHOLD,
+        MIN_CLUSTER_SIZE,
+        inverse_document_frequency,
+        vector_for,
+    )
+    from blinkengage.domain.learning_clustering import assign
+
+    rows, truth = _known_groups(
+        groups=groups, per_group=per_group, noise_terms=noise_terms, seed=seed
+    )
+    idf = inverse_document_frequency([vector_for(row).terms for row in rows])
+
+    results = []
+    for step in range(2, 17):
+        threshold = round(step * 0.05, 2)
+        started = time.perf_counter()
+        assignment = assign(rows, idf=idf, join_threshold=threshold)
+        elapsed = time.perf_counter() - started
+
+        clusters = assignment.clusters
+        sizes = [len(cluster.members) for cluster in clusters]
+        singletons = sum(1 for size in sizes if size == 1)
+
+        # Purity: per cluster, the share of members from its dominant
+        # true group, weighted by cluster size.
+        weighted_purity = 0.0
+        placed = 0
+        group_spread: dict[int, set[int]] = {}
+        for index, cluster in enumerate(clusters):
+            counts: dict[int, int] = {}
+            for member in cluster.members:
+                group = truth.get(str(member))
+                if group is None:
+                    continue
+                counts[group] = counts.get(group, 0) + 1
+                group_spread.setdefault(group, set()).add(index)
+            if not counts:
+                continue
+            total = sum(counts.values())
+            weighted_purity += max(counts.values())
+            placed += total
+
+        fragmentation = (
+            round(sum(len(indices) for indices in group_spread.values()) / len(group_spread), 3)
+            if group_spread
+            else None
+        )
+        above_floor = sum(1 for size in sizes if size >= MIN_CLUSTER_SIZE)
+
+        results.append(
+            {
+                "join_threshold": threshold,
+                "clusters": len(clusters),
+                "clusters_above_size_floor": above_floor,
+                "singletons": singletons,
+                "singleton_rate": round(singletons / len(clusters), 3) if clusters else None,
+                "mean_size": round(sum(sizes) / len(sizes), 2) if sizes else None,
+                "largest": max(sizes) if sizes else None,
+                "purity": round(weighted_purity / placed, 4) if placed else None,
+                "fragmentation": fragmentation,
+                "merged": assignment.merged,
+                "seconds": round(elapsed, 4),
+            }
+        )
+
+    return {
+        "corpus": {
+            "true_groups": groups,
+            "members_per_group": per_group,
+            "noise_terms_per_member": noise_terms,
+            "observations": len(rows),
+        },
+        "current_default": DEFAULT_JOIN_THRESHOLD,
+        "sweep": results,
+        "how_to_read": (
+            "purity falls as the threshold loosens (distinct problems merge); "
+            "fragmentation rises as it tightens (one problem splits). The "
+            "usable range is where purity is still ~1.0 and fragmentation is "
+            "still ~1.0 — outside it, one of the two failures is happening"
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 — clustering latency and throughput
 # ---------------------------------------------------------------------------
 
@@ -1013,6 +1172,123 @@ async def measure_clustering(
     }
 
 
+# ---------------------------------------------------------------------------
+# Phase 2.5 — threshold sensitivity
+# ---------------------------------------------------------------------------
+#
+# "Are the thresholds correct?" cannot be answered by a corpus of twelve
+# templates, and it cannot wait for production either. What *can* be done
+# now is characterise the algorithm's response: sweep the join threshold
+# across its range and watch where the corpus stops being one blob and
+# starts being a pile of singletons. The knee between those two failures
+# is where a defensible default lives, and a curve is something an
+# operator can argue with where a single number is not.
+
+
+#: A corpus shaped like support traffic rather than like a test fixture:
+#: a few issue types that recur often, a long tail that barely recurs, and
+#: shared vocabulary between them. Real support corpora are heavy-tailed,
+#: and a uniform corpus would make every threshold look equally good.
+_ISSUE_FAMILIES: tuple[tuple[str, tuple[str, ...], int], ...] = (
+    ("delivery", ("shipping", "delay", "tracking", "courier", "arrived"), 30),
+    ("refund", ("refund", "money", "back", "charged", "payment"), 22),
+    ("access", ("login", "password", "reset", "account", "locked"), 16),
+    ("billing", ("invoice", "billing", "charge", "payment", "plan"), 12),
+    ("product", ("broken", "damaged", "replace", "warranty", "faulty"), 9),
+    ("address", ("address", "change", "update", "delivery", "wrong"), 6),
+    ("cancel", ("cancel", "subscription", "renew", "stop", "charged"), 4),
+    ("size", ("size", "exchange", "bigger", "smaller", "fit"), 3),
+)
+
+
+def _sensitivity_corpus(count: int, seed: int) -> list[Any]:
+    """A heavy-tailed corpus with realistic vocabulary overlap.
+
+    Each conversation draws most of its topics from one family and one
+    from another, which is what real conversations do — a delivery
+    complaint that also mentions a refund. That overlap is precisely what
+    a join threshold has to navigate, so a corpus without it would make
+    the sweep meaningless.
+    """
+    from blinkengage.domain.learning_cluster import ObservationFeatures
+
+    rng = random.Random(seed)
+    weights = [weight for _, _, weight in _ISSUE_FAMILIES]
+    rows: list[Any] = []
+    base = datetime(2026, 6, 1, tzinfo=UTC)
+    for index in range(count):
+        family = rng.choices(_ISSUE_FAMILIES, weights=weights, k=1)[0]
+        topics = rng.sample(family[1], k=min(3, len(family[1])))
+        # One word borrowed from a different family: the overlap that
+        # makes clustering a judgement rather than a lookup.
+        topics.append(rng.choice(rng.choice(_ISSUE_FAMILIES)[1]))
+        rows.append(
+            ObservationFeatures(
+                observation_id=uuid.uuid5(uuid.NAMESPACE_OID, f"sens-{seed}-{index}"),
+                company_id=VALIDATION_COMPANY,
+                customer_id=uuid.uuid5(uuid.NAMESPACE_OID, f"cust-{index % 40}"),
+                observed_at=base + timedelta(hours=index),
+                topics=tuple(sorted(set(topics))),
+                entities=(),
+                language="en",
+            )
+        )
+    return rows
+
+
+def threshold_sensitivity(*, corpus: int, seed: int) -> dict[str, Any]:
+    """Sweep the join threshold and report what the corpus becomes.
+
+    Pure — no database. The question is about the algorithm, and putting
+    storage in the loop would measure the storage.
+    """
+    from blinkengage.domain.learning_cluster import (
+        MIN_CLUSTER_SIZE,
+        inverse_document_frequency,
+        vector_for,
+    )
+    from blinkengage.domain.learning_clustering import assign
+
+    rows = _sensitivity_corpus(corpus, seed)
+    idf = inverse_document_frequency([vector_for(row).terms for row in rows])
+
+    curve: list[dict[str, Any]] = []
+    for step in range(2, 17):
+        threshold = round(step * 0.05, 2)
+        started = time.perf_counter()
+        result = assign(rows, idf=idf, join_threshold=threshold)
+        elapsed = time.perf_counter() - started
+
+        sizes = sorted((len(cluster.members) for cluster in result.clusters), reverse=True)
+        placed = sum(sizes)
+        singletons = sum(1 for size in sizes if size == 1)
+        above_floor = sum(1 for size in sizes if size >= MIN_CLUSTER_SIZE)
+        curve.append(
+            {
+                "join_threshold": threshold,
+                "clusters": len(sizes),
+                "clusters_above_size_floor": above_floor,
+                "singletons": singletons,
+                "singleton_rate": round(singletons / len(sizes), 4) if sizes else None,
+                "mean_size": round(placed / len(sizes), 2) if sizes else None,
+                "largest_share": round(sizes[0] / placed, 4) if sizes else None,
+                "merged": result.merged,
+                "seconds": round(elapsed, 4),
+            }
+        )
+
+    return {
+        "corpus": corpus,
+        "curve": curve,
+        "reading": (
+            "largest_share near 1.0 is the everything-in-one-blob failure; "
+            "singleton_rate near 1.0 is the nothing-groups failure. A "
+            "defensible default sits where clusters_above_size_floor peaks "
+            "and largest_share is still well under 0.5"
+        ),
+    }
+
+
 async def cleanup(
     session_factory: async_sessionmaker[AsyncSession], *, drop_company: bool = False
 ) -> None:
@@ -1066,7 +1342,18 @@ async def main() -> int:
         help="planning assumption for the storage projection",
     )
     parser.add_argument("--json", action="store_true", help="print JSON only")
+    parser.add_argument(
+        "--thresholds",
+        action="store_true",
+        help="threshold sensitivity sweep only (pure, no database writes)",
+    )
     args = parser.parse_args()
+
+    if args.thresholds:
+        # Pure and read-only: no database, nothing written, nothing to
+        # clean up. Safe to run against a production installation.
+        print(json.dumps(threshold_sweep(), indent=2, default=str))
+        return 0
 
     url = os.environ.get("DATABASE_URL", "")
     if "postgresql" not in url:
@@ -1107,6 +1394,10 @@ async def main() -> int:
             )
             report.add(
                 "clustering", await measure_clustering(session_factory, now=datetime.now(UTC))
+            )
+            report.add(
+                "threshold_sensitivity",
+                threshold_sensitivity(corpus=max(args.corpus, 500), seed=args.seed),
             )
             await cleanup(session_factory, drop_company=True)
     finally:

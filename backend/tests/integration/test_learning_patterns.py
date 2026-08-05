@@ -583,3 +583,187 @@ class TestReadApi:
             "/api/v1/intelligence/metrics",
         ):
             assert (await client.get(path, headers=agent_headers)).status_code == 403, path
+
+
+class TestShadowInspection:
+    """Phase 2.5's operator surface.
+
+    Shadow validation asks one question — *is this worth turning on?* —
+    and these are the endpoints that answer it. Read-only by
+    construction: the service holds repositories and calls none of their
+    write methods.
+    """
+
+    async def test_shadow_metrics_report_the_ten_measurements(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=REFUND, count=5)
+        await _cluster(app, company_id)
+
+        response = await client.get("/api/v1/intelligence/shadow", headers=owner_headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+
+        for section in (
+            "growth",
+            "stability",
+            "merge_rate",
+            "duplicate_suppression",
+            "trend_quality",
+            "anomaly_quality",
+            "churn",
+            "processing",
+            "resource_usage",
+            "floors",
+        ):
+            assert section in body, section
+
+        assert body["growth"]["clusters_total"] == 1
+        assert body["churn"]["singleton_rate"] == 0.0
+        assert body["duplicate_suppression"]["observations_clustered"] == 5
+
+    async def test_precision_is_null_rather_than_invented(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """The honest answer, made structural.
+
+        Precision needs a human verdict per finding, and phase 2 collects
+        none by design. Reporting 0.0 — or worse, 1.0 from zero findings —
+        would be a guess wearing a percentage sign, and somebody would
+        eventually decide from it.
+        """
+        response = await client.get("/api/v1/intelligence/shadow", headers=owner_headers)
+        body = response.json()
+        assert body["trend_quality"]["precision"] is None
+        assert body["trend_quality"]["precision_note"]
+        assert body["anomaly_quality"]["precision"] is None
+
+    async def test_stability_is_null_when_nothing_has_cleared_the_floors(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """Never zero. A forming cluster is *supposed* to be unstable, and
+        averaging it in would report churn where the truth is newness."""
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=REFUND, count=2)
+        await _cluster(app, company_id)
+
+        body = (await client.get("/api/v1/intelligence/shadow", headers=owner_headers)).json()
+        assert body["stability"]["mean"] is None
+        assert body["stability"]["clusters_measured"] == 0
+
+    async def test_unclustered_says_which_and_why(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """Answers "which observations are never clustered?".
+
+        The cluster list cannot: it is by construction a list of things
+        that did group.
+        """
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=REFUND, count=4)
+        await _cluster(app, company_id)
+        # Arrives after the sweep, so it is eligible and unplaced.
+        await _observations(
+            app,
+            company_id=company_id,
+            topics=("quantum", "entanglement", "physics"),
+            count=1,
+            start=NOW - timedelta(days=1),
+        )
+
+        response = await client.get("/api/v1/intelligence/unclustered", headers=owner_headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["topics"] == ["quantum", "entanglement", "physics"]
+        assert body[0]["reason"]
+
+    async def test_an_observation_with_no_features_says_so(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """Not a clustering failure, and the reason distinguishes it.
+
+        An observation with nothing extractable could never have
+        clustered; counting it against the threshold would blame the
+        algorithm for a conversation that said nothing.
+        """
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=(), count=1)
+
+        body = (await client.get("/api/v1/intelligence/unclustered", headers=owner_headers)).json()
+        assert len(body) == 1
+        assert "no features" in body[0]["reason"]
+
+    async def test_neighbours_show_what_nearly_merged(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """The threshold diagnostic an operator can act on.
+
+        A pair a human reads as the same thing, sitting below the merge
+        threshold, *is* the evidence that the threshold is wrong — and no
+        aggregate number can show it.
+        """
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=REFUND, count=4)
+        await _observations(app, company_id=company_id, topics=LOGIN, count=4)
+        await _cluster(app, company_id)
+
+        listed = await client.get("/api/v1/intelligence/clusters", headers=owner_headers)
+        cluster_id = listed.json()["items"][0]["id"]
+
+        response = await client.get(
+            f"/api/v1/intelligence/clusters/{cluster_id}/neighbours", headers=owner_headers
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["cluster_id"] != cluster_id
+        # Two unrelated shapes: nowhere near merging, and the endpoint
+        # says so rather than leaving the reader to guess.
+        assert body[0]["would_merge_at_default"] is False
+        assert body[0]["similarity"] < 0.72
+
+    async def test_neighbours_of_a_missing_cluster_is_empty_not_an_error(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        response = await client.get(
+            f"/api/v1/intelligence/clusters/{uuid4()}/neighbours", headers=owner_headers
+        )
+        assert response.status_code == 200
+        assert response.json() == []
+
+    async def test_inspection_is_scoped_to_the_callers_company(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        first = await _company_id(app)
+        second = await _second_company(app)
+        await _observations(app, company_id=second, topics=REFUND, count=5)
+        await _cluster(app, second)
+
+        body = (await client.get("/api/v1/intelligence/shadow", headers=owner_headers)).json()
+        assert body["growth"]["clusters_total"] == 0
+        assert first != second
+
+    async def test_shadow_inspection_needs_the_intelligence_permission(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        created = await client.post(
+            "/api/v1/agents",
+            json={
+                "email": "agent3@acme.example",
+                "full_name": "Sam Agent",
+                "password": "correct-horse-battery-9",
+                "role": "agent",
+            },
+            headers=owner_headers,
+        )
+        assert created.status_code == 201, created.text
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "agent3@acme.example", "password": "correct-horse-battery-9"},
+        )
+        agent_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+        for path in ("/api/v1/intelligence/shadow", "/api/v1/intelligence/unclustered"):
+            assert (await client.get(path, headers=agent_headers)).status_code == 403, path
