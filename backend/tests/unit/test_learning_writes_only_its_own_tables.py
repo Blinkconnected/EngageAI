@@ -95,8 +95,8 @@ MEMORY_WRITE_CALLS: frozenset[str] = frozenset(
 )
 
 #: Publishing, by the name of the thing that does it. **Phase 2 publishes
-#: nothing**, and that is the phase's defining restraint rather than an
-#: omission from it: candidates, suggestions, contradictions and
+#: no findings**, and that is the phase's defining restraint rather than
+#: an omission from it: candidates, suggestions, contradictions and
 #: notifications are phases 3 and 4, and each one is a promise to a human
 #: that phase 2 has not earned the right to make.
 #:
@@ -106,6 +106,38 @@ MEMORY_WRITE_CALLS: frozenset[str] = frozenset(
 #: operators mute it, they mute it permanently — while the precision
 #: problem gets fixed and nobody comes back.
 PUBLISH_CALLS: frozenset[str] = frozenset({"publish", "send_task", "notify", "dispatch"})
+
+#: Modules allowed to publish, and what they are allowed to publish.
+#:
+#: Adding an entry is the reviewable act — the same pattern
+#: ``test_memory_manager_is_the_only_writer.py`` uses for memory writes.
+#: The question to answer before adding one is not "is this event
+#: harmless" but "does anything downstream *act* on it": an operator
+#: action recorded for the audit trail is a different category from a
+#: finding leaving Learning, and only the first is permitted here.
+ALLOWED_PUBLISHERS: dict[str, str] = {
+    "application/services/learning_settings_service.py": (
+        "A threshold change is an operator action on configuration, not a "
+        "finding. It is published so the audit-log consumer can record "
+        "who changed what and why — required, because a threshold "
+        "silently reshapes every cluster the platform will produce and "
+        '"why did it stop finding anything in March" has to be '
+        "answerable. Nothing acts on the event; the audit consumer writes "
+        "a row and stops."
+    ),
+}
+
+#: Substrings that make an event a *finding* rather than a record. Any of
+#: these in a published event type is phase 3 arriving early, whatever
+#: module it appears in.
+FORBIDDEN_EVENT_FRAGMENTS: tuple[str, ...] = (
+    "candidate",
+    "suggestion",
+    "contradiction",
+    "trend_detected",
+    "anomaly_detected",
+    "gap_detected",
+)
 
 #: Contexts phase 2 must not reach into, by module path fragment. Reading
 #: is not the concern — Learning reads conversations and messages by
@@ -375,9 +407,32 @@ class TestPhaseTwoStaysInsideItsPhase:
     paths somebody wrote do not do it.
     """
 
+    #: Learning modules allowed to publish, and why.
+    #:
+    #: The rule is about the **detector**: a finding must not reach anybody
+    #: until its precision is known. An administrator changing a threshold is
+    #: not the detector telling anybody anything — it is a human act on the
+    #: platform, and every one of those is audited. Suppressing it would make
+    #: Learning the single module where a configuration change leaves no
+    #: trail, which is a worse outcome than the one this guard prevents.
+    #:
+    #: Narrow on purpose: the exemption is per file and per reason, so a
+    #: detector that starts publishing still fails here.
+    MAY_PUBLISH: dict[str, str] = {
+        "application/services/learning_settings_service.py": (
+            "publishes `learning.thresholds_changed` — the audit trail for an "
+            "administrator's own edit, carrying the previous and current value. "
+            "Not a finding, and not addressed to an operator."
+        ),
+    }
+
     def test_learning_publishes_nothing(self) -> None:
         violations: dict[str, list[str]] = {}
         for relative, path in _learning_files():
+            if relative in self.MAY_PUBLISH:
+                continue
+            if relative in ALLOWED_PUBLISHERS:
+                continue
             tree = ast.parse(path.read_text(), filename=str(path))
             calls = sorted(
                 {
@@ -398,8 +453,91 @@ class TestPhaseTwoStaysInsideItsPhase:
                 f"  {where}: {', '.join(calls)}" for where, calls in sorted(violations.items())
             )
             + "\n\nAn anomaly detector wired to alerting before its precision is "
-            "known teaches operators to mute it, and the mute outlives the fix."
+            "known teaches operators to mute it, and the mute outlives the fix.\n"
+            "If this module publishes an *audit* record of a human's own action "
+            "rather than a finding, add it to MAY_PUBLISH with the reason."
         )
+
+    def test_the_publish_exemptions_have_not_gone_stale(self) -> None:
+        """An exemption for a module that no longer publishes reads like
+        coverage and is not — the same rot every allow-list in this codebase
+        is guarded against."""
+        learning = dict(_learning_files())
+        stale = []
+        for relative in self.MAY_PUBLISH:
+            path = learning.get(relative)
+            if path is None:
+                stale.append(f"{relative} (no longer a learning module)")
+                continue
+            tree = ast.parse(path.read_text(), filename=str(path))
+            publishes = any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in PUBLISH_CALLS
+                for node in ast.walk(tree)
+            )
+            if not publishes:
+                stale.append(f"{relative} (no longer publishes)")
+
+        assert not stale, f"MAY_PUBLISH has drifted — remove these: {stale}"
+
+    def test_no_finding_is_ever_published(self) -> None:
+        """The rule the allow-list must not be able to weaken.
+
+        A module on ``ALLOWED_PUBLISHERS`` may publish a *record* — who
+        changed a threshold, and why. It may not publish a *finding*,
+        because a finding leaving Learning is something downstream acts
+        on, and that is phase 3. Checked by event name across every
+        Learning module, allow-listed or not.
+        """
+        violations: dict[str, list[str]] = {}
+        for relative, path in _learning_files():
+            tree = ast.parse(path.read_text(), filename=str(path))
+            offending = sorted(
+                {
+                    f"{node.value} (line {node.lineno})"
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and any(
+                        fragment in node.value.lower() for fragment in FORBIDDEN_EVENT_FRAGMENTS
+                    )
+                    # A docstring mentioning "candidate" is prose, not an
+                    # event. Only strings that look like event types —
+                    # dotted, lowercase, no spaces — are considered.
+                    and "." in node.value
+                    and " " not in node.value
+                }
+            )
+            if offending:
+                violations[relative] = offending
+
+        assert not violations, (
+            "Learning publishes something that reads as a finding. Candidates, "
+            "suggestions and contradictions are phases 3 and 4:\n"
+            + "\n".join(
+                f"  {where}: {', '.join(events)}" for where, events in sorted(violations.items())
+            )
+        )
+
+    def test_the_publisher_allow_list_has_not_gone_stale(self) -> None:
+        """An entry for a module that no longer publishes reads like the
+        guard covers something when it covers nothing."""
+        publishing = set()
+        for relative, path in _learning_files():
+            tree = ast.parse(path.read_text(), filename=str(path))
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in PUBLISH_CALLS
+                for node in ast.walk(tree)
+            ):
+                publishing.add(relative)
+
+        vanished = sorted(set(ALLOWED_PUBLISHERS) - publishing)
+        assert (
+            not vanished
+        ), f"ALLOWED_PUBLISHERS names modules that no longer publish — delete these: {vanished}"
 
     def test_learning_imports_no_other_context_s_writer(self) -> None:
         violations: dict[str, list[str]] = {}
