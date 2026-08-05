@@ -14,6 +14,30 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Documentation
+
+- **An operational readiness review of the whole platform, and an
+  eight-week pilot plan.** The platform was audited as if it went live
+  tomorrow — deployment, operations, performance, reliability and
+  security — against the running stack and the code rather than against
+  the documents describing them.
+
+  The verdict is **not ready**, and not because the software is unsound:
+  the parts that are hardest to add later are the parts that are done
+  well. It is not ready because six operational capabilities a live
+  system cannot run without are missing, four of them in ways that would
+  be discovered during an incident rather than before one. Nobody gets
+  paged. Backups have never run and a restore has never been tested. A
+  malformed message would loop forever without raising any alarm. The
+  metrics endpoint is publicly reachable.
+
+  None of it is large work — roughly two to three days, none of it in the
+  application, plus one rehearsal. Every finding is ranked by severity
+  and probability with a recommended fix, and the pilot plan that follows
+  has weekly goals, rollback criteria and gates that can each send it
+  back for another fortnight.
+
+
 ### Added
 
 - **Response time targets are edited in one place, not two.** When a service
