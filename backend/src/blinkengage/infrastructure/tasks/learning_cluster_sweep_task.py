@@ -27,7 +27,12 @@ from blinkengage.application.services.learning_clustering_service import (
 from blinkengage.core.celery_app import celery_app
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.learning_cluster import CLUSTER_ALGORITHM_VERSION
+from blinkengage.domain.company_settings import learning_thresholds
+from blinkengage.domain.learning_cluster import (
+    CLUSTER_ALGORITHM_VERSION,
+    DEFAULT_JOIN_THRESHOLD,
+    DEFAULT_MERGE_THRESHOLD,
+)
 from blinkengage.domain.learning_observation import PIPELINE_VERSION
 from blinkengage.infrastructure.database.models.learning_analysis import RUN_TYPE_CLUSTER
 from blinkengage.infrastructure.database.session import (
@@ -35,6 +40,7 @@ from blinkengage.infrastructure.database.session import (
     create_session_factory,
     session_scope,
 )
+from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.learning_analysis_repository import (
     LearningClusterRepository,
 )
@@ -89,7 +95,27 @@ async def _sweep_async() -> int:
                             since=since,
                             limit=settings.learning_cluster_batch_size,
                         )
-                        result = await LearningClusteringService(clusters=clusters).cluster_company(
+                        # Per-company, resolved down the platform's usual
+                        # chain: company setting, then platform default.
+                        # The right threshold is corpus-dependent — a
+                        # tenant whose conversations are long and varied
+                        # needs a different point in the band than one
+                        # whose conversations are short and templated —
+                        # so a single platform number would be right for
+                        # one of them and wrong for the other.
+                        company = await CompanyRepository(session).get_by_id(company_id)
+                        thresholds = learning_thresholds(
+                            company.settings if company is not None else {},
+                            defaults={
+                                "cluster_join_threshold": DEFAULT_JOIN_THRESHOLD,
+                                "cluster_merge_threshold": DEFAULT_MERGE_THRESHOLD,
+                            },
+                        )
+                        result = await LearningClusteringService(
+                            clusters=clusters,
+                            join_threshold=thresholds["cluster_join_threshold"],
+                            merge_threshold=thresholds["cluster_merge_threshold"],
+                        ).cluster_company(
                             company_id=company_id,
                             pipeline_version=PIPELINE_VERSION,
                             observations=observations,

@@ -1,0 +1,72 @@
+{
+  "Page": {
+    "title": "Pattern detection",
+    "loading": "Loading…",
+    "loadFailed": "Could not load the pattern-detection dashboard.",
+    "shadowBannerTitle": "Shadow mode — nothing here acts on what it finds.",
+    "shadowBannerBody": "The platform is grouping completed conversations and measuring them, and doing nothing else. It does not add to what the platform remembers, does not suggest articles, does not notify anyone and does not send anything onward. This page is for deciding whether what it finds is worth acting on.",
+    "sectionRunning": "Is it running?",
+    "sectionSeeing": "Is it seeing anything?",
+    "sectionQuality": "Is what it found any good?",
+    "footer": "Grouping method v{{algorithm}} · observation pipeline v{{pipeline}} · measured {{measured}}"
+  },
+  "MetricTile": {
+    "notMeasurable": "—",
+    "notMeasurableHint": "Not enough data to compute this yet. Shown as empty rather than zero, because zero would mean something different."
+  },
+  "Metrics": {
+    "minutes": "min",
+    "inWindow": "in {{days}}d",
+    "clusterLatency": "Grouping run",
+    "clusterLatencyHint": "How long the last grouping pass took.",
+    "analysisLatency": "Analysis run",
+    "queueLag": "Since last run",
+    "queueLagHint": "Time since the grouping pass last ran. It is scheduled hourly, so more than two hours means it is not running.",
+    "runErrors": "Run errors",
+    "runErrorsHint": "Failures across recent runs. Anything above zero needs looking at before the pilot is judged.",
+    "observations": "Observations",
+    "observationsHint": "Completed conversations the platform has recorded a summary for.",
+    "eligible": "Eligible",
+    "eligibleHint": "Observations settled enough to be grouped. A conversation whose outcome can still change is deliberately held back.",
+    "perDay": "Per day",
+    "perDayHint": "Mean over the window. Bursty traffic makes an instantaneous rate meaningless.",
+    "replayRate": "Replayed",
+    "replayRateHint": "Observations re-recorded under a newer extraction version. Stays at zero unless the version is bumped — ordinary redelivery is not a replay.",
+    "clusters": "Groups",
+    "clustersHint": "Groups of similar conversations found so far.",
+    "growth": "New groups",
+    "stability": "Stability",
+    "mergeRate": "Merge rate",
+    "singletonRate": "Groups of one",
+    "clusteredFraction": "Grouped",
+    "clusteredFractionHint": "Share of eligible observations that landed in a group.",
+    "unclustered": "Ungrouped",
+    "unclusteredHint": "Eligible observations that matched nothing. A few is normal; a lot means the similarity threshold is too high.",
+    "duplicates": "Duplicates"
+  },
+  "SizeDistribution": {
+    "title": "Group sizes",
+    "empty": "No groups yet.",
+    "bucketLabel": "{{bucket}} conversations",
+    "summary": "Median {{median}} · 90th percentile {{p90}} · largest {{largest}}"
+  },
+  "Thresholds": {
+    "title": "Similarity threshold",
+    "overridden": "Set for this company",
+    "inherited": "Platform default",
+    "joinDescription": "How alike two conversations must be to land in the same group. Lower groups more together; higher splits more apart.",
+    "currentMark": "now",
+    "joinAriaLabel": "Similarity threshold for grouping conversations",
+    "invalidationWarning": "Changing this regroups everything from the next run onward. Existing groups were built under the current value and are kept, but they are not comparable to what follows.",
+    "reasonLabel": "Reason for the change",
+    "reasonHelp": "Recorded in the audit log. In six months this is what explains the change.",
+    "save": "Save",
+    "saved": "Saved. {{count}} grouped conversations were built under the previous value.",
+    "saveFailed": "Could not save. The value may be outside the permitted range."
+  },
+  "Findings": {
+    "title": "Findings",
+    "trends": "{{count}} trends",
+    "anomalies": "{{count}} anomalies"
+  }
+}

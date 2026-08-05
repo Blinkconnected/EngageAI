@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
+import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import ApartmentOutlinedIcon from '@mui/icons-material/ApartmentOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
@@ -106,6 +107,15 @@ export const NAV_ITEMS: NavItem[] = [
     icon: RuleOutlinedIcon,
     permission: 'sla_policies.read',
     requiresFeature: 'sla',
+  },
+  {
+    // Beside Reports rather than under Settings: it answers "what is the
+    // platform noticing", which is a reporting question, not a
+    // configuration one — even though it carries one dial.
+    label: 'SideNav.navIntelligence',
+    path: '/intelligence',
+    icon: HubOutlinedIcon,
+    permission: 'intelligence.read',
   },
   {
     label: 'SideNav.navReports',

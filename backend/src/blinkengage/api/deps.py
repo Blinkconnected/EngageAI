@@ -71,6 +71,9 @@ from blinkengage.application.services.learning_pattern_query_service import (
     LearningPatternQueryService,
 )
 from blinkengage.application.services.learning_query_service import LearningQueryService
+from blinkengage.application.services.learning_settings_service import (
+    LearningSettingsService,
+)
 from blinkengage.application.services.learning_shadow_service import LearningShadowService
 from blinkengage.application.services.ledger_service import (
     LedgerReconciliation,
@@ -121,6 +124,10 @@ from blinkengage.domain.company_settings import is_ai_enabled
 from blinkengage.domain.connector import DeploymentContext
 from blinkengage.domain.exceptions import AiNotConfiguredError, EmailNotVerifiedError
 from blinkengage.domain.features import FEATURES, is_known_feature
+from blinkengage.domain.learning_cluster import (
+    DEFAULT_JOIN_THRESHOLD,
+    DEFAULT_MERGE_THRESHOLD,
+)
 from blinkengage.domain.rbac import is_known_permission
 from blinkengage.domain.verification import is_blocked_before_verification
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
@@ -1318,6 +1325,29 @@ def get_learning_shadow_service(
         anomalies=LearningAnomalyRepository(session),
         observations=LearningObservationRepository(session),
         runs=LearningRunRepository(session),
+    )
+
+
+def get_learning_settings_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> LearningSettingsService:
+    """Threshold changes. The one writer on the intelligence surface, and
+    the reason it publishes: a change reshapes every cluster the platform
+    will produce, so it belongs on the audit trail rather than only in a
+    settings blob."""
+    return LearningSettingsService(
+        companies=CompanyRepository(session),
+        clusters=LearningClusterRepository(session),
+        events=events,
+        # The platform floor a company's override resolves against. Taken
+        # from the domain constants, which is where the measured values
+        # live — an environment-level override for these is a reasonable
+        # next step and is not needed for a company to set its own.
+        platform_defaults={
+            "cluster_join_threshold": DEFAULT_JOIN_THRESHOLD,
+            "cluster_merge_threshold": DEFAULT_MERGE_THRESHOLD,
+        },
     )
 
 

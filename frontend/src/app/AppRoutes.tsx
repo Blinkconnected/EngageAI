@@ -121,6 +121,11 @@ const FeedbackPage = lazy(() =>
 const BillingPage = lazy(() =>
   import('../features/billing/BillingPage').then((m) => ({ default: m.BillingPage })),
 )
+const IntelligencePage = lazy(() =>
+  import('../features/intelligence/IntelligencePage').then((m) => ({
+    default: m.IntelligencePage,
+  })),
+)
 const ReportsPage = lazy(() =>
   import('../features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -335,6 +340,14 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="company.manage">
                 <CompanySettingsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="intelligence"
+            element={
+              <RequirePermission permission="intelligence.read">
+                <IntelligencePage />
               </RequirePermission>
             }
           />

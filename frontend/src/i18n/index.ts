@@ -13,6 +13,7 @@ import enCompanySettings from '../locales/en/companySettings.json'
 import enCompanySettingsExtra from '../locales/en/companySettingsExtra.json'
 import enConversationsCore from '../locales/en/conversationsCore.json'
 import enInspector from '../locales/en/inspector.json'
+import enIntelligence from '../locales/en/intelligence.json'
 import enConversationsExtra from '../locales/en/conversationsExtra.json'
 import enCustomers from '../locales/en/customers.json'
 import enDashboard from '../locales/en/dashboard.json'
@@ -47,6 +48,7 @@ import arCompanySettings from '../locales/ar/companySettings.json'
 import arCompanySettingsExtra from '../locales/ar/companySettingsExtra.json'
 import arConversationsCore from '../locales/ar/conversationsCore.json'
 import arInspector from '../locales/ar/inspector.json'
+import arIntelligence from '../locales/ar/intelligence.json'
 import arConversationsExtra from '../locales/ar/conversationsExtra.json'
 import arCustomers from '../locales/ar/customers.json'
 import arDashboard from '../locales/ar/dashboard.json'
@@ -89,6 +91,7 @@ export const NAMESPACES = [
   'companySettingsExtra',
   'conversationsCore',
   'inspector',
+  'intelligence',
   'conversationsExtra',
   'customers',
   'dashboard',
@@ -154,6 +157,7 @@ void i18n.use(initReactI18next).init({
       companySettingsExtra: enCompanySettingsExtra,
       conversationsCore: enConversationsCore,
       inspector: enInspector,
+      intelligence: enIntelligence,
       conversationsExtra: enConversationsExtra,
       customers: enCustomers,
       dashboard: enDashboard,
@@ -189,6 +193,7 @@ void i18n.use(initReactI18next).init({
       companySettingsExtra: arCompanySettingsExtra,
       conversationsCore: arConversationsCore,
       inspector: arInspector,
+      intelligence: arIntelligence,
       conversationsExtra: arConversationsExtra,
       customers: arCustomers,
       dashboard: arDashboard,

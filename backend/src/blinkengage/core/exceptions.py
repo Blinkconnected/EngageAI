@@ -8,6 +8,7 @@ the API boundary.
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from blinkengage.domain.company_settings import ThresholdOutOfBoundsError
 from blinkengage.domain.countries import UnknownCountryError
 from blinkengage.domain.exceptions import (
     AgentMissingRequiredSkillError,
@@ -75,6 +76,10 @@ _STATUS_MAP: dict[type[Exception], int] = {
     SystemProfileNotPriceableError: status.HTTP_409_CONFLICT,
     ConversationAlreadyClaimedError: status.HTTP_409_CONFLICT,
     AgentMissingRequiredSkillError: status.HTTP_403_FORBIDDEN,
+    # A threshold outside its measured safe range is a bad request, not a
+    # conflict: nothing about the system's state would make it
+    # acceptable, and the bounds are the same on every installation.
+    ThresholdOutOfBoundsError: status.HTTP_422_UNPROCESSABLE_ENTITY,
 }
 
 

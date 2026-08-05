@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Query
 from blinkengage.api.deps import (
     get_learning_pattern_query_service,
     get_learning_query_service,
+    get_learning_settings_service,
     get_learning_shadow_service,
     require_permission,
 )
@@ -30,9 +31,13 @@ from blinkengage.api.schemas.learning import (
     LearningHealthResponse,
     LearningMetricsResponse,
     LearningRunResponse,
+    LearningThresholdsResponse,
+    LearningThresholdsUpdateRequest,
+    LearningThresholdsUpdateResponse,
     ObservationFeaturesResponse,
     ObservationRefResponse,
     ObservationResponse,
+    ThresholdChangeResponse,
     TrendResponse,
     UnclusteredObservationResponse,
 )
@@ -41,6 +46,9 @@ from blinkengage.application.services.learning_pattern_query_service import (
     LearningPatternQueryService,
 )
 from blinkengage.application.services.learning_query_service import LearningQueryService
+from blinkengage.application.services.learning_settings_service import (
+    LearningSettingsService,
+)
 from blinkengage.application.services.learning_shadow_service import LearningShadowService
 from blinkengage.core.auth_context import AuthContext
 from blinkengage.domain.learning_cluster import ClusterState
@@ -458,3 +466,54 @@ async def cluster_neighbours(
             company_id=auth.company_id, cluster_id=cluster_id, limit=limit
         )
     ]
+
+
+@router.get("/thresholds", response_model=LearningThresholdsResponse)
+async def read_thresholds(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningSettingsService, Depends(get_learning_settings_service)],
+) -> LearningThresholdsResponse:
+    """The thresholds in effect, and where each came from."""
+    return LearningThresholdsResponse(**await service.read(company_id=auth.company_id))
+
+
+@router.patch("/thresholds", response_model=LearningThresholdsUpdateResponse)
+async def update_thresholds(
+    payload: LearningThresholdsUpdateRequest,
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.manage"))],
+    service: Annotated[LearningSettingsService, Depends(get_learning_settings_service)],
+) -> LearningThresholdsUpdateResponse:
+    """Change a threshold. **Every change is recorded.**
+
+    Behind `intelligence.manage` rather than `intelligence.read`, because
+    this is the one control on this surface that changes what the
+    platform will find. Everything else here only looks.
+
+    Out-of-bounds values are **refused, not clamped**: clamping would
+    accept the request and quietly do something else, and the operator
+    would leave believing a number that is not in effect.
+    """
+    values = {
+        name: value
+        for name, value in (
+            ("cluster_join_threshold", payload.cluster_join_threshold),
+            ("cluster_merge_threshold", payload.cluster_merge_threshold),
+        )
+        if value is not None
+    }
+    result = await service.update(
+        company_id=auth.company_id,
+        actor_user_id=auth.user_id,
+        values=values,
+        reason=payload.reason,
+    )
+    return LearningThresholdsUpdateResponse(
+        thresholds=result.thresholds,
+        changes=[
+            ThresholdChangeResponse(
+                threshold=change.name, previous=change.previous, current=change.current
+            )
+            for change in result.changes
+        ],
+        clusters_built_under_previous_thresholds=result.clusters_invalidated,
+    )

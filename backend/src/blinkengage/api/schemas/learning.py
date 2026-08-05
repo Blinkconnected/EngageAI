@@ -270,3 +270,48 @@ class ClusterNeighbourResponse(BaseModel):
     state: str
     would_merge_at_default: bool
     feature_summary: dict[str, Any]
+
+
+class ThresholdBoundsResponse(BaseModel):
+    min: float
+    max: float
+
+
+class LearningThresholdsResponse(BaseModel):
+    """A company's clustering thresholds, and where each came from."""
+
+    thresholds: dict[str, float]
+    platform_defaults: dict[str, float]
+    #: Which the company actually set, as opposed to inherited. A reader
+    #: needs to know whether changing the platform default would move it.
+    overridden: list[str]
+    bounds: dict[str, ThresholdBoundsResponse]
+
+
+class ThresholdChangeResponse(BaseModel):
+    threshold: str
+    previous: float
+    current: float
+
+
+class LearningThresholdsUpdateRequest(BaseModel):
+    """A threshold change, with the reason it was made.
+
+    ``reason`` is optional to the API and strongly advised in practice:
+    it is the field that makes the audit row answer *why* six months
+    later, when the numbers alone no longer explain themselves.
+    """
+
+    cluster_join_threshold: float | None = None
+    cluster_merge_threshold: float | None = None
+    reason: str | None = None
+
+
+class LearningThresholdsUpdateResponse(BaseModel):
+    thresholds: dict[str, float]
+    changes: list[ThresholdChangeResponse]
+    #: Clusters built under the previous thresholds. **Not deleted** —
+    #: they are the record of what the platform believed, and the
+    #: comparison that makes a threshold change reviewable. Reported so
+    #: nobody reads the next sweep as a change in the business.
+    clusters_built_under_previous_thresholds: int

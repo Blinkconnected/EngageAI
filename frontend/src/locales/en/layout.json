@@ -39,6 +39,7 @@
     "navReports": "Reports",
     "navErpNext": "ERPNext",
     "navSettings": "Settings",
-    "navServices": "Services"
+    "navServices": "Services",
+    "navIntelligence": "Pattern detection"
   }
 }

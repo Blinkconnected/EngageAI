@@ -16,6 +16,41 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A dashboard for the pattern detection, and a dial you are allowed to
+  turn.** Owners and administrators get a Pattern detection page showing
+  what the platform is grouping and whether it is working: how many
+  conversations it has summarised, how many are settled enough to group,
+  how many groups exist and what sizes they are, how much they move
+  between runs, how many conversations it could not group, how long the
+  last run took and whether any failed.
+
+  The page opens with an unmissable statement that **nothing here acts on
+  what it finds** — no memory written, no articles suggested, nobody
+  notified, nothing sent onward — because somebody reading a
+  pattern-detection screen should not have to take that on trust.
+
+  Numbers the platform cannot honestly compute are shown as **empty with
+  a reason**, never as zero. "Stability: 0" would say the groups are
+  churning; the truth on a new installation is that nothing has settled
+  yet, and those need opposite responses.
+
+  The similarity threshold — how alike two conversations must be to land
+  in the same group — can now be set per company instead of being fixed
+  in code, because the right value depends on how the company's
+  conversations actually read. The slider stops at the range that has
+  been measured to work: below it distinct problems merge into one, above
+  it a single problem shatters into fragments the platform can no longer
+  see. Values outside the range are refused rather than quietly adjusted.
+
+  **Every change is recorded** — the old value, the new value, who made
+  it, why, and how many groups were built under the previous setting.
+  That last number matters: existing groups are kept rather than deleted,
+  and without knowing they predate the change somebody would read the
+  next run as a change in the business.
+
+  New: `/api/v1/intelligence/shadow`, `/api/v1/intelligence/thresholds`,
+  and a Pattern detection page in the sidebar.
+
 - **Every company can be given a Service built from what it already runs on.**
   Services are becoming where a company states what it promises — SLA targets,
   AI policy, business hours — while queues stay the runtime that work waits in.

@@ -767,3 +767,217 @@ class TestShadowInspection:
 
         for path in ("/api/v1/intelligence/shadow", "/api/v1/intelligence/unclustered"):
             assert (await client.get(path, headers=agent_headers)).status_code == 403, path
+
+
+class TestThresholdSettings:
+    """The one control that changes what the platform finds.
+
+    Every test here is about a way an operator could be misled: a value
+    silently clamped, a change with no record, a number that looks
+    company-specific but is inherited.
+    """
+
+    async def test_thresholds_report_where_each_value_came_from(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        response = await client.get("/api/v1/intelligence/thresholds", headers=owner_headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert "cluster_join_threshold" in body["thresholds"]
+        # Nothing overridden yet, so every value is inherited — and the
+        # operator can see that changing the platform default would move
+        # it.
+        assert body["overridden"] == []
+        assert body["bounds"]["cluster_join_threshold"]["min"] > 0
+
+    async def test_a_change_takes_effect_and_is_reported(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        response = await client.patch(
+            "/api/v1/intelligence/thresholds",
+            json={"cluster_join_threshold": 0.25, "reason": "pilot tuning"},
+            headers=owner_headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["thresholds"]["cluster_join_threshold"] == 0.25
+        assert body["changes"][0]["threshold"] == "cluster_join_threshold"
+        assert body["changes"][0]["current"] == 0.25
+
+        after = (await client.get("/api/v1/intelligence/thresholds", headers=owner_headers)).json()
+        assert after["overridden"] == ["cluster_join_threshold"]
+
+    async def test_an_out_of_bounds_value_is_refused_not_clamped(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """Clamping would accept the request and quietly do something
+        else, and the operator would leave believing a number that is not
+        in effect.
+
+        The bounds are measured, not arbitrary: outside them clustering
+        either conflates distinct problems or fragments one problem into
+        invisibility.
+        """
+        response = await client.patch(
+            "/api/v1/intelligence/thresholds",
+            json={"cluster_join_threshold": 0.95},
+            headers=owner_headers,
+        )
+        assert response.status_code >= 400
+
+        after = (await client.get("/api/v1/intelligence/thresholds", headers=owner_headers)).json()
+        assert after["thresholds"]["cluster_join_threshold"] != 0.95
+
+    async def test_a_change_reaches_the_audit_trail(
+        self, app: Any, client: Any, owner_headers: dict[str, str], drain_outbox: Any
+    ) -> None:
+        """Six months later, "why did the platform stop finding anything
+        in March?" is answered by this row — and only if it carries the
+        old value as well as the new one.
+        """
+        await client.patch(
+            "/api/v1/intelligence/thresholds",
+            json={"cluster_join_threshold": 0.3, "reason": "too fragmented"},
+            headers=owner_headers,
+        )
+        await drain_outbox()
+
+        logs = await client.get(
+            "/api/v1/audit-logs?action=learning.thresholds_changed", headers=owner_headers
+        )
+        assert logs.status_code == 200, logs.text
+        items = logs.json()["items"]
+        assert len(items) == 1
+        details = items[0]["details"]
+        change = details["changes"][0]
+        assert change["threshold"] == "cluster_join_threshold"
+        assert change["current"] == 0.3
+        # The old value, without which the trail cannot answer the
+        # question actually asked.
+        assert "previous" in change
+        assert details["reason"] == "too fragmented"
+
+    async def test_an_unchanged_value_records_nothing(
+        self, app: Any, client: Any, owner_headers: dict[str, str], drain_outbox: Any
+    ) -> None:
+        """An audit trail that logs non-changes is one nobody reads."""
+        current = (
+            await client.get("/api/v1/intelligence/thresholds", headers=owner_headers)
+        ).json()["thresholds"]["cluster_join_threshold"]
+
+        response = await client.patch(
+            "/api/v1/intelligence/thresholds",
+            json={"cluster_join_threshold": current},
+            headers=owner_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["changes"] == []
+        await drain_outbox()
+
+        logs = await client.get(
+            "/api/v1/audit-logs?action=learning.thresholds_changed", headers=owner_headers
+        )
+        assert logs.json()["items"] == []
+
+    async def test_the_change_says_what_it_invalidated(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """Existing clusters are kept, not deleted — they are the record
+        of what the platform believed. But an operator who does not know
+        they were built under a different number will read the next
+        sweep's output as a change in the business."""
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=REFUND, count=5)
+        await _cluster(app, company_id)
+
+        response = await client.patch(
+            "/api/v1/intelligence/thresholds",
+            json={"cluster_join_threshold": 0.3},
+            headers=owner_headers,
+        )
+        assert response.json()["clusters_built_under_previous_thresholds"] == 5
+
+    async def test_changing_a_threshold_needs_more_than_reading_one(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """`intelligence.read` shows the dial; `intelligence.manage` turns
+        it.
+
+        Asserted against the grant table rather than by creating an admin,
+        because ``POST /agents`` creates agents — it takes a ``role`` field
+        and ignores it — so a test that went through it would be testing an
+        Agent while believing it tested an Admin.
+        """
+        from blinkengage.domain.rbac import DEFAULT_ROLE_PERMISSIONS, SystemRole
+
+        admin = DEFAULT_ROLE_PERMISSIONS[SystemRole.ADMIN]
+        assert "intelligence.read" in admin
+        assert "intelligence.manage" not in admin
+        assert "intelligence.manage" in DEFAULT_ROLE_PERMISSIONS[SystemRole.OWNER]
+
+        # And the endpoint really is behind the stronger one: an Agent
+        # holds neither and is refused at the door.
+        created = await client.post(
+            "/api/v1/agents",
+            json={
+                "email": "agent-thr@acme.example",
+                "full_name": "Sam Agent",
+                "password": "correct-horse-battery-9",
+            },
+            headers=owner_headers,
+        )
+        assert created.status_code == 201, created.text
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "agent-thr@acme.example", "password": "correct-horse-battery-9"},
+        )
+        agent_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert (
+            await client.patch(
+                "/api/v1/intelligence/thresholds",
+                json={"cluster_join_threshold": 0.2},
+                headers=agent_headers,
+            )
+        ).status_code == 403
+
+
+class TestShadowModeIsDeclared:
+    async def test_the_dashboard_states_that_nothing_acts_on_it(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        """A fact about the build, reported so an operator does not have
+        to read the source to know it."""
+        body = (await client.get("/api/v1/intelligence/shadow", headers=owner_headers)).json()
+        shadow = body["shadow_mode"]
+        assert shadow["active"] is True
+        assert shadow["emits_candidates"] is False
+        assert shadow["writes_memory"] is False
+        assert shadow["creates_knowledge_suggestions"] is False
+        assert shadow["publishes_events"] is False
+        assert shadow["calls_models"] is False
+
+    async def test_the_dashboard_covers_every_pilot_metric(
+        self, app: Any, client: Any, owner_headers: dict[str, str]
+    ) -> None:
+        company_id = await _company_id(app)
+        await _observations(app, company_id=company_id, topics=REFUND, count=5)
+        await _cluster(app, company_id)
+
+        body = (await client.get("/api/v1/intelligence/shadow", headers=owner_headers)).json()
+        for section in (
+            "throughput",
+            "growth",
+            "size_distribution",
+            "stability",
+            "merge_rate",
+            "duplicate_suppression",
+            "replay",
+            "churn",
+            "processing",
+            "resource_usage",
+        ):
+            assert section in body, section
+
+        assert body["throughput"]["eligible"] == 5
+        assert body["size_distribution"]["buckets"]["3-5"] == 1
+        assert body["replay"]["superseded_generations"] == 0

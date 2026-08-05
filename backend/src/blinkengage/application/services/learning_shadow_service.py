@@ -125,8 +125,33 @@ class LearningShadowService:
             "window_days": days,
             "algorithm_version": CLUSTER_ALGORITHM_VERSION,
             "pipeline_version": PIPELINE_VERSION,
+            # --- shadow mode, stated rather than assumed ---------------
+            #
+            # Reported because an operator looking at a pattern-detection
+            # dashboard needs to know, without reading the source, that
+            # nothing here is acting on what it shows. It is a *fact about
+            # the build* — there is no emission code — not a switch, and
+            # a test asserts it stays true.
+            "shadow_mode": {
+                "active": True,
+                "emits_candidates": False,
+                "writes_memory": False,
+                "creates_knowledge_suggestions": False,
+                "publishes_events": False,
+                "calls_models": False,
+                "note": (
+                    "phase 2 has no emission path at all; these are "
+                    "guarded by tests/unit/"
+                    "test_learning_writes_only_its_own_tables.py, not by a "
+                    "runtime flag that could be turned off by accident"
+                ),
+            },
+            # --- observation throughput --------------------------------
+            "throughput": await self._throughput(company_id=company_id, now=moment, days=days),
             # --- 1. cluster growth -------------------------------------
             "growth": await self._growth(rows, now=moment, days=days),
+            # --- cluster size distribution -----------------------------
+            "size_distribution": _size_distribution(sizes),
             # --- 2. cluster stability ----------------------------------
             "stability": {
                 "mean": (round(sum(stabilities) / len(stabilities), 4) if stabilities else None),
@@ -154,9 +179,15 @@ class LearningShadowService:
             "duplicate_suppression": {
                 "observations_eligible": eligible,
                 "observations_clustered": clustered,
-                "duplicate_memberships": max(clustered - len(set(range(clustered))), 0),
                 "clustered_fraction": (round(clustered / eligible, 4) if eligible else None),
+                "note": (
+                    "membership is unique per (cluster, observation), so a "
+                    "count above the observation count would itself be the "
+                    "defect — there is nothing to suppress after the fact"
+                ),
             },
+            # --- replay rate -------------------------------------------
+            "replay": await self._replay(company_id=company_id),
             # --- 5 + 6. trend and anomaly quality ----------------------
             "trend_quality": await self._trend_quality(company_id=company_id),
             "anomaly_quality": await self._anomaly_quality(company_id=company_id),
@@ -205,6 +236,54 @@ class LearningShadowService:
             company_id=company_id, limit=10_000, offset=0
         )
         return rows
+
+    async def _throughput(self, *, company_id: UUID, now: datetime, days: int) -> dict[str, object]:
+        """Observations produced, and how many are usable.
+
+        Two numbers, not one. Total throughput says whether the platform
+        is seeing traffic; the *eligible* share says whether that traffic
+        can be learned from — and the gap between them is where the
+        exclusions live. An installation observing thousands of
+        conversations and eligible for none is a specific, diagnosable
+        state, and one number would hide it.
+        """
+        states = await self._observations.counts_by_state(company_id=company_id)
+        total = sum(states.values())
+        eligible = states.get("ready", 0)
+        window_hours = max(days * 24, 1)
+        return {
+            "observations_total": total,
+            "by_state": states,
+            "eligible": eligible,
+            "eligible_fraction": round(eligible / total, 4) if total else None,
+            # Averaged over the window rather than measured per hour: a
+            # pilot's traffic is bursty, and an instantaneous rate would
+            # swing wildly for reasons that are not about the platform.
+            "observations_per_hour_mean": round(total / window_hours, 4) if total else 0.0,
+            "observations_per_day_mean": round(total / max(days, 1), 3) if total else 0.0,
+        }
+
+    async def _replay(self, *, company_id: UUID) -> dict[str, object]:
+        """Superseded generations — the honest replay counter.
+
+        Counts rows whose source has since been observed under a newer
+        pipeline version. It stays at **zero through ordinary
+        redelivery**, which is what makes it worth watching: a counter
+        that ticked on at-least-once delivery would be counting the
+        broker rather than the platform.
+        """
+        replayed = await self._observations.replayed_count(company_id=company_id)
+        states = await self._observations.counts_by_state(company_id=company_id)
+        total = sum(states.values())
+        return {
+            "superseded_generations": replayed,
+            "observations_total": total,
+            "replay_rate": round(replayed / total, 4) if total else None,
+            "note": (
+                "non-zero only after a PIPELINE_VERSION bump. Redelivery "
+                "is not a replay and must not appear here"
+            ),
+        }
 
     async def _growth(
         self, rows: Sequence[LearningCluster], *, now: datetime, days: int
@@ -387,6 +466,49 @@ class LearningShadowService:
             }
             for score, row in scored[:limit]
         ]
+
+
+def _size_distribution(sizes: Sequence[int]) -> dict[str, object]:
+    """The shape of the corpus, in buckets an operator can act on.
+
+    A mean alone cannot distinguish "twenty healthy clusters" from "one
+    enormous cluster and nineteen singletons", and those need opposite
+    responses. The buckets are chosen around the size floor (3), because
+    that is where a cluster stops being a coincidence.
+    """
+    if not sizes:
+        return {"buckets": {}, "total": 0, "median": None, "p90": None, "largest": None}
+
+    buckets = {"1": 0, "2": 0, "3-5": 0, "6-10": 0, "11-25": 0, "26-100": 0, "100+": 0}
+    for size in sizes:
+        if size <= 1:
+            buckets["1"] += 1
+        elif size == 2:
+            buckets["2"] += 1
+        elif size <= 5:
+            buckets["3-5"] += 1
+        elif size <= 10:
+            buckets["6-10"] += 1
+        elif size <= 25:
+            buckets["11-25"] += 1
+        elif size <= 100:
+            buckets["26-100"] += 1
+        else:
+            buckets["100+"] += 1
+
+    ordered = sorted(sizes)
+    return {
+        "buckets": buckets,
+        "total": len(ordered),
+        "median": ordered[len(ordered) // 2],
+        "p90": ordered[min(len(ordered) - 1, int(len(ordered) * 0.9))],
+        "largest": ordered[-1],
+        "note": (
+            "mass in the 1-2 buckets means the join threshold is too high "
+            "to group anything; one bucket at 100+ holding most of the "
+            "corpus means it is too low to separate anything"
+        ),
+    }
 
 
 def _stored_vector(row: LearningCluster) -> Vector:
