@@ -14,6 +14,7 @@ already-stored data with safe defaults, since a row written before a
 given key existed must still resolve to a sensible default.
 """
 
+import uuid
 from decimal import Decimal
 from typing import Any
 
@@ -34,6 +35,34 @@ def _section(settings: dict[str, Any], key: str) -> dict[str, Any]:
 
 def is_onboarding_completed(settings: dict[str, Any]) -> bool:
     return bool(_section(settings, "onboarding").get("completed", False))
+
+
+def default_service_id(settings: dict[str, Any]) -> uuid.UUID | None:
+    """Which Service catches a conversation nothing else claimed.
+
+    ``FallbackStage`` has always accepted one and nothing ever stored it, so
+    it fell through to *"the first service in the operator's display order"*.
+    That is fine for a company with one Service and arbitrary for a company
+    with several — and worse than arbitrary, because it means **reordering
+    the Services screen silently changes which Service catches unclaimed
+    conversations**: a routing change wearing a cosmetic one's clothes.
+
+    Stored here, with every other company-level choice, rather than as a
+    column: it is a *preference about* the directory rather than part of it,
+    and a company that has expressed none is the normal case rather than a
+    missing row.
+
+    A malformed value reads as ``None`` rather than raising. The fallback
+    order below it still works, so a corrupted setting costs the preference
+    and never the conversation.
+    """
+    raw = _section(settings, "services").get("default_service_id")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        return None
 
 
 def is_erp_enabled(settings: dict[str, Any]) -> bool:
@@ -136,6 +165,79 @@ def is_learning_enabled(settings: dict[str, Any]) -> bool:
     this flag only ever narrows.
     """
     return bool(_section(settings, "memory").get("learning_enabled", DEFAULT_LEARNING_ENABLED))
+
+
+#: Thresholds a company may override, with the bounds each must stay
+#: inside. The bounds are not decoration: phase 2.5 measured what happens
+#: outside them — below 0.15 distinct problems conflate into one finding,
+#: above 0.30 a realistic corpus fragments seven-fold and the platform
+#: holds the evidence for a pattern while being unable to see it.
+#:
+#: An operator turning a dial should not be able to blind the platform by
+#: accident, so the dial has stops.
+LEARNING_THRESHOLD_BOUNDS: dict[str, tuple[float, float]] = {
+    "cluster_join_threshold": (0.05, 0.60),
+    "cluster_merge_threshold": (0.30, 0.95),
+}
+
+
+class ThresholdOutOfBoundsError(ValueError):
+    """A threshold outside its measured safe range.
+
+    Refused rather than clamped. Clamping would accept the request and
+    silently do something else, and the operator would go away believing
+    a number that is not in effect.
+    """
+
+    def __init__(self, *, name: str, value: float, low: float, high: float) -> None:
+        super().__init__(
+            f"{name} must be between {low} and {high} (got {value}). "
+            "Outside this range clustering either conflates distinct "
+            "problems or fragments one problem into invisibility — see "
+            "docs/architecture/learning-platform-shadow-validation.md"
+        )
+        self.name = name
+        self.value = value
+
+
+def learning_thresholds(
+    settings: dict[str, Any], *, defaults: dict[str, float]
+) -> dict[str, float]:
+    """A company's clustering thresholds, resolved.
+
+    Company setting → platform default → constant, the same chain every
+    other configured fact on this platform resolves down.
+
+    Per-company rather than platform-wide because **the right value is
+    corpus-dependent**, and that is a measurement rather than a
+    preference: a tenant whose conversations are long and varied needs a
+    different point in the band than one whose conversations are short
+    and templated. A single platform number would be right for one of
+    them and wrong for the other.
+
+    Out-of-bounds stored values are ignored in favour of the default
+    rather than raising. This is a read on the hot path; a bad row must
+    degrade to the safe answer, not stop clustering. The *write* path
+    refuses them, which is where the operator finds out.
+    """
+    section = _section(settings, "learning")
+    resolved: dict[str, float] = {}
+    for name, default in defaults.items():
+        low, high = LEARNING_THRESHOLD_BOUNDS.get(name, (0.0, 1.0))
+        raw = section.get(name)
+        if isinstance(raw, int | float) and low <= float(raw) <= high:
+            resolved[name] = float(raw)
+        else:
+            resolved[name] = default
+    return resolved
+
+
+def validate_learning_threshold(name: str, value: float) -> float:
+    """The write-path check. Raises rather than clamping."""
+    low, high = LEARNING_THRESHOLD_BOUNDS.get(name, (0.0, 1.0))
+    if not low <= value <= high:
+        raise ThresholdOutOfBoundsError(name=name, value=value, low=low, high=high)
+    return float(value)
 
 
 def memory_retention_days(settings: dict[str, Any]) -> tuple[int | None, int | None, int | None]:

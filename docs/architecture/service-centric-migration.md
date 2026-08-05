@@ -3,7 +3,7 @@
 *Moving every company from Queue-centric to Service-centric configuration
 without changing what any of them experiences on the day it happens.*
 
-**Status: Stage 1 shipped. Stages 2–4 proposed.** Traced against the
+**Status: Stage 1 shipped. Stage 2 built and dry-run against production; not yet applied. Stages 3–4 proposed.** Traced against the
 implementation, not the intent; every claim below was checked against the
 source or the live database.
 
@@ -207,7 +207,49 @@ tier object. It found a real violation on its first run — the AI pickup sweep
 was still reading `service.ai.pickup_delay_seconds` to record the delay it had
 honoured, which would have logged a wait the chain never produced.
 
-### Stage 2 — Automatic migration *(data, still no behaviour change)*
+### Stage 2 — Automatic migration ✅ **built, dry-run verified, not applied**
+
+*The tooling exists and has been run against production in dry-run mode.
+Applying it is a separate, deliberate act.*
+
+**How to run it**
+
+```
+# what would happen — writes nothing
+docker compose exec backend python scripts/seed_services_from_effective_configuration.py
+
+# do it
+docker compose exec backend python scripts/seed_services_from_effective_configuration.py --apply
+```
+
+**What the production dry run reported** (35 companies):
+
+| Company | Plan |
+|---|---|
+| Blink Connected | `AI on, delay 0s, SLA 3/15 min (from queue)` — exactly what it runs on today |
+| 34 others | `AI off, delay 0s, SLA 60/1440 (platform default)` — likewise |
+
+Blink Connected is the proof the design works: its SLA reads *from queue*
+because that is where its policy lives, and its AI reads *on* because its
+company switch and queue opt-in are both on. A naive seed would have written
+`AI off` and blank targets, and neither would have raised.
+
+**What was built**
+
+| Piece | Where |
+|---|---|
+| Plan and apply | `application/services/service_seeding.py` |
+| The runnable migration | `scripts/seed_services_from_effective_configuration.py` |
+| Default-service storage | `domain/company_settings.default_service_id` |
+| Tests | `tests/unit/test_service_seeding.py` — 18, all before-equals-after |
+
+`apply` on a planning-only seeder **raises** rather than silently doing
+nothing: a split that exists so a migration can be reviewed only protects
+anybody if misusing it is loud.
+
+---
+
+#### The original plan, for reference
 
 For every company with no active service, create **one Service per live logical
 queue**, seeded from what that company resolves to *today*:

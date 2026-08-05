@@ -16,6 +16,23 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Every company can be given a Service built from what it already runs on.**
+  Services are becoming where a company states what it promises — SLA targets,
+  AI policy, business hours — while queues stay the runtime that work waits in.
+  Companies that predate Services had none, so a migration creates one per
+  queue, copying the configuration each company *effectively* uses today.
+
+  Nothing changes on the day it runs. A company answering instantly keeps
+  answering instantly; one measuring a 3-minute first response keeps measuring
+  it; one with AI switched off keeps it off. Copying model defaults instead
+  would have switched AI off and stopped SLA clocks without raising a single
+  error, which is why the migration reports what it would do and writes
+  nothing until you tell it to.
+
+  You can also now say **which Service catches conversations nothing else
+  claimed**, instead of the platform picking whichever one happens to sort
+  first — so reordering the Services screen no longer changes routing.
+
 - **You can now inspect what the pattern detection is doing, and what it
   is not.** Three operator pages: a shadow summary of everything the
   detection pipeline measured about itself, a list of completed

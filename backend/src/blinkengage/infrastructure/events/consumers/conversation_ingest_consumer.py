@@ -36,6 +36,7 @@ from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_lifecycle import SlaLifecycle
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.company_settings import default_service_id
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.execution_context import ConversationFacts, ExecutionContext
 from blinkengage.domain.lifecycle import FINISHED
@@ -544,6 +545,7 @@ async def _resolve_service(
     body: str | None,
     session: AsyncSession,
     decisions: RoutingDecisionRepository,
+    company_settings: dict[str, Any],
 ) -> ServiceContext | None:
     """Resolves the service this conversation runs inside, and binds it.
 
@@ -580,7 +582,13 @@ async def _resolve_service(
             return None
 
         resolved = await resolve_service(
-            default_stages(services),
+            # The company's own choice of catch-all Service, where they have
+            # made one. Without it ``FallbackStage`` picks whichever Service
+            # sorts first, so reordering the directory would change routing.
+            default_stages(
+                services,
+                default_service_id=default_service_id(company_settings),
+            ),
             ResolutionRequest(
                 company_id=company_id,
                 conversation_id=conversation.id,
@@ -790,6 +798,13 @@ async def _route_and_assign(
     # First: which service is this conversation in? Everything after this
     # reads from what it decides — the service supplies the queue, the SLA
     # targets and the AI policy.
+    # Loaded once here and handed down, rather than each reader fetching its
+    # own copy: the resolution needs the company's chosen default Service and
+    # the configuration below needs its AI switches, and two loads of the same
+    # row is two chances for them to disagree within one conversation.
+    company = await CompanyRepository(session).get_by_id(company_id)
+    company_settings = company.settings if company is not None else {}
+
     service = await _resolve_service(
         conversation,
         company_id=company_id,
@@ -797,6 +812,7 @@ async def _route_and_assign(
         body=body,
         session=session,
         decisions=decisions,
+        company_settings=company_settings,
     )
 
     # Asked, and recorded. A conversation that is finished has nothing to
@@ -894,7 +910,7 @@ async def _route_and_assign(
         company_id=company_id,
         queue_id=queue_id,
         service=service,
-        company=await CompanyRepository(session).get_by_id(company_id),
+        company=company,
     )
 
     # Three clocks start with the queue: the customer is now waiting for
@@ -965,7 +981,6 @@ async def _route_and_assign(
         # The compliance switch is the reason this migration waited. Getting
         # it wrong would mean AI answering customers of a company that had
         # switched AI off — and nothing would fail, and no test would go red.
-        company = await CompanyRepository(session).get_by_id(company_id)
         # **Evaluated for every company, service directory or not.** This was
         # a Policy Engine call on one path and five inline conditions on the
         # other, and the inline path recorded nothing — so on every company
