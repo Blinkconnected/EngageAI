@@ -142,6 +142,53 @@ class ServiceRepository:
         )
         return result.scalar_one_or_none()
 
+    async def owner_of_queue(self, *, company_id: uuid.UUID, queue_id: uuid.UUID) -> Service | None:
+        """The active service whose current version names this queue.
+
+        Read through ``current_version_id`` rather than any version, because
+        an archived or superseded version pointing at a queue is history: it
+        explains a past conversation and decides nothing now. Scoped to the
+        company like every other lookup here — ``get`` is the exception, and
+        its one caller checks the company itself.
+        """
+        result = await self._session.execute(
+            select(Service)
+            .join(ServiceVersion, ServiceVersion.id == Service.current_version_id)
+            .where(
+                Service.company_id == company_id,
+                Service.deleted_at.is_(None),
+                Service.is_active.is_(True),
+                ServiceVersion.logical_queue_id == queue_id,
+            )
+            .order_by(Service.display_order, Service.name)
+        )
+        return result.scalars().first()
+
+    async def owners_by_queue(self, company_id: uuid.UUID) -> dict[uuid.UUID, Service]:
+        """Every queue this company's live services own, in one query.
+
+        The queues screen needs this per row, and asking per row would be a
+        query per queue to render a label.
+        """
+        result = await self._session.execute(
+            select(ServiceVersion.logical_queue_id, Service)
+            .join(ServiceVersion, ServiceVersion.id == Service.current_version_id)
+            .where(
+                Service.company_id == company_id,
+                Service.deleted_at.is_(None),
+                Service.is_active.is_(True),
+                ServiceVersion.logical_queue_id.is_not(None),
+            )
+            .order_by(Service.display_order, Service.name)
+        )
+        owners: dict[uuid.UUID, Service] = {}
+        for queue_id, service in result.all():
+            # First wins, matching ``owner_of_queue``'s ordering: two services
+            # naming one queue is possible and the screen must not disagree
+            # with the refusal about which of them is named.
+            owners.setdefault(queue_id, service)
+        return owners
+
     async def active_for_company(self, company_id: uuid.UUID) -> list[Service]:
         """What a customer can be offered, in the order an operator chose."""
         result = await self._session.execute(

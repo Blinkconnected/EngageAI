@@ -4,10 +4,11 @@
 without changing what any of them experiences on the day it happens.*
 
 **Status: Stage 1 shipped. Stage 2 built and dry-run against production; not
-yet applied. Stage 3 part-shipped — registration creates the full chain and
-the drift check is running; the read-only legacy fields are still to come.
-Stage 4 proposed.** Traced against the implementation, not the intent; every
-claim below was checked against the source or the live database.
+yet applied. Stage 3 shipped except the onboarding Service step — registration
+creates the full chain, the drift check runs daily, and queue SLA is read-only
+wherever a Service owns the queue. Stage 4 proposed.** Traced against the
+implementation, not the intent; every claim below was checked against the
+source or the live database.
 
 ---
 
@@ -353,6 +354,30 @@ must not overwrite.
 - Service becomes the **only** place new configuration can be written. Queue-level
   SLA fields and `SlaPolicy` attachment become read-only in the API and are
   labelled *legacy* in the UI, with a link to the service that now owns them.
+  ✅ **shipped** — `QueueService._refuse_sla_edits_a_service_owns`, and the
+  `sla_owned_by_service` field on `QueueResponse`.
+
+  **Scoped to owned queues, not to all of them.** A company with no service
+  is untouched, which is most of the installation until Stage 2 runs — their
+  queue is still the only place their SLA lives, and closing it would leave
+  them unable to configure an SLA at all. This is what makes 3c safe to ship
+  *before* Stage 2 rather than after: today it changes nothing, and it takes
+  effect for each company at the moment a service starts owning its queue.
+
+  **Only a change refuses**, never the field's presence. `QueueEditDialog`
+  submits every field it renders whether or not anybody touched it, so a rule
+  keyed on presence would make renaming an owned queue impossible — correct
+  and unusable. Re-sending the stored value is not an attempt to configure
+  anything. The dialog also omits the fields entirely when a service owns
+  them, which is the honest request and survives somebody editing the service
+  in another tab.
+
+  **409, not 422.** The request is well formed and would have been accepted
+  yesterday; what refuses it is the state of the directory.
+
+  The refusal names the queue, the fields and the service to edit instead,
+  and the UI links straight to it. A disabled field with no destination is a
+  dead end, and the administrator's next question is always "then where?".
 - A **drift check** runs as a scheduled job: for every company, compare
   service-resolved values against queue-resolved values and report divergence.
   Nothing auto-corrects. Divergence means somebody edited legacy config through

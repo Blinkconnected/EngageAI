@@ -1,5 +1,17 @@
 export type QueueAssignmentStrategy = 'round_robin' | 'least_load' | 'manual'
 
+/**
+ * The service that decides this queue's SLA, when one does.
+ *
+ * Carried so the queue editor can disable the SLA fields *and* say where to
+ * go instead — a greyed-out box with no destination is a dead end, and the
+ * administrator's next question is always "then where?".
+ */
+export interface QueueSlaOwner {
+  service_id: string
+  service_name: string
+}
+
 /** Matches the backend's `QueueResponse`. */
 export interface Queue {
   id: string
@@ -18,6 +30,11 @@ export interface Queue {
   autopilot_enabled: boolean
   created_at: string
   updated_at: string
+  // `null` means this queue's own SLA fields are still in effect — the
+  // ordinary case for a company with no service directory yet. Set means
+  // they are read-only and the named service decides; the API refuses a
+  // change to them with a 409.
+  sla_owned_by_service: QueueSlaOwner | null
 }
 
 export interface QueueCreateRequest {

@@ -28,6 +28,7 @@
     "departmentHelperText": "Organizational label only — doesn't restrict who can pick up work here.",
     "noDepartmentOption": "No department",
     "assignmentStrategyLabel": "Assignment strategy",
+    "slaOwnedByService": "Response time targets for this queue are set by the <serviceLink>{{service}}</serviceLink> service, which handles this queue. Edit them there — this screen can no longer change them.",
     "slaPolicyLabel": "SLA policy",
     "slaPolicyHelperText": "Optional — overrides the targets below with a reusable policy (business hours, warning threshold, escalation). See SLA Builder.",
     "noSlaPolicyOption": "None (use targets below)",

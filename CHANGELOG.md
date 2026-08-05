@@ -16,6 +16,21 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Response time targets are edited in one place, not two.** When a service
+  handles a queue, that service decides the queue's response time targets —
+  so the queue's own target fields are now shown read-only, with a link to
+  the service that sets them. Trying to change them through the API is
+  refused rather than quietly saved.
+
+  This closes a trap rather than removing a feature: the queue's numbers
+  were already being ignored in that situation. The screen accepted them,
+  said nothing, and every clock went on measuring the service's.
+
+  **Nothing changes for a company without services.** Their queue is still
+  the only place their targets live, and it stays fully editable. Everything
+  else about a queue — its name, its assignment strategy, AI Autopilot —
+  stays editable in both cases.
+
 - **A daily check for settings that are saved but not obeyed.** While
   Services are being introduced, a queue can still hold response-time
   targets that no longer take effect, because a Service now owns that queue

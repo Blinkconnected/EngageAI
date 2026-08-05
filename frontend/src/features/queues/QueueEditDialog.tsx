@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { FormControlLabel, MenuItem, Switch, TextField, Typography } from '@mui/material'
-import { useTranslation } from 'react-i18next'
+import { Alert, FormControlLabel, Link, MenuItem, Switch, TextField, Typography } from '@mui/material'
+import { Trans, useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { useAllDepartmentsQuery } from '../departments/api'
@@ -44,6 +44,10 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
   const slaPoliciesQuery = useSlaPoliciesQuery()
   const updateMutation = useUpdateQueueMutation()
 
+  // When a service owns this queue's SLA, these three fields are read-only
+  // and the API refuses a change to them with a 409.
+  const slaOwner = queue.sla_owned_by_service
+
   function handleSubmit() {
     updateMutation.mutate(
       {
@@ -53,10 +57,19 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
           description: description || null,
           department_id: departmentId || null,
           assignment_strategy: assignmentStrategy,
-          first_response_target_minutes: parseTargetMinutes(firstResponseTarget),
-          resolution_target_minutes: parseTargetMinutes(resolutionTarget),
+          // Omitted entirely when a service owns them. Sending the unchanged
+          // values would also be accepted — the API refuses a *change*, not
+          // the field's presence — but not sending what this screen cannot
+          // edit is the honest request, and it keeps working if somebody
+          // edits the service in another tab while this dialog is open.
+          ...(slaOwner
+            ? {}
+            : {
+                first_response_target_minutes: parseTargetMinutes(firstResponseTarget),
+                resolution_target_minutes: parseTargetMinutes(resolutionTarget),
+                sla_policy_id: slaPolicyId || null,
+              }),
           is_active: isActive,
-          sla_policy_id: slaPolicyId || null,
           autopilot_enabled: autopilotEnabled,
         },
       },
@@ -120,11 +133,27 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
           </MenuItem>
         ))}
       </TextField>
+      {slaOwner ? (
+        // Said before the disabled fields, not after. Somebody who reads the
+        // explanation first understands why they are greyed out; somebody who
+        // meets the grey first has already started wondering whether the page
+        // is broken.
+        <Alert severity="info" icon={false}>
+          <Trans
+            i18nKey="QueueEditDialog.slaOwnedByService"
+            ns="queues"
+            values={{ service: slaOwner.service_name }}
+            components={{
+              serviceLink: <Link href={`/services/${slaOwner.service_id}`} />,
+            }}
+          />
+        </Alert>
+      ) : null}
       <TextField
         select
         label={t('QueueEditDialog.slaPolicyLabel')}
         value={slaPolicyId}
-        disabled={slaPoliciesQuery.isPending}
+        disabled={slaPoliciesQuery.isPending || Boolean(slaOwner)}
         onChange={(event) => setSlaPolicyId(event.target.value)}
         fullWidth
         slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
@@ -142,6 +171,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         type="number"
         value={firstResponseTarget}
         onChange={(event) => setFirstResponseTarget(event.target.value)}
+        disabled={Boolean(slaOwner)}
         fullWidth
         helperText={t('QueueEditDialog.firstResponseTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}
@@ -151,6 +181,7 @@ function QueueEditDialogFields({ queue, onClose }: { queue: Queue; onClose: () =
         type="number"
         value={resolutionTarget}
         onChange={(event) => setResolutionTarget(event.target.value)}
+        disabled={Boolean(slaOwner)}
         fullWidth
         helperText={t('QueueEditDialog.resolutionTargetHelperText')}
         slotProps={{ htmlInput: { min: 1 } }}

@@ -39,6 +39,19 @@ class QueueUpdateRequest(BaseModel):
     autopilot_enabled: bool | None = None
 
 
+class QueueSlaOwner(BaseModel):
+    """The service that decides this queue's SLA, when one does.
+
+    Carried so the queues screen can say *which* service to go and edit
+    rather than only that the fields are disabled — a greyed-out box with no
+    destination is a dead end, and the administrator's next question is
+    always "then where?".
+    """
+
+    service_id: UUID
+    service_name: str
+
+
 class QueueResponse(BaseModel):
     id: UUID
     name: str
@@ -52,6 +65,10 @@ class QueueResponse(BaseModel):
     autopilot_enabled: bool
     created_at: datetime
     updated_at: datetime
+    #: ``None`` means this queue's own SLA fields are still the ones in
+    #: effect — the ordinary case for every company Stage 2 has not reached.
+    #: Set means they are read-only and the named service decides.
+    sla_owned_by_service: QueueSlaOwner | None = None
 
     model_config = {"from_attributes": True}
 

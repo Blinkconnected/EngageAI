@@ -892,6 +892,7 @@ def get_queue_service(
         queues=QueueRepository(session),
         agent_skills=AgentSkillRepository(session),
         sla_policies=SlaPolicyRepository(session),
+        services=ServiceRepository(session),
         events=events,
     )
 

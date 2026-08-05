@@ -538,6 +538,34 @@ class SlaPolicyHasAssignedQueuesError(DomainError):
         )
 
 
+class QueueSlaOwnedByServiceError(DomainError):
+    """Raised when a queue's own SLA configuration is edited while a Service
+    owns that queue — Stage 3 of the service-centric migration, see
+    ``docs/architecture/service-centric-migration.md``.
+
+    **Refused rather than accepted and ignored.** The service wins, so
+    storing the value would save a number the platform never measures: the
+    screen would say one thing and every clock say another, which is the
+    precise defect ``ConfigurationDriftDetector`` exists to hunt for after
+    the fact. Refusing turns a silent divergence into an error naming the
+    service to edit instead.
+
+    Only an actual *change* raises. Re-sending the stored value is not an
+    attempt to configure anything, and the queue editor submits every field
+    it renders whether or not somebody touched it — refusing on presence
+    would break saving a queue's name.
+    """
+
+    def __init__(self, queue_name: str, service_name: str, fields: list[str]) -> None:
+        self.queue_name = queue_name
+        self.service_name = service_name
+        self.fields = fields
+        super().__init__(
+            f"{', '.join(fields)} on queue {queue_name!r} is now configured by the "
+            f"service {service_name!r}, which owns this queue. Edit the service instead."
+        )
+
+
 class WeakPasswordError(DomainError):
     """Raised when a password satisfies the platform-wide floor
     (``validate_password_strength`` — at least 10 characters with a

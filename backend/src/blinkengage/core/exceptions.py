@@ -33,6 +33,7 @@ from blinkengage.domain.exceptions import (
     PricingModelNotEnabledError,
     PricingNotConfiguredError,
     PricingRangeOverlapError,
+    QueueSlaOwnedByServiceError,
     RateAlreadyEffectiveError,
     RefundNotPermittedError,
     SystemProfileNotPriceableError,
@@ -75,6 +76,10 @@ _STATUS_MAP: dict[type[Exception], int] = {
     RateAlreadyEffectiveError: status.HTTP_409_CONFLICT,
     SystemProfileNotPriceableError: status.HTTP_409_CONFLICT,
     ConversationAlreadyClaimedError: status.HTTP_409_CONFLICT,
+    # The queue's SLA is now the service's to set. A conflict rather than
+    # a validation error: the request is well formed and would have been
+    # accepted yesterday — what refuses it is the state of the directory.
+    QueueSlaOwnedByServiceError: status.HTTP_409_CONFLICT,
     AgentMissingRequiredSkillError: status.HTTP_403_FORBIDDEN,
     # A threshold outside its measured safe range is a bad request, not a
     # conflict: nothing about the system's state would make it

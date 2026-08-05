@@ -24,6 +24,7 @@ const SEED_QUEUES: Queue[] = [
     autopilot_enabled: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
+    sla_owned_by_service: null,
   },
   // A second queue with no conversations routed to it — lets tests prove
   // the Inbox's Queue-filter-mode picker (see InboxPage.tsx) actually
@@ -43,6 +44,27 @@ const SEED_QUEUES: Queue[] = [
     autopilot_enabled: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
+    sla_owned_by_service: null,
+  },
+  // A queue a Service owns. Kept separate from the two above so the
+  // ordinary edit tests still exercise a writable queue: this one's SLA
+  // fields are read-only, which is the whole point of it. See
+  // QueueEditDialog and Stage 3 of
+  // docs/architecture/service-centric-migration.md.
+  {
+    id: 'q3',
+    name: 'Serviced',
+    description: null,
+    department_id: null,
+    assignment_strategy: 'round_robin',
+    first_response_target_minutes: 15,
+    resolution_target_minutes: null,
+    sla_policy_id: null,
+    is_active: true,
+    autopilot_enabled: false,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    sla_owned_by_service: { service_id: 'svc1', service_name: 'Billing' },
   },
 ]
 
@@ -101,6 +123,7 @@ export const queuesHandlers = [
       autopilot_enabled: payload.autopilot_enabled ?? false,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
+      sla_owned_by_service: null,
     }
     nextQueueId += 1
     queues = [...queues, created]

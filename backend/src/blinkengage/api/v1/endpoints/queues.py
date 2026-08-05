@@ -8,13 +8,33 @@ from blinkengage.api.schemas.pagination import Page, PageParams
 from blinkengage.api.schemas.queue import (
     QueueCreateRequest,
     QueueResponse,
+    QueueSlaOwner,
     QueueUpdateRequest,
     RequiredSkillRequest,
 )
 from blinkengage.application.services.queue_service import QueueService
 from blinkengage.core.auth_context import AuthContext
+from blinkengage.infrastructure.database.models.queue import Queue
+from blinkengage.infrastructure.database.models.service_directory import Service
 
 router = APIRouter(prefix="/queues", tags=["queues"])
+
+
+def _with_sla_owner(queue: Queue, owners: dict[UUID, Service]) -> QueueResponse:
+    """The queue, plus which service decides its SLA if one does.
+
+    Attached here rather than on the model because it is not a fact about
+    the queue — it is a fact about the *directory*, and the same queue row
+    answers differently the moment a service starts or stops naming it.
+    """
+    owner = owners.get(queue.id)
+    return QueueResponse.model_validate(queue).model_copy(
+        update={
+            "sla_owned_by_service": None
+            if owner is None
+            else QueueSlaOwner(service_id=owner.id, service_name=owner.name)
+        }
+    )
 
 
 @router.get("", response_model=Page[QueueResponse])
@@ -26,8 +46,9 @@ async def list_queues(
     items, total = await service.list_queues(
         company_id=auth.company_id, offset=page_params.offset, limit=page_params.page_size
     )
+    owners = await service.sla_owners(company_id=auth.company_id)
     return Page(
-        items=[QueueResponse.model_validate(item) for item in items],
+        items=[_with_sla_owner(item, owners) for item in items],
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
@@ -52,7 +73,7 @@ async def create_queue(
         autopilot_enabled=payload.autopilot_enabled,
         actor_user_id=auth.user_id,
     )
-    return QueueResponse.model_validate(queue)
+    return _with_sla_owner(queue, await service.sla_owners(company_id=auth.company_id))
 
 
 @router.get("/{queue_id}", response_model=QueueResponse)
@@ -62,7 +83,7 @@ async def get_queue(
     service: Annotated[QueueService, Depends(get_queue_service)],
 ) -> QueueResponse:
     queue = await service.get(company_id=auth.company_id, queue_id=queue_id)
-    return QueueResponse.model_validate(queue)
+    return _with_sla_owner(queue, await service.sla_owners(company_id=auth.company_id))
 
 
 @router.patch("/{queue_id}", response_model=QueueResponse)
@@ -86,7 +107,7 @@ async def update_queue(
         autopilot_enabled=payload.autopilot_enabled,
         actor_user_id=auth.user_id,
     )
-    return QueueResponse.model_validate(queue)
+    return _with_sla_owner(queue, await service.sla_owners(company_id=auth.company_id))
 
 
 @router.delete("/{queue_id}", status_code=status.HTTP_204_NO_CONTENT)

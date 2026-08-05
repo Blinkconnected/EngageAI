@@ -70,6 +70,45 @@ describe('QueuesPage', () => {
     expect(screen.getByText('Inactive')).toBeInTheDocument()
   })
 
+  describe('a queue whose SLA a Service owns', () => {
+    // Stage 3 of the service-centric migration: where a Service names a
+    // queue, the Service's targets are what every clock uses. A screen that
+    // let somebody type into these fields would be collecting a number the
+    // platform never measures.
+    it('disables the response-time fields and names the service to edit instead', async () => {
+      const user = userEvent.setup()
+      renderAuthenticated(<QueuesPage />)
+      const row = (await screen.findByText('Serviced')).closest('[role="row"]')
+      expect(row).not.toBeNull()
+
+      await user.click(within(row as HTMLElement).getByLabelText('Edit'))
+
+      expect(await screen.findByLabelText(/first response target/i)).toBeDisabled()
+      expect(screen.getByLabelText(/resolution target/i)).toBeDisabled()
+      expect(screen.getByLabelText(/^sla policy/i)).toHaveAttribute('aria-disabled', 'true')
+      // Not merely greyed out — a disabled field with no destination is a
+      // dead end, and the next question is always "then where?".
+      expect(screen.getByRole('link', { name: 'Billing' })).toHaveAttribute(
+        'href',
+        '/services/svc1',
+      )
+    })
+
+    it('still lets everything that is not SLA be edited', async () => {
+      const user = userEvent.setup()
+      renderAuthenticated(<QueuesPage />)
+      const row = (await screen.findByText('Serviced')).closest('[role="row"]')
+
+      await user.click(within(row as HTMLElement).getByLabelText('Edit'))
+      const nameField = await screen.findByLabelText(/^name/i)
+      await user.clear(nameField)
+      await user.type(nameField, 'Renamed serviced')
+      await user.click(screen.getByRole('button', { name: /save changes/i }))
+
+      await waitFor(() => expect(screen.getByText('Renamed serviced')).toBeInTheDocument())
+    })
+  })
+
   it('deletes a queue after confirming', async () => {
     // "General" (unlike "VIP") has no routing rule targeting it — see
     // the next test for that guarded case.
