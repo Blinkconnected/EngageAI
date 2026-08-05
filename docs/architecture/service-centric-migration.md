@@ -4,10 +4,10 @@
 without changing what any of them experiences on the day it happens.*
 
 **Status: Stage 1 shipped. Stage 2 built and dry-run against production; not
-yet applied. Stage 3 part-shipped — registration now creates the full chain;
-the drift check and the read-only legacy fields are still to come. Stage 4
-proposed.** Traced against the implementation, not the intent; every claim
-below was checked against the source or the live database.
+yet applied. Stage 3 part-shipped — registration creates the full chain and
+the drift check is running; the read-only legacy fields are still to come.
+Stage 4 proposed.** Traced against the implementation, not the intent; every
+claim below was checked against the source or the live database.
 
 ---
 
@@ -321,14 +321,25 @@ must not overwrite.
   targets**, which is deliberate and safe — `resolve_sla_targets` treats a
   service that measures nothing as *unconfigured* rather than as an
   instruction to measure nothing, so the queue and platform tiers still
-  answer. AI is seeded **off**, matching the company-level autopilot default,
-  so the two tiers agree instead of contradicting each other.
+  answer.
 
-  *Known limitation.* A new company now has two AI switches to find: company
-  autopilot and the service's. Turning on only the first leaves AI silent.
-  The refusal is explained rather than silent — `AI_ENGAGEMENT` denies with
-  `SERVICE_DISABLED` from `SERVICE_CONTEXT`, which names the screen to go
-  to — but the onboarding Service step below is what actually resolves it.
+  **The service's AI switch is seeded on, and AI is still off.** Those are
+  not in tension. Two switches already gate AI and both default off — the
+  company's Autopilot setting, which `AI_ENGAGEMENT` checks *before* the
+  service, and `Queue.autopilot_enabled`. Neither moves, so a new company is
+  silent by default exactly as before.
+
+  Seeding the service's switch off as well was the first attempt, and it is
+  a trap: it adds a **third** gate on the one screen a new administrator has
+  no reason to open. Turning on the two they know about would leave AI
+  silent, with the explanation only in a `SERVICE_DISABLED` routing decision
+  row. A service somebody *creates* still defaults to AI off — that is a
+  deliberate choice about a line of business. This one is chosen by nobody
+  and so decides nothing on their behalf.
+
+  This is the same principle as Stage 2 reaching the opposite value: a
+  company that has already made its choices must keep them, and one that has
+  made none must not have any invented for it.
 
   This is also the change that made 46 tests fail at once, every one of them
   because the seeded Service outranked configuration the test had written. It
@@ -347,6 +358,34 @@ must not overwrite.
   Nothing auto-corrects. Divergence means somebody edited legacy config through
   a path that should no longer exist, and that is a bug to find rather than a
   value to overwrite.
+  ✅ **shipped** — `ConfigurationDriftDetector`, daily, task
+  `blinkengage.services.check_configuration_drift`.
+
+  It compares one fact, because the queue tier only ever carried one worth
+  comparing: **SLA targets**, as legacy minute columns or an attached
+  `SlaPolicy`. The pickup delay has no queue tier; a service shadowing a
+  company-wide confidence threshold is the documented design rather than
+  drift; and the queue's Autopilot opt-in is a `Policy.AI_ENGAGEMENT`
+  decision needing a conversation to evaluate against, so comparing it would
+  mean reading `Queue.autopilot_enabled` directly — the second configuration
+  path this migration exists to remove. The detector's docstring records all
+  three exclusions and why.
+
+  Drift is only reported where the service *won*. A service defining no
+  targets is deferring to its queue, so the queue's numbers are what applies
+  — correct behaviour, and the case that would otherwise fire on every
+  Stage 2 company.
+
+  **The first production run found a bug in the check itself**, which is the
+  argument for running these against real data before trusting them. It
+  counted only queues a service owned, so an installation where nothing has
+  been migrated reported `queues_carrying_legacy_sla: 0` — a number that
+  reads as "nothing left to clean up" and meant "nothing examined". It now
+  walks every live queue. The honest figure for this installation is **1**:
+  Blink Connected's General queue, via an attached SLA policy.
+
+  Current state: 35 companies, 35 without a service (Stage 2 is not applied),
+  1 queue carrying legacy SLA, 0 drifts.
 - Onboarding gains a Service step. This is also what closes B4 (the go-live
   checklist) properly: "you have a service, a queue, a rule and a channel" is a
   readiness statement a company can be shown.

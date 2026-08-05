@@ -426,10 +426,28 @@ class AuthService:
         agent gets first refusal. That is the promise the product makes, and
         until a Service existed there was nowhere for it to be true.
 
-        Existing companies are *not* changed to match. Stage 2 seeds them from
-        what they already run on, because a migration that also changed
-        behaviour would be two things at once and only one of them announced.
-        See ``docs/architecture/service-centric-migration.md``.
+        **AI is enabled on the service, and still off everywhere it was.**
+        Two switches already gate it and both default off — the company's
+        Autopilot setting, which ``Policy.AI_ENGAGEMENT`` checks *before* it
+        reaches the service, and the queue's own opt-in. Neither moves here,
+        so a new company's AI is silent until somebody turns it on. Safe by
+        default, exactly as before.
+
+        Seeding the service's switch off as well would look equally safe and
+        be a trap: it adds a *third* gate, on the one screen a new
+        administrator has no reason to open, and turning on the two they know
+        about would leave AI silent with the explanation only in a routing
+        decision row. A service somebody *creates* defaults to AI off,
+        because creating one is a deliberate choice about a line of business.
+        This one is chosen by nobody, so it must not decide anything on their
+        behalf — it says this company's work *may* use AI, and the switches
+        they already know about still say whether it does.
+
+        Stage 2 seeds existing companies from their *effective* configuration
+        instead, which is the same principle reaching the opposite value: a
+        company that has already made its choices must keep them, and one
+        that has made none must not have any invented for it. See
+        ``docs/architecture/service-centric-migration.md``.
 
         Named as the company default so ``FallbackStage`` resolves to it
         explicitly rather than to whichever service happens to sort first —
@@ -453,7 +471,9 @@ class AuthService:
                 name=DEFAULT_SERVICE_NAME,
                 logical_queue_id=queue.id,
                 logical_queue_name=queue.name,
-                ai_enabled=policy.enabled,
+                # Not ``policy.enabled`` — see the docstring. The company's
+                # own switches sit above this one and are what decides.
+                ai_enabled=True,
                 ai_pickup_delay_seconds=policy.pickup_delay_seconds,
                 # ``ai_resume_delay_seconds`` is deliberately left to the
                 # column default. Nothing in the platform consults it — see

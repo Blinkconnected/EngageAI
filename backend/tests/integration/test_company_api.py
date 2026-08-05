@@ -21,7 +21,14 @@ class TestGet:
         body = response.json()
         assert body["id"] == registered_owner["user"]["company"]["id"]
         assert body["name"] == "Acme Corp"
-        assert body["settings"] == {}
+        # No settings the *company* has chosen. ``services`` is here and is
+        # not one of them: registration records which service catches what
+        # nothing else claimed, and it is written by the platform rather than
+        # by anybody using this screen. Asserted as "nothing but that" rather
+        # than dropped, so a section somebody really does set by accident at
+        # registration would still fail this.
+        assert set(body["settings"]) == {"services"}
+        assert set(body["settings"]["services"]) == {"default_service_id"}
 
     async def test_agent_can_view_but_not_edit(
         self, client: AsyncClient, owner_headers: dict
@@ -87,7 +94,12 @@ class TestUpdate:
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["name"] == "Renamed Only"
-        assert body["settings"] == {"timezone": "UTC"}
+        assert body["settings"]["timezone"] == "UTC"
+        # The platform's own section survives a rename too. Worth asserting
+        # rather than ignoring: ``default_service_id`` decides which service
+        # catches unclaimed conversations, and a rename that dropped it would
+        # reroute the company silently.
+        assert "default_service_id" in body["settings"]["services"]
 
     async def test_saving_one_settings_section_does_not_clobber_another(
         self, client: AsyncClient, owner_headers: dict

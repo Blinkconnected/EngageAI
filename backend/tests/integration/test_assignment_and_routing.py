@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -19,6 +20,19 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
 from blinkengage.infrastructure.repositories.queue_repository import QueueRepository
+from tests.integration.test_routing_explainability import _archive_every_service
+
+
+@pytest.fixture(autouse=True)
+async def _the_rules_path(client: AsyncClient, owner_headers: dict) -> None:
+    """Every test here routes through a rule, so none has a service.
+
+    Registration seeds a General service owning the general queue, and a
+    service that names a queue outranks any rule — so without this the
+    conversations below land in General rather than the queue each test
+    builds, and the assignment strategy under test is never reached.
+    """
+    await _archive_every_service(client, owner_headers)
 
 
 async def _create_web_chat_session(client: AsyncClient, owner_headers: dict) -> dict:

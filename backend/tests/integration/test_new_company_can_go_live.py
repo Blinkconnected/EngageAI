@@ -252,3 +252,36 @@ class TestARegisteredCompanyIsServiceFirst:
         detail = await client.get(f"/api/v1/services/{services[0]['id']}", headers=owner_headers)
 
         assert detail.json()["current"]["ai_pickup_delay_seconds"] == 30
+
+    async def test_the_seeded_service_does_not_veto_the_company_ai_switch(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        """The trap this avoids, and it is not hypothetical.
+
+        ``Policy.AI_ENGAGEMENT`` checks the company's kill switch and its
+        Autopilot opt-in *before* it reaches the service, and both default to
+        off — so a new company's AI is silent either way and nothing is less
+        safe for having this on. What it buys is that an administrator who
+        turns Autopilot on company-wide, the way every company did before
+        Services existed, is not answered with silence by a service they
+        never configured.
+
+        Seeded off, this platform would deny with ``SERVICE_DISABLED`` and
+        the only place saying so is a routing decision row.
+        """
+        services = _rows((await client.get("/api/v1/services", headers=owner_headers)).json())
+        detail = await client.get(f"/api/v1/services/{services[0]['id']}", headers=owner_headers)
+
+        assert detail.json()["current"]["ai_enabled"] is True
+
+    async def test_ai_is_still_off_until_the_company_turns_it_on(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        """The other half, and the one that matters for a healthcare or
+        government tenant: nothing automated reaches a customer on the day
+        they register. The service permits AI; the company has not asked
+        for it."""
+        company = (await client.get("/api/v1/company", headers=owner_headers)).json()
+        autopilot = ((company.get("settings") or {}).get("ai") or {}).get("autopilot") or {}
+
+        assert autopilot.get("enabled", False) is False

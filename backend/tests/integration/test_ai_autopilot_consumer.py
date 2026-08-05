@@ -26,6 +26,7 @@ from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer im
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
 )
+from tests.integration.test_routing_explainability import _archive_every_service
 
 
 class FakeAiProvider:
@@ -55,6 +56,12 @@ async def _create_autopilot_conversation(
     company_id = (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"][
         "id"
     ]
+    # Registration seeds a General service that owns the general queue, and a
+    # service that names a queue outranks any routing rule — so without this
+    # the conversation lands in General rather than the Autopilot Queue built
+    # below, and every test here would be exercising a queue with Autopilot
+    # switched off. See ``_archive_every_service``.
+    await _archive_every_service(client, owner_headers)
     await client.patch(
         "/api/v1/company",
         json={

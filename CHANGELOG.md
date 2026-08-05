@@ -16,6 +16,25 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A daily check for settings that are saved but not obeyed.** While
+  Services are being introduced, a queue can still hold response-time
+  targets that no longer take effect, because a Service now owns that queue
+  and the Service decides. Editing them looks like it worked: the screen
+  saves, nothing complains, and the platform goes on measuring the
+  Service's numbers.
+
+  A check now runs once a day and reports every queue in that state, naming
+  the company, the queue, the service, what applies and what is being
+  ignored. **It only reports.** It never changes a value — a disagreement
+  means somebody reached an old setting through a route that should no
+  longer exist, and quietly overwriting it would destroy the evidence of
+  which route that was.
+
+  It also counts the two things that say when this transition can end: how
+  many companies still have no Service, and how many queues still carry old
+  response-time settings at all. Both are on the scheduled-jobs health page
+  after every run.
+
 - **A new company now starts with a Service, not an empty Services screen.**
   Registering a company creates the whole chain it needs to work — the
   company, a **General** service, a general queue, and a rule that sends
@@ -25,17 +44,20 @@ for more detail on how this page is put together.
 
   It arrives configured the way the product describes itself. **AI waits 30
   seconds before answering**, so a person genuinely gets first refusal on
-  every conversation rather than finding AI already replied. **AI is off
-  until you turn it on**, matching the company-wide setting, so nothing
-  automated reaches a customer before somebody decides it should. **Response
-  time targets are left unset**, which keeps whatever your queue already
-  promises — a new service does not quietly stop the clocks.
+  every conversation rather than finding AI already replied. **Response time
+  targets are left unset**, which keeps whatever your queue already promises
+  — a new service does not quietly stop the clocks.
+
+  **AI stays off until you turn it on**, and the switches that turn it on
+  are the ones you already know: the company-wide AI setting and the
+  queue's. The new service does not add a third one you would have to find —
+  it says this company's work may use AI, and your existing settings still
+  decide whether it does. Nothing automated reaches a customer on the day
+  you register.
 
   Existing companies are untouched by this and keep working exactly as they
   do today; they are moved separately, from the settings they already run
-  on. If you turn on company-wide AI and replies still do not appear, check
-  the service's own AI setting: the conversation records which of the two
-  said no.
+  on.
 
 - **A dashboard for the pattern detection, and a dial you are allowed to
   turn.** Owners and administrators get a Pattern detection page showing

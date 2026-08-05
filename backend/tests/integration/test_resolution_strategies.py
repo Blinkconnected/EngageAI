@@ -365,6 +365,38 @@ class TestFixedAndFallback:
         assert result.service_id == first.id
         assert result.reason is StageReason.FALLBACK
 
+    async def test_a_default_service_id_belonging_to_somebody_else_is_ignored(
+        self, app: Any
+    ) -> None:
+        """The company default arrives from ``Company.settings``, a free-form
+        JSON column, and ``ServiceRepository.get`` is an unscoped primary-key
+        fetch. Nothing can write another company's id there today —
+        ``CompanySettingsUpdate`` declares no ``services`` field and Pydantic
+        drops what it does not declare — but that defence lives in a schema
+        file, and Stage 3 adds a Service step to onboarding, which is exactly
+        the change that would declare it.
+
+        Resolving to another tenant's service would bind this conversation to
+        their SLA, their AI policy and their logical queue. Checked here so it
+        cannot depend on a distant schema continuing to omit a field.
+        """
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            mine = await a_company(session)
+            theirs = await a_company(session)
+            not_mine = await a_service(session, theirs, "Their Support", order=1)
+            ours = await a_service(session, mine, "Our Support", order=1)
+            await session.commit()
+
+            result = await FallbackStage(
+                ServiceRepository(session), service_id=not_mine.id
+            ).resolve(a_request(mine))
+
+        assert result.service_id != not_mine.id
+        # Falls through to this company's own directory rather than refusing,
+        # which is what the stage is for — the conversation still lands.
+        assert result.service_id == ours.id
+
     async def test_a_company_with_no_services_is_answered_honestly(self, app: Any) -> None:
         """Not invented. The conversation is handled the way it was before
         services existed, and the Inspector says why."""

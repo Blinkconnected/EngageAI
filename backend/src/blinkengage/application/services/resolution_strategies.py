@@ -300,7 +300,21 @@ class FallbackStage:
     async def resolve(self, request: ResolutionRequest) -> StageResult:
         if self._service_id is not None:
             service = await self._services.get(self._service_id)
-            if service is not None and service.is_active and service.deleted_at is None:
+            # ``ServiceRepository.get`` is an unscoped primary-key fetch, and
+            # this id arrives from ``Company.settings`` — a free-form JSON
+            # column. Today nothing can write another company's id into it:
+            # ``CompanySettingsUpdate`` has no ``services`` field and Pydantic
+            # drops what it does not declare. That is a defence living in a
+            # different file from the risk, and Stage 3's own plan adds a
+            # Service step to onboarding, which is exactly the change that
+            # would declare that field. Checked here so resolution does not
+            # depend on a schema elsewhere continuing to omit something.
+            if (
+                service is not None
+                and service.company_id == request.company_id
+                and service.is_active
+                and service.deleted_at is None
+            ):
                 return StageResult(
                     strategy=self.strategy,
                     outcome=StageOutcome.RESOLVED,

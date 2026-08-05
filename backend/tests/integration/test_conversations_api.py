@@ -18,15 +18,23 @@ from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer im
 
 
 async def _unroute_every_conversation(client: AsyncClient, owner_headers: dict) -> None:
-    """Removes the catch-all rule registration seeds.
+    """Removes both things registration gives a company to land on.
 
-    A company now always has somewhere for a message to land, so "this
+    A company now always has somewhere for a message to go, so "this
     conversation reached no queue" is a state a test has to create on
     purpose. The handful of tests below are specifically about that state.
+
+    Two things place a conversation now, not one: the seeded catch-all
+    routing rule, and the seeded General service, which owns the general
+    queue and outranks any rule. Removing only the rule leaves the service
+    still routing, and the tests below would silently be about a *queued*
+    conversation — the exact premise they assert they do not have.
     """
     listing = (await client.get("/api/v1/routing-rules", headers=owner_headers)).json()
     for rule in listing["items"] if isinstance(listing, dict) else listing:
         await client.delete(f"/api/v1/routing-rules/{rule['id']}", headers=owner_headers)
+    for service in (await client.get("/api/v1/services", headers=owner_headers)).json():
+        await client.delete(f"/api/v1/services/{service['id']}", headers=owner_headers)
 
 
 async def _create_web_chat_session(client: AsyncClient, owner_headers: dict) -> dict:
@@ -333,6 +341,75 @@ async def test_resolving_a_conversation_publishes_a_dedicated_event(
     # The conversation was WAITING, not NEW: it reached a queue on ingest
     # via the catch-all rule registration seeds.
     assert events[0].payload["previous_status"] == "waiting"
+
+
+async def test_reopening_a_conversation_publishes_conversation_reopened(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """The mirror of the terminal events, and it was missing entirely.
+
+    ``learning-signals-consumer`` has bound ``conversation.reopened``
+    since it was written and nothing published it, so an observation that
+    had already settled went on claiming a resolution the reopen had
+    invalidated.
+    """
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+
+    resolve = await client.patch(
+        f"/api/v1/conversations/{conversation['id']}",
+        json={"status": "resolved"},
+        headers=owner_headers,
+    )
+    assert resolve.status_code == 200
+
+    reopen = await client.patch(
+        f"/api/v1/conversations/{conversation['id']}",
+        json={"status": "waiting"},
+        headers=owner_headers,
+    )
+    assert reopen.status_code == 200
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(EventOutbox).where(EventOutbox.event_type == "conversation.reopened")
+        )
+        events = list(result.scalars().all())
+
+    assert len(events) == 1
+    payload = events[0].payload
+    assert payload["conversation_id"] == conversation["id"]
+    assert payload["previous_status"] == "resolved"
+    assert payload["status"] == "waiting"
+    # Carried by value: the other reopen path clears ``closed_at``, so a
+    # consumer cannot read back when the conversation had ended.
+    assert payload["ended_at"] is not None
+    assert payload["reopened_at"] is not None
+
+
+async def test_an_ordinary_status_change_does_not_publish_conversation_reopened(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """Only a transition *out of* a finished status is a reopen.
+
+    Guards the other direction: an event on every status change would
+    invalidate observations that were never reopened.
+    """
+    conversation = await _create_conversation(client, owner_headers, registered_owner, app)
+
+    response = await client.patch(
+        f"/api/v1/conversations/{conversation['id']}",
+        json={"status": "in_progress"},
+        headers=owner_headers,
+    )
+    assert response.status_code == 200
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(EventOutbox).where(EventOutbox.event_type == "conversation.reopened")
+        )
+        assert list(result.scalars().all()) == []
 
 
 async def test_closing_a_conversation_publishes_a_dedicated_event(

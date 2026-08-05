@@ -25,6 +25,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.billing_period_close_task",
         "blinkengage.infrastructure.tasks.invoice_run_task",
         "blinkengage.infrastructure.tasks.ownership_sweep_task",
+        "blinkengage.infrastructure.tasks.configuration_drift_task",
         "blinkengage.infrastructure.tasks.sla_breach_sweep_task",
         "blinkengage.infrastructure.tasks.ai_pickup_sweep_task",
         "blinkengage.infrastructure.tasks.billing_summary_sweep_task",
@@ -161,6 +162,18 @@ celery_app.conf.update(
         "release-expired-ownership": {
             "task": "blinkengage.conversations.release_expired_ownership",
             "schedule": 300.0,
+        },
+        # See docs/architecture/service-centric-migration.md — Stage 3's
+        # drift check. Finds queues whose SLA configuration is still set
+        # but no longer obeyed, because a Service now owns that queue and
+        # the Service wins. Reports only; it has no write path.
+        #
+        # Daily. What it looks for is an administrator's edit silently
+        # having no effect — a mistake measured in days, not seconds, and
+        # a tighter sweep would only re-read the same rows more often.
+        "check-configuration-drift": {
+            "task": "blinkengage.services.check_configuration_drift",
+            "schedule": 86400.0,
         },
         # See docs/architecture/email-channel.md — polls every active
         # email ChannelConfig's IMAP mailbox for UNSEEN messages.

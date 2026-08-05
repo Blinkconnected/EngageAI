@@ -55,6 +55,14 @@ ALLOWED: dict[str, str] = {
     # --- the one reader of the tiers ------------------------------------
     "application/services/configuration_resolver.py": "reads every tier; this is its job",
     # --- modules that *write* a tier, where reading is part of editing ---
+    "application/services/auth_service.py": (
+        "seeds the service tier when a company registers. It reads "
+        "``AiPolicy()``'s own defaults to write them onto the new service — "
+        "establishing a tier, never consulting one, and there is nothing to "
+        "resolve because the company does not exist yet. Sourced from the "
+        "dataclass rather than restated, so the 30-second pickup delay has "
+        "one definition."
+    ),
     "application/services/queue_service.py": "writes the queue tier",
     "application/services/sla_policy_service.py": "writes the queue tier's SLA policy",
     "api/v1/endpoints/sla.py": "edits the queue tier's SLA policy",
