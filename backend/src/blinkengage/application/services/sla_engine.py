@@ -319,6 +319,7 @@ def _to_clock(row: ConversationSlaClock) -> Clock:
         timer=row.timer,
         state=row.state,
         target_minutes=row.target_minutes,
+        target_source=row.target_source,
         elapsed=row.elapsed or timedelta(),
         running_since=row.running_since,
         pause_reason=row.pause_reason,

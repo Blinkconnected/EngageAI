@@ -130,6 +130,10 @@ def build_autopilot_service(*, session: AsyncSession, settings: Settings) -> Aut
         # service, because a service that built its own repository would be
         # reaching around the session this factory owns.
         ownership=OwnershipService(OwnershipRepository(session)),
+        # So AI's hand-off says *why* on the conversation's own timeline.
+        # ``RoutingDecisionKind.AI_RELEASED`` had Inspector wording and its
+        # own rendering branch, and nothing that wrote it.
+        decisions=RoutingDecisionRepository(session),
         # So the threshold on the Services screen is the one enforced.
         service_contexts=ServiceContextResolver(
             bindings=ContextBindingRepository(session),

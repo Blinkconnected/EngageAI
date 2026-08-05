@@ -74,6 +74,10 @@ export interface InspectorClock {
   state: string
   health: string
   target_minutes: number | null
+  /** Which configuration tier set the target, and the sentence explaining it.
+   *  A deadline with no author is a number a supervisor cannot act on. */
+  target_source: string | null
+  target_source_text: string | null
   counted_seconds: number
   remaining_seconds: number | null
   pause_reason: string | null

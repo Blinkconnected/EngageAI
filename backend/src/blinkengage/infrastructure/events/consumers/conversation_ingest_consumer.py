@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.application.services.company_capabilities import capabilities_for
+from blinkengage.application.services.configuration_resolver import ConfigurationResolver
 from blinkengage.application.services.ownership_service import (
     AI_OWNER,
     OwnershipService,
@@ -33,14 +34,8 @@ from blinkengage.application.services.resolution_strategies import default_stage
 from blinkengage.application.services.routing_engine import RoutingEngine
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.application.services.sla_lifecycle import SlaLifecycle
-from blinkengage.application.services.sla_target_resolver import SlaTargetResolver
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.company_settings import (
-    is_ai_enabled,
-    is_autopilot_enabled,
-    is_autopilot_new_conversation_mode_enabled,
-)
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher, RealtimeSignalPublisher
 from blinkengage.domain.execution_context import ConversationFacts, ExecutionContext
 from blinkengage.domain.lifecycle import FINISHED
@@ -58,9 +53,9 @@ from blinkengage.domain.routing_decisions import (
     queue_unavailable_decision,
     service_decision,
 )
-from blinkengage.domain.service_context import ContextBindingReason, ServiceContext, SlaTargets
+from blinkengage.domain.service_context import ContextBindingReason, ServiceContext
 from blinkengage.domain.service_resolution import ResolutionRequest, resolve_service
-from blinkengage.infrastructure.ai.factory import is_ai_available_for_company
+from blinkengage.domain.sla import ResolvedSlaTargets
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -404,8 +399,37 @@ async def handle_message_received(
         # Whether the previous owner gets it again is the ownership rules'
         # decision — see ``domain/ownership.py`` — and deciding it here
         # would re-couple status to owner, which is what M3 split apart.
+        previous_status = conversation.status
+        # Read *before* the clear below. This is the common reopen — a
+        # customer coming back — and it was publishing nothing at all, so
+        # ``learning-signals-consumer``'s ``conversation.reopened`` binding
+        # had no publisher anywhere in the platform. An observation that
+        # had already settled kept claiming a resolution the customer had
+        # just contradicted by writing again.
+        ended_at = conversation.closed_at
         conversation.status = ConversationStatus.WAITING
         conversation.closed_at = None
+        await events.publish(
+            DomainEvent(
+                event_type="conversation.reopened",
+                company_id=company_id,
+                aggregate_type="conversation",
+                aggregate_id=conversation.id,
+                payload={
+                    "conversation_id": str(conversation.id),
+                    "previous_status": previous_status.value,
+                    "status": conversation.status.value,
+                    # Carried by value because this handler has just
+                    # cleared the column it came from: by the time any
+                    # consumer reads the conversation back, when it had
+                    # ended is no longer recorded anywhere.
+                    "ended_at": ended_at.isoformat() if ended_at is not None else None,
+                    "reopened_at": conversation.last_message_at.isoformat(),
+                    "customer_id": str(customer_id),
+                    "channel_type": channel_type,
+                },
+            )
+        )
 
     await events.publish(
         DomainEvent(
@@ -652,8 +676,7 @@ async def _start_clocks(
     *,
     conversation: Conversation,
     company_id: UUID,
-    queue_id: UUID | None,
-    service_targets: SlaTargets | None,
+    resolved: ResolvedSlaTargets,
 ) -> None:
     """Starts the clocks a queued conversation gets, and never costs it.
 
@@ -661,20 +684,18 @@ async def _start_clocks(
     start must not stop a customer being answered — an SLA is a promise
     about the answer, not a precondition for it.
 
-    Targets are *resolved*, not read from one place. This used to take the
-    service's targets and return immediately when there were none, which is
-    why an installation-wide ``conversation_sla_clocks`` held zero rows: the
-    SLA a company had configured lived on their queue, and nothing here ever
-    looked at it. See ``SlaTargetResolver``.
+    Targets arrive *already resolved*, from the same read that resolved the
+    AI policy — see ``ConfigurationResolver``. They used to be read from the
+    service alone and returned immediately when there were none, which is why
+    an installation-wide ``conversation_sla_clocks`` held zero rows: the SLA a
+    company had configured lived on their queue, and nothing here ever looked
+    at it.
     """
     try:
-        resolved = await SlaTargetResolver(
-            queues=QueueRepository(session), policies=SlaPolicyRepository(session)
-        ).for_conversation(company_id=company_id, queue_id=queue_id, service=service_targets)
         await SlaLifecycle(SlaEngine(session, RoutingDecisionRepository(session))).queued(
             conversation_id=conversation.id,
             company_id=company_id,
-            targets=resolved.targets,
+            targets=resolved.value,
             source=resolved.source,
         )
         # Which tier answered. Without it "due in three minutes" is a number
@@ -861,19 +882,29 @@ async def _route_and_assign(
 
     queue = await queues.get_by_id(company_id=company_id, queue_id=queue_id)
 
+    # **One read, every tier, both engines.** SLA targets and AI policy are
+    # resolved together — service, then queue, then company, then the platform
+    # default — so they cannot disagree about what this company configured,
+    # and each answer carries the tier that produced it. See
+    # ``ConfigurationResolver`` and
+    # ``docs/architecture/service-centric-migration.md``.
+    configuration = await ConfigurationResolver(
+        queues=QueueRepository(session), policies=SlaPolicyRepository(session)
+    ).for_conversation(
+        company_id=company_id,
+        queue_id=queue_id,
+        service=service,
+        company=await CompanyRepository(session).get_by_id(company_id),
+    )
+
     # Three clocks start with the queue: the customer is now waiting for
     # somebody to take it, for a first reply, and for the whole thing to be
     # over — all true at once, which is why they are separate clocks.
-    #
-    # Targets are resolved across all three tiers — service, then queue, then
-    # the platform default. They used to come from the service alone, so a
-    # company whose SLA lived on its queue measured nothing at all.
     await _start_clocks(
         session,
         conversation=conversation,
         company_id=company_id,
-        queue_id=queue_id,
-        service_targets=service.sla if service is not None else None,
+        resolved=configuration.sla,
     )
 
     # The queue becomes answerable the moment the conversation enters it.
@@ -935,45 +966,43 @@ async def _route_and_assign(
         # it wrong would mean AI answering customers of a company that had
         # switched AI off — and nothing would fail, and no test would go red.
         company = await CompanyRepository(session).get_by_id(company_id)
-        engaged = False
-        if service is not None:
-            policies = RecordingPolicyEngine(
-                PolicyEngine(),
-                decisions,
-                company_id=company_id,
-                conversation_id=conversation.id,
-            )
-            engaged = (
-                await policies.evaluate(
-                    Policy.AI_ENGAGEMENT,
-                    ExecutionContext(
-                        service=service,
-                        customer=None,
-                        conversation=ConversationFacts(
-                            conversation_id=conversation.id,
-                            company_id=company_id,
-                            channel_type=channel_type,
-                            started_at=conversation.created_at or datetime.now(UTC),
-                            # "new" specifically: the activation-mode check
-                            # is about brand-new conversations, and this is
-                            # the one place a conversation is still new.
-                            status="new",
-                        ),
-                        capabilities=capabilities_for(company, settings=settings),
+        # **Evaluated for every company, service directory or not.** This was
+        # a Policy Engine call on one path and five inline conditions on the
+        # other, and the inline path recorded nothing — so on every company
+        # here, "why did AI answer this one and not that one" had no recorded
+        # answer. The five conditions were exactly the capabilities the policy
+        # already checks, so the branch was duplication rather than a second
+        # rule. See ``docs/architecture/service-centric-migration.md``.
+        policies = RecordingPolicyEngine(
+            PolicyEngine(),
+            decisions,
+            company_id=company_id,
+            conversation_id=conversation.id,
+        )
+        engaged = (
+            await policies.evaluate(
+                Policy.AI_ENGAGEMENT,
+                ExecutionContext(
+                    service=service,
+                    customer=None,
+                    conversation=ConversationFacts(
+                        conversation_id=conversation.id,
+                        company_id=company_id,
+                        channel_type=channel_type,
+                        started_at=conversation.created_at or datetime.now(UTC),
+                        # "new" specifically: the activation-mode check is
+                        # about brand-new conversations, and this is the one
+                        # place a conversation is still new.
+                        status="new",
                     ),
-                )
-            ).allowed
-        else:
-            # No service directory, so no ExecutionContext to evaluate
-            # against. The original five conditions, unchanged, for the
-            # companies this still describes.
-            engaged = (
-                company is not None
-                and is_ai_enabled(company.settings)
-                and is_autopilot_enabled(company.settings)
-                and is_autopilot_new_conversation_mode_enabled(company.settings)
-                and is_ai_available_for_company(settings, company.ai_config)
+                    capabilities=capabilities_for(company, settings=settings),
+                ),
             )
+        ).allowed
+        # The queue's own opt-in stays the outer gate. It is runtime — this
+        # lane works with AI or it does not — and the Policy Engine decides
+        # business configuration, not runtime capacity.
+        engaged = engaged and queue.autopilot_enabled
 
         # The delay is what makes AI a queue worker rather than a first
         # responder. AI is allowed to answer, and deliberately does not yet:
@@ -981,12 +1010,12 @@ async def _route_and_assign(
         # take it. Only if nobody does — see ``ai_pickup_sweep_task`` — does
         # AI pick it up when the delay runs out.
         #
-        # Read from the service, so a company can tune it per service:
-        # thirty seconds on a support queue where a human should get first
-        # refusal, zero on an FAQ queue where waiting only makes the
-        # customer wait. Zero means engage now, which is the behaviour
-        # everything had before this existed.
-        delay = service.ai.pickup_delay_seconds if service is not None else 0
+        # Resolved down the one chain — Service, then the platform default —
+        # rather than read from the service with a hard-coded ``0`` behind it.
+        # That literal was the whole reason "AI is a queue worker, not a first
+        # responder" was untrue for every company without a service directory:
+        # a fallback nobody had chosen, in a branch nobody could see.
+        delay = configuration.ai.pickup_delay_seconds.value
         if engaged and delay > 0:
             conversation.ai_pickup_eligible_at = datetime.now(UTC) + timedelta(seconds=delay)
             # Recorded, because a conversation sitting untouched for thirty

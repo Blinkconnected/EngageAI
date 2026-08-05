@@ -49,11 +49,15 @@ from blinkengage.domain.company_settings import (
 )
 from blinkengage.domain.events import DomainEvent, DomainEventPublisher
 from blinkengage.domain.ownership import OwnershipReason
+from blinkengage.domain.routing_decisions import ai_released_decision
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.message import Message, MessageDirection
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.conversation_repository import ConversationRepository
 from blinkengage.infrastructure.repositories.message_repository import MessageRepository
+from blinkengage.infrastructure.repositories.routing_decision_repository import (
+    RoutingDecisionRepository,
+)
 
 _HISTORY_MESSAGE_LIMIT = 50
 
@@ -109,6 +113,7 @@ class AutopilotService:
         conversation_service: ConversationService,
         ownership: OwnershipService | None = None,
         service_contexts: ServiceContextResolver | None = None,
+        decisions: RoutingDecisionRepository | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -124,6 +129,10 @@ class AutopilotService:
         # behaviour that predates per-service thresholds — never a
         # threshold of zero, which would let every reply through.
         self._service_contexts = service_contexts
+        # Optional for the same reason as the two above. Absent, AI's
+        # hand-off is enforced exactly as before and simply not explained —
+        # the reason lives on an event nobody reads beside the conversation.
+        self._decisions = decisions
 
     async def run(
         self,
@@ -341,6 +350,40 @@ class AutopilotService:
             service_threshold=service_threshold, settings=company_settings
         )
 
+    async def _record_release(
+        self, *, company_id: UUID, conversation_id: UUID, reason: str
+    ) -> None:
+        """Why AI gave the conversation back, where the Story reads it.
+
+        ``RoutingDecisionKind.AI_RELEASED`` existed in the domain, was mapped
+        to the AI stream, had Inspector wording and its own rendering branch —
+        and nothing wrote it. So the timeline said "AI handed it back" and
+        could not say why, on the screen whose whole contract is *what
+        happened, why, and what happened next*.
+
+        Never costs the hand-off. Handing back is the product; explaining it
+        is evidence about the product, and evidence that would not write must
+        not leave a customer with AI still holding their conversation.
+        """
+        if self._decisions is None:
+            return
+        try:
+            decision = ai_released_decision(reason)
+            if decision is None:
+                # A reason outside the vocabulary. Recording nothing beats
+                # recording a cause the platform did not establish.
+                return
+            await self._decisions.record(
+                company_id=company_id, conversation_id=conversation_id, decision=decision
+            )
+        except Exception:  # noqa: BLE001 — see the docstring: never fatal.
+            logger.warning(
+                "ai_release_not_recorded",
+                conversation_id=str(conversation_id),
+                reason=reason,
+                exc_info=True,
+            )
+
     async def _release_ownership(
         self, *, conversation: Conversation, company_id: UUID, conversation_id: UUID
     ) -> None:
@@ -407,6 +450,9 @@ class AutopilotService:
         conversation.autopilot_active = False
         if handled_message_id is not None:
             conversation.autopilot_last_handled_message_id = handled_message_id
+        await self._record_release(
+            company_id=company_id, conversation_id=conversation_id, reason=reason
+        )
         await self._release_ownership(
             conversation=conversation, company_id=company_id, conversation_id=conversation_id
         )

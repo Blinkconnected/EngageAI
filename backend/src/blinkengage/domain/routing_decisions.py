@@ -47,7 +47,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
 
 #: How many rejected candidates a single decision may carry.
 #:
@@ -298,6 +298,29 @@ class RoutingDecisionReason(StrEnum):
     #: agent-handled conversation is indistinguishable from one AI was
     #: never allowed to touch.
     HUMAN_ARRIVED_FIRST = "human_arrived_first"
+
+    # --- AI giving a conversation back --------------------------------
+    #
+    # ``AutopilotService`` has always known which of these it was and put the
+    # reason on an event nobody reads beside the conversation. So the Story
+    # said "AI handed it back" and could not say why — against its own
+    # contract that every event answers what happened, why, and what happened
+    # next. Four reasons, because they send an administrator to four
+    # different places.
+
+    #: The model itself asked for a human. Not a failure: a model that knows
+    #: its limits is the behaviour worth having.
+    MODEL_REQUESTED_HANDOFF = "model_requested_handoff"
+    #: AI was sure enough to try and not sure enough to send. The threshold
+    #: that stopped it is on the same decision.
+    CONFIDENCE_BELOW_THRESHOLD = "confidence_below_threshold"
+    #: The model returned nothing usable. A provider problem, not a policy
+    #: one, and pointing an administrator at their AI settings would send
+    #: them to the wrong screen.
+    NO_REPLY_GENERATED = "no_reply_generated"
+    #: Autopilot is configured not to run for this trigger — an activation
+    #: mode excludes it. The conversation was never AI's to answer.
+    ACTIVATION_MODE_EXCLUDES_THIS = "activation_mode_excludes_this"
 
     # --- Choosing an agent -------------------------------------------
 
@@ -793,6 +816,26 @@ def _headline(decision: RoutingDecision) -> str:
             "AI Autopilot stood down: an agent took the conversation while its "
             "pickup delay was still running."
         )
+    if reason is RoutingDecisionReason.MODEL_REQUESTED_HANDOFF:
+        return (
+            "AI Autopilot handed the conversation back: the model asked for a "
+            "human rather than answering."
+        )
+    if reason is RoutingDecisionReason.CONFIDENCE_BELOW_THRESHOLD:
+        return (
+            "AI Autopilot handed the conversation back: it was not confident "
+            "enough in its answer to send it."
+        )
+    if reason is RoutingDecisionReason.NO_REPLY_GENERATED:
+        return (
+            "AI Autopilot handed the conversation back: the model returned "
+            "nothing usable to send."
+        )
+    if reason is RoutingDecisionReason.ACTIVATION_MODE_EXCLUDES_THIS:
+        return (
+            "AI Autopilot handed the conversation back: it is configured not to "
+            "run for what triggered this."
+        )
     if reason is RoutingDecisionReason.STRATEGY_SELECTED:
         return (
             f"Assigned to {_agent_phrase(decision)} by {queue}'s {decision.strategy} "
@@ -977,6 +1020,44 @@ def ai_stood_down_decision(
         reason=RoutingDecisionReason.HUMAN_ARRIVED_FIRST,
         selected_queue_id=queue_id,
         selected_queue_name=queue_name,
+    )
+
+
+#: The hand-off reasons ``AutopilotService`` reports, mapped onto the closed
+#: vocabulary. A dict rather than a chain of ``if``s so an unmapped reason is
+#: a missing key somebody notices, not a silent fall-through to "unknown".
+_HANDOFF_REASONS: Final[dict[str, RoutingDecisionReason]] = {
+    "model_requested_handoff": RoutingDecisionReason.MODEL_REQUESTED_HANDOFF,
+    "low_confidence": RoutingDecisionReason.CONFIDENCE_BELOW_THRESHOLD,
+    "no_reply_generated": RoutingDecisionReason.NO_REPLY_GENERATED,
+    "mode_disabled": RoutingDecisionReason.ACTIVATION_MODE_EXCLUDES_THIS,
+    "ai_unavailable": RoutingDecisionReason.NO_REPLY_GENERATED,
+}
+
+
+def ai_released_decision(reason: str) -> RoutingDecision | None:
+    """AI gave the conversation back, and this is why.
+
+    ``None`` for a reason outside the vocabulary — the caller then records
+    nothing rather than a row claiming a cause the platform did not
+    establish. An invented reason on this screen is worse than a missing one:
+    the missing one sends somebody looking, the invented one stops them.
+
+    Deliberately carries no confidence figures. ``RoutingDecision`` has no
+    field for them, and *"not confident enough"* is only readable beside the
+    bar it fell short of — 82% against 60% and 82% against 90% are the same
+    sentence and opposite problems. Adding half of that pair would be worse
+    than adding neither. Both belong on the decision and need a migration to
+    get there; until then the reason code answers *why*, which is the gap
+    that mattered, and the confidence is already on the reply's own metadata.
+    """
+    mapped = _HANDOFF_REASONS.get(reason)
+    if mapped is None:
+        return None
+    return RoutingDecision(
+        kind=RoutingDecisionKind.AI_RELEASED,
+        outcome=RoutingDecisionOutcome.NOTHING,
+        reason=mapped,
     )
 
 

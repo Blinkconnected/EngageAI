@@ -11,6 +11,7 @@ deciding which one the reader gets.
 """
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -103,12 +104,12 @@ class DecisionResponse(BaseModel):
 
     strategy: str | None = None
     candidates_considered: int = 0
-    rejected_candidates: list[dict] = []
+    rejected_candidates: list[dict[str, Any]] = []
     rejections_omitted: int = 0
 
     ai_pickup_delay_seconds: int | None = None
-    resolution_stages: list[dict] = []
-    details: dict = {}
+    resolution_stages: list[dict[str, Any]] = []
+    details: dict[str, Any] = {}
 
 
 class OwnershipSpanResponse(BaseModel):
@@ -135,6 +136,10 @@ class ClockResponse(BaseModel):
     state: str
     health: str
     target_minutes: int | None
+    #: Which tier set the target, and the sentence explaining it. A deadline
+    #: with no author is a number a supervisor cannot act on.
+    target_source: str | None = None
+    target_source_text: str | None = None
     counted_seconds: float
     remaining_seconds: float | None
     pause_reason: str | None

@@ -31,7 +31,7 @@ class TestTheMostSpecificConfigurationWins:
 
         resolved = resolve_sla_targets(service=service, queue=queue)
 
-        assert resolved.targets == service
+        assert resolved.value == service
         assert resolved.source is SlaTargetSource.SERVICE
 
     def test_the_queue_answers_when_the_service_does_not(self) -> None:
@@ -39,13 +39,13 @@ class TestTheMostSpecificConfigurationWins:
 
         resolved = resolve_sla_targets(service=None, queue=queue)
 
-        assert resolved.targets == queue
+        assert resolved.value == queue
         assert resolved.source is SlaTargetSource.QUEUE
 
     def test_the_platform_answers_when_nobody_else_does(self) -> None:
         resolved = resolve_sla_targets(service=None, queue=None)
 
-        assert resolved.targets == PLATFORM_DEFAULT_SLA_TARGETS
+        assert resolved.value == PLATFORM_DEFAULT_SLA_TARGETS
         assert resolved.source is SlaTargetSource.PLATFORM_DEFAULT
 
 
@@ -65,8 +65,8 @@ class TestASourceIsChosenWholeOrNotAtAll:
 
         resolved = resolve_sla_targets(service=service, queue=queue)
 
-        assert resolved.targets.first_response_minutes == 5
-        assert resolved.targets.resolution_minutes is None, "not borrowed from the queue"
+        assert resolved.value.first_response_minutes == 5
+        assert resolved.value.resolution_minutes is None, "not borrowed from the queue"
 
     def test_a_source_measuring_nothing_is_not_a_source(self) -> None:
         """An empty ``SlaTargets`` is indistinguishable from no configuration.
@@ -81,7 +81,7 @@ class TestASourceIsChosenWholeOrNotAtAll:
         resolved = resolve_sla_targets(service=SlaTargets(), queue=queue)
 
         assert resolved.source is SlaTargetSource.QUEUE
-        assert resolved.targets == queue
+        assert resolved.value == queue
 
 
 class TestThePlatformDefaultIsConservative:

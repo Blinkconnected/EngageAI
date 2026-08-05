@@ -433,6 +433,13 @@ class TestWhatTheLifecycleDoesNotYetDo:
                 # setting. ``test_operational_state`` holds the other half:
                 # that no code path actually assigns that state.
                 "src/blinkengage/domain/operational_state.py",
+                # *Resolves* it — Service, then the platform default — so the
+                # value has one source when something finally obeys it. Still
+                # nothing reads the resolved figure, which is why this test
+                # stands: the resolution chain covering a setting is not the
+                # same as the platform honouring it, and a reader who assumed
+                # otherwise would be wrong in the direction that matters.
+                "src/blinkengage/domain/ai_policy.py",
             ]
         ), (
             "if this list changed, one of three things happened: somebody "

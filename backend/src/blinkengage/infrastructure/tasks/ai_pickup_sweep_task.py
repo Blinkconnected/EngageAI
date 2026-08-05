@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.autopilot_service import AutopilotTrigger
 from blinkengage.application.services.company_capabilities import capabilities_for
+from blinkengage.application.services.configuration_resolver import ConfigurationResolver
 from blinkengage.application.services.ownership_service import AI_OWNER, OwnershipService
 from blinkengage.application.services.policy_recorder import RecordingPolicyEngine
 from blinkengage.application.services.service_context_resolver import (
@@ -77,6 +78,9 @@ from blinkengage.infrastructure.repositories.routing_decision_repository import 
 from blinkengage.infrastructure.repositories.service_directory_repository import (
     ContextBindingRepository,
     ServiceRepository,
+)
+from blinkengage.infrastructure.repositories.sla_policy_repository import (
+    SlaPolicyRepository,
 )
 from blinkengage.infrastructure.tasks.run_recorder import record_run
 
@@ -183,6 +187,12 @@ async def _settle_one(
         return "no_service"
 
     company = await CompanyRepository(session).get_by_id(company_id)
+    # Resolved, not read off the service. The sweep records the delay it
+    # honoured, and that number has to be the one the chain produced —
+    # otherwise the decision log explains a wait nobody configured.
+    configuration = await ConfigurationResolver(
+        queues=QueueRepository(session), policies=SlaPolicyRepository(session)
+    ).for_conversation(company_id=company_id, queue_id=queue_id, service=service, company=company)
     policies = RecordingPolicyEngine(
         PolicyEngine(), decisions, company_id=company_id, conversation_id=conversation_id
     )
@@ -268,7 +278,7 @@ async def _settle_one(
         decision=ai_pickup_decision(
             queue_id=queue_id,
             queue_name=queue_name,
-            delay_seconds=service.ai.pickup_delay_seconds,
+            delay_seconds=configuration.ai.pickup_delay_seconds.value,
         ),
     )
     return "engaged"

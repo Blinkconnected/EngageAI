@@ -3,9 +3,9 @@
 *Moving every company from Queue-centric to Service-centric configuration
 without changing what any of them experiences on the day it happens.*
 
-**Status: proposed. No code written.** Traced against the implementation, not
-the intent; every claim below was checked against the source or the live
-database.
+**Status: Stage 1 shipped. Stages 2–4 proposed.** Traced against the
+implementation, not the intent; every claim below was checked against the
+source or the live database.
 
 ---
 
@@ -138,7 +138,10 @@ narrower than the kill switch and never overrides it.
 
 ## 4. The migration
 
-### Stage 1 — Uniform resolution *(no company changes behaviour)*
+### Stage 1 — Uniform resolution ✅ **shipped**
+
+*Delivered. What follows is what was built, kept in the plan's shape so the
+remaining stages read against it.*
 
 Make every fact in §1 resolve through one chain, expressed once:
 
@@ -148,11 +151,23 @@ Service → Queue → Company → Platform default
 
 For each of the six inconsistent facts, this means:
 
-- **AI pickup delay** — fall back to the domain default (`30`), not `0`. *This
-  changes behaviour for every company* and is the G1 decision from the AI
-  validation report. It belongs here rather than in Stage 2, so it lands as
-  one deliberate, announced change rather than as a side effect of a data
-  migration.
+- **AI pickup delay** — resolved Service → Platform rather than read from the
+  service with a hard-coded `0` behind it.
+
+  **The platform tier is `0`, deliberately, and that is a change from what this
+  plan first proposed.** Falling back to `30` would have had the platform
+  impose a wait on every company that never asked for one — and the reasoning
+  `PLATFORM_DEFAULT_SLA_TARGETS` already gives for leaving `queue_minutes`
+  unmeasured applies exactly: *how long a conversation may sit before somebody
+  accepts it is an operational promise a business makes, not one the platform
+  may make for it.* Thirty seconds is a real decision about giving humans first
+  refusal, and it belongs to a Service — which defaults to precisely that the
+  moment a company defines one.
+
+  So **G1's architectural half is closed and its behavioural half moved**: the
+  hard-coded literal is gone, the tier is stated and explainable, and AI still
+  answers immediately for a company that has configured nothing. It starts
+  waiting when that company gets a Service, which is Stage 2.
 - **AI engagement policy** — evaluate `Policy.AI_ENGAGEMENT` for every
   conversation, service or not, building an `ExecutionContext` from resolved
   values. Closes G4; every company gains "why did AI answer this".
@@ -163,15 +178,34 @@ For each of the six inconsistent facts, this means:
 - **AI hand-off decision** — write the `AI_RELEASED` decision the Inspector
   already renders (G2).
 
-**Exit criteria.** Every subsystem reads through a named resolver. No
-`if service is not None` branch decides *behaviour* anywhere — only *provenance*
-(which tier answered), which is recorded.
+**What shipped.**
 
-**Invariant introduced.** *No configuration fact has more than one resolver,
-and every resolver reports which tier answered.* Enforceable by an AST guard in
-the shape of the ownership guard: the set of modules reading
-`service.ai.*` / `queue.sla_policy_id` / `Company.settings["ai"]` directly is an
-allow-list of resolvers.
+| Piece | Where |
+|---|---|
+| The tier vocabulary and `Resolved[T]` | `domain/resolution.py` |
+| The AI resolution rule | `domain/ai_policy.py` |
+| The SLA resolution rule | `domain/sla.py` *(unchanged; its private source enum became the shared one)* |
+| The one reader of the tiers | `application/services/configuration_resolver.py` |
+| The guard | `tests/unit/test_one_resolver_per_fact.py` |
+
+`SlaTargetResolver` was absorbed rather than left beside the new one — two
+resolvers for overlapping tiers is the duplication this stage exists to remove.
+
+**`ExecutionContext.service` became optional.** That single change is what let
+the Policy Engine decide for *every* company rather than only those with a
+service, and it deleted the five inline conditions that were the second answer.
+The conditions were exactly the capabilities the policy already checked, so the
+branch was duplication rather than a second rule.
+
+**Exit criteria — met.** No `if service is not None` decides behaviour; the
+remaining ones carry *provenance* (which tier answered), which is recorded.
+
+**Invariant introduced and enforced.** *No configuration fact has more than one
+resolver, and every resolver reports which tier answered.* The AST guard fails
+when any module outside a nine-entry allow-list reads a tier attribute off a
+tier object. It found a real violation on its first run — the AI pickup sweep
+was still reading `service.ai.pickup_delay_seconds` to record the delay it had
+honoured, which would have logged a wait the chain never produced.
 
 ### Stage 2 — Automatic migration *(data, still no behaviour change)*
 
@@ -192,6 +226,30 @@ queue**, seeded from what that company resolves to *today*:
 Then set the company's **default service** to the one built from the queue its
 catch-all rule targets, so `FallbackStage` resolves the same way routing
 already does.
+
+**A company default service has nowhere to live yet — found while building
+Stage 2.** `FallbackStage` accepts a `default_service_id`, but nothing stores
+one and ingest never passes it: `default_stages(services)` is called with the
+parameter omitted. So the fallback resolves to *"the first service in the
+operator's display order"*, which is fine for a company with one Service and
+arbitrary for a company with several.
+
+Stage 2 therefore has to add the storage, and the choice matters. Leaning on
+display order would make reordering the Services screen silently change which
+Service catches unclaimed conversations — a routing change disguised as a
+cosmetic one. It belongs in `Company.settings`, where every other company-level
+choice lives, read through `domain/company_settings.py` like the rest, and
+passed explicitly into `default_stages`.
+
+**The platform pickup-delay tier is retired here.** Once every company's
+Service carries the delay it was already running on, nothing consults the
+platform tier — and it is removed rather than left as an unreachable fallback.
+That is what closes G1 completely, and it changes no behaviour precisely
+because the seed copied the effective value.
+
+**No new compatibility paths.** Stage 2 adds Services; it does not add a
+second way to read them. Every module — existing or future — consumes
+`ConfigurationResolver` and nothing else.
 
 **Ordering matters.** Stage 2 must run *after* Stage 1, because Stage 1 is what
 makes "the effective value" a thing you can read from one place. Running Stage 2
@@ -324,7 +382,7 @@ rewrote queue rows would not have this.
 
 ## 9. Recommendation
 
-**Do Stage 1 before Company Intelligence. Do not do Stage 2 yet.**
+**Stage 1 is done. Do not do Stage 2 yet.**
 
 Stage 1 is where the architectural value is. It collapses nine fallbacks into
 one chain, closes G1, G2 and G4 from the AI validation report, and gives every

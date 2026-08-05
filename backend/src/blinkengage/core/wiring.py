@@ -138,6 +138,14 @@ def critical_services() -> tuple[CriticalService, ...]:
                     ),
                 ),
                 Collaborator(
+                    path="_decisions",
+                    name="Routing decision recorder",
+                    consequence=(
+                        "AI's hand-off would leave no explanation — the Story would "
+                        "say it gave the conversation back and never why"
+                    ),
+                ),
+                Collaborator(
                     path="_service_contexts",
                     name="Service context resolver",
                     consequence=(

@@ -124,6 +124,7 @@ from blinkengage.domain.rbac import is_known_permission
 from blinkengage.domain.verification import is_blocked_before_verification
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
+from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.connectors.meta import META_APP
@@ -719,6 +720,16 @@ def get_web_chat_session_service(
     )
 
 
+def _realtime_from(settings: Settings) -> RealtimePublisher:
+    """A publisher built from settings rather than from a request.
+
+    The FastAPI dependencies above resolve these through the container; the
+    start-up guard has no request to resolve against and must not therefore
+    build a lesser service. Kept private so request handlers keep using the
+    container and only the guard reaches for this.
+    """
+    return RealtimePublisher(create_redis_client(settings))
+
 
 def _attachment_store_from(settings: Settings) -> AttachmentStore:
     return AttachmentStore(create_minio_client(settings), bucket=settings.s3_bucket_attachments)
@@ -748,6 +759,7 @@ def build_conversation_service(
     service than the one serving traffic — the exact blind spot it exists to
     close. All four are lazy: creating a client opens no connection.
     """
+    realtime = realtime or _realtime_from(settings)
     attachment_store = attachment_store or _attachment_store_from(settings)
     provider_factory = provider_factory or ChannelProviderFactory(
         realtime=realtime, attachments=attachment_store

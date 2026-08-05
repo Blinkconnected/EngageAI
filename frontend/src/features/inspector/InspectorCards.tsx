@@ -177,6 +177,17 @@ export const InspectorCards = memo(function InspectorCards({
                 <Typography variant="caption" sx={{ display: 'block' }}>
                   {t('cards.waitingOn', { who: clock.responsible })}
                 </Typography>
+                {/* Where the deadline came from. "Due in three minutes" is a
+                    number somebody has to act on, and acting on it means
+                    knowing which screen to open to change it — the service,
+                    the queue, or nothing at all. */}
+                {clock.target_source ? (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {t(`targetSource.${clock.target_source}`, {
+                      defaultValue: clock.target_source_text ?? '',
+                    })}
+                  </Typography>
+                ) : null}
                 {clock.pause_text ? (
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                     {clock.pause_text}

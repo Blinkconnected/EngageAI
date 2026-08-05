@@ -34,6 +34,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
+from blinkengage.domain.resolution import ConfigurationSource, Resolved
 from blinkengage.domain.routing_decisions import (
     RoutingDecision,
     RoutingDecisionKind,
@@ -43,23 +44,14 @@ from blinkengage.domain.routing_decisions import (
 )
 from blinkengage.domain.service_context import SlaTargets
 
-
-class SlaTargetSource(StrEnum):
-    """Which configuration a conversation's deadlines came from.
-
-    Carried rather than inferred, because "why is this conversation due in
-    three minutes?" is a question a supervisor asks about a specific
-    conversation, and reconstructing the answer later means re-reading a
-    service version, a queue and a policy as they are *now* rather than as
-    they were when the clock started.
-    """
-
-    #: The service version the conversation is bound to.
-    SERVICE = "service"
-    #: The queue's attached SLA policy, or its own legacy minute targets.
-    QUEUE = "queue"
-    #: Nothing was configured anywhere. See ``PLATFORM_DEFAULT_SLA_TARGETS``.
-    PLATFORM_DEFAULT = "platform_default"
+#: Which configuration a conversation's deadlines came from.
+#:
+#: The same four tiers every other fact resolves through — see
+#: ``domain/resolution.py``. It was a private enum here first, before AI
+#: policy and the activity window needed the same answer; keeping a separate
+#: one would have been two vocabularies for one idea, and the stored values
+#: are identical either way.
+SlaTargetSource = ConfigurationSource
 
 
 #: What the platform measures when a company has configured nothing.
@@ -82,12 +74,11 @@ PLATFORM_DEFAULT_SLA_TARGETS: Final[SlaTargets] = SlaTargets(
 )
 
 
-@dataclass(frozen=True, slots=True)
-class ResolvedSlaTargets:
-    """Targets, and the answer to "says who?"."""
-
-    targets: SlaTargets
-    source: SlaTargetSource
+#: Targets, and the answer to "says who?" — ``.value`` and ``.source``, like
+#: every other resolved fact. Named for its own domain so a caller reads
+#: ``ResolvedSlaTargets`` rather than a bare generic, while the shape stays
+#: identical to AI policy's and the activity window's.
+ResolvedSlaTargets = Resolved[SlaTargets]
 
 
 def resolve_sla_targets(
@@ -114,12 +105,10 @@ def resolve_sla_targets(
     exactly the silent failure this function exists to end.
     """
     if service is not None and service.measures_anything:
-        return ResolvedSlaTargets(targets=service, source=SlaTargetSource.SERVICE)
+        return Resolved(value=service, source=ConfigurationSource.SERVICE)
     if queue is not None and queue.measures_anything:
-        return ResolvedSlaTargets(targets=queue, source=SlaTargetSource.QUEUE)
-    return ResolvedSlaTargets(
-        targets=PLATFORM_DEFAULT_SLA_TARGETS, source=SlaTargetSource.PLATFORM_DEFAULT
-    )
+        return Resolved(value=queue, source=ConfigurationSource.QUEUE)
+    return Resolved(value=PLATFORM_DEFAULT_SLA_TARGETS, source=ConfigurationSource.PLATFORM_DEFAULT)
 
 
 class SlaTimer(StrEnum):
@@ -272,6 +261,11 @@ class Clock:
     state: SlaState
     #: ``None`` when the service does not measure this clock.
     target_minutes: int | None
+    #: Which tier set that target — see ``domain/resolution.py``. Carried on
+    #: the clock rather than looked up when somebody asks, because a service
+    #: edited twice since would answer about today's configuration rather
+    #: than the one this conversation is actually running under.
+    target_source: ConfigurationSource | None = None
     #: Time counted so far, excluding every pause.
     elapsed: timedelta = timedelta()
     #: When the running period began. ``None`` while paused or finished.

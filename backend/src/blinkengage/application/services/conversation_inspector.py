@@ -38,6 +38,7 @@ from blinkengage.application.services.service_context_resolver import ServiceCon
 from blinkengage.application.services.sla_engine import SlaEngine
 from blinkengage.domain.ownership import REASON_TEXT as OWNERSHIP_REASON_TEXT
 from blinkengage.domain.ownership import Owner, OwnerKind
+from blinkengage.domain.resolution import SOURCE_TEXT as TARGET_SOURCE_TEXT
 from blinkengage.domain.routing_decisions import (
     RoutingDecisionKind,
     RoutingDecisionOutcome,
@@ -204,6 +205,11 @@ class ClockView:
     state: str
     health: str
     target_minutes: int | None
+    #: Which tier set the target, and the sentence that explains it. Two
+    #: fields rather than one so a console can filter on the code and show
+    #: the wording — the same split every reason code in here uses.
+    target_source: str | None
+    target_source_text: str | None
     counted_seconds: float
     remaining_seconds: float | None
     pause_reason: str | None
@@ -471,11 +477,11 @@ class ConversationInspectorService:
         for message in messages:
             entries.append(self._message_entry(message, service=service))
 
-        for row in decisions:
-            entries.append(self._decision_entry(row))
+        for decision in decisions:
+            entries.append(self._decision_entry(decision))
 
-        for row in ownership:
-            entries.append(self._ownership_entry(row, owner_names))
+        for transition in ownership:
+            entries.append(self._ownership_entry(transition, owner_names))
 
         entries.sort(key=lambda entry: (entry.at, entry.sequence))
         return tuple(entries)
@@ -707,6 +713,12 @@ class ConversationInspectorService:
                     state=clock.state.value,
                     health=clock.health(now=now).value,
                     target_minutes=target,
+                    target_source=(
+                        clock.target_source.value if clock.target_source is not None else None
+                    ),
+                    target_source_text=TARGET_SOURCE_TEXT.get(clock.target_source)
+                    if clock.target_source is not None
+                    else None,
                     counted_seconds=counted.total_seconds(),
                     remaining_seconds=remaining,
                     pause_reason=clock.pause_reason.value if clock.pause_reason else None,
@@ -957,7 +969,8 @@ class ConversationInspectorService:
         result = await self._session.execute(
             select(User.full_name).join(Agent, Agent.user_id == User.id).where(Agent.id == agent_id)
         )
-        return result.scalar_one_or_none()
+        found: str | None = result.scalar_one_or_none()
+        return found
 
     async def _messages(self, conversation_id: uuid.UUID) -> list[Message]:
         from sqlalchemy import select

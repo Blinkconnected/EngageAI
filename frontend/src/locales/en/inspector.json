@@ -84,6 +84,12 @@
     "stopped": "Stopped",
     "not_measured": "Not measured"
   },
+  "targetSource": {
+    "service": "Set by this conversation's service",
+    "queue": "Set by the queue it is waiting in",
+    "company": "Set company-wide",
+    "platform_default": "Platform default — nothing is configured for this conversation"
+  },
   "aiState": {
     "answering": "Answering",
     "waiting_to_pick_up": "Waiting to pick up",

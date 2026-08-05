@@ -23,7 +23,11 @@ from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.autopilot_service import AutopilotTrigger
 from blinkengage.core.config import get_settings
 from blinkengage.domain.ownership import OwnerKind, OwnershipReason
-from blinkengage.domain.routing_decisions import RoutingDecisionKind, RoutingDecisionReason
+from blinkengage.domain.routing_decisions import (
+    RoutingDecisionKind,
+    RoutingDecisionOutcome,
+    RoutingDecisionReason,
+)
 from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.message import (
@@ -442,13 +446,20 @@ class TestTheComplianceSwitchSurvivedTheMigration:
         assert "switched off" in decision.policy_text
 
 
-class TestTheLegacyPathIsUntouched:
-    async def test_a_company_with_no_services_asks_no_policy(
+class TestACompanyWithNoServicesIsExplainedToo:
+    """The path most companies are actually on.
+
+    A company with no service directory used to take five inline conditions
+    that enforced the same rules and **recorded nothing** — so on every
+    company on this installation, "why did AI answer this one and not that
+    one" had no recorded answer. The five conditions were exactly the
+    capabilities the Policy Engine already checks, so the branch was
+    duplication rather than a second rule, and it is gone.
+    """
+
+    async def test_the_policy_is_asked_and_the_refusal_recorded(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """No service directory means no ExecutionContext to evaluate
-        against, so the original five conditions still run — unchanged, for
-        the companies this still describes."""
         _, rows = await _run(
             client,
             owner_headers,
@@ -458,13 +469,15 @@ class TestTheLegacyPathIsUntouched:
             with_service=False,
         )
 
-        assert _ai_decision(rows) is None
+        decision = _ai_decision(rows)
+        assert decision is not None, "the refusal is recorded, not merely enforced"
+        assert decision.policy_reason == "company_disabled"
+        assert decision.policy_source == "company_settings"
 
     async def test_and_still_refuses_when_the_company_switch_is_off(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """The promise holds on both paths. That it is unrecorded on the
-        legacy one is a gap in explainability, never in enforcement."""
+        """Enforcement was never the gap — only the record was."""
         conversation, _ = await _run(
             client,
             owner_headers,
@@ -475,6 +488,28 @@ class TestTheLegacyPathIsUntouched:
         )
 
         assert conversation.autopilot_active is False
+
+    async def test_the_permission_names_the_tier_that_gave_it(
+        self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
+    ) -> None:
+        """With no service to credit, the allow reports the company.
+
+        Naming a service that does not exist would be the Inspector inventing
+        configuration nobody wrote — the one thing it must never do.
+        """
+        _, rows = await _run(
+            client,
+            owner_headers,
+            registered_owner,
+            app,
+            settings=_AUTOPILOT_ON,
+            with_service=False,
+        )
+
+        decision = _ai_decision(rows)
+        assert decision is not None
+        assert decision.outcome is RoutingDecisionOutcome.ALLOWED
+        assert decision.policy_source == "company_settings"
 
 
 class TestNoProviderIsReportedBeforeAnyChoice:
@@ -858,4 +893,76 @@ class TestTheServicesScreenIsTheOneTheEngineObeys:
         # 80% would clear the old hard-coded service default of 0.75, and
         # does not clear the 0.9 this company actually asked for.
         assert await _sweep(app, monkeypatch, confidence=80) == {conversation.id: "not_answered"}
+        assert (await _reload(app, conversation.id)).autopilot_active is False
+
+
+class TestAiSaysWhyItHandedBack:
+    """``RoutingDecisionKind.AI_RELEASED`` existed in the domain, was mapped to
+    the AI stream, had Inspector wording and its own rendering branch — and
+    nothing wrote it. So the Conversation Story said "AI handed it back" and
+    could not say why, against its own contract that every event answers what
+    happened, why, and what happened next.
+    """
+
+    async def test_low_confidence_is_recorded_as_a_reason_not_just_enforced(
+        self,
+        client: AsyncClient,
+        owner_headers: dict,
+        registered_owner: dict,
+        app: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        conversation, _ = await _run(
+            client,
+            owner_headers,
+            registered_owner,
+            app,
+            settings=_AUTOPILOT_ON,
+            ai_enabled=True,
+            confidence_threshold="0.9",
+            pickup_delay_seconds=30,
+        )
+        await _wind_back(app, conversation.id)
+
+        # 40% against the service's 0.9 bar: AI tries and stands down.
+        await _sweep(app, monkeypatch, confidence=40)
+
+        released = [
+            row for row in await _decisions(app) if row.kind is RoutingDecisionKind.AI_RELEASED
+        ]
+        assert released, "the hand-off is explained, not merely performed"
+        assert released[0].reason is RoutingDecisionReason.CONFIDENCE_BELOW_THRESHOLD
+
+    async def test_the_conversation_still_goes_back_if_the_record_fails(
+        self,
+        client: AsyncClient,
+        owner_headers: dict,
+        registered_owner: dict,
+        app: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The same tradeoff every recorder here makes. Handing back is the
+        product; explaining it is evidence about the product, and evidence
+        that will not write must not leave a customer with AI still holding
+        their conversation."""
+        from blinkengage.application.services import autopilot_service as module
+
+        def _explode(reason: str) -> None:
+            raise RuntimeError("decision vocabulary unavailable")
+
+        monkeypatch.setattr(module, "ai_released_decision", _explode)
+
+        conversation, _ = await _run(
+            client,
+            owner_headers,
+            registered_owner,
+            app,
+            settings=_AUTOPILOT_ON,
+            ai_enabled=True,
+            confidence_threshold="0.9",
+            pickup_delay_seconds=30,
+        )
+        await _wind_back(app, conversation.id)
+        await _sweep(app, monkeypatch, confidence=40)
+
         assert (await _reload(app, conversation.id)).autopilot_active is False

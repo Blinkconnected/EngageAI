@@ -14,7 +14,70 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **The platform now notices when the same problem keeps coming back.**
+  Completed conversations that are alike are grouped together, and each
+  group is measured over time: how many customers it involves, how many
+  separate days, whether it is growing or fading, whether it has gone
+  quiet and returned, and whether it behaves unlike its own history —
+  taking far longer than usual, being escalated far more often, or being
+  rated far worse.
+
+  **It tells nobody and changes nothing.** No alert, no ticket, no
+  suggested article, no note added to what the platform remembers. The
+  groups and the findings are pages an operator can open, and that is
+  deliberate: a detector wired to alerting before anybody has checked
+  whether it is right teaches people to mute it, and the mute outlasts
+  the fix.
+
+  Two rules keep the findings quiet enough to be worth reading. A group
+  has to involve **at least two different customers** before it counts as
+  a pattern at all — one person asking the same thing six times is one
+  person. And a trend has to hold for **two consecutive weeks** and
+  survive a statistical correction that accounts for how many things were
+  checked; without that correction, testing three hundred topics would
+  report about fifteen false trends every single week.
+
+  Grouping is repeatable by design: the same conversations always produce
+  the same groups, so the results can be rebuilt from scratch and
+  compared. Re-running creates nothing — verified at three thousand
+  conversations, where a second pass wrote no new groups, no duplicate
+  memberships and no additional storage.
+
+  New: `/api/v1/intelligence/clusters`,
+  `/api/v1/intelligence/clusters/{id}`, `/api/v1/intelligence/trends`,
+  `/api/v1/intelligence/anomalies` and `/api/v1/intelligence/metrics`,
+  for owners and administrators.
+
+## [1.1.0] - 2026-08-05
+
+The first stable release. Everything built and tested through the beta
+programme, released together: the operational platform, the AI Autopilot,
+billing and invoicing, and the first three stages of the company
+intelligence layer — knowledge search that understands meaning, a memory
+that can show its evidence and be erased on request, and an observation
+layer that measures how work actually finishes before anything is built
+on top of it.
+
 ### Fixed
+
+- **A customer writing back after a conversation was closed no longer
+  leaves it on record as solved.** Reopening a conversation — whether
+  because the customer replied, or because somebody moved it back out of
+  a finished state — was never passed on to the part of the platform that
+  records how work finishes. A conversation the customer had to chase
+  again therefore stayed recorded as resolved, and as resolved on first
+  contact, which is the most flattering thing it could wrongly say.
+  Reopening now cancels that record, and the conversation is measured
+  again from its next real ending.
+
+  Nothing about this was visible from the outside: every figure involved
+  looked healthy, because the record simply never received the news. So a
+  safeguard was added alongside the fix — the platform now checks
+  automatically that every signal any part of it waits for is actually
+  sent by something else. A part waiting on something that never happens
+  is now caught before it can ship, rather than sitting quiet.
 
 - **The platform no longer learns from its own paperwork.** Before the
   observation layer was let near real traffic it was run against it, and
@@ -85,40 +148,6 @@ for more detail on how this page is put together.
   response rather than quietly omitted.
 
 ### Added
-
-- **The platform now notices when the same problem keeps coming back.**
-  Completed conversations that are alike are grouped together, and each
-  group is measured over time: how many customers it involves, how many
-  separate days, whether it is growing or fading, whether it has gone
-  quiet and returned, and whether it behaves unlike its own history —
-  taking far longer than usual, being escalated far more often, or being
-  rated far worse.
-
-  **It tells nobody and changes nothing.** No alert, no ticket, no
-  suggested article, no note added to what the platform remembers. The
-  groups and the findings are pages an operator can open, and that is
-  deliberate: a detector wired to alerting before anybody has checked
-  whether it is right teaches people to mute it, and the mute outlasts
-  the fix.
-
-  Two rules keep the findings quiet enough to be worth reading. A group
-  has to involve **at least two different customers** before it counts as
-  a pattern at all — one person asking the same thing six times is one
-  person. And a trend has to hold for **two consecutive weeks** and
-  survive a statistical correction that accounts for how many things were
-  checked; without that correction, testing three hundred topics would
-  report about fifteen false trends every single week.
-
-  Grouping is repeatable by design: the same conversations always produce
-  the same groups, so the results can be rebuilt from scratch and
-  compared. Re-running creates nothing — verified at three thousand
-  conversations, where a second pass wrote no new groups, no duplicate
-  memberships and no additional storage.
-
-  New: `/api/v1/intelligence/clusters`,
-  `/api/v1/intelligence/clusters/{id}`, `/api/v1/intelligence/trends`,
-  `/api/v1/intelligence/anomalies` and `/api/v1/intelligence/metrics`,
-  for owners and administrators.
 
 - **The platform has started paying attention to how work actually
   finishes.** A new background layer records one summary per completed
@@ -231,7 +260,54 @@ for more detail on how this page is put together.
   indexed, what is still queued, and what failed). The existing article list
   and its `search` parameter are unchanged.
 
+### Changed
+
+- **The observation layer now shows an operator what it is doing.** One
+  page reports how many observations are waiting, how many are final, how
+  many runs failed, how many have been re-observed after a change to how
+  observation works, and how many have been erased at a customer's
+  request — alongside the figure that matters most: how much of what the
+  platform observed the platform itself wrote.
+
+  Erasures are counted from the audit trail rather than from the
+  observations, because after an erasure there is nothing left to count.
+  The erasure record now also lists what each part of the platform
+  removed, so the trail says the same thing the erasure report said.
+
+- **Your configuration now has one answer, and every screen gives the same
+  one.** Settings resolve down a single chain — the service, then the queue,
+  then company-wide, then a platform default — for SLA targets, AI policy and
+  the AI confidence threshold alike. Before this each of those resolved
+  differently, and which answer you got depended on which screen you opened.
+
+  Nothing you have configured changes. What changes is that the platform can
+  now tell you *where* a setting came from: a conversation's deadline says
+  whether it was set by a service, by the queue it is waiting in, company-wide,
+  or by a platform default because nothing is configured for it. A due time you
+  cannot trace is a due time you cannot act on.
+
 ### Fixed
+
+- **When AI hands a conversation back, it now says why.** The timeline showed
+  that AI had given a conversation to a human and never what prompted it —
+  whether the model asked for help, whether it was not confident enough,
+  whether it produced nothing usable, or whether Autopilot was configured not
+  to run at all. Those are four different problems with four different fixes,
+  and the platform knew which one it was every time.
+
+  Where the reason is not one the platform recognises, nothing is recorded
+  rather than a guess: an invented explanation on this screen is worse than a
+  missing one, because a missing one sends you looking.
+
+- **AI decisions are now explained for every company, not just those using
+  Services.** Whether AI may answer was decided by the policy engine on one
+  path and by five hidden conditions on another — and the second recorded
+  nothing. Companies on that path enforced every rule correctly and could never
+  answer "why did AI reply to this conversation and not that one".
+
+  Every company now gets a recorded decision naming the switch that decided it.
+  Nothing about who AI answers has changed; only whether you can find out why.
+
 
 - **A conversation's history never shows you an internal identifier.** Where
   the timeline said who took a conversation over, it could print something like
@@ -291,18 +367,6 @@ for more detail on how this page is put together.
   it.
 
 ### Changed
-
-- **The observation layer now shows an operator what it is doing.** One
-  page reports how many observations are waiting, how many are final, how
-  many runs failed, how many have been re-observed after a change to how
-  observation works, and how many have been erased at a customer's
-  request — alongside the figure that matters most: how much of what the
-  platform observed the platform itself wrote.
-
-  Erasures are counted from the audit trail rather than from the
-  observations, because after an erasure there is nothing left to count.
-  The erasure record now also lists what each part of the platform
-  removed, so the trail says the same thing the erasure report said.
 
 - **The default queue every company starts with is named "General".** New
   companies already got this; installations carrying an older default now
@@ -2368,7 +2432,3 @@ once they officially ship.
 ### Breaking Changes
 
 - None yet (this is our first tracked release).
-
-## [1.0.0] - TBD
-
-The finished, stable release, planned once pilot testing wraps up.
