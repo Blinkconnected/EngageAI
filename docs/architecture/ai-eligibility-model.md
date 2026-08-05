@@ -220,7 +220,7 @@ the backfill matches a recomputation.
 *Exit:* for every conversation, the columns agree with a fresh derivation from
 `messages`. **AI behaviour identical.**
 
-### Phase 2 — the eligibility domain *(pure, no wiring)*
+### Phase 2 — the eligibility domain *(pure, no wiring)* ✅ **shipped**
 
 `domain/ai_eligibility.py`: a framework-free function taking the eight facts and
 returning *eligible* / *not eligible with a reason*. Unit-tested exhaustively —
