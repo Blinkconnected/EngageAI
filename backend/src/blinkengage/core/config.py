@@ -257,6 +257,19 @@ class Settings(BaseSettings):
     # of the fact table.
     memory_confidence_history_days: int = 180
 
+    # --- Learning Platform (Company Intelligence Engine, stage 3) ---
+    #
+    # Phase 1 is observe-only: no clustering, no detection, no candidates,
+    # and no model calls. These bound the settle sweep, which promotes
+    # observations whose outcome can no longer change.
+    learning_settle_batch_size: int = 500
+    #: How long an observation's outcome may still change. CSAT settles it
+    #: immediately; this is the wait for the ones nobody rates, which is
+    #: most of them. Deliberately far shorter than the 14-day CSAT token
+    #: life — waiting for the last possible response would make every
+    #: observation two weeks stale.
+    learning_settle_hours: int = 72
+
     # --- Provider apps for channel OAuth (see
     # docs/architecture/channel-connectors.md) ---
     #

@@ -58,6 +58,48 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The platform has started paying attention to how work actually
+  finishes.** A new background layer records one summary per completed
+  conversation: what it was about, which language it was in, any order
+  numbers or amounts mentioned, how it ended, how long it took, and
+  whether the customer rated it. Nothing is copied — each summary points
+  back at the messages it came from, so you can always see exactly what
+  it was drawn from.
+
+  **It only observes.** It does not answer anything, suggest anything,
+  change anything you have written, or decide anything. That is
+  deliberate: this is the stage that measures whether the platform is
+  seeing what we think it is seeing, before anything is built on top of
+  it.
+
+  Two things it refuses to do are worth stating plainly. It does not
+  learn from its own replies — a conversation the AI handled end to end
+  is recorded as *not learnable* rather than treated as experience, and
+  the share of observed content the platform itself wrote is reported to
+  you as a number, because that figure quietly rising is the one way a
+  system like this goes wrong invisibly. And it does not treat an
+  automatic closure as a success: a conversation closed by a rule is
+  closed, but only a person deciding a conversation is finished counts as
+  evidence that anything worked.
+
+  Nothing is treated as final straight away. A summary waits until its
+  outcome can no longer change — a satisfaction rating arriving, or a
+  reopened conversation — and settles by itself after three days if
+  nothing arrives. Otherwise a conversation the customer went on to rate
+  badly would be recorded as a neutral one.
+
+  Learning is on by default and switched off per company from the same
+  place as memory, and switching it off stops it before a single message
+  is read — the refusal itself is recorded, so you can show that the
+  platform saw a conversation and chose not to learn from it. Erasing a
+  customer removes their summaries along with everything else, and the
+  erasure response now counts them.
+
+  New: `/api/v1/intelligence/observations`,
+  `/api/v1/intelligence/observations/{conversation_id}`,
+  `/api/v1/intelligence/runs` and `/api/v1/intelligence/health`, for
+  owners and administrators.
+
 - **Blink Engage now remembers, and can tell you why.** A new platform
   layer records what the system has observed — about your business, about
   each customer, and about what has historically worked — with the evidence

@@ -27,7 +27,7 @@ conversation. ``outcome_quality`` then discounts what a machine decided.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 #: How long after a conversation ends its outcome may still change.
@@ -98,6 +98,27 @@ class OutcomeInputs:
     csat_scale_max: int = 5
     settle_hours: int = DEFAULT_SETTLE_HOURS
     reopen_window_hours: int = DEFAULT_REOPEN_WINDOW_HOURS
+
+    def __post_init__(self) -> None:
+        """Normalise every timestamp to UTC-aware, once, here.
+
+        Callers hand these over straight from ORM rows, and the two
+        supported backends disagree about what comes back: PostgreSQL
+        ``timestamptz`` yields aware datetimes, SQLite yields naive ones.
+        Subtracting one from the other raises, so without this the
+        derivation works in production and fails in the test suite — or,
+        worse, the reverse.
+
+        Normalising at the boundary rather than at each of the four
+        arithmetic sites is deliberate: this is the *single* outcome
+        resolver, and a rule enforced once at its entrance cannot be
+        forgotten by a branch added later. A naive value is read as UTC,
+        which is what both backends store.
+        """
+        for field_name in ("ended_at", "started_at", "now", "reopened_at"):
+            value = getattr(self, field_name)
+            if isinstance(value, datetime) and value.tzinfo is None:
+                object.__setattr__(self, field_name, value.replace(tzinfo=UTC))
 
 
 @dataclass(frozen=True)

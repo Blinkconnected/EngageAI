@@ -97,6 +97,11 @@ class CompanyCapabilities:
     #: Timeline to empty. Defaults to the unavailable answer like every
     #: field here.
     memory_enabled: bool = False
+    #: Whether the platform may turn this company's conversations into
+    #: observations. Separate from ``memory_enabled`` so a company can
+    #: keep relationship notes without having them mined for patterns.
+    #: Defaults to the unavailable answer like every field here.
+    learning_enabled: bool = False
     #: Autopilot's own opt-in, separate from AI features generally — a
     #: company may want agent-facing suggestions without AI answering
     #: customers directly.
@@ -134,7 +139,14 @@ class ExecutionContext:
     and read a second version of the truth.
     """
 
-    service: ServiceContext
+    #: ``None`` for a company that has not adopted the service directory.
+    #: A real and current case — every company on this installation — and it
+    #: is what lets the Policy Engine decide for *all* of them rather than
+    #: only the ones with a service. The alternative was five inline
+    #: conditions on the other path that recorded nothing, so "why did AI
+    #: answer this one and not that one" had no answer wherever it mattered
+    #: most. See ``docs/architecture/service-centric-migration.md``.
+    service: ServiceContext | None
     #: ``None`` for a conversation from somebody the platform has never seen:
     #: a first message on an anonymous web-chat, an unrecognised number. A
     #: real and common case, so every reader must handle it, and the
@@ -196,11 +208,23 @@ class ExecutionContext:
     # it answers with a reason and a source rather than a bare boolean, which
     # is what makes a refusal explainable in the Routing Inspector.
 
+    @property
+    def service_label(self) -> str:
+        """How this conversation's service reads in a log line.
+
+        Named rather than blank when there is none: "no service" is a fact an
+        operator needs, and an empty space in a trace reads as a bug in the
+        tracing.
+        """
+        if self.service is None:
+            return "no service"
+        return f"{self.service.name} v{self.service.version}"
+
     def describe(self) -> str:
         """One line for a log or a trace. Never for a customer to read."""
         customer = self.customer.display_name if self.customer else "an unknown customer"
         return (
-            f"{self.service.name} v{self.service.version} · {customer} · "
+            f"{self.service_label} · {customer} · "
             f"conversation {self.conversation.conversation_id} ({self.conversation.status})"
         )
 

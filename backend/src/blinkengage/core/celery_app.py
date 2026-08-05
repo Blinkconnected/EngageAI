@@ -35,6 +35,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.channel_health_check_task",
         "blinkengage.infrastructure.tasks.knowledge_index_sweep_task",
         "blinkengage.infrastructure.tasks.memory_decay_sweep_task",
+        "blinkengage.infrastructure.tasks.learning_settle_sweep_task",
     ],
 )
 
@@ -215,6 +216,15 @@ celery_app.conf.update(
         "age-memory": {
             "task": "blinkengage.memory.age_memory",
             "schedule": 3600.0,
+        },
+        # Promotes observations whose settle window has closed — see
+        # docs/architecture/learning-platform.md. Every fifteen minutes:
+        # the window is measured in days, so this only needs to be fine
+        # enough that "settled" is not noticeably late, and a run with
+        # nothing due costs one indexed query against a partial index.
+        "settle-learning-observations": {
+            "task": "blinkengage.learning.settle_observations",
+            "schedule": 900.0,
         },
     },
 )

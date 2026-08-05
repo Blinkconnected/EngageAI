@@ -109,6 +109,14 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("memory.read", "View organizational, customer and experience memory"),
     Permission("memory.manage", "Confirm, correct or suppress remembered facts"),
     Permission("memory.erase", "Permanently erase everything memory holds about a subject"),
+    # --- Learning Platform (see docs/architecture/learning-platform.md) ---
+    #
+    # Read and operate only. Learning proposes nothing in phase 1, so
+    # there is deliberately no approve/promote permission to mint yet — a
+    # permission with nothing behind it makes a capability look governed
+    # when it is not.
+    Permission("intelligence.read", "View observations, features and learning runs"),
+    Permission("intelligence.manage", "Replay a learning window; dismiss observations"),
     Permission("knowledge_base.read", "View knowledge base categories and articles"),
     Permission(
         "knowledge_base.manage", "Create/edit/delete knowledge base categories and articles"
@@ -179,6 +187,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "workflows.manage",
             "knowledge_base.read",
             "knowledge_base.manage",
+            "intelligence.read",
             "memory.read",
             "memory.manage",
             "quick_replies.read",

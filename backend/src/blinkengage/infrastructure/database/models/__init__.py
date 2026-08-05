@@ -59,6 +59,14 @@ from blinkengage.infrastructure.database.models.knowledge import (
     KnowledgeArticleTag,
     KnowledgeCategory,
 )
+from blinkengage.infrastructure.database.models.learning import (
+    RUN_TYPE_OBSERVATION,
+    RUN_TYPE_SETTLE,
+    LearningObservation,
+    LearningObservationFeature,
+    LearningObservationRef,
+    LearningRun,
+)
 from blinkengage.infrastructure.database.models.ledger import LedgerEntry
 from blinkengage.infrastructure.database.models.memory import (
     OWNER_MEMORY_FACT,
@@ -207,6 +215,12 @@ __all__ = [
     "KnowledgeCategory",
     "KnowledgeChunk",
     "KnowledgeIndexState",
+    "LearningObservation",
+    "LearningObservationFeature",
+    "LearningObservationRef",
+    "LearningRun",
+    "RUN_TYPE_OBSERVATION",
+    "RUN_TYPE_SETTLE",
     "OWNER_MEMORY_FACT",
     "MemoryConfidenceSample",
     "MemoryContradiction",

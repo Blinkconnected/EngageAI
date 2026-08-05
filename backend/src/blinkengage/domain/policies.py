@@ -86,6 +86,13 @@ class Policy(StrEnum):
     #: healthcare that offers only one switch will be asked to turn
     #: everything off.
     MEMORY_RECORDING = "memory_recording"
+    #: May the platform *learn* from this conversation — turn it into an
+    #: observation a pattern could later be detected from? The Learning
+    #: Platform's gate and its kill switch. Deliberately separate from
+    #: MEMORY_RECORDING: a company may be content for the platform to keep
+    #: notes on its own relationships while forbidding those notes being
+    #: mined for patterns, and one switch cannot express that.
+    KNOWLEDGE_LEARNING = "knowledge_learning"
 
 
 class Effect(StrEnum):
@@ -137,6 +144,8 @@ class PolicyReason(StrEnum):
     NO_AI_PROVIDER = "no_ai_provider"
     #: The company has memory retention switched off entirely.
     MEMORY_DISABLED = "memory_disabled"
+    #: The company has learning switched off entirely.
+    LEARNING_DISABLED = "learning_disabled"
     #: AI features are on, but Autopilot itself is not. A company may want
     #: agent-facing suggestions without AI answering customers directly,
     #: and reporting that as "AI is off" would send an administrator to
@@ -173,6 +182,7 @@ REASON_TEXT: dict[PolicyReason, str] = {
     PolicyReason.SERVICE_DISABLED: "the service has it switched off",
     PolicyReason.COMPANY_DISABLED: "the company has AI features switched off",
     PolicyReason.MEMORY_DISABLED: "the company has memory switched off",
+    PolicyReason.LEARNING_DISABLED: "the company has learning switched off",
     PolicyReason.NO_AI_PROVIDER: "no AI provider is configured",
     PolicyReason.AUTOPILOT_DISABLED: "AI Autopilot is switched off for this company",
     PolicyReason.AUTOPILOT_MODE_EXCLUDES_THIS: (
@@ -310,7 +320,13 @@ def _ai_engagement(execution: ExecutionContext) -> PolicyDecision:
             PolicyReason.AUTOPILOT_MODE_EXCLUDES_THIS,
             PolicySource.COMPANY_SETTINGS,
         )
-    if not execution.service.ai.enabled:
+    if execution.service is not None and not execution.service.ai.enabled:
+        # Only asked where there *is* a service. A company with no service
+        # directory has no service policy to consult, and the tiers that do
+        # answer for it — the company switches above, the queue's Autopilot
+        # opt-in below — have already been checked. Treating a missing
+        # service as a refusal would silence AI for every company that has
+        # not adopted the directory, which is all of them today.
         return _deny(
             Policy.AI_ENGAGEMENT,
             PolicyReason.SERVICE_DISABLED,
@@ -330,15 +346,25 @@ def _ai_engagement(execution: ExecutionContext) -> PolicyDecision:
             PolicyReason.CONVERSATION_CLOSED,
             PolicySource.CONVERSATION_STATE,
         )
+    service = execution.service
+    if service is None:
+        # Allowed by the tiers that exist for this company. Reported against
+        # the company rather than a service, so the Inspector says who
+        # actually decided instead of naming configuration nobody wrote.
+        return _allow(
+            Policy.AI_ENGAGEMENT,
+            PolicyReason.PERMITTED,
+            PolicySource.COMPANY_SETTINGS,
+        )
     return _allow(
         Policy.AI_ENGAGEMENT,
         PolicyReason.SERVICE_ALLOWS,
         PolicySource.SERVICE_CONTEXT,
-        pickup_delay_seconds=execution.service.ai.pickup_delay_seconds,
+        pickup_delay_seconds=service.ai.pickup_delay_seconds,
         confidence_threshold=(
             None
-            if execution.service.ai.confidence_threshold is None
-            else str(execution.service.ai.confidence_threshold)
+            if service.ai.confidence_threshold is None
+            else str(service.ai.confidence_threshold)
         ),
     )
 
@@ -387,7 +413,11 @@ def _queue_bypass(execution: ExecutionContext) -> PolicyDecision:
     bypassing means never queuing at all, which contradicts the queue-first
     principle, so it is denied unless a service explicitly opts in.
     """
-    if execution.service.setting("routing", "allow_queue_bypass", default=False) is True:
+    service = execution.service
+    if (
+        service is not None
+        and service.setting("routing", "allow_queue_bypass", default=False) is True
+    ):
         if execution.is_priority:
             return _allow(
                 Policy.QUEUE_BYPASS,
@@ -483,6 +513,42 @@ def _memory_recording(execution: ExecutionContext) -> PolicyDecision:
     return _allow(Policy.MEMORY_RECORDING, PolicyReason.PERMITTED, PolicySource.COMPANY_SETTINGS)
 
 
+def _knowledge_learning(execution: ExecutionContext) -> PolicyDecision:
+    """May the platform learn from this conversation?
+
+    **Fails closed**, like every rule here that governs a promise rather
+    than a preference. A caller that did not populate capabilities must
+    not thereby be granted permission to mine what somebody said.
+
+    Learning is refused wherever memory is, because an observation is a
+    weaker form of the same retention — but it can be refused on its own,
+    which is the point. A company may accept the platform keeping notes on
+    its relationships (Memory) while refusing to have those notes mined
+    for patterns (Learning). Collapsing the two would force an
+    all-or-nothing choice on exactly the regulated tenants who need the
+    distinction most.
+    """
+    if execution.capabilities is None:
+        return _deny(
+            Policy.KNOWLEDGE_LEARNING,
+            PolicyReason.CAPABILITIES_UNKNOWN,
+            PolicySource.PLATFORM_DEFAULT,
+        )
+    if not execution.capabilities.memory_enabled:
+        return _deny(
+            Policy.KNOWLEDGE_LEARNING,
+            PolicyReason.MEMORY_DISABLED,
+            PolicySource.COMPANY_SETTINGS,
+        )
+    if not execution.capabilities.learning_enabled:
+        return _deny(
+            Policy.KNOWLEDGE_LEARNING,
+            PolicyReason.LEARNING_DISABLED,
+            PolicySource.COMPANY_SETTINGS,
+        )
+    return _allow(Policy.KNOWLEDGE_LEARNING, PolicyReason.PERMITTED, PolicySource.COMPANY_SETTINGS)
+
+
 def _not_yet_enforced(policy: Policy) -> Callable[[ExecutionContext], PolicyDecision]:
     """A rule whose module has not shipped.
 
@@ -519,6 +585,7 @@ class PolicyEngine:
             Policy.AUTOMATION_EXECUTION: _not_yet_enforced(Policy.AUTOMATION_EXECUTION),
             Policy.AUTO_CLOSE: _not_yet_enforced(Policy.AUTO_CLOSE),
             Policy.MEMORY_RECORDING: _memory_recording,
+            Policy.KNOWLEDGE_LEARNING: _knowledge_learning,
             **(rules or {}),
         }
 

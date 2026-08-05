@@ -64,6 +64,10 @@ from blinkengage.application.services.knowledge_retrieval_service import (
     KnowledgeRetrievalService,
 )
 from blinkengage.application.services.knowledge_service import KnowledgeService
+from blinkengage.application.services.learning_erasure_participant import (
+    LearningErasureParticipant,
+)
+from blinkengage.application.services.learning_query_service import LearningQueryService
 from blinkengage.application.services.ledger_service import (
     LedgerReconciliation,
     LedgerService,
@@ -192,6 +196,10 @@ from blinkengage.infrastructure.repositories.knowledge_index_repository import (
 from blinkengage.infrastructure.repositories.knowledge_repository import (
     KnowledgeArticleRepository,
     KnowledgeCategoryRepository,
+)
+from blinkengage.infrastructure.repositories.learning_repository import (
+    LearningObservationRepository,
+    LearningRunRepository,
 )
 from blinkengage.infrastructure.repositories.ledger_repository import LedgerRepository
 from blinkengage.infrastructure.repositories.lexical_search_repository import (
@@ -1248,6 +1256,18 @@ def get_knowledge_service(
     )
 
 
+def get_learning_query_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LearningQueryService:
+    """Reading Learning. Phase 1 exposes no writer at all — observations
+    are assembled by consumers, never by a request."""
+    return LearningQueryService(
+        observations=LearningObservationRepository(session),
+        runs=LearningRunRepository(session),
+        companies=CompanyRepository(session),
+    )
+
+
 def get_memory_manager(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
@@ -1311,6 +1331,12 @@ def get_memory_erasure_service(
             ConversationMemoryErasureParticipant(
                 memory=working_memory, conversations=ConversationRepository(session)
             ),
+            # Learning holds observations keyed to the customer. Without
+            # this the erasure report would assert complete deletion while
+            # four tables still held the subject — B5 from the freeze
+            # review, and the reason participation is a registration
+            # rather than a branch inside the erasure service.
+            LearningErasureParticipant(observations=LearningObservationRepository(session)),
         ),
     )
 

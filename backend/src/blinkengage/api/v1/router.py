@@ -23,6 +23,7 @@ from blinkengage.api.v1.endpoints import (
     health,
     inspector,
     knowledge,
+    learning,
     memory,
     notifications,
     ownership,
@@ -109,6 +110,9 @@ api_router.include_router(
 # not a purchasable add-on like AI or SLA — and gating it would 402 an
 # agent looking at a customer's history.
 api_router.include_router(memory.router)
+# No `require_feature` gate: Learning is platform infrastructure whose
+# read surface is an operator view, not a purchasable add-on.
+api_router.include_router(learning.router)
 api_router.include_router(quick_replies.router)
 api_router.include_router(search.router)
 api_router.include_router(notifications.router)

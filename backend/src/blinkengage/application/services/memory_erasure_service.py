@@ -124,9 +124,11 @@ class MemoryErasureService:
         self._evidence = evidence
         self._embeddings = embeddings
         self._events = events
-        # Other contexts holding data about the same subject. Empty today;
-        # Learning registers here rather than erasure growing a new branch
-        # per context.
+        # Other contexts holding data about the same subject. Learning
+        # registers here (see ``LearningErasureParticipant``) rather than
+        # erasure growing a new branch per context — the same rule that
+        # keeps MemoryManager the only writer of memory, applied to
+        # deletion: erasure fans out and *asks*.
         self._participants = participants
         # The Memory Manager, when one is available. Optional because
         # erasure must succeed even in a context that has no Manager wired

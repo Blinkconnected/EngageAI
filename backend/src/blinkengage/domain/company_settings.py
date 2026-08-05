@@ -123,6 +123,21 @@ def is_memory_enabled(settings: dict[str, Any]) -> bool:
     return bool(_section(settings, "memory").get("enabled", DEFAULT_MEMORY_ENABLED))
 
 
+DEFAULT_LEARNING_ENABLED = True
+
+
+def is_learning_enabled(settings: dict[str, Any]) -> bool:
+    """Whether the platform may learn from this company's conversations.
+
+    Defaults **on**, and nested under the ``memory`` section rather than
+    given one of its own: learning is a use of retained observation, and a
+    company that has switched memory off has already answered this
+    question. ``is_memory_enabled`` is checked first by the policy, so
+    this flag only ever narrows.
+    """
+    return bool(_section(settings, "memory").get("learning_enabled", DEFAULT_LEARNING_ENABLED))
+
+
 def memory_retention_days(settings: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
     """``(dormant_after, archive_after, purge_after)`` in days.
 

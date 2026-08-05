@@ -1,0 +1,337 @@
+"""Learning observes. It does not write anything it does not own.
+
+This is invariant I-2 of the Learning Platform Charter, and it is the one
+that makes the whole bounded context safe to run. Learning reads
+conversations, messages, CSAT responses and customers; it must be able to
+run at full speed against production data without any of those being able
+to change underneath it. A single ``session.add(SomeOtherModel(...))``
+inside a Learning consumer would turn an observer into a writer, and the
+failure would not look like a bug — it would look like the platform
+quietly editing operational data during a replay.
+
+Replay is exactly why a behavioural test is not enough here. Phase 1 is
+built to be re-runnable: bump ``PIPELINE_VERSION``, re-consume the
+history, get a second observation per conversation. That is only safe
+while Learning's writes are confined to four tables nobody else reads for
+operational decisions. Re-running a pipeline that also touched
+``conversations`` would replay side effects onto live rows.
+
+The same static approach, for the same reason, as
+``test_memory_manager_is_the_only_writer.py``: a behavioural test covers
+the paths somebody thought to write, and this covers the paths nobody has
+written yet — which is where the next instance of the problem will be.
+
+Also guarded here:
+
+* **I-4, the acyclic evidence graph.** Learning must not consume what it
+  produces, directly or through Memory. A consumer bound to ``memory.*``
+  would close the loop: memory writes an event, Learning observes it,
+  Learning's output eventually strengthens that same memory, and
+  confidence rises with no new human evidence anywhere in the cycle.
+* **Phase 1's boundary.** Learning writes nothing to Memory at all yet.
+  Phase 2 will propose candidates through the Memory Manager; until then
+  the absence is enforced rather than assumed.
+"""
+
+import ast
+import pathlib
+
+import pytest
+
+SRC = pathlib.Path(__file__).resolve().parents[2] / "src" / "blinkengage"
+MODELS = SRC / "infrastructure" / "database" / "models"
+
+#: The four tables Learning owns. Everything else in the database is
+#: somebody else's, and Learning may only read it.
+LEARNING_MODELS: frozenset[str] = frozenset(
+    {
+        "LearningObservation",
+        "LearningObservationFeature",
+        "LearningObservationRef",
+        "LearningRun",
+    }
+)
+
+#: Modules that make up the Learning bounded context, matched by path.
+#: Deliberately a prefix match rather than a hand-maintained list: a new
+#: Learning module is picked up by this guard the moment it is added,
+#: which is the point.
+LEARNING_PATHS: tuple[str, ...] = (
+    "domain/learning_",
+    "application/services/learning_",
+    "infrastructure/repositories/learning_repository.py",
+    "infrastructure/database/models/learning.py",
+    "infrastructure/events/consumers/learning_",
+    "infrastructure/tasks/learning_",
+    "api/schemas/learning.py",
+    "api/v1/endpoints/learning.py",
+)
+
+#: Non-Learning models a Learning module may construct, with the reason.
+#: Empty, and expected to stay that way through phase 1 — phase 2's
+#: candidates go through the Memory Manager, which is a service call, not
+#: a model construction.
+ALLOWED_FOREIGN_MODELS: dict[str, str] = {}
+
+#: Memory writes, by the name of the thing that performs them. Phase 1
+#: performs none: an observation is evidence *for* a future memory fact,
+#: not a fact.
+MEMORY_WRITE_CALLS: frozenset[str] = frozenset(
+    {
+        "record_observation",
+        "confirm",
+        "contradict",
+        "supersede",
+        "suppress",
+        "forget",
+        "purge",
+    }
+)
+
+
+def _model_names() -> frozenset[str]:
+    """Every ORM model in the platform, by class name.
+
+    Read from the source rather than from ``Base.registry`` so the guard
+    does not depend on import order or on a metadata side effect — and so
+    it keeps working if a model is added to a file nobody imported yet.
+    """
+    names: set[str] = set()
+    for path in sorted(MODELS.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and any(
+                isinstance(base, ast.Name) and base.id == "Base" for base in node.bases
+            ):
+                names.add(node.name)
+    return frozenset(names)
+
+
+def _learning_files() -> list[tuple[str, pathlib.Path]]:
+    found: list[tuple[str, pathlib.Path]] = []
+    for path in sorted(SRC.rglob("*.py")):
+        relative = path.relative_to(SRC).as_posix()
+        if relative.startswith(LEARNING_PATHS):
+            found.append((relative, path))
+    return found
+
+
+def _foreign_models_constructed(source: str, models: frozenset[str]) -> dict[str, int]:
+    """``ModelName`` -> line, for every non-Learning model built here.
+
+    Construction rather than ``session.add`` on purpose: an ORM object
+    attached to a session is written at flush whether or not anybody
+    called ``add``, so the construction is the moment the code becomes a
+    writer.
+    """
+    found: dict[str, int] = {}
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in models
+            and node.func.id not in LEARNING_MODELS
+        ):
+            found.setdefault(node.func.id, node.lineno)
+    return found
+
+
+def _foreign_write_statements(source: str, models: frozenset[str]) -> dict[str, int]:
+    """``insert(X)`` / ``update(X)`` / ``delete(X)`` against a table
+    Learning does not own.
+
+    The Core-level escape hatch from the check above: a bulk UPDATE never
+    constructs a model, so it would otherwise pass unseen.
+    """
+    found: dict[str, int] = {}
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"insert", "update", "delete"}
+            and node.args
+        ):
+            target = node.args[0]
+            name = target.id if isinstance(target, ast.Name) else None
+            if name in models and name not in LEARNING_MODELS:
+                found.setdefault(f"{node.func.id}({name})", node.lineno)
+    return found
+
+
+class TestLearningWritesOnlyItsOwnTables:
+    def test_no_learning_module_constructs_a_foreign_model(self) -> None:
+        models = _model_names()
+        violations: dict[str, dict[str, int]] = {}
+        for relative, path in _learning_files():
+            offending = {
+                name: line
+                for name, line in _foreign_models_constructed(path.read_text(), models).items()
+                if name not in ALLOWED_FOREIGN_MODELS
+            }
+            if offending:
+                violations[relative] = offending
+
+        assert not violations, (
+            "Learning constructs models it does not own, which makes it a writer of "
+            "operational data and makes replay unsafe:\n"
+            + "\n".join(
+                f"  {where}: "
+                + ", ".join(f"{name} (line {line})" for name, line in sorted(v.items()))
+                for where, v in sorted(violations.items())
+            )
+            + "\n\nLearning reads other contexts and writes only learning_*. If a write "
+            "outside those four tables is genuinely required, it belongs behind that "
+            "context's own service — not in a Learning module."
+        )
+
+    def test_no_learning_module_issues_a_foreign_write_statement(self) -> None:
+        models = _model_names()
+        violations: dict[str, dict[str, int]] = {}
+        for relative, path in _learning_files():
+            offending = _foreign_write_statements(path.read_text(), models)
+            if offending:
+                violations[relative] = offending
+
+        assert not violations, (
+            "Learning issues Core-level writes against tables it does not own:\n"
+            + "\n".join(
+                f"  {where}: "
+                + ", ".join(f"{stmt} (line {line})" for stmt, line in sorted(v.items()))
+                for where, v in sorted(violations.items())
+            )
+        )
+
+    def test_learning_models_are_built_only_inside_learning(self) -> None:
+        """The other direction.
+
+        Learning owning its tables means nothing if another context can
+        write an observation. An observation written by somebody else has
+        no guarantee of evidence refs, no pipeline version anybody can
+        replay, and no policy check.
+        """
+        learning_paths = {relative for relative, _ in _learning_files()}
+        violations: dict[str, dict[str, int]] = {}
+        for path in sorted(SRC.rglob("*.py")):
+            relative = path.relative_to(SRC).as_posix()
+            if relative in learning_paths:
+                continue
+            tree = ast.parse(path.read_text(), filename=str(path))
+            offending = {
+                node.func.id: node.lineno
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in LEARNING_MODELS
+            }
+            if offending:
+                violations[relative] = offending
+
+        assert not violations, (
+            "These build Learning rows from outside the Learning context:\n"
+            + "\n".join(
+                f"  {where}: "
+                + ", ".join(f"{name} (line {line})" for name, line in sorted(v.items()))
+                for where, v in sorted(violations.items())
+            )
+            + "\n\nGo through LearningObservationService, which validates the "
+            "observation, attaches its evidence refs and stamps the pipeline version."
+        )
+
+    def test_the_guard_actually_fires(self) -> None:
+        """A guard nobody has watched fail is a guard nobody knows works."""
+        models = _model_names()
+        assert "Conversation" in models, "the model scan found nothing to guard against"
+
+        assert _foreign_models_constructed(
+            "def bad(session):\n    session.add(Conversation(id=1))\n", models
+        ) == {"Conversation": 2}
+        assert _foreign_write_statements(
+            "def bad(session):\n    session.execute(update(Conversation).values(x=1))\n", models
+        ) == {"update(Conversation)": 2}
+        # And does not fire on the things Learning legitimately does.
+        assert not _foreign_models_constructed(
+            "def fine():\n    return LearningObservation(id=1)\n", models
+        )
+        assert not _foreign_write_statements(
+            "def fine(session):\n    session.execute(select(Conversation))\n", models
+        )
+
+
+class TestLearningDoesNotWriteMemory:
+    """Phase 1 boundary, and charter §9.
+
+    An observation is evidence, not a fact. The distinction matters
+    because a fact carries confidence and a confidence that can be written
+    from two places is a confidence nobody can explain.
+    """
+
+    def test_no_learning_module_calls_a_memory_write(self) -> None:
+        violations: dict[str, list[str]] = {}
+        for relative, path in _learning_files():
+            tree = ast.parse(path.read_text(), filename=str(path))
+            calls = sorted(
+                {
+                    f"{node.func.attr} (line {node.lineno})"
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in MEMORY_WRITE_CALLS
+                }
+            )
+            if calls:
+                violations[relative] = calls
+
+        assert not violations, (
+            "Phase 1 writes no memory — clustering, candidates and promotion are "
+            "phase 2, and when they arrive they go through MemoryManager:\n"
+            + "\n".join(
+                f"  {where}: {', '.join(calls)}" for where, calls in sorted(violations.items())
+            )
+        )
+
+
+class TestTheEvidenceGraphStaysAcyclic:
+    """Invariant I-4.
+
+    Learning may consume operational events. It may not consume Memory's
+    events, and it may not consume its own: either would let confidence
+    rise from output rather than from evidence, which is the failure the
+    entire two-axis lifecycle exists to prevent.
+    """
+
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "learning_observation_consumer",
+            "learning_signals_consumer",
+        ],
+    )
+    def test_consumers_bind_no_memory_or_learning_events(self, module: str) -> None:
+        path = SRC / "infrastructure" / "events" / "consumers" / f"{module}.py"
+        tree = ast.parse(path.read_text(), filename=str(path))
+
+        keys: list[str] = []
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "ROUTING_KEYS"
+                    for target in node.targets
+                )
+                and isinstance(node.value, ast.List)
+            ):
+                keys = [
+                    element.value
+                    for element in node.value.elts
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str)
+                ]
+
+        assert keys, f"{module} declares no ROUTING_KEYS — the guard has gone stale"
+        cyclic = [key for key in keys if key.startswith(("memory.", "learning.", "intelligence."))]
+        assert not cyclic, (
+            f"{module} consumes {cyclic}, closing the evidence loop: Learning would "
+            "observe its own output, and confidence could rise with no new human "
+            "evidence anywhere in the cycle."
+        )
