@@ -2,17 +2,23 @@
 
 Two things are proven here, and they pull in opposite directions.
 
-**Nothing changes for a company without a directory.** Every company on the
-installation has an empty one today, so the only acceptable behaviour for
-them is the old behaviour — not "the old behaviour plus a row per
-conversation saying they have not configured a feature". That row would be
-noise beside every decision somebody can act on, on every conversation, at
-every company.
+**Nothing changes for a company without a directory.** Companies registered
+before Stage 3a still have an empty one, and will until Stage 2 seeds them
+from what they already run on. The only acceptable behaviour for them is the
+old behaviour — not "the old behaviour plus a row per conversation saying
+they have not configured a feature". That row would be noise beside every
+decision somebody can act on, on every conversation, at every company.
 
 **Everything is recorded for a company with one.** Once a directory exists, a
 conversation is bound to a service *version*, the decision names the stage
 that decided and keeps what the earlier ones did, and the binding is what
 stops the conversation quietly following the service's later edits.
+
+Registration now seeds a General service, so *both* states are things a test
+constructs: the autouse fixture below empties the directory, and each test
+puts back exactly the directory it is about. Without that, a test asserting
+"one active service, so the fixed stage decided" would be running against
+two and proving something else.
 """
 
 import uuid
@@ -35,6 +41,7 @@ from blinkengage.infrastructure.repositories.service_directory_repository import
     ServiceRepository,
 )
 from tests.integration.test_routing_explainability import (
+    _archive_every_service,
     _ingest,
     _queue,
     _routing_rule,
@@ -42,6 +49,20 @@ from tests.integration.test_routing_explainability import (
 )
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+async def _an_empty_directory(client: AsyncClient, owner_headers: dict) -> None:
+    """Removes the service registration seeds, so each test builds its own.
+
+    Every test here is about a *particular* directory — none, one, or two in
+    a deliberate order — and the seeded General service is a third the test
+    did not ask for. It would win the fallback (it is the company default),
+    take the queue (it owns one), and turn "the only service" into "the
+    second service", which is three different tests failing for one reason
+    that is not theirs.
+    """
+    await _archive_every_service(client, owner_headers)
 
 
 async def a_service(
@@ -101,8 +122,8 @@ class TestACompanyWithoutADirectoryIsUntouched:
     async def test_no_extra_decision_is_recorded(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """The condition this shipped under. Every company has an empty
-        directory today, and "you have not configured this" written once per
+        """The condition this shipped under, and still true for every company
+        awaiting Stage 2: "you have not configured this" written once per
         conversation is telemetry, not explainability."""
         chat = await _web_chat_session(client, owner_headers)
         factory = app.state.container.session_factory()
@@ -353,8 +374,8 @@ class TestTheServiceOwnsQueueSelection:
     async def test_a_company_with_no_services_is_unchanged(
         self, client: AsyncClient, owner_headers: dict, registered_owner: dict, app: Any
     ) -> None:
-        """Every company on the installation today. Their routing must not
-        move because a feature they have not configured exists."""
+        """Every company still awaiting Stage 2. Their routing must not move
+        because a feature they have not configured exists."""
         chat = await _web_chat_session(client, owner_headers)
         company_id = registered_owner["user"]["company"]["id"]
         rule_queue = await _queue(client, owner_headers, name="Rule queue")

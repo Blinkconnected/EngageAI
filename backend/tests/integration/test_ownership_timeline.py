@@ -35,11 +35,29 @@ from blinkengage.domain.ownership import (
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.ownership import ConversationOwnership
 from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
-from tests.integration.test_routing_explainability import _ingest, _queue, _web_chat_session
+from tests.integration.test_routing_explainability import (
+    _archive_every_service,
+    _ingest,
+    _queue,
+    _web_chat_session,
+)
 
 pytestmark = pytest.mark.asyncio
 
 NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+async def _the_rules_path(client: AsyncClient, owner_headers: dict) -> None:
+    """The conversations below reach their queue through a routing rule.
+
+    Registration seeds a General service owning the general queue, and a
+    service that names a queue outranks any rule — so without this the
+    ``Support`` queue each test builds is never reached and the ownership
+    timeline records General instead. The tests would still pass on the
+    ownership *model* while silently testing a different queue.
+    """
+    await _archive_every_service(client, owner_headers)
 
 
 def service_for(session: Any) -> OwnershipService:

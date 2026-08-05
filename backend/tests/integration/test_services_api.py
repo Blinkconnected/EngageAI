@@ -241,7 +241,12 @@ class TestTheHistoryIsReadable:
             await client.get(f"/api/v1/services/{service_id}", headers=owner_headers)
         ).status_code == 404
         listed = await client.get("/api/v1/services", headers=owner_headers)
-        assert listed.json() == []
+        # Gone from the directory, not gone from the database. Asserted as
+        # "this id is absent" rather than "the list is empty", because the
+        # directory is no longer empty to begin with — registration seeds a
+        # General service, and an empty list would stop being evidence that
+        # *this* service was archived.
+        assert service_id not in [service["id"] for service in listed.json()]
 
 
 class TestIsolationAndPermissions:

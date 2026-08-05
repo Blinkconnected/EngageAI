@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.application.services.permission_sync_service import PermissionSyncService
@@ -36,10 +37,15 @@ from blinkengage.domain.exceptions import (
 )
 from blinkengage.domain.money import DEFAULT_CURRENCY
 from blinkengage.domain.rbac import SystemRole
+from blinkengage.domain.service_context import AiPolicy
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.database.models.company import Company, CompanyStatus
 from blinkengage.infrastructure.database.models.queue import Queue, RoutingRule
 from blinkengage.infrastructure.database.models.rbac import Role, UserRole
+from blinkengage.infrastructure.database.models.service_directory import (
+    Service,
+    ServiceVersion,
+)
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
@@ -53,6 +59,16 @@ DEFAULT_QUEUE_DESCRIPTION = "Every conversation arrives here until you add queue
 #: Lower than any rule an administrator is likely to write, so their routing
 #: always wins and this only catches what nothing else claimed.
 DEFAULT_RULE_PRIORITY = 1000
+
+#: The company's first Service. Named for what it is rather than for the
+#: queue it feeds, because a company that later splits into several will
+#: rename this one rather than delete it.
+DEFAULT_SERVICE_CODE = "general"
+DEFAULT_SERVICE_NAME = "General"
+DEFAULT_SERVICE_DESCRIPTION = (
+    "What this company promises: response targets and AI policy. Edit it, "
+    "rename it, or add services of your own alongside it."
+)
 
 
 # A bcrypt hash of a random, never-used password. Verified against on a
@@ -393,6 +409,81 @@ class AuthService:
                 target_queue_id=queue.id,
             )
         )
+        await self._seed_default_service(company_id=company_id, queue=queue)
+
+    async def _seed_default_service(self, *, company_id: uuid.UUID, queue: Queue) -> None:
+        """The company's first Service, and the chain is complete.
+
+        **Company → Service → Queue → catch-all rule.** A company registered
+        from here on is service-first from its first second: its SLA targets
+        and AI policy come from a Service it owns rather than from platform
+        fallbacks, and the Services screen shows something real the day they
+        open it instead of an empty directory they have to guess at.
+
+        Deliberately carries the *service* defaults rather than the platform
+        ones. ``AiPolicy.pickup_delay_seconds`` is thirty seconds, so a new
+        company's AI genuinely is a queue worker — it waits, visibly, and an
+        agent gets first refusal. That is the promise the product makes, and
+        until a Service existed there was nowhere for it to be true.
+
+        Existing companies are *not* changed to match. Stage 2 seeds them from
+        what they already run on, because a migration that also changed
+        behaviour would be two things at once and only one of them announced.
+        See ``docs/architecture/service-centric-migration.md``.
+
+        Named as the company default so ``FallbackStage`` resolves to it
+        explicitly rather than to whichever service happens to sort first —
+        the same reason Stage 2 sets one.
+        """
+        service = Service(
+            company_id=company_id,
+            code=DEFAULT_SERVICE_CODE,
+            name=DEFAULT_SERVICE_NAME,
+            description=DEFAULT_SERVICE_DESCRIPTION,
+        )
+        self._session.add(service)
+        await self._session.flush()
+
+        policy = AiPolicy()
+        self._session.add(
+            ServiceVersion(
+                service_id=service.id,
+                company_id=company_id,
+                version=1,
+                name=DEFAULT_SERVICE_NAME,
+                logical_queue_id=queue.id,
+                logical_queue_name=queue.name,
+                ai_enabled=policy.enabled,
+                ai_pickup_delay_seconds=policy.pickup_delay_seconds,
+                # ``ai_resume_delay_seconds`` is deliberately left to the
+                # column default. Nothing in the platform consults it — see
+                # ``test_nothing_reads_the_ai_resume_delay`` — so writing it
+                # here would put a figure on the Services screen that reads
+                # like a promise and is not one. The stored row is identical
+                # either way; what differs is whether the seed asserts a
+                # behaviour that does not exist.
+                change_note="Created with the company",
+            )
+        )
+        await self._session.flush()
+        service.current_version_id = (
+            (
+                await self._session.execute(
+                    select(ServiceVersion.id).where(ServiceVersion.service_id == service.id)
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+        company = await self._companies.get_by_id(company_id)
+        if company is not None:
+            settings = dict(company.settings or {})
+            settings["services"] = {
+                **(settings.get("services") or {}),
+                "default_service_id": str(service.id),
+            }
+            company.settings = settings
 
     async def _seed_default_roles(self, *, company_id: uuid.UUID) -> Role:
         """Delegates to the same generic sync used to backfill existing

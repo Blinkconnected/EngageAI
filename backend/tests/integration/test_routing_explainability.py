@@ -5,6 +5,12 @@ actually *writes it down* — that a real inbound message produces rows
 naming the rule, the strategy and the people who were passed over, and
 that the two cases somebody escalates about (nothing routed it, nobody
 took it) leave a record rather than silence.
+
+These are the *rules* path — how a conversation reaches a queue when no
+service claimed it. Since registration seeds a service that owns the general
+queue, that path is now something a test has to ask for: see the autouse
+``_the_rules_path`` fixture below. The service path has its own file,
+``test_service_resolution_ingest.py``.
 """
 
 import pathlib
@@ -76,6 +82,36 @@ async def _delete_every_routing_rule(client: AsyncClient, owner_headers: dict) -
     rules = listing["items"] if isinstance(listing, dict) else listing
     for rule in rules:
         await client.delete(f"/api/v1/routing-rules/{rule['id']}", headers=owner_headers)
+
+
+async def _archive_every_service(client: AsyncClient, owner_headers: dict) -> None:
+    """Empties the directory registration seeds.
+
+    Registration gives every company a General service owning the general
+    queue, so a new company is service-first from its first second. Where a
+    service names a queue, the service decides — which means a directory with
+    anything in it never reaches the rules.
+
+    The rules are not thereby legacy. They are how a conversation finds a
+    queue when no service claimed it: every company that predates Stage 2,
+    and every service that deliberately names none. That is the path this
+    module is about, so an empty directory is its precondition.
+    """
+    for service in (await client.get("/api/v1/services", headers=owner_headers)).json():
+        response = await client.delete(f"/api/v1/services/{service['id']}", headers=owner_headers)
+        assert response.status_code == 204, response.text
+
+
+@pytest.fixture(autouse=True)
+async def _the_rules_path(client: AsyncClient, owner_headers: dict) -> None:
+    """Every test in this module routes through rules, so none has a service.
+
+    Autouse rather than eleven identical calls, because it is a property of
+    the module and not of any one test: a test added here later is asking
+    the same question as the rest, and would otherwise fail for a reason
+    that has nothing to do with what it set out to prove.
+    """
+    await _archive_every_service(client, owner_headers)
 
 
 async def _routing_rule(

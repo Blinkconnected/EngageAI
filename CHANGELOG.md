@@ -16,6 +16,27 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A new company now starts with a Service, not an empty Services screen.**
+  Registering a company creates the whole chain it needs to work — the
+  company, a **General** service, a general queue, and a rule that sends
+  everything to it — instead of leaving the Services screen blank for
+  somebody to guess at. The service is marked as the company default, so
+  anything no other service claims lands there.
+
+  It arrives configured the way the product describes itself. **AI waits 30
+  seconds before answering**, so a person genuinely gets first refusal on
+  every conversation rather than finding AI already replied. **AI is off
+  until you turn it on**, matching the company-wide setting, so nothing
+  automated reaches a customer before somebody decides it should. **Response
+  time targets are left unset**, which keeps whatever your queue already
+  promises — a new service does not quietly stop the clocks.
+
+  Existing companies are untouched by this and keep working exactly as they
+  do today; they are moved separately, from the settings they already run
+  on. If you turn on company-wide AI and replies still do not appear, check
+  the service's own AI setting: the conversation records which of the two
+  said no.
+
 - **A dashboard for the pattern detection, and a dial you are allowed to
   turn.** Owners and administrators get a Pattern detection page showing
   what the platform is grouping and whether it is working: how many

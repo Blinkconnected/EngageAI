@@ -183,3 +183,72 @@ class TestTheSeedIsOnlyASeed:
         companies = {queue.company_id for queue in queues}
         assert len(companies) == len(queues), "one queue per company, not one shared"
         assert all(rule.company_id in companies for rule in rules)
+
+
+class TestARegisteredCompanyIsServiceFirst:
+    """Company → Service → Queue → catch-all rule, from the first second.
+
+    Until a Service existed there was nowhere for "AI is a queue worker, not
+    a first responder" to be true: the pickup delay lives on a Service, and a
+    company without one fell through to a platform default of zero. A company
+    registered now owns that promise rather than inheriting a fallback.
+    """
+
+    async def test_registration_creates_a_service(
+        self, client: AsyncClient, owner_headers: dict, app: Any
+    ) -> None:
+        response = await client.get("/api/v1/services", headers=owner_headers)
+
+        assert response.status_code == 200, response.text
+        services = _rows(response.json())
+        assert len(services) == 1, "one, so the directory reads as a starting point"
+        assert services[0]["name"] == "General"
+
+    async def test_the_service_feeds_the_queue_the_catch_all_rule_points_at(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        """Otherwise a conversation resolves to a Service that sends it
+        somewhere the routing rules never mentioned, and the two answers to
+        "where does this go" disagree on day one."""
+        queues = _rows((await client.get("/api/v1/queues", headers=owner_headers)).json())
+        rules = _rows((await client.get("/api/v1/routing-rules", headers=owner_headers)).json())
+        services = _rows((await client.get("/api/v1/services", headers=owner_headers)).json())
+        detail = await client.get(f"/api/v1/services/{services[0]['id']}", headers=owner_headers)
+
+        assert detail.status_code == 200, detail.text
+        version = detail.json()["current"]
+        assert version is not None, "a service with no version can route nothing"
+        assert str(version["logical_queue_id"]) == str(queues[0]["id"])
+        assert str(rules[0]["target_queue_id"]) == str(queues[0]["id"])
+
+    async def test_it_is_named_the_company_default(self, registered_owner: dict, app: Any) -> None:
+        """``FallbackStage`` otherwise resolves to whichever Service sorts
+        first, which would make reordering the Services screen change which
+        one catches unclaimed conversations."""
+        import uuid as _uuid
+
+        from blinkengage.domain.company_settings import default_service_id
+        from blinkengage.infrastructure.database.models.company import Company
+        from blinkengage.infrastructure.database.models.service_directory import Service
+
+        company_id = _uuid.UUID(registered_owner["user"]["company"]["id"])
+        factory = app.state.container.session_factory()
+        async with factory() as session:
+            company = await session.get(Company, company_id)
+            assert company is not None
+            chosen = default_service_id(company.settings)
+            assert chosen is not None, "the company states which service is its default"
+            service = await session.get(Service, chosen)
+
+        assert service is not None, "and it names one that exists"
+        assert service.company_id == company_id
+
+    async def test_ai_waits_for_a_human_because_a_service_now_says_so(
+        self, client: AsyncClient, owner_headers: dict
+    ) -> None:
+        """The queue-worker promise, made true by configuration a company
+        owns rather than by the platform asserting it."""
+        services = _rows((await client.get("/api/v1/services", headers=owner_headers)).json())
+        detail = await client.get(f"/api/v1/services/{services[0]['id']}", headers=owner_headers)
+
+        assert detail.json()["current"]["ai_pickup_delay_seconds"] == 30

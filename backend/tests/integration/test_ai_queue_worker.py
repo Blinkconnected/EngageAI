@@ -46,6 +46,7 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
 from blinkengage.infrastructure.repositories.ownership_repository import OwnershipRepository
 from tests.integration.test_routing_explainability import (
     _agent,
+    _archive_every_service,
     _delete_every_routing_rule,
     _ingest,
     _queue,
@@ -79,6 +80,13 @@ async def _run(
     route: bool = True,
 ) -> tuple[Conversation, list[RoutingDecisionRecord]]:
     chat = await _web_chat_session(client, headers)
+    # The directory is exactly what the caller asks for and nothing else.
+    # Registration seeds a General service that owns the general queue and is
+    # named the company default, so it would win the fallback ahead of the
+    # ``Support`` service below — every caller's ``ai_enabled`` and
+    # ``confidence_threshold`` would be read off a service they did not
+    # write, and ``with_service=False`` would not mean what it says.
+    await _archive_every_service(client, headers)
     if route:
         await _autopilot_queue(client, headers)
     else:

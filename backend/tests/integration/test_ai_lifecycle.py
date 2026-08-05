@@ -433,6 +433,13 @@ class TestWhatTheLifecycleDoesNotYetDo:
                 # setting. ``test_operational_state`` holds the other half:
                 # that no code path actually assigns that state.
                 "src/blinkengage/domain/operational_state.py",
+                # Names it only in a comment, to record that the seeded
+                # service deliberately leaves it to the column default: a
+                # figure written here would show on the Services screen and
+                # read as a promise the platform does not keep. The mention
+                # is the reason the write is absent, so it goes when the
+                # setting is either implemented or dropped.
+                "src/blinkengage/application/services/auth_service.py",
                 # *Resolves* it — Service, then the platform default — so the
                 # value has one source when something finally obeys it. Still
                 # nothing reads the resolved figure, which is why this test

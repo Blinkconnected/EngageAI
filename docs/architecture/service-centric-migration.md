@@ -3,9 +3,11 @@
 *Moving every company from Queue-centric to Service-centric configuration
 without changing what any of them experiences on the day it happens.*
 
-**Status: Stage 1 shipped. Stage 2 built and dry-run against production; not yet applied. Stages 3–4 proposed.** Traced against the
-implementation, not the intent; every claim below was checked against the
-source or the live database.
+**Status: Stage 1 shipped. Stage 2 built and dry-run against production; not
+yet applied. Stage 3 part-shipped — registration now creates the full chain;
+the drift check and the read-only legacy fields are still to come. Stage 4
+proposed.** Traced against the implementation, not the intent; every claim
+below was checked against the source or the live database.
 
 ---
 
@@ -309,11 +311,37 @@ must not overwrite.
 
 ### Stage 3 — Compatibility mode *(one writer, two readers)*
 
+- Registration creates the full chain: **Company → General Service → General
+  Queue → catch-all rule**, with the Service as the company default.
+  ✅ **shipped** — see `AuthService._seed_default_service`.
+
+  The seeded Service carries `AiPolicy()`'s own defaults, not the platform
+  fallbacks: a 30-second pickup delay, so a new company's AI genuinely is a
+  queue worker that waits and lets an agent take it first. It sets **no SLA
+  targets**, which is deliberate and safe — `resolve_sla_targets` treats a
+  service that measures nothing as *unconfigured* rather than as an
+  instruction to measure nothing, so the queue and platform tiers still
+  answer. AI is seeded **off**, matching the company-level autopilot default,
+  so the two tiers agree instead of contradicting each other.
+
+  *Known limitation.* A new company now has two AI switches to find: company
+  autopilot and the service's. Turning on only the first leaves AI silent.
+  The refusal is explained rather than silent — `AI_ENGAGEMENT` denies with
+  `SERVICE_DISABLED` from `SERVICE_CONTEXT`, which names the screen to go
+  to — but the onboarding Service step below is what actually resolves it.
+
+  This is also the change that made 46 tests fail at once, every one of them
+  because the seeded Service outranked configuration the test had written. It
+  is worth recording *why* that was the right kind of failure: the tests were
+  asserting on a directory they no longer controlled, and a seeded Service
+  that owns a queue beats any routing rule. Where a test needs the pre-service
+  world it now asks for it (`_archive_every_service`), the same way it already
+  had to ask for "no routing rules". A test that had quietly started
+  exercising a different queue is the failure mode this avoided.
+
 - Service becomes the **only** place new configuration can be written. Queue-level
   SLA fields and `SlaPolicy` attachment become read-only in the API and are
   labelled *legacy* in the UI, with a link to the service that now owns them.
-- Registration creates the full chain: **Company → General Service → General
-  Queue → catch-all rule**, with the Service as the company default.
 - A **drift check** runs as a scheduled job: for every company, compare
   service-resolved values against queue-resolved values and report divergence.
   Nothing auto-corrects. Divergence means somebody edited legacy config through
