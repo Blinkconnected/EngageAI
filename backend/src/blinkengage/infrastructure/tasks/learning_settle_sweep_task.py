@@ -40,8 +40,8 @@ from blinkengage.infrastructure.database.session import (
 )
 from blinkengage.infrastructure.repositories.learning_repository import (
     LearningObservationRepository,
-    LearningRunRepository,
 )
+from blinkengage.infrastructure.tasks.learning_run_window import record_learning_run
 from blinkengage.infrastructure.tasks.run_recorder import record_run
 
 logger = get_logger(__name__)
@@ -104,13 +104,15 @@ async def _sweep_async() -> int:
                         company_id=str(company_id),
                     )
 
-            await _record_run(
+            await record_learning_run(
                 session_factory,
+                run_type=RUN_TYPE_SETTLE,
+                pipeline_version=PIPELINE_VERSION,
+                interval_seconds=settings.learning_settle_interval_seconds,
                 started=started,
                 items_in=len(pending),
                 items_out=settled,
                 errors=failures,
-                interval_seconds=settings.learning_settle_interval_seconds,
             )
 
             report.count("observations_due", len(pending))
@@ -121,64 +123,6 @@ async def _sweep_async() -> int:
         # Required, not tidiness — see ``events/relay.py``.
         if _engine is not None:
             await _engine.dispose()
-
-
-def _window_start(moment: datetime, *, seconds: int) -> datetime:
-    """Floor ``moment`` to the start of its window.
-
-    Epoch-anchored rather than anchored to the hour, so a cadence that
-    does not divide an hour still produces contiguous, non-overlapping
-    windows.
-    """
-    epoch_seconds = int(moment.timestamp())
-    return datetime.fromtimestamp(epoch_seconds - (epoch_seconds % seconds), tz=UTC)
-
-
-async def _record_run(
-    session_factory: async_sessionmaker[AsyncSession],
-    *,
-    started: datetime,
-    items_in: int,
-    items_out: int,
-    errors: int,
-    interval_seconds: int,
-) -> None:
-    """The Learning-owned record of this execution.
-
-    Separate from ``SchedulerRun`` (which the ``record_run`` context
-    manager writes) because that is the platform's scheduler telemetry and
-    this is Learning's own history — the thing charter §15's health
-    metrics aggregate over, and the thing a replay reads to know what a
-    pipeline version has already covered.
-    """
-    async with session_scope(session_factory) as session:
-        runs = LearningRunRepository(session)
-        run = await runs.start(
-            company_id=None,
-            run_type=RUN_TYPE_SETTLE,
-            pipeline_version=PIPELINE_VERSION,
-            # Truncated to the sweep's own cadence, so two sweeps racing
-            # inside one window collide on the unique constraint — the run
-            # is a window, not a heartbeat — while consecutive sweeps each
-            # get a row.
-            #
-            # This used to truncate to the hour, against a 15-minute
-            # cadence, so three runs in four silently recorded nothing and
-            # their failures never reached the health dashboard. The
-            # window and the schedule now come from the same setting,
-            # which is what stops them disagreeing again.
-            window_start=_window_start(started, seconds=interval_seconds),
-            now=started,
-        )
-        if run is None:
-            return
-        await runs.finish(
-            run=run,
-            now=datetime.now(UTC),
-            items_in=items_in,
-            items_out=items_out,
-            errors=errors,
-        )
 
 
 @celery_app.task(name="blinkengage.learning.settle_observations")  # type: ignore[misc]

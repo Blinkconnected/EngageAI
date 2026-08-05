@@ -6,6 +6,7 @@ handler is an API promise nothing keeps.
 """
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -119,3 +120,112 @@ class LearningHealthResponse(BaseModel):
     #: rather than here because the rows themselves are gone — that being
     #: the point of an erasure.
     erased: int
+
+
+# --- phase 2: clusters, trends, anomalies -------------------------------
+#
+# Read-only, like everything else Learning exposes. Phase 2 discovers; it
+# proposes nothing, so there is deliberately no request schema for
+# approving, promoting or dismissing anything.
+
+
+class ClusterMemberResponse(BaseModel):
+    """One observation's membership, with why it is here."""
+
+    observation_id: UUID
+    observed_at: datetime
+    #: Cosine similarity to the centroid when it joined. The first
+    #: question anybody asks of a cluster they disagree with.
+    similarity: float
+
+
+class ClusterResponse(BaseModel):
+    id: UUID
+    signature: str
+    algorithm_version: int
+    pipeline_version: int
+    state: str
+    size: int
+    distinct_customers: int
+    distinct_days: int
+    confidence: float
+    stability: float
+    #: Recorded rather than merely applied, so "why is this not a finding"
+    #: is answerable from the row itself.
+    meets_floors: bool
+    first_seen: datetime
+    last_seen: datetime
+    language_distribution: dict[str, int]
+    feature_summary: dict[str, Any]
+    #: The centroid as ``term -> weight``. Returned on the detail endpoint
+    #: only: it is forty numbers that mean nothing in a list.
+    centroid: dict[str, float] | None = None
+    members: list[ClusterMemberResponse] | None = None
+
+
+class TrendResponse(BaseModel):
+    id: UUID
+    subject_kind: str
+    subject_key: str
+    kind: str
+    #: Both, always. The p-value is what the test said; the q-value is what
+    #: it means after the rest of the family was accounted for, and a
+    #: reader has to be able to see that the correction happened.
+    p_value: float
+    q_value: float
+    recent_count: int
+    baseline_count: int
+    rate_ratio: float | None
+    window_start: datetime
+    window_end: datetime
+    window_days: int
+    windows_held: int
+    #: Cleared the statistics once; not yet a trend. Two consecutive
+    #: windows are required, and this is that gate made visible.
+    provisional: bool
+    detected_at: datetime
+    detail: dict[str, Any]
+
+
+class AnomalyResponse(BaseModel):
+    id: UUID
+    kind: str
+    subject_key: str
+    cluster_id: UUID | None
+    severity: str
+    observed: float
+    baseline: float
+    score: float
+    window_start: datetime
+    window_end: datetime
+    detected_at: datetime
+    summary: str | None
+    detail: dict[str, Any]
+
+
+class LearningMetricsResponse(BaseModel):
+    """Phase 2's metrics, as the charter's §15/§16/§17 split.
+
+    Precision is **not** here, and its absence is the honest answer:
+    trend precision and anomaly precision can only be measured against
+    outcomes nobody has recorded yet, because phase 2 shows findings to
+    nobody and collects no verdicts. Reporting a number for them would be
+    reporting a guess. See the phase 2 review.
+    """
+
+    clusters_by_state: dict[str, int]
+    clusters_total: int
+    clusters_meeting_floors: int
+    mean_stability: float | None
+    trends_by_kind: dict[str, int]
+    trends_provisional: int
+    anomalies_by_kind: dict[str, int]
+    #: Observations placed in a cluster, over observations eligible for
+    #: one. A low number is not a failure — it is conversations too varied
+    #: to group, which is itself a finding about the corpus.
+    clustered_fraction: float | None
+    duplicate_suppression: dict[str, int]
+    last_cluster_run_at: datetime | None
+    last_analysis_run_at: datetime | None
+    algorithm_version: int
+    pipeline_version: int

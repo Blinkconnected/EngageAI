@@ -41,14 +41,18 @@ import pytest
 SRC = pathlib.Path(__file__).resolve().parents[2] / "src" / "blinkengage"
 MODELS = SRC / "infrastructure" / "database" / "models"
 
-#: The four tables Learning owns. Everything else in the database is
-#: somebody else's, and Learning may only read it.
+#: The tables Learning owns. Everything else in the database is somebody
+#: else's, and Learning may only read it. Phase 2 added four.
 LEARNING_MODELS: frozenset[str] = frozenset(
     {
         "LearningObservation",
         "LearningObservationFeature",
         "LearningObservationRef",
         "LearningRun",
+        "LearningCluster",
+        "LearningClusterMember",
+        "LearningTrend",
+        "LearningAnomaly",
     }
 )
 
@@ -60,7 +64,9 @@ LEARNING_PATHS: tuple[str, ...] = (
     "domain/learning_",
     "application/services/learning_",
     "infrastructure/repositories/learning_repository.py",
+    "infrastructure/repositories/learning_analysis_repository.py",
     "infrastructure/database/models/learning.py",
+    "infrastructure/database/models/learning_analysis.py",
     "infrastructure/events/consumers/learning_",
     "infrastructure/tasks/learning_",
     "api/schemas/learning.py",
@@ -73,9 +79,9 @@ LEARNING_PATHS: tuple[str, ...] = (
 #: a model construction.
 ALLOWED_FOREIGN_MODELS: dict[str, str] = {}
 
-#: Memory writes, by the name of the thing that performs them. Phase 1
-#: performs none: an observation is evidence *for* a future memory fact,
-#: not a fact.
+#: Memory writes, by the name of the thing that performs them. Phases 1
+#: and 2 perform none: an observation is evidence *for* a future memory
+#: fact, a cluster is a population, and neither is a fact.
 MEMORY_WRITE_CALLS: frozenset[str] = frozenset(
     {
         "record_observation",
@@ -86,6 +92,29 @@ MEMORY_WRITE_CALLS: frozenset[str] = frozenset(
         "forget",
         "purge",
     }
+)
+
+#: Publishing, by the name of the thing that does it. **Phase 2 publishes
+#: nothing**, and that is the phase's defining restraint rather than an
+#: omission from it: candidates, suggestions, contradictions and
+#: notifications are phases 3 and 4, and each one is a promise to a human
+#: that phase 2 has not earned the right to make.
+#:
+#: The failure this guards against is specific and tempting. An anomaly
+#: detector is one line away from a notification, and the line is easy to
+#: add before anybody has measured whether the detector is right. Once
+#: operators mute it, they mute it permanently — while the precision
+#: problem gets fixed and nobody comes back.
+PUBLISH_CALLS: frozenset[str] = frozenset({"publish", "send_task", "notify", "dispatch"})
+
+#: Contexts phase 2 must not reach into, by module path fragment. Reading
+#: is not the concern — Learning reads conversations and messages by
+#: design; *importing a writer* is.
+FORBIDDEN_IMPORTS: tuple[str, ...] = (
+    "application.services.memory_manager",
+    "application.services.knowledge_service",
+    "application.services.ai_",
+    "infrastructure.ai.",
 )
 
 
@@ -334,4 +363,89 @@ class TestTheEvidenceGraphStaysAcyclic:
             f"{module} consumes {cyclic}, closing the evidence loop: Learning would "
             "observe its own output, and confidence could rise with no new human "
             "evidence anywhere in the cycle."
+        )
+
+
+class TestPhaseTwoStaysInsideItsPhase:
+    """Phase 2 discovers. It proposes nothing and tells nobody.
+
+    Every item here is on the charter's explicit "MUST NOT" list for this
+    phase. They are guarded statically rather than behaviourally because
+    each is an *absence*, and a behavioural test can only prove that the
+    paths somebody wrote do not do it.
+    """
+
+    def test_learning_publishes_nothing(self) -> None:
+        violations: dict[str, list[str]] = {}
+        for relative, path in _learning_files():
+            tree = ast.parse(path.read_text(), filename=str(path))
+            calls = sorted(
+                {
+                    f"{node.func.attr} (line {node.lineno})"
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in PUBLISH_CALLS
+                }
+            )
+            if calls:
+                violations[relative] = calls
+
+        assert not violations, (
+            "Phase 2 stores findings and notifies nobody. Candidate events, "
+            "knowledge suggestions and notifications are phases 3 and 4:\n"
+            + "\n".join(
+                f"  {where}: {', '.join(calls)}" for where, calls in sorted(violations.items())
+            )
+            + "\n\nAn anomaly detector wired to alerting before its precision is "
+            "known teaches operators to mute it, and the mute outlives the fix."
+        )
+
+    def test_learning_imports_no_other_context_s_writer(self) -> None:
+        violations: dict[str, list[str]] = {}
+        for relative, path in _learning_files():
+            tree = ast.parse(path.read_text(), filename=str(path))
+            bad: list[str] = []
+            for node in ast.walk(tree):
+                module = ""
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    module = node.module
+                elif isinstance(node, ast.Import):
+                    module = ",".join(alias.name for alias in node.names)
+                if any(fragment in module for fragment in FORBIDDEN_IMPORTS):
+                    bad.append(f"{module} (line {node.lineno})")
+            if bad:
+                violations[relative] = sorted(bad)
+
+        assert not violations, (
+            "Learning imports another context's writer, which is one call away "
+            "from using it:\n"
+            + "\n".join(f"  {where}: {', '.join(bad)}" for where, bad in sorted(violations.items()))
+        )
+
+    def test_no_model_is_called_anywhere_in_learning(self) -> None:
+        """Charter phase 2: no LLM reasoning at all.
+
+        Guarded by import rather than by call, because a model provider
+        that is imported but not yet called is a change of mind away from
+        being called, and the review that would catch it is the one that
+        just approved the import.
+        """
+        violations: dict[str, list[str]] = {}
+        for relative, path in _learning_files():
+            source = path.read_text()
+            hits = [
+                fragment
+                for fragment in ("AiProvider", "openai", "anthropic", "ollama", "completion(")
+                if fragment in source
+            ]
+            if hits:
+                violations[relative] = hits
+
+        assert not violations, (
+            "Phase 2 makes no model calls — clustering is lexical and the "
+            "statistics are arithmetic:\n"
+            + "\n".join(
+                f"  {where}: {', '.join(hits)}" for where, hits in sorted(violations.items())
+            )
         )

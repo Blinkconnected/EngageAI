@@ -78,6 +78,10 @@ LEARNING_TABLES = (
     "learning_observation_features",
     "learning_observation_refs",
     "learning_runs",
+    "learning_clusters",
+    "learning_cluster_members",
+    "learning_trends",
+    "learning_anomalies",
 )
 
 #: Written to, then deleted. A fixed id so an interrupted run can be
@@ -554,8 +558,13 @@ async def run_load(
                     turns=turns,
                     outcome_inputs=OutcomeInputs(
                         status="resolved",
-                        started_at=now - timedelta(hours=2),
-                        ended_at=now - timedelta(hours=1),
+                        # Ended well outside the settle window, so these
+                        # observations are READY. Phase 2 refuses to
+                        # cluster anything still settling (charter I-7),
+                        # so a corpus that ends an hour ago measures the
+                        # eligibility gate and nothing else.
+                        started_at=now - timedelta(days=5, hours=2),
+                        ended_at=now - timedelta(days=5),
                         now=now,
                         resolved_by=ResolvedBy.HUMAN,
                         inbound_message_count=sum(1 for t in turns if t.inbound),
@@ -878,6 +887,132 @@ async def ensure_validation_company(
         await session.commit()
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 — clustering latency and throughput
+# ---------------------------------------------------------------------------
+
+
+async def measure_clustering(
+    session_factory: async_sessionmaker[AsyncSession], *, now: datetime
+) -> dict[str, Any]:
+    """Cluster what the harness just wrote, and time it.
+
+    Run against the validation tenant's own observations, so the numbers
+    describe the algorithm rather than whatever the installation happens
+    to hold. Latency is per *pass* rather than per observation: clustering
+    compares each observation against every live centroid, so its cost is
+    a function of how many clusters exist, and a per-observation figure
+    would hide exactly that.
+    """
+    from blinkengage.application.services.learning_clustering_service import (
+        LearningClusteringService,
+    )
+    from blinkengage.domain.learning_observation import PIPELINE_VERSION
+    from blinkengage.infrastructure.repositories.learning_analysis_repository import (
+        LearningClusterRepository,
+    )
+
+    started = time.perf_counter()
+    async with session_factory() as session:
+        repository = LearningClusterRepository(session)
+        observations = await repository.observations_for_clustering(
+            company_id=VALIDATION_COMPANY,
+            pipeline_version=PIPELINE_VERSION,
+            since=now - timedelta(days=3650),
+            limit=100_000,
+        )
+        loaded = time.perf_counter() - started
+
+        clustering_started = time.perf_counter()
+        result = await LearningClusteringService(clusters=repository).cluster_company(
+            company_id=VALIDATION_COMPANY,
+            pipeline_version=PIPELINE_VERSION,
+            observations=observations,
+            now=now,
+        )
+        await session.commit()
+        clustering = time.perf_counter() - clustering_started
+
+    # The replay: same observations, nothing new to place.
+    replay_started = time.perf_counter()
+    async with session_factory() as session:
+        repository = LearningClusterRepository(session)
+        again = await repository.observations_for_clustering(
+            company_id=VALIDATION_COMPANY,
+            pipeline_version=PIPELINE_VERSION,
+            since=now - timedelta(days=3650),
+            limit=100_000,
+        )
+        replay = await LearningClusteringService(clusters=repository).cluster_company(
+            company_id=VALIDATION_COMPANY,
+            pipeline_version=PIPELINE_VERSION,
+            observations=again,
+            now=now,
+        )
+        await session.commit()
+    replay_seconds = time.perf_counter() - replay_started
+
+    async with session_factory() as session:
+        sizes = (
+            await session.execute(
+                text(
+                    "select count(*), coalesce(sum(size),0), "
+                    "count(*) filter (where meets_floors) "
+                    "from learning_clusters where company_id = :c"
+                ),
+                {"c": VALIDATION_COMPANY},
+            )
+        ).one()
+        bytes_used = {
+            str(name): int(size)
+            for name, size in (
+                await session.execute(
+                    text(
+                        "select relname, pg_total_relation_size(relid) "
+                        "from pg_catalog.pg_statio_user_tables "
+                        "where relname = any(:names)"
+                    ),
+                    {"names": ["learning_clusters", "learning_cluster_members"]},
+                )
+            ).all()
+        }
+
+    observations_seen = result.observations_considered
+    return {
+        "observations": observations_seen,
+        "load_seconds": round(loaded, 4),
+        "clustering_seconds": round(clustering, 4),
+        "observations_per_second": (
+            round(observations_seen / clustering, 2) if clustering else None
+        ),
+        "observations_per_hour": (
+            round(observations_seen / clustering * 3600) if clustering else None
+        ),
+        "clusters_created": result.clusters_created,
+        "clusters_merged": result.clusters_merged,
+        "clusters_total": int(sizes[0]),
+        "clusters_meeting_floors": int(sizes[2]),
+        "mean_cluster_size": (round(int(sizes[1]) / int(sizes[0]), 2) if int(sizes[0]) else None),
+        "replay": {
+            "wall_seconds": round(replay_seconds, 4),
+            "clusters_created": replay.clusters_created,
+            "observations_placed": replay.observations_placed,
+            "skipped_already_clustered": replay.observations_skipped_already_clustered,
+            "duplicate_members_suppressed": replay.duplicate_members_suppressed,
+            # The property the whole phase rests on: re-running creates
+            # nothing.
+            "replay_safe": replay.clusters_created == 0 and replay.observations_placed == 0,
+        },
+        "storage": {
+            "bytes": sum(bytes_used.values()),
+            "bytes_per_cluster": (
+                round(sum(bytes_used.values()) / int(sizes[0])) if int(sizes[0]) else None
+            ),
+            "by_table": bytes_used,
+        },
+    }
+
+
 async def cleanup(
     session_factory: async_sessionmaker[AsyncSession], *, drop_company: bool = False
 ) -> None:
@@ -889,6 +1024,18 @@ async def cleanup(
     benchmark.
     """
     async with session_factory() as session:
+        # Phase 2's derived rows first: they reference the observations
+        # below, and they are rebuildable, so removing them costs nothing
+        # but the next sweep's work.
+        await session.execute(
+            text("delete from learning_cluster_members where company_id = :c"),
+            {"c": VALIDATION_COMPANY},
+        )
+        for table in ("learning_anomalies", "learning_trends", "learning_clusters"):
+            await session.execute(
+                text(f"delete from {table} where company_id = :c"),  # noqa: S608
+                {"c": VALIDATION_COMPANY},
+            )
         for table in ("learning_observation_refs", "learning_observation_features"):
             await session.execute(
                 text(
@@ -957,6 +1104,9 @@ async def main() -> int:
                     load["storage"]["bytes_per_observation"],
                     per_day=args.conversations_per_day,
                 ),
+            )
+            report.add(
+                "clustering", await measure_clustering(session_factory, now=datetime.now(UTC))
             )
             await cleanup(session_factory, drop_company=True)
     finally:

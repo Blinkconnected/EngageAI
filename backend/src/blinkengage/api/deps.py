@@ -67,6 +67,9 @@ from blinkengage.application.services.knowledge_service import KnowledgeService
 from blinkengage.application.services.learning_erasure_participant import (
     LearningErasureParticipant,
 )
+from blinkengage.application.services.learning_pattern_query_service import (
+    LearningPatternQueryService,
+)
 from blinkengage.application.services.learning_query_service import LearningQueryService
 from blinkengage.application.services.ledger_service import (
     LedgerReconciliation,
@@ -199,6 +202,11 @@ from blinkengage.infrastructure.repositories.knowledge_index_repository import (
 from blinkengage.infrastructure.repositories.knowledge_repository import (
     KnowledgeArticleRepository,
     KnowledgeCategoryRepository,
+)
+from blinkengage.infrastructure.repositories.learning_analysis_repository import (
+    LearningAnomalyRepository,
+    LearningClusterRepository,
+    LearningTrendRepository,
 )
 from blinkengage.infrastructure.repositories.learning_repository import (
     LearningObservationRepository,
@@ -1269,6 +1277,20 @@ def get_learning_query_service(
         runs=LearningRunRepository(session),
         companies=CompanyRepository(session),
         erasures=LearningErasureCounter(session),
+    )
+
+
+def get_learning_pattern_query_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LearningPatternQueryService:
+    """Reading what phase 2 discovered. No writer is exposed: clusters,
+    trends and anomalies are produced by sweeps, never by a request."""
+    return LearningPatternQueryService(
+        clusters=LearningClusterRepository(session),
+        trends=LearningTrendRepository(session),
+        anomalies=LearningAnomalyRepository(session),
+        observations=LearningObservationRepository(session),
+        runs=LearningRunRepository(session),
     )
 
 

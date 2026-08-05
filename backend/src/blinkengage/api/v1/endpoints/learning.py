@@ -16,19 +16,36 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from blinkengage.api.deps import get_learning_query_service, require_permission
+from blinkengage.api.deps import (
+    get_learning_pattern_query_service,
+    get_learning_query_service,
+    require_permission,
+)
 from blinkengage.api.schemas.learning import (
+    AnomalyResponse,
+    ClusterMemberResponse,
+    ClusterResponse,
     LearningHealthResponse,
+    LearningMetricsResponse,
     LearningRunResponse,
     ObservationFeaturesResponse,
     ObservationRefResponse,
     ObservationResponse,
+    TrendResponse,
 )
 from blinkengage.api.schemas.pagination import Page, PageParams
+from blinkengage.application.services.learning_pattern_query_service import (
+    LearningPatternQueryService,
+)
 from blinkengage.application.services.learning_query_service import LearningQueryService
 from blinkengage.core.auth_context import AuthContext
+from blinkengage.domain.learning_cluster import ClusterState
 from blinkengage.domain.learning_observation import ObservationState
 from blinkengage.infrastructure.database.models.learning import LearningObservation
+from blinkengage.infrastructure.database.models.learning_analysis import (
+    LearningAnomaly,
+    LearningCluster,
+)
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
@@ -174,3 +191,196 @@ async def learning_health(
     somewhere else.
     """
     return await service.health(company_id=auth.company_id)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — what the platform found. Read-only, like everything above it.
+# ---------------------------------------------------------------------------
+
+
+def _cluster_response(row: LearningCluster, *, detailed: bool = False) -> ClusterResponse:
+    return ClusterResponse(
+        id=row.id,
+        signature=row.signature,
+        algorithm_version=row.algorithm_version,
+        pipeline_version=row.pipeline_version,
+        state=row.state,
+        size=row.size,
+        distinct_customers=row.distinct_customers,
+        distinct_days=row.distinct_days,
+        confidence=float(row.confidence),
+        stability=float(row.stability),
+        meets_floors=bool(row.meets_floors),
+        first_seen=row.first_seen,
+        last_seen=row.last_seen,
+        language_distribution=dict(row.language_distribution or {}),
+        feature_summary=dict(row.feature_summary or {}),
+        centroid=dict(row.centroid or {}) if detailed else None,
+        members=(
+            [
+                ClusterMemberResponse(
+                    observation_id=member.observation_id,
+                    observed_at=member.observed_at,
+                    similarity=float(member.similarity),
+                )
+                for member in sorted(row.members, key=lambda item: item.observed_at)
+            ]
+            if detailed
+            else None
+        ),
+    )
+
+
+@router.get("/clusters", response_model=Page[ClusterResponse])
+async def list_clusters(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningPatternQueryService, Depends(get_learning_pattern_query_service)],
+    page_params: Annotated[PageParams, Depends()],
+    state: ClusterState | None = None,
+    min_confidence: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
+) -> Page[ClusterResponse]:
+    """What recurs, strongest first.
+
+    ``forming`` clusters are included rather than hidden: a shape that has
+    not yet cleared the floors is exactly what somebody investigating an
+    emerging issue wants to see, and filtering it out of the default view
+    would make the platform look like it noticed nothing.
+    """
+    items, total = await service.list_clusters(
+        company_id=auth.company_id,
+        state=state,
+        min_confidence=min_confidence,
+        limit=page_params.page_size,
+        offset=page_params.offset,
+    )
+    return Page(
+        items=[_cluster_response(item) for item in items],
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+    )
+
+
+@router.get("/clusters/{cluster_id}", response_model=ClusterResponse)
+async def get_cluster(
+    cluster_id: UUID,
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningPatternQueryService, Depends(get_learning_pattern_query_service)],
+) -> ClusterResponse:
+    """One cluster, its centroid and every observation in it.
+
+    The traceability endpoint for phase 2, and the same argument as phase
+    1's: a finding nobody can trace back to the conversations behind it is
+    an assertion.
+    """
+    return _cluster_response(
+        await service.get_cluster(company_id=auth.company_id, cluster_id=cluster_id),
+        detailed=True,
+    )
+
+
+@router.get("/trends", response_model=Page[TrendResponse])
+async def list_trends(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningPatternQueryService, Depends(get_learning_pattern_query_service)],
+    page_params: Annotated[PageParams, Depends()],
+    kind: str | None = None,
+    include_provisional: bool = False,
+) -> Page[TrendResponse]:
+    """Confirmed trends by default.
+
+    ``include_provisional`` shows findings that cleared the statistics
+    once and have not yet held for a second window. Off by default because
+    mixing them in would defeat the persistence gate — a single window is
+    not a direction, and a list that treated it as one would be the noisy
+    inbox the correction exists to prevent.
+    """
+    items, total = await service.list_trends(
+        company_id=auth.company_id,
+        kind=kind,
+        include_provisional=include_provisional,
+        limit=page_params.page_size,
+        offset=page_params.offset,
+    )
+    return Page(
+        items=[
+            TrendResponse(
+                id=item.id,
+                subject_kind=item.subject_kind,
+                subject_key=item.subject_key,
+                kind=item.kind,
+                p_value=float(item.p_value),
+                q_value=float(item.q_value),
+                recent_count=item.recent_count,
+                baseline_count=item.baseline_count,
+                rate_ratio=None if item.rate_ratio is None else float(item.rate_ratio),
+                window_start=item.window_start,
+                window_end=item.window_end,
+                window_days=item.window_days,
+                windows_held=item.windows_held,
+                provisional=bool(item.provisional),
+                detected_at=item.detected_at,
+                detail=dict(item.detail or {}),
+            )
+            for item in items
+        ],
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+    )
+
+
+@router.get("/anomalies", response_model=Page[AnomalyResponse])
+async def list_anomalies(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningPatternQueryService, Depends(get_learning_pattern_query_service)],
+    page_params: Annotated[PageParams, Depends()],
+    kind: str | None = None,
+    severity: str | None = None,
+) -> Page[AnomalyResponse]:
+    """Things unlike their own history.
+
+    Nothing here was sent anywhere. Phase 2 stores anomalies and notifies
+    nobody, so that their precision can be measured before anything is
+    wired to them.
+    """
+    items, total = await service.list_anomalies(
+        company_id=auth.company_id,
+        kind=kind,
+        severity=severity,
+        limit=page_params.page_size,
+        offset=page_params.offset,
+    )
+    return Page(
+        items=[_anomaly_response(item) for item in items],
+        total=total,
+        page=page_params.page,
+        page_size=page_params.page_size,
+    )
+
+
+def _anomaly_response(row: LearningAnomaly) -> AnomalyResponse:
+    return AnomalyResponse(
+        id=row.id,
+        kind=row.kind,
+        subject_key=row.subject_key,
+        cluster_id=row.cluster_id,
+        severity=row.severity,
+        observed=float(row.observed),
+        baseline=float(row.baseline),
+        score=float(row.score),
+        window_start=row.window_start,
+        window_end=row.window_end,
+        detected_at=row.detected_at,
+        summary=row.summary,
+        detail=dict(row.detail or {}),
+    )
+
+
+@router.get("/metrics", response_model=LearningMetricsResponse)
+async def learning_metrics(
+    auth: Annotated[AuthContext, Depends(require_permission("intelligence.read"))],
+    service: Annotated[LearningPatternQueryService, Depends(get_learning_pattern_query_service)],
+) -> LearningMetricsResponse:
+    """Phase 2's own numbers: what it built, and how settled it is."""
+    return await service.metrics(company_id=auth.company_id)

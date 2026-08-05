@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     #: customer's flow. Semantic, and the pre-release suffix is ignored when
     #: comparing — a connector requiring 1.0.0 is satisfied by 1.0.0-beta.5,
     #: or nothing could declare a minimum before the first stable release.
-    platform_version: str = "1.0.0-beta.5"
+    platform_version: str = "1.1.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
@@ -271,6 +271,38 @@ class Settings(BaseSettings):
     #: are invisible on the health dashboard. Found in phase 1.5
     #: validation, where three sweeps in four left no trace.
     learning_settle_interval_seconds: int = 900
+
+    # --- phase 2: clustering and pattern detection ---------------------
+    #
+    # Nothing here costs money either: clustering is lexical and the
+    # statistics are arithmetic. What these bound is *work per sweep*, so
+    # one large tenant cannot turn a scheduled job into an outage.
+    #
+    #: How often clusters are rebuilt, and the width of the window a
+    #: cluster run claims — one setting for both, for the reason
+    #: ``learning_settle_interval_seconds`` documents.
+    learning_cluster_interval_seconds: int = 3600
+    #: Observations read per company per clustering pass.
+    learning_cluster_batch_size: int = 5000
+    #: Companies served per sweep. The budget is split between them in id
+    #: order, so a large tenant cannot starve small ones.
+    learning_cluster_companies_per_run: int = 50
+    #: How far back a sweep looks for observations to place. Longer than
+    #: the cadence on purpose: an observation that settles late must still
+    #: be picked up, and re-reading an already-clustered one costs a
+    #: single indexed lookup that finds it and skips it.
+    learning_cluster_lookback_days: int = 14
+    #: Trend windows, and their width. Eight weekly windows is long enough
+    #: for two seasonal cycles and short enough that last spring does not
+    #: define what is normal now.
+    learning_trend_windows: int = 8
+    learning_trend_window_days: int = 7
+    #: How often trends and anomalies are recomputed. Daily rather than
+    #: hourly, and that is a statistical decision rather than a cost one:
+    #: testing the same weekly windows twenty-four times a day would be
+    #: multiple testing through the back door, and would defeat the
+    #: correction the detector applies at the front.
+    learning_analysis_interval_seconds: int = 86400
     #: How long an observation's outcome may still change. CSAT settles it
     #: immediately; this is the wait for the ones nobody rates, which is
     #: most of them. Deliberately far shorter than the 14-day CSAT token

@@ -337,6 +337,10 @@ class TestExtract:
 class TestSettleRunWindows:
     """The run row is a window, and the window must match the cadence.
 
+    Phase 2 moved this helper into ``learning_run_window`` because three
+    sweeps now share it — and duplicating the rule per sweep is exactly
+    how the defect below comes back.
+
     Found in phase 1.5: the sweep truncated its window to the hour while
     running every fifteen minutes, so three runs in four collided on the
     unique constraint and recorded nothing — including their failures,
@@ -355,10 +359,9 @@ class TestSettleRunWindows:
         ],
     )
     def test_consecutive_sweeps_get_their_own_window(self, moment: str, expected: str) -> None:
-        from blinkengage.infrastructure.tasks.learning_settle_sweep_task import (
-            _window_start,
-        )
+        from blinkengage.infrastructure.tasks.learning_run_window import window_start
 
+        _window_start = window_start
         hour, minute, second = (int(part) for part in moment.split(":"))
         floored = _window_start(datetime(2026, 8, 5, hour, minute, second, tzinfo=UTC), seconds=900)
         assert floored.strftime("%H:%M:%S") == expected
@@ -370,10 +373,9 @@ class TestSettleRunWindows:
         overlapping window at the top of every hour — and an overlap is a
         collision, which is a run that records nothing.
         """
-        from blinkengage.infrastructure.tasks.learning_settle_sweep_task import (
-            _window_start,
-        )
+        from blinkengage.infrastructure.tasks.learning_run_window import window_start
 
+        _window_start = window_start
         step = 7 * 60
         base = datetime(2026, 8, 5, 13, 0, tzinfo=UTC)
         windows = sorted(

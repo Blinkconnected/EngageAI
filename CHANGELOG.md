@@ -86,6 +86,40 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The platform now notices when the same problem keeps coming back.**
+  Completed conversations that are alike are grouped together, and each
+  group is measured over time: how many customers it involves, how many
+  separate days, whether it is growing or fading, whether it has gone
+  quiet and returned, and whether it behaves unlike its own history —
+  taking far longer than usual, being escalated far more often, or being
+  rated far worse.
+
+  **It tells nobody and changes nothing.** No alert, no ticket, no
+  suggested article, no note added to what the platform remembers. The
+  groups and the findings are pages an operator can open, and that is
+  deliberate: a detector wired to alerting before anybody has checked
+  whether it is right teaches people to mute it, and the mute outlasts
+  the fix.
+
+  Two rules keep the findings quiet enough to be worth reading. A group
+  has to involve **at least two different customers** before it counts as
+  a pattern at all — one person asking the same thing six times is one
+  person. And a trend has to hold for **two consecutive weeks** and
+  survive a statistical correction that accounts for how many things were
+  checked; without that correction, testing three hundred topics would
+  report about fifteen false trends every single week.
+
+  Grouping is repeatable by design: the same conversations always produce
+  the same groups, so the results can be rebuilt from scratch and
+  compared. Re-running creates nothing — verified at three thousand
+  conversations, where a second pass wrote no new groups, no duplicate
+  memberships and no additional storage.
+
+  New: `/api/v1/intelligence/clusters`,
+  `/api/v1/intelligence/clusters/{id}`, `/api/v1/intelligence/trends`,
+  `/api/v1/intelligence/anomalies` and `/api/v1/intelligence/metrics`,
+  for owners and administrators.
+
 - **The platform has started paying attention to how work actually
   finishes.** A new background layer records one summary per completed
   conversation: what it was about, which language it was in, any order

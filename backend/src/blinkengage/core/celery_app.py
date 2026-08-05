@@ -36,6 +36,8 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.knowledge_index_sweep_task",
         "blinkengage.infrastructure.tasks.memory_decay_sweep_task",
         "blinkengage.infrastructure.tasks.learning_settle_sweep_task",
+        "blinkengage.infrastructure.tasks.learning_cluster_sweep_task",
+        "blinkengage.infrastructure.tasks.learning_analysis_sweep_task",
     ],
 )
 
@@ -222,6 +224,24 @@ celery_app.conf.update(
         # the window is measured in days, so this only needs to be fine
         # enough that "settled" is not noticeably late, and a run with
         # nothing due costs one indexed query against a partial index.
+        # Groups settled observations into clusters — see
+        # docs/architecture/learning-platform-phase-2.md. Hourly, per the
+        # charter's lag budget, and affordable at that cadence because the
+        # pass is incremental: an observation already in a cluster is
+        # never reconsidered.
+        "cluster-learning-observations": {
+            "task": "blinkengage.learning.cluster_observations",
+            "schedule": float(settings.learning_cluster_interval_seconds),
+        },
+        # Trend and anomaly detection. Daily, and the cadence is a
+        # statistical decision rather than a cost one: running the same
+        # weekly-window tests hourly would give them twenty-four chances a
+        # day to cross a threshold, which is multiple testing through the
+        # back door.
+        "analyse-learning-patterns": {
+            "task": "blinkengage.learning.analyse_patterns",
+            "schedule": float(settings.learning_analysis_interval_seconds),
+        },
         "settle-learning-observations": {
             "task": "blinkengage.learning.settle_observations",
             # From the setting rather than a literal, because the sweep
