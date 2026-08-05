@@ -18,6 +18,9 @@ from uuid import UUID, uuid4
 
 from blinkengage.application.services.assignment_engine import filter_by_required_skills
 from blinkengage.application.services.attachment_validation import validate_attachment
+from blinkengage.application.services.customer_activity_projector import (
+    CustomerActivityProjector,
+)
 from blinkengage.application.services.ownership_service import (
     OwnershipService,
     agent_owner,
@@ -43,7 +46,7 @@ from blinkengage.domain.exceptions import (
     InvalidConversationStatusTransitionError,
 )
 from blinkengage.domain.inbox_views import InboxView
-from blinkengage.domain.lifecycle import can_move
+from blinkengage.domain.lifecycle import FINISHED, can_move
 from blinkengage.domain.ownership import NOBODY, Owner, OwnerKind, OwnershipReason
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
@@ -151,6 +154,22 @@ def _reply_metadata(
 
 
 logger = get_logger(__name__)
+
+
+#: The dedicated event published on entering each terminal status.
+#:
+#: Spelled out rather than built as ``f"conversation.{status.value}"``.
+#: Two reasons, and the second is the one that cost something: a reader
+#: (or a grep, or a static guard) cannot see which routing keys this
+#: module actually produces when the name is assembled at runtime — which
+#: is how ``conversation.reopened`` came to be bound by a consumer with no
+#: publisher anywhere in the platform and nothing noticed. Every event
+#: type this codebase publishes is now a literal somewhere in the source,
+#: and ``test_bound_routing_keys_have_publishers.py`` depends on that.
+_TERMINAL_EVENT: dict[ConversationStatus, str] = {
+    ConversationStatus.RESOLVED: "conversation.resolved",
+    ConversationStatus.CLOSED: "conversation.closed",
+}
 
 
 class ConversationService:
@@ -341,6 +360,10 @@ class ConversationService:
                 # about when the conversation actually reached its current
                 # terminal state.
                 conversation.closed_at = datetime.now(UTC)
+                # Nobody is waiting on a finished conversation. The
+                # historical facts — who spoke last, how long the last wait
+                # was — stay, because they are what a report reads afterwards.
+                CustomerActivityProjector().record_finished(conversation)
         previous_agent_id = conversation.assigned_agent_id
         if assigned_agent_id is not None:
             # Through ownership, not by writing the column. This is the path
@@ -439,8 +462,44 @@ class ConversationService:
                     },
                 )
             )
-        terminal_statuses = (ConversationStatus.RESOLVED, ConversationStatus.CLOSED)
-        if status_transitioned and status in terminal_statuses:
+        if status_transitioned and previous_status in FINISHED and status not in FINISHED:
+            # The mirror of the terminal events below, and it was missing.
+            # ``learning-signals-consumer`` has bound
+            # ``conversation.reopened`` since it was written — its own
+            # docstring calls it "the one that matters most: it invalidates
+            # a resolution outright" — and nothing ever published it. A
+            # conversation reopened after its observation settled kept an
+            # outcome claiming it was resolved on first contact, and no
+            # counter looked wrong.
+            #
+            # ``ended_at`` is carried on the payload rather than left for
+            # the consumer to read back, because the other reopen path
+            # (a customer message, in ``conversation_ingest_consumer``)
+            # *clears* ``closed_at`` as part of reopening — so by the time
+            # any consumer sees the event, when the conversation had ended
+            # is a fact only the publisher still holds.
+            await self._events.publish(
+                DomainEvent(
+                    event_type="conversation.reopened",
+                    company_id=company_id,
+                    aggregate_type="conversation",
+                    aggregate_id=conversation.id,
+                    actor_user_id=actor_user_id,
+                    payload={
+                        "conversation_id": str(conversation.id),
+                        "previous_status": previous_status.value,
+                        "status": conversation.status.value,
+                        "ended_at": (
+                            conversation.closed_at.isoformat()
+                            if conversation.closed_at is not None
+                            else None
+                        ),
+                        "reopened_at": datetime.now(UTC).isoformat(),
+                    },
+                )
+            )
+        terminal_event = _TERMINAL_EVENT.get(status) if status is not None else None
+        if status_transitioned and terminal_event is not None:
             # Same reasoning as conversation.assignment_changed above: a
             # dedicated event per terminal transition so a consumer that
             # only cares about "resolved" (e.g. a CSAT survey trigger) or
@@ -448,7 +507,7 @@ class ConversationService:
             # conversation.updated's previous_status/status payload.
             await self._events.publish(
                 DomainEvent(
-                    event_type=f"conversation.{status.value}",
+                    event_type=terminal_event,
                     company_id=company_id,
                     aggregate_type="conversation",
                     aggregate_id=conversation.id,
@@ -1264,6 +1323,12 @@ class ConversationService:
             conversation.first_response_at = now
         # A reply answers whatever the customer was last waiting for.
         await self._sla.replied(conversation_id=conversation.id, was_first=was_first, now=now)
+        # The wait is over, and *this* is where that is recorded — see
+        # ``docs/architecture/customer-activity.md``. Only on the success
+        # path: the failed-send branch above deliberately does not call it,
+        # because a message the provider rejected reached nobody and the
+        # customer is still waiting.
+        CustomerActivityProjector().record_message(conversation, message)
 
         await self._events.publish(
             DomainEvent(

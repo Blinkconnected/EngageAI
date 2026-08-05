@@ -21,8 +21,25 @@ from sqlalchemy import select
 
 from blinkengage.domain.sla import PLATFORM_DEFAULT_SLA_TARGETS, SlaTargetSource, SlaTimer
 from blinkengage.infrastructure.database.models.sla_clock import ConversationSlaClock
+from tests.integration.test_routing_explainability import _archive_every_service
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+async def _the_queue_tier(client: AsyncClient, owner_headers: dict) -> None:
+    """These tests are about the *queue* tier reaching the engine.
+
+    Registration seeds a General service that owns the general queue, and
+    Stage 3 makes a queue's SLA read-only wherever a service owns it — so
+    without this the tests below get a 409 attaching a policy, which is the
+    new behaviour working rather than the old one broken.
+
+    The queue tier is not thereby legacy: it is what every company still
+    awaiting Stage 2 measures on, and the defect this module closes — zero
+    SLA clocks across the whole installation — was theirs.
+    """
+    await _archive_every_service(client, owner_headers)
 
 
 async def _clocks(session: Any) -> dict[str, ConversationSlaClock]:

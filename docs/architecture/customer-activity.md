@@ -2,7 +2,18 @@
 
 *The single source of truth for what has actually been said, and who is waiting.*
 
-**Status: proposed. No code written.**
+**Status: Phases A–C shipped. Phase D (consumers) not started.**
+
+The columns exist, the projector maintains them on every inbound and
+outbound message, and the backfill/drift checker proves them against
+`messages`. Nothing reads them yet — deliberately, and that is what makes
+A–C a no-op release: the facts become true and provable before anything
+depends on them.
+
+The migration `a2f7c419b8d3` is **written and verified offline but not
+applied to production** — it is additive (seven nullable columns and a
+partial index, no table rewrite) and awaits the same authorisation as the
+Stage 2 seed.
 
 ---
 
@@ -176,11 +187,41 @@ true and provable before anything depends on them.
 
 ---
 
-## 9. Open question
+## 9. Resolved question
 
-**Does a failed outbound send answer the customer?** I propose **no** — a
+**Does a failed outbound send answer the customer?** **No** — decided, and
+implemented: `reached_the_customer()` settles a wait only on
+`MessageStatus.SENT`, so a rejected send leaves the customer waiting and AI
+eligible. When Outbound Delivery lands, that one function reads delivery state
+instead and nothing else changes.
+
+The original reasoning: **no** — a
 message the provider rejected never reached them, so the customer is still
 waiting and AI should still be eligible. That means the projector settles the
 wait on `SENT`, not on row creation, and a send that later fails must reopen
 the wait. Worth confirming, because it is the difference between a customer
 being silently dropped and being answered twice.
+
+---
+
+## 10. Two things found while building it
+
+**Timestamps come back differently per dialect.** Every column here is
+`DateTime(timezone=True)` and every value written is UTC, but PostgreSQL
+returns an aware value and SQLite a naive one. Subtracting the two raises
+`TypeError`, so a wait computed against a fresh `datetime.now(UTC)` crashed on
+one dialect and not the other. Settled once at the boundary in
+`_utc()` rather than by making the domain accept both kinds, which would have
+pushed the same comparison into every consumer.
+
+**The projection had to become order-independent.** `recompute()` replays a
+conversation from `messages` to prove the stored facts are right — but two
+messages can share a timestamp, since SQLite truncates to the second and
+PostgreSQL's `now()` is transaction-scoped. With the original "set
+`awaiting_reply_since` if it is empty" rule, replaying a tie in a different
+order gave a different answer, and the checker reported drift that was really
+just a tie broken differently. A drift checker that cries wolf gets switched
+off, so the rules are now oldest-wins / newest-wins comparisons with a total
+tie-break on message id, and `_messages()` sorts inbound before outbound at
+equal timestamps — a reply cannot precede the message it answers, and that is
+the one tie that changes the answer rather than merely the ordering.

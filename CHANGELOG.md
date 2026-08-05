@@ -14,7 +14,47 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
-### Documentation
+### Added
+
+- **Frequently asked questions are now a real thing you can write, not
+  just something search was named after.** Until now everything went into
+  a knowledge article: written as a document, kept internal by default,
+  and handed to the AI as raw material it then had to put into its own
+  words. A company that spent a week wording its refund policy would
+  watch the platform paraphrase it.
+
+  You can now write a **question and its answer**, put them in the order
+  you want customers to read them, tag and categorise them alongside your
+  articles, and mark each one as Arabic, English, or neither where the
+  answer applies whatever the customer speaks.
+
+  **Publishing is a decision, not a side effect.** A new entry starts
+  unpublished, because unlike an article — which only your own people see
+  — this is written to be shown to customers. Unpublishing does not just
+  hide it: it takes the answer back out of search, so nothing can quote
+  something you have taken down.
+
+  **Searching them understands meaning, not just wording.** The same
+  two-method search the knowledge base uses now covers these too, and it
+  matches on the answer as well as the question — so a customer typing a
+  product name that only appears in the answer still finds it. Each
+  result says which method found it.
+
+  **And the AI now treats them as approved answers.** When it answers
+  from your material, published entries are given to it first and
+  labelled as answers you have already approved, with articles offered
+  separately as background. Wording you signed off on is reused rather
+  than rewritten.
+
+  New: `/api/v1/faqs` for writing, ordering, publishing and searching
+  them. No new permission — anyone who can already manage your knowledge
+  base can manage these.
+
+- **Complete system documentation.** A single document describing every
+  feature the platform has and how each one works — written for anybody
+  joining, supporting a customer or writing a proposal, not only for
+  engineers. It includes what is deliberately *not* built, so a gap is
+  something you can read rather than something you discover.
 
 - **An operational readiness review of the whole platform, and an
   eight-week pilot plan.** The platform was audited as if it went live
@@ -37,8 +77,27 @@ for more detail on how this page is put together.
   has weekly goals, rollback criteria and gates that can each send it
   back for another fortnight.
 
+- **The platform now knows whether a customer is waiting.** Until now it
+  could not tell: the "last message" time moved whenever *anybody* wrote,
+  including your own agents, so a conversation somebody had just replied to
+  looked exactly like one nobody had touched. Every part of the product that
+  needed to know guessed differently.
 
-### Added
+  Each conversation now records who is waiting and since when — separately
+  from when the customer last wrote, because a customer who sends four
+  messages in a minute has been waiting since the first one, and that is the
+  wait people ask about. It also records who answered last and whether that
+  was a person or AI, how many messages are still unanswered, and how long
+  the customer waited for the answer they actually got.
+
+  **A reply that failed to send does not count as an answer.** If the channel
+  rejected it, the customer never saw it — so they are still waiting, and the
+  platform now says so instead of quietly marking them as dealt with.
+
+  Nothing in the product reads this yet. It is being built underneath first
+  so the numbers are correct and provably correct before anything shows them
+  to you; a checker recomputes every conversation's figures from its own
+  messages and reports any disagreement.
 
 - **Response time targets are edited in one place, not two.** When a service
   handles a queue, that service decides the queue's response time targets —

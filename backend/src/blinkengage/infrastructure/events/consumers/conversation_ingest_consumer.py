@@ -22,6 +22,9 @@ from blinkengage.application.services.assignment_engine import AssignmentEngine
 from blinkengage.application.services.attachment_validation import validate_attachment
 from blinkengage.application.services.company_capabilities import capabilities_for
 from blinkengage.application.services.configuration_resolver import ConfigurationResolver
+from blinkengage.application.services.customer_activity_projector import (
+    CustomerActivityProjector,
+)
 from blinkengage.application.services.ownership_service import (
     AI_OWNER,
     OwnershipService,
@@ -378,6 +381,12 @@ async def handle_message_received(
             reply_to_message_id=reply_to_message_id,
         )
     )
+
+    # The customer is now waiting, and this is the only place that fact is
+    # written for an inbound message — see
+    # ``docs/architecture/customer-activity.md``. After ``messages.add`` so
+    # the row has an id and a ``created_at`` to date the wait from.
+    CustomerActivityProjector().record_message(conversation, message)
 
     if approved_attachments:
         attachment_repo = MessageAttachmentRepository(session)

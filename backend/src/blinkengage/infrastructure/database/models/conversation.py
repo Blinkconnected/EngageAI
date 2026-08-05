@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blinkengage.domain.lifecycle import ConversationStatus as LifecycleStatus
@@ -146,6 +146,46 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         GUID(), ForeignKey("departments.id", ondelete="SET NULL"), default=None, index=True
     )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+    # --- Customer Activity (see docs/architecture/customer-activity.md) ---
+    #
+    # A projection of the `messages` table, exactly as `assigned_agent_id` is a
+    # projection of `conversation_ownership`. Written by
+    # `CustomerActivityProjector` and nothing else — see
+    # `test_customer_activity_is_the_only_writer.py`, which fails when a new
+    # path assigns one of these.
+    #
+    # Here rather than in a side table because the Inbox reads them on every
+    # row of every page and the AI sweep filters on them installation-wide; a
+    # join for that is a join that gets denormalised back within a milestone.
+    #
+    # Note `last_message_at` above is a *different* fact: it moves for outbound
+    # messages too, which is precisely why it could never answer "is a customer
+    # waiting".
+    #: The **oldest** currently-unanswered inbound message. NULL when nobody is
+    #: waiting. Live wait = now - this; never stored, because a duration column
+    #: is wrong the moment after it is written.
+    awaiting_reply_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    #: The **newest** inbound message. Deliberately not collapsed with the one
+    #: above: a customer who wrote four times in a minute has been waiting
+    #: since the first, and that is the figure people escalate about.
+    last_customer_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    #: No FKs on the three ids: `messages` is soft-deleted and
+    #: retention-pruned, and a FK would either block a legitimate prune or
+    #: cascade a NULL over the record of who last spoke.
+    last_customer_message_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
+    last_agent_message_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
+    last_ai_message_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), default=None)
+    unanswered_message_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    #: The settled wait — how long the customer waited for the answer they
+    #: actually received. History, immutable once written.
+    last_wait_duration_seconds: Mapped[int | None] = mapped_column(Integer, default=None)
 
     # --- M14: queues, assignment, SLA (see docs/architecture/queues-routing.md) ---
     queue_id: Mapped[uuid.UUID | None] = mapped_column(
