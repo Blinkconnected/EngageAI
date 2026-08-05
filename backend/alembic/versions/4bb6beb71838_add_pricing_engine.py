@@ -67,7 +67,14 @@ _CURRENCY = "USD"
 _SEED_REASON = "Initial global default pricing (migration 4bb6beb71838)"
 
 _PROFILES = (
-    ("default", "Default", True, 0, "Falls through to the global default price for every metric. Edit the global price to change it."),
+    (
+        "default",
+        "Default",
+        True,
+        0,
+        "Falls through to the global default price for every metric. "
+        "Edit the global price to change it.",
+    ),
     ("startup", "Startup", False, 10, None),
     ("smb", "SMB", False, 20, None),
     ("enterprise", "Enterprise", False, 30, None),

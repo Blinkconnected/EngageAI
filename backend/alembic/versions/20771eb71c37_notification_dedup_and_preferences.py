@@ -133,9 +133,7 @@ def upgrade() -> None:
             name="uq_notification_preferences_user_type_channel",
         ),
     )
-    op.create_index(
-        "ix_notification_preferences_user_id", "notification_preferences", ["user_id"]
-    )
+    op.create_index("ix_notification_preferences_user_id", "notification_preferences", ["user_id"])
 
 
 def downgrade() -> None:

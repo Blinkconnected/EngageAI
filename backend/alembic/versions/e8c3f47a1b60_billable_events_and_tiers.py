@@ -102,9 +102,7 @@ def upgrade() -> None:
         sa.Column("message_type", sa.String(20), nullable=False),
         sa.Column("occurred_at", UtcDateTime(), nullable=False),
         sa.Column("usage_record_id", GUID(), nullable=True),
-        sa.Column(
-            "created_at", UtcDateTime(), server_default=sa.func.now(), nullable=False
-        ),
+        sa.Column("created_at", UtcDateTime(), server_default=sa.func.now(), nullable=False),
         sa.UniqueConstraint("message_id", name="uq_billable_events_message"),
     )
     op.create_index(
@@ -135,22 +133,16 @@ def upgrade() -> None:
         sa.Column("up_to", _AMOUNT, nullable=True),
         sa.Column("unit_amount", _AMOUNT, nullable=False),
         sa.Column("sort_order", sa.Integer(), nullable=False),
-        sa.Column(
-            "created_at", UtcDateTime(), server_default=sa.func.now(), nullable=False
-        ),
+        sa.Column("created_at", UtcDateTime(), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint("unit_amount >= 0", name="ck_pricing_rate_tiers_amount"),
         sa.CheckConstraint("up_to IS NULL OR up_to > 0", name="ck_pricing_rate_tiers_bound"),
-        sa.UniqueConstraint(
-            "pricing_rate_id", "sort_order", name="uq_pricing_rate_tiers_order"
-        ),
+        sa.UniqueConstraint("pricing_rate_id", "sort_order", name="uq_pricing_rate_tiers_order"),
     )
     op.create_index("ix_pricing_rate_tiers_rate", "pricing_rate_tiers", ["pricing_rate_id"])
 
     # Which tier produced the rate on a frozen line. Nullable: lines written
     # before this release were priced flat.
-    op.add_column(
-        "usage_period_lines", sa.Column("tier_up_to", _AMOUNT, nullable=True)
-    )
+    op.add_column("usage_period_lines", sa.Column("tier_up_to", _AMOUNT, nullable=True))
 
     _seed_message_rates()
 

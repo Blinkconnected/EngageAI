@@ -77,9 +77,7 @@ def upgrade() -> None:
         sa.Column("subject_id", GUID(), nullable=False),
         sa.Column("statement", sa.Text(), nullable=False),
         sa.Column("attributes", sa.JSON(), nullable=False),
-        sa.Column(
-            "attributes_schema_version", sa.Integer(), nullable=False, server_default="1"
-        ),
+        sa.Column("attributes_schema_version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("confidence", sa.Numeric(5, 4), nullable=False, server_default="0"),
         sa.Column("confidence_computed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
@@ -91,9 +89,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="unknown",
         ),
-        sa.Column(
-            "lifecycle_state", sa.String(length=16), nullable=False, server_default="active"
-        ),
+        sa.Column("lifecycle_state", sa.String(length=16), nullable=False, server_default="active"),
         sa.Column("support_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("distinct_customer_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("distinct_agent_count", sa.Integer(), nullable=False, server_default="0"),
@@ -119,9 +115,7 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("steward_role", sa.String(length=64), nullable=True),
-        sa.Column(
-            "human_state", sa.String(length=16), nullable=False, server_default="unreviewed"
-        ),
+        sa.Column("human_state", sa.String(length=16), nullable=False, server_default="unreviewed"),
         sa.Column(
             "human_state_by_user_id",
             GUID(),
@@ -220,9 +214,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_memory_evidence_company_id", "memory_evidence", ["company_id"])
     op.create_index("ix_memory_evidence_fact", "memory_evidence", ["fact_id"])
-    op.create_index(
-        "ix_memory_evidence_customer", "memory_evidence", ["company_id", "customer_id"]
-    )
+    op.create_index("ix_memory_evidence_customer", "memory_evidence", ["company_id", "customer_id"])
     op.create_index(
         "ix_memory_evidence_conversation", "memory_evidence", ["company_id", "conversation_id"]
     )
@@ -261,13 +253,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_memory_confidence_samples_pruning", table_name="memory_confidence_samples"
-    )
+    op.drop_index("ix_memory_confidence_samples_pruning", table_name="memory_confidence_samples")
     op.drop_index("ix_memory_confidence_samples_fact", table_name="memory_confidence_samples")
-    op.drop_index(
-        "ix_memory_confidence_samples_company_id", table_name="memory_confidence_samples"
-    )
+    op.drop_index("ix_memory_confidence_samples_company_id", table_name="memory_confidence_samples")
     op.drop_table("memory_confidence_samples")
 
     op.drop_index("ix_memory_evidence_conversation", table_name="memory_evidence")

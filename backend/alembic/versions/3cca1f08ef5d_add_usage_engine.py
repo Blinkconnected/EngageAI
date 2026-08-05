@@ -103,9 +103,7 @@ def upgrade() -> None:
         # RESTRICT: a period that has usage behind it must not be
         # deletable, or the evidence for a bill disappears while the bill
         # remains.
-        sa.ForeignKeyConstraint(
-            ["billing_period_id"], ["billing_periods.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["billing_period_id"], ["billing_periods.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["recorded_by_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.UniqueConstraint("idempotency_key", name="uq_usage_records_idempotency"),
         sa.CheckConstraint("quantity >= 0", name="ck_usage_records_quantity_non_negative"),
@@ -135,9 +133,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.ForeignKeyConstraint(
-            ["billing_period_id"], ["billing_periods.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["billing_period_id"], ["billing_periods.id"], ondelete="CASCADE"),
         sa.UniqueConstraint(
             "billing_period_id", "metric_code", name="uq_usage_period_lines_metric"
         ),
@@ -175,9 +171,7 @@ def downgrade() -> None:
     nothing else in this database can reconstruct them.
     """
     if op.get_bind().dialect.name == "postgresql":
-        op.execute(
-            "DROP TRIGGER IF EXISTS trg_usage_period_lines_immutable ON usage_period_lines"
-        )
+        op.execute("DROP TRIGGER IF EXISTS trg_usage_period_lines_immutable ON usage_period_lines")
         op.execute("DROP FUNCTION IF EXISTS usage_period_lines_immutable()")
 
     op.drop_index("ix_usage_period_lines_period", table_name="usage_period_lines")

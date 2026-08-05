@@ -84,9 +84,7 @@ def upgrade() -> None:
             "fact_id", "source_type", "source_id", name="uq_memory_contradictions_source"
         ),
     )
-    op.create_index(
-        "ix_memory_contradictions_company_id", "memory_contradictions", ["company_id"]
-    )
+    op.create_index("ix_memory_contradictions_company_id", "memory_contradictions", ["company_id"])
     op.create_index("ix_memory_contradictions_fact", "memory_contradictions", ["fact_id"])
 
     op.add_column(

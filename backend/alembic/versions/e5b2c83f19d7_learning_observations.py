@@ -89,9 +89,7 @@ def upgrade() -> None:
         sa.Column("human_authored_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("ai_generated_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("ai_assisted_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column(
-            "human_authored_fraction", sa.Numeric(5, 4), nullable=False, server_default="0"
-        ),
+        sa.Column("human_authored_fraction", sa.Numeric(5, 4), nullable=False, server_default="0"),
         # Outcome, copied from the single resolver rather than recomputed.
         sa.Column("resolved", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("resolved_by", sa.String(length=16), nullable=False, server_default="unknown"),
@@ -197,16 +195,12 @@ def upgrade() -> None:
         sa.Column("ref_id", GUID(), nullable=False),
         sa.Column("ordinal", sa.Integer(), nullable=False, server_default="0"),
         # Re-assembling the same observation must not duplicate its trace.
-        sa.UniqueConstraint(
-            "observation_id", "ref_kind", "ref_id", name="uq_learning_refs_target"
-        ),
+        sa.UniqueConstraint("observation_id", "ref_kind", "ref_id", name="uq_learning_refs_target"),
     )
     op.create_index(
         "ix_learning_observation_refs_company_id", "learning_observation_refs", ["company_id"]
     )
-    op.create_index(
-        "ix_learning_refs_observation", "learning_observation_refs", ["observation_id"]
-    )
+    op.create_index("ix_learning_refs_observation", "learning_observation_refs", ["observation_id"])
 
     op.create_table(
         "learning_runs",
@@ -248,9 +242,7 @@ def downgrade() -> None:
     op.drop_table("learning_runs")
 
     op.drop_index("ix_learning_refs_observation", table_name="learning_observation_refs")
-    op.drop_index(
-        "ix_learning_observation_refs_company_id", table_name="learning_observation_refs"
-    )
+    op.drop_index("ix_learning_observation_refs_company_id", table_name="learning_observation_refs")
     op.drop_table("learning_observation_refs")
 
     op.drop_index(

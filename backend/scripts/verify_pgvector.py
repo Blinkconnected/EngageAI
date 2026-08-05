@@ -60,9 +60,7 @@ async def main() -> int:
     rng = random.Random(20260804)
 
     async with factory() as session:
-        await session.execute(
-            text("DELETE FROM embeddings WHERE model = :model"), {"model": MODEL}
-        )
+        await session.execute(text("DELETE FROM embeddings WHERE model = :model"), {"model": MODEL})
         # Real company ids — `embeddings.company_id` is a foreign key, and
         # inventing tenants would test an isolation boundary the database
         # is not actually enforcing here.
@@ -81,7 +79,6 @@ async def main() -> int:
     # the corpus — the shape that breaks a filter-after-ranking
     # implementation.
     real_company = tenants[0]
-
 
     async with factory() as session:
         for tenant in tenants:
@@ -110,8 +107,10 @@ async def main() -> int:
         await session.commit()
 
     total = len(tenants) * ROWS_PER_TENANT
-    print(f"seeded {total} rows across {len(tenants)} tenants; tenant under test holds {ROWS_PER_TENANT} "
-          f"({ROWS_PER_TENANT / total:.2%})")
+    print(
+        f"seeded {total} rows across {len(tenants)} tenants; "
+        f"tenant under test holds {ROWS_PER_TENANT} ({ROWS_PER_TENANT / total:.2%})"
+    )
 
     exact_ids: list[list[uuid.UUID]] = []
     ann_ids: list[list[uuid.UUID]] = []
@@ -165,8 +164,7 @@ async def main() -> int:
                 foreign_rows += int(belongs.scalar_one())
 
     recall = statistics.mean(
-        len(set(a) & set(e)) / len(e) if e else 1.0
-        for a, e in zip(ann_ids, exact_ids, strict=True)
+        len(set(a) & set(e)) / len(e) if e else 1.0 for a, e in zip(ann_ids, exact_ids, strict=True)
     )
     exact_top1 = sum(1 for a, e in zip(ann_ids, exact_ids, strict=True) if a[:1] == e[:1])
     empty = sum(1 for a in ann_ids if not a)
@@ -186,9 +184,7 @@ async def main() -> int:
     print(f"max : {max(latencies):.1f} ms")
 
     async with factory() as session:
-        await session.execute(
-            text("DELETE FROM embeddings WHERE model = :model"), {"model": MODEL}
-        )
+        await session.execute(text("DELETE FROM embeddings WHERE model = :model"), {"model": MODEL})
         await session.commit()
     await engine.dispose()
 

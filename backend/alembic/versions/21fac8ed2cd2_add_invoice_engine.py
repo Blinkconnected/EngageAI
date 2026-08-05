@@ -87,9 +87,7 @@ def upgrade() -> None:
         # issued invoice would destroy the evidence for a document that
         # has already been sent to somebody.
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(
-            ["billing_period_id"], ["billing_periods.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["billing_period_id"], ["billing_periods.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["issued_by_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.UniqueConstraint("invoice_number", name="uq_invoices_number"),
         sa.UniqueConstraint("billing_period_id", name="uq_invoices_billing_period"),

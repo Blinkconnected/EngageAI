@@ -115,12 +115,8 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("logical_queue_name", sa.String(255), nullable=True),
-        sa.Column(
-            "overflow_strategy", sa.String(30), nullable=False, server_default="WAIT"
-        ),
-        sa.Column(
-            "ai_overflow_policy", sa.String(30), nullable=False, server_default="NEVER"
-        ),
+        sa.Column("overflow_strategy", sa.String(30), nullable=False, server_default="WAIT"),
+        sa.Column("ai_overflow_policy", sa.String(30), nullable=False, server_default="NEVER"),
         # Four independent clocks. NULL means "not measured" and is different
         # from 0, which means "breached the moment it starts".
         sa.Column("sla_queue_minutes", sa.Integer(), nullable=True),
@@ -128,18 +124,12 @@ def upgrade() -> None:
         sa.Column("sla_next_response_minutes", sa.Integer(), nullable=True),
         sa.Column("sla_resolution_minutes", sa.Integer(), nullable=True),
         sa.Column("ai_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column(
-            "ai_pickup_delay_seconds", sa.Integer(), nullable=False, server_default="30"
-        ),
-        sa.Column(
-            "ai_resume_delay_seconds", sa.Integer(), nullable=False, server_default="900"
-        ),
+        sa.Column("ai_pickup_delay_seconds", sa.Integer(), nullable=False, server_default="30"),
+        sa.Column("ai_resume_delay_seconds", sa.Integer(), nullable=False, server_default="900"),
         # Text, not float: a threshold compared against a model's confidence
         # must not have two numbers differing in the last binary place
         # straddle it.
-        sa.Column(
-            "ai_confidence_threshold", sa.String(16), nullable=False, server_default="0.75"
-        ),
+        sa.Column("ai_confidence_threshold", sa.String(16), nullable=False, server_default="0.75"),
         sa.Column("extras", sa.JSON(), nullable=False, server_default="{}"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column(

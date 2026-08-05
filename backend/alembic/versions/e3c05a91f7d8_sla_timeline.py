@@ -41,9 +41,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("routing_decisions", sa.Column("sla_timer", sa.String(20), nullable=True))
-    op.add_column(
-        "routing_decisions", sa.Column("sla_pause_reason", sa.String(30), nullable=True)
-    )
+    op.add_column("routing_decisions", sa.Column("sla_pause_reason", sa.String(30), nullable=True))
     op.add_column(
         "routing_decisions",
         sa.Column("sla_detail", sa.JSON(), nullable=False, server_default="{}"),

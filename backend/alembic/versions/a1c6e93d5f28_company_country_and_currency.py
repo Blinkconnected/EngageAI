@@ -38,9 +38,7 @@ def upgrade() -> None:
     op.add_column("companies", sa.Column("country_code", sa.String(length=2), nullable=True))
     op.add_column(
         "companies",
-        sa.Column(
-            "billing_currency", sa.String(length=3), nullable=False, server_default="USD"
-        ),
+        sa.Column("billing_currency", sa.String(length=3), nullable=False, server_default="USD"),
     )
     op.create_index(
         "ix_companies_country",

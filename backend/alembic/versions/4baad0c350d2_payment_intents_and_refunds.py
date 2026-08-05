@@ -45,7 +45,12 @@ def upgrade() -> None:
         sa.Column("approval_url", sa.Text(), nullable=True),
         sa.Column("payment_id", sa.Uuid(), nullable=True),
         sa.Column("failure_reason", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("amount > 0", name="ck_payment_intents_amount_positive"),
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
@@ -58,9 +63,7 @@ def upgrade() -> None:
             "provider", "provider_reference", name="uq_payment_intents_provider_reference"
         ),
     )
-    op.create_index(
-        "ix_payment_intents_company", "payment_intents", ["company_id", "created_at"]
-    )
+    op.create_index("ix_payment_intents_company", "payment_intents", ["company_id", "created_at"])
     op.create_index("ix_payment_intents_invoice", "payment_intents", ["invoice_id"])
     # Partial: the reconciliation sweep looks only at pending intents,
     # which are a vanishing fraction of the table after a few months.
@@ -85,7 +88,12 @@ def upgrade() -> None:
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("requested_by_user_id", sa.Uuid(), nullable=True),
         sa.Column("failure_reason", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("amount > 0", name="ck_payment_refunds_amount_positive"),
         # RESTRICT, not CASCADE: deleting a payment that has been
@@ -99,9 +107,7 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_payment_refunds_payment", "payment_refunds", ["payment_id"])
-    op.create_index(
-        "ix_payment_refunds_company", "payment_refunds", ["company_id", "created_at"]
-    )
+    op.create_index("ix_payment_refunds_company", "payment_refunds", ["company_id", "created_at"])
 
 
 def downgrade() -> None:

@@ -47,9 +47,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["channel_config_id"], ["channel_configs.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["channel_config_id"], ["channel_configs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -65,9 +63,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_channel_connection_logs_company_id", table_name="channel_connection_logs"
-    )
+    op.drop_index("ix_channel_connection_logs_company_id", table_name="channel_connection_logs")
     op.drop_index(
         "ix_channel_connection_logs_channel_config_created",
         table_name="channel_connection_logs",

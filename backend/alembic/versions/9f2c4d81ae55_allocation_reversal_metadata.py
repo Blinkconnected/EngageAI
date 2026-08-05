@@ -34,12 +34,8 @@ def upgrade() -> None:
         "payment_allocations",
         sa.Column("reversed_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.add_column(
-        "payment_allocations", sa.Column("reversal_reason", sa.Text(), nullable=True)
-    )
-    op.drop_constraint(
-        "uq_payment_allocations_pair", "payment_allocations", type_="unique"
-    )
+    op.add_column("payment_allocations", sa.Column("reversal_reason", sa.Text(), nullable=True))
+    op.drop_constraint("uq_payment_allocations_pair", "payment_allocations", type_="unique")
     op.create_index(
         "uq_payment_allocations_live_pair",
         "payment_allocations",

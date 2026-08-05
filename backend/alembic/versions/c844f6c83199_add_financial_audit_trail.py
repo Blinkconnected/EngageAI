@@ -70,9 +70,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_financial_audit_company", "financial_audit_events", ["company_id", "occurred_at"]
     )
-    op.create_index(
-        "ix_financial_audit_correlation", "financial_audit_events", ["correlation_id"]
-    )
+    op.create_index("ix_financial_audit_correlation", "financial_audit_events", ["correlation_id"])
 
     if op.get_bind().dialect.name == "postgresql":
         op.execute(
@@ -80,7 +78,8 @@ def upgrade() -> None:
             CREATE OR REPLACE FUNCTION financial_audit_immutable() RETURNS trigger AS $$
             BEGIN
               RAISE EXCEPTION
-                'financial_audit_events is append-only; the audit trail is evidence and is never altered';
+                'financial_audit_events is append-only; '
+                'the audit trail is evidence and is never altered';
             END;
             $$ LANGUAGE plpgsql
             """
@@ -102,9 +101,7 @@ def downgrade() -> None:
     it.
     """
     if op.get_bind().dialect.name == "postgresql":
-        op.execute(
-            "DROP TRIGGER IF EXISTS trg_financial_audit_immutable ON financial_audit_events"
-        )
+        op.execute("DROP TRIGGER IF EXISTS trg_financial_audit_immutable ON financial_audit_events")
         op.execute("DROP FUNCTION IF EXISTS financial_audit_immutable()")
     op.drop_index("ix_financial_audit_correlation", table_name="financial_audit_events")
     op.drop_index("ix_financial_audit_company", table_name="financial_audit_events")

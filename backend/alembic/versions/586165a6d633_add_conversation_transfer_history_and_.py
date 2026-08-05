@@ -26,7 +26,14 @@ def upgrade() -> None:
         sa.Column("conversation_id", GUID(), nullable=False),
         sa.Column(
             "target_type",
-            sa.Enum("AGENT", "DEPARTMENT", "QUEUE", name="transfertargettype", native_enum=False, length=20),
+            sa.Enum(
+                "AGENT",
+                "DEPARTMENT",
+                "QUEUE",
+                name="transfertargettype",
+                native_enum=False,
+                length=20,
+            ),
             nullable=False,
         ),
         sa.Column("from_agent_id", GUID(), nullable=True),
@@ -36,7 +43,12 @@ def upgrade() -> None:
         sa.Column("note", sa.Text(), nullable=True),
         sa.Column("transferred_by_user_id", GUID(), nullable=True),
         sa.Column("recipient_was_online", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["from_agent_id"], ["agents.id"], ondelete="SET NULL"),
@@ -46,7 +58,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["transferred_by_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_conversation_transfers_company_id", "conversation_transfers", ["company_id"])
+    op.create_index(
+        "ix_conversation_transfers_company_id", "conversation_transfers", ["company_id"]
+    )
     op.create_index(
         "ix_conversation_transfers_conversation_id", "conversation_transfers", ["conversation_id"]
     )

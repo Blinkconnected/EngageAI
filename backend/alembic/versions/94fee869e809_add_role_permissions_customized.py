@@ -25,9 +25,7 @@ def upgrade() -> None:
     # permissions at all) did not exist before this migration.
     op.add_column(
         "roles",
-        sa.Column(
-            "permissions_customized", sa.Boolean(), nullable=False, server_default="false"
-        ),
+        sa.Column("permissions_customized", sa.Boolean(), nullable=False, server_default="false"),
     )
     op.alter_column("roles", "permissions_customized", server_default=None)
 

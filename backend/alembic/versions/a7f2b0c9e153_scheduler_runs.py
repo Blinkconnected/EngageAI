@@ -64,9 +64,7 @@ def upgrade() -> None:
         sa.Column("attempt", sa.Integer(), nullable=False, server_default="0"),
     )
     # The only query that matters: "how is this task doing?", newest first.
-    op.create_index(
-        "ix_scheduler_runs_task_recent", "scheduler_runs", ["task_name", "started_at"]
-    )
+    op.create_index("ix_scheduler_runs_task_recent", "scheduler_runs", ["task_name", "started_at"])
 
 
 def downgrade() -> None:

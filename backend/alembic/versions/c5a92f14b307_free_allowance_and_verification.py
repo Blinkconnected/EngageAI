@@ -50,15 +50,11 @@ def upgrade() -> None:
     for table in ("usage_period_lines", "invoice_lines"):
         op.add_column(
             table,
-            sa.Column(
-                "included_quantity", _AMOUNT, nullable=False, server_default="0"
-            ),
+            sa.Column("included_quantity", _AMOUNT, nullable=False, server_default="0"),
         )
         op.add_column(
             table,
-            sa.Column(
-                "billable_quantity", _AMOUNT, nullable=False, server_default="0"
-            ),
+            sa.Column("billable_quantity", _AMOUNT, nullable=False, server_default="0"),
         )
         # Everything already billed was billed in full. Setting
         # billable = quantity preserves each document exactly as issued.
@@ -120,9 +116,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_email_verification_user", table_name="email_verification_tokens")
-    op.drop_index(
-        "ix_email_verification_token_hash", table_name="email_verification_tokens"
-    )
+    op.drop_index("ix_email_verification_token_hash", table_name="email_verification_tokens")
     op.drop_table("email_verification_tokens")
     op.drop_column("companies", "verified_at")
     op.drop_column("users", "email_verified_at")

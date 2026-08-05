@@ -88,11 +88,12 @@ def upgrade() -> None:
     ]
     if role_ids:
         grant_stmt = pg_insert(role_permissions_table).values(
-            [{"role_id": role_id, "permission_code": "conversations.transfer"} for role_id in role_ids]
+            [
+                {"role_id": role_id, "permission_code": "conversations.transfer"}
+                for role_id in role_ids
+            ]
         )
-        op.execute(
-            grant_stmt.on_conflict_do_nothing(index_elements=["role_id", "permission_code"])
-        )
+        op.execute(grant_stmt.on_conflict_do_nothing(index_elements=["role_id", "permission_code"]))
 
 
 def downgrade() -> None:

@@ -74,9 +74,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
         # RESTRICT, like invoices: these rows are the evidence of what a
         # customer was shown, and deleting the period must not destroy it.
-        sa.ForeignKeyConstraint(
-            ["billing_period_id"], ["billing_periods.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["billing_period_id"], ["billing_periods.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "company_id", "usage_date", "metric_code", name="uq_billing_daily_summary_day"
@@ -153,20 +151,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         op.execute(
-            "DROP TRIGGER IF EXISTS trg_billing_daily_summary_no_delete "
-            "ON billing_daily_summary"
+            "DROP TRIGGER IF EXISTS trg_billing_daily_summary_no_delete " "ON billing_daily_summary"
         )
         op.execute(
-            "DROP TRIGGER IF EXISTS trg_billing_daily_summary_immutable "
-            "ON billing_daily_summary"
+            "DROP TRIGGER IF EXISTS trg_billing_daily_summary_immutable " "ON billing_daily_summary"
         )
         op.execute("DROP FUNCTION IF EXISTS billing_daily_summary_no_delete()")
-        op.execute(
-            "DROP FUNCTION IF EXISTS billing_daily_summary_finalized_is_immutable()"
-        )
+        op.execute("DROP FUNCTION IF EXISTS billing_daily_summary_finalized_is_immutable()")
     op.drop_index("ix_billing_daily_summary_open", table_name="billing_daily_summary")
     op.drop_index("ix_billing_daily_summary_period", table_name="billing_daily_summary")
-    op.drop_index(
-        "ix_billing_daily_summary_company_date", table_name="billing_daily_summary"
-    )
+    op.drop_index("ix_billing_daily_summary_company_date", table_name="billing_daily_summary")
     op.drop_table("billing_daily_summary")

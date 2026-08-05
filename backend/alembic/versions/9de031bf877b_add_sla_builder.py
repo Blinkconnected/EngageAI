@@ -77,7 +77,11 @@ def upgrade() -> None:
 
     op.add_column("queues", sa.Column("sla_policy_id", GUID(), nullable=True))
     op.create_foreign_key(
-        "fk_queues_sla_policy_id", "queues", "sla_policies", ["sla_policy_id"], ["id"],
+        "fk_queues_sla_policy_id",
+        "queues",
+        "sla_policies",
+        ["sla_policy_id"],
+        ["id"],
         ondelete="SET NULL",
     )
 

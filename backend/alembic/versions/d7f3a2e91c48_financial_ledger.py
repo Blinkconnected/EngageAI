@@ -70,9 +70,7 @@ def upgrade() -> None:
         sa.Column("reference_number", sa.String(length=30), nullable=True),
         sa.Column("correlation_id", sa.String(length=120), nullable=True),
         sa.Column("description", sa.Text(), nullable=False),
-        sa.Column(
-            "reconstructed", sa.Boolean(), nullable=False, server_default=sa.text("false")
-        ),
+        sa.Column("reconstructed", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.CheckConstraint("amount > 0", name="ck_ledger_entries_amount_positive"),
         sa.CheckConstraint(
             "debit_account <> credit_account", name="ck_ledger_entries_distinct_accounts"
@@ -99,7 +97,8 @@ def upgrade() -> None:
             RETURNS TRIGGER AS $$
             BEGIN
               RAISE EXCEPTION
-                'ledger_entries is append-only; a mistake is corrected by posting the opposite entry, never by amending one';
+                'ledger_entries is append-only; a mistake is corrected by '
+                'posting the opposite entry, never by amending one';
             END;
             $$ LANGUAGE plpgsql
             """
