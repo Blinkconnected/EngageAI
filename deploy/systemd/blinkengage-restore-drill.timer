@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly BlinkEngage restore drill
+
+[Timer]
+# Sunday 04:00 UTC — after that night's backup has been taken, so the
+# drill verifies the freshest set, and on the quietest day of the week
+# because the drill competes with production for the same database.
+OnCalendar=Sun *-*-* 04:00:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

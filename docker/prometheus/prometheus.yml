@@ -28,3 +28,37 @@ scrape_configs:
   - job_name: celery
     static_configs:
       - targets: ["celery-exporter:9808"]
+
+  # Per-queue depth and consumer counts.
+  #
+  # A separate job because RabbitMQ serves these from a different path.
+  # The default /metrics above is node-aggregated: `rabbitmq_queue_messages`
+  # there carries no `queue` label at all, so a rule filtering on one — the
+  # dead-letter alert, the per-queue backlog alert — silently matches
+  # nothing and reports "no data" forever, which reads as healthy.
+  #
+  # Scraped at 30s rather than 15s because per-object output is
+  # proportional to queue count. At ~36 queues that is cheap; if this
+  # deployment ever grows into the thousands, reduce the frequency or
+  # filter with `?family=` rather than dropping the job — the alerts that
+  # depend on it are the ones that catch silent failures.
+  - job_name: rabbitmq-queues
+    metrics_path: /metrics/per-object
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  # Host disk, memory and load. Without it the "disk is filling" alert has
+  # no series to evaluate — and a full disk is the failure that takes the
+  # database with it.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Object storage health. MinIO serves this unauthenticated only because
+  # MINIO_PROMETHEUS_AUTH_TYPE=public is set on the service; it is not
+  # reachable from outside the compose network.
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]

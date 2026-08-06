@@ -96,16 +96,11 @@ of what this load-balancing does and doesn't guarantee.
    ```bash
    docker compose logs <consumer-service> --tail 200
    ```
-4. If a specific message is poison (repeatedly failing and blocking the
-   queue), the outbox-relay/consumer pattern used throughout this
-   codebase (see `docs/architecture/event-bus.md`) acks on success only
-   — a permanently-failing handler will retry forever. Identify the
-   `EventOutbox`/task row (by id, from logs) and either fix the
-   underlying data issue or mark it dispatched manually as a last resort:
-   ```sql
-   -- only after understanding *why* it's failing
-   UPDATE event_outbox SET dispatched_at = now() WHERE id = '<uuid>';
-   ```
+4. A poison message no longer blocks its queue. Consumers retry with
+   exponential backoff (1s, 4s, 16s, 64s, 256s) and quarantine into
+   `<queue>.dlq` after 5 attempts, so a backlog is a throughput problem
+   and a *failing* message shows up in a dead-letter queue instead. See
+   "Drain a dead-letter queue" below.
 
 ## Rotate the JWT signing secret
 
@@ -156,3 +151,169 @@ curl -s http://localhost:8000/api/v1/health/ready | python3 -m json.tool
 Or the Grafana "Backend API" dashboard for request rate/latency/error
 rate, plus the Postgres/Redis/RabbitMQ & Celery dashboards for
 dependency health — see `docs/architecture/observability.md`.
+
+---
+
+## Drain a dead-letter queue
+
+Every consumer has one. A message that fails five times, spread over
+about five minutes of backoff, is quarantined into `<queue>.dlq` with the
+failure in its headers rather than retried forever. The
+"Messages in a dead-letter queue" alert fires on any depth above zero,
+because a quarantined message is always something a human decided
+nothing about yet.
+
+**1. See what is quarantined, and where.**
+
+The broker's AMQP port is deliberately not published, so this runs
+inside the Docker network rather than on the host:
+
+```bash
+docker compose run --rm --no-deps --entrypoint python \
+  -v "$PWD/scripts:/ops:ro" backend /ops/replay_dlq.py list
+```
+
+**2. Find out why.** Non-destructive — messages are read and put back.
+
+```bash
+docker compose run --rm --no-deps --entrypoint python \
+  -v "$PWD/scripts:/ops:ro" backend /ops/replay_dlq.py inspect conversation-ingest
+```
+
+Each message shows its attempt count, the exception, the tail of the
+traceback, and the correlation id. **Use that correlation id** to pull
+the originating request out of Loki:
+
+```
+{job="blinkengage"} |= "<correlation-id>"
+```
+
+That gives the whole story — the API request, the outbox write, the
+relay, and the consumer failure — as one thread.
+
+**3. Fix the cause.** Genuinely fix it. Replaying into a dependency that
+is still broken just refills the queue, slowly.
+
+**4. Replay.**
+
+```bash
+docker compose run --rm --no-deps --entrypoint python \
+  -v "$PWD/scripts:/ops:ro" backend /ops/replay_dlq.py replay conversation-ingest
+```
+
+Replayed messages get a fresh retry budget, so anything still broken
+re-quarantines rather than spinning. Past 25 messages the tool requires
+`--yes`.
+
+**If a message should never be processed** — a malformed event from a
+since-fixed bug — purge that queue in the RabbitMQ management UI rather
+than replaying. Note what was discarded and why, in the incident record.
+
+## Take a backup by hand
+
+Nightly at 02:30 UTC via `blinkengage-backup.timer`. To take one now —
+before a risky migration, say:
+
+```bash
+sudo systemctl start blinkengage-backup.service
+journalctl -u blinkengage-backup.service -n 40 --no-pager
+```
+
+Or directly, which is also how to take one on a host where the timers are
+not installed:
+
+```bash
+BACKUP_PASSPHRASE=<passphrase> ./scripts/backup_all.sh
+```
+
+Each set contains the database, the MinIO volume, configuration, and an
+encrypted `.env`, plus a `MANIFEST` of SHA-256 checksums, the git commit
+and the Alembic head.
+
+**Check it went off-host.** Without `BACKUP_REMOTE` set, the run says so
+loudly and the set exists only on this host — which does not survive the
+failure backups are for:
+
+```bash
+grep -E '^BACKUP_REMOTE=' /etc/blinkengage/backup.env
+```
+
+## Check backups are actually running
+
+The failure mode is silence: a timer that stopped firing produces no
+error and no alert of its own.
+
+```bash
+systemctl list-timers 'blinkengage-*' --no-pager
+systemctl is-failed blinkengage-backup.service
+ls -lt backups/ | head
+```
+
+The most recent set should be less than 24 hours old. If it is not, read
+`journalctl -u blinkengage-backup.service` before assuming the data is
+safe.
+
+## Verify alerts still reach a human
+
+Run before go-live, after any change to the alerting provisioning or the
+webhook secrets, and after any recovery.
+
+```bash
+./scripts/verify_alerting.sh
+```
+
+It fires a real alert through the real notification policy and confirms
+it arrives — not a config check. It also fails on a rule that cannot
+evaluate, which is the quiet failure worth catching: a rule that is
+provisioned and visible but references a datasource that does not resolve
+looks exactly like working coverage.
+
+Alerts route by severity: `critical` → `ops-critical` (repeating hourly
+until acted on), everything else → `ops-warning`. Both default to the
+on-host `alert-sink` container, which logs each one where Promtail picks
+it up for Loki. Point them at Slack or PagerDuty by setting
+`ALERT_CRITICAL_WEBHOOK_URL` and `ALERT_WARNING_WEBHOOK_URL` in `.env`.
+
+To read what was delivered:
+
+```bash
+docker compose logs alert-sink --tail 20
+```
+
+Or in Loki, alongside everything else:
+
+```
+{container="blinkengage-alert-sink-1"} |= "critical"
+```
+
+## Trace one request across the whole platform
+
+Every request carries a correlation id (`X-Correlation-ID`, generated if
+absent). It propagates into the outbox row, onto the AMQP message as its
+standard `correlation_id` property, into the consumer that handles it,
+and into the Celery task id for scheduled work.
+
+```
+{job="blinkengage"} |= "<correlation-id>"
+```
+
+A quarantined message carries the same id in its DLQ headers, which is
+what connects "this event failed" back to "this customer did this thing".
+
+## Restore a backup
+
+See [disaster-recovery.md](disaster-recovery.md) — full procedure,
+measured RTO/RPO, and the rehearsal script.
+
+Quick check that the latest backup is restorable, without touching
+production:
+
+```bash
+./scripts/verify_backup_restore.sh
+```
+
+Full rehearsal of all four asset classes:
+
+```bash
+BACKUP_PASSPHRASE=<passphrase> ./scripts/dr_rehearsal.sh
+```

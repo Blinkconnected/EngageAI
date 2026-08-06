@@ -17,7 +17,7 @@ groups:
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: Prometheus
+            datasourceUid: prometheus
             model:
               expr: >-
                 sum(rate(http_requests_total{job="blinkengage-backend", status=~"5.."}[5m]))
@@ -45,7 +45,7 @@ groups:
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: Prometheus
+            datasourceUid: prometheus
             model:
               expr: >-
                 histogram_quantile(0.95,
@@ -73,7 +73,7 @@ groups:
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: Prometheus
+            datasourceUid: prometheus
             model:
               expr: pg_up
               instant: true
@@ -98,7 +98,7 @@ groups:
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: Prometheus
+            datasourceUid: prometheus
             model:
               expr: redis_up
               instant: true
@@ -123,9 +123,9 @@ groups:
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: Prometheus
+            datasourceUid: prometheus
             model:
-              expr: max(rabbitmq_queue_messages_ready)
+              expr: max(rabbitmq_queue_messages_ready{job="rabbitmq-queues"})
               instant: true
               refId: A
           - refId: C
@@ -148,7 +148,7 @@ groups:
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
-            datasourceUid: Prometheus
+            datasourceUid: prometheus
             model:
               expr: sum(rate(celery_task_failed_total[5m])) * 60
               instant: true
@@ -160,4 +160,194 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [1] }
+              refId: C
+
+      # The gap the backlog alert cannot see. A queue with zero consumers and
+      # zero messages looks identical to a healthy idle queue on a depth graph;
+      # the difference only shows in the consumer count. This is what catches a
+      # consumer container that died and was not restarted.
+      - uid: blinkengage-queue-no-consumers
+        title: Event queue has no consumers
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: A durable event queue has zero consumers attached — messages are accumulating unread.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                min by (queue) (rabbitmq_queue_consumers{job="rabbitmq-queues", queue!~"celery.*|.+\\.retry|.+\\.dlq"})
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+              refId: C
+
+      # A dead-lettered message is one the platform gave up on. It is safe —
+      # quarantined rather than lost, and replayable — but it is also an event
+      # that did not happen, so somebody has to decide whether it mattered.
+      # Fires at one message, not at a rate: a single poison event is a defect.
+      - uid: blinkengage-dlq-not-empty
+        title: Messages in a dead-letter queue
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: One or more events were dead-lettered after exhausting their retries — they are quarantined and need triage.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                sum(rabbitmq_queue_messages{job="rabbitmq-queues", queue=~".+\\.dlq"})
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C
+
+      # The transactional outbox is the only path events take out of the
+      # database. If the relay stops, every downstream consumer goes quiet and
+      # nothing else alerts — the queues are empty, which reads as healthy.
+      - uid: blinkengage-outbox-stalled
+        title: Outbox relay is not draining
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Undispatched outbox events are accumulating — the relay has stopped or is failing to publish.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                blinkengage_outbox_undispatched
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [500] }
+              refId: C
+
+      # Found for real in phase 1.5: beat had been up 41 hours and had no entry
+      # for a newly-added schedule, so the sweep never fired. Nothing errored,
+      # no queue grew, and the dashboard showed numbers that looked like 'no
+      # traffic' rather than 'the scheduler forgot'. Two hours covers the
+      # hourly sweeps with margin.
+      - uid: blinkengage-scheduler-stale
+        title: A scheduled sweep has stopped running
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: A Celery beat schedule has not produced a run within its expected interval.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              # Each task measured against its OWN interval, not a shared
+              # threshold. The beat schedule spans five seconds (the outbox
+              # relay) to twenty-four hours (configuration drift), so any
+              # single number is either permanently breached by the daily
+              # tasks — paging every morning about something healthy — or
+              # blind to a five-second task that died yesterday.
+              #
+              # The result is "intervals missed"; the threshold below is 3,
+              # so a task has to miss three of its own cycles.
+              expr: >-
+                max(
+                  (time() - blinkengage_scheduler_last_run_timestamp_seconds)
+                  / on(task) group_left blinkengage_scheduler_expected_interval_seconds
+                )
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [3] }
+              refId: C
+
+      # Backed by the node-exporter scrape job. A full disk is the failure
+      # that takes the database down with it, and it is entirely
+      # predictable — which makes not alerting on it the least excusable
+      # of the gaps this work closed.
+      - uid: blinkengage-disk-filling
+        title: Host disk is filling
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Less than 15% of disk remains — Postgres stops accepting writes when it runs out.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                100 * min(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [15] }
+              refId: C
+
+      # Attachments live here. A customer sending a photo gets a failure and the
+      # API surfaces it as a 500, so this is customer-visible immediately.
+      - uid: blinkengage-minio-down
+        title: MinIO is unreachable
+        condition: C
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Object storage is down — attachments cannot be read or written.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                min(up{job="minio"})
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
               refId: C

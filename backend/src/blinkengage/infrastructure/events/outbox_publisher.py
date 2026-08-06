@@ -5,6 +5,7 @@ and ``docs/architecture/event-bus.md`` for why this is same-transaction
 rather than a direct broker publish.
 """
 
+from blinkengage.core.correlation import get_correlation_id
 from blinkengage.domain.events import DomainEvent
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
@@ -28,5 +29,9 @@ class OutboxEventPublisher:
                 actor_user_id=event.actor_user_id,
                 payload=event.payload,
                 occurred_at=event.occurred_at,
+                # Captured at write time from the ambient context, so the
+                # event carries the identity of whatever caused it without
+                # every caller having to remember to pass one.
+                correlation_id=get_correlation_id(),
             )
         )

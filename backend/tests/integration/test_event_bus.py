@@ -88,15 +88,21 @@ async def test_relay_batch_marks_dispatched_on_successful_publish(session) -> No
         )
     )
 
-    published: list[tuple[str, bytes]] = []
+    published: list[tuple[str, bytes, str | None]] = []
 
-    async def fake_publish(routing_key: str, body: bytes) -> None:
-        published.append((routing_key, body))
+    async def fake_publish(routing_key: str, body: bytes, correlation_id: str | None) -> None:
+        published.append((routing_key, body, correlation_id))
 
     relayed = await relay_batch(session, fake_publish, batch_size=10, max_attempts=10)
 
     assert relayed == 1
     assert published[0][0] == "team.created"
+    # The relay passes the row's correlation id through to the broker.
+    # Asserted because the fakes above take it as a positional argument
+    # and would otherwise only be checked for arity — and a fake whose
+    # signature drifts from the real publisher turns a contract change
+    # into a test that fails for a reason nobody reads.
+    assert published[0][2] is not None
     batch = await EventOutboxRepository(session).claim_batch(limit=10, max_attempts=10)
     assert batch == []  # already dispatched, no longer claimable
 
@@ -113,7 +119,7 @@ async def test_relay_batch_retries_on_publish_failure(session) -> None:
         )
     )
 
-    async def failing_publish(routing_key: str, body: bytes) -> None:
+    async def failing_publish(routing_key: str, body: bytes, correlation_id: str | None) -> None:
         raise ConnectionError("broker unreachable")
 
     relayed = await relay_batch(session, failing_publish, batch_size=10, max_attempts=10)
@@ -159,7 +165,7 @@ async def test_a_permanently_failing_event_is_dead_lettered_after_max_attempts(
         )
     )
 
-    async def always_fails(routing_key: str, body: bytes) -> None:
+    async def always_fails(routing_key: str, body: bytes, correlation_id: str | None) -> None:
         if routing_key == "poison.event":
             raise ValueError("simulated permanent failure")
 

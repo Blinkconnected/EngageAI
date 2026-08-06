@@ -1,0 +1,24 @@
+# Weekly proof that the backups are restorable.
+#
+# Taking backups and being able to restore them are different properties,
+# and only the second one is worth having. This restores the most recent
+# set into a scratch database and queries it, so the first restore of a
+# backup is never the one performed during an outage.
+
+[Unit]
+Description=BlinkEngage restore drill (verifies the latest backup restores)
+Documentation=file://__REPO_ROOT__/docs/deployment/disaster-recovery.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+ExecStart=__REPO_ROOT__/scripts/verify_backup_restore.sh
+EnvironmentFile=-/etc/blinkengage/backup.env
+TimeoutStartSec=1h
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

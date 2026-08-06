@@ -1,9 +1,26 @@
 apiVersion: 1
 
+# Routing, by severity.
+#
+# The root receiver is the *warning* channel rather than the critical one.
+# A rule that forgets its severity label lands somewhere a human reads
+# during the day instead of paging them — the failure mode of a
+# mislabelled rule should be a missed hour, not a false page at 03:00.
 policies:
   - orgId: 1
-    receiver: ops-placeholder
-    group_by: ["alertname"]
+    receiver: ops-warning
+    group_by: ["alertname", "severity"]
     group_wait: 30s
     group_interval: 5m
-    repeat_interval: 4h
+    repeat_interval: 12h
+    routes:
+      # Critical: paged, grouped tightly, repeated until somebody acts.
+      # A four-hour repeat on a database outage is a four-hour outage
+      # nobody was reminded about.
+      - receiver: ops-critical
+        object_matchers:
+          - ["severity", "=", "critical"]
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 1h
+        continue: false

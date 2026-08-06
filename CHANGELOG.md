@@ -265,6 +265,105 @@ for more detail on how this page is put together.
   `/api/v1/intelligence/anomalies` and `/api/v1/intelligence/metrics`,
   for owners and administrators.
 
+- **A message that cannot be processed is now set aside instead of
+  blocking everything behind it.** Previously a single event the platform
+  could not handle — a change in an integration's format, a record
+  deleted at the wrong moment — was retried immediately and forever. It
+  never got through, it consumed the machine trying, and everything
+  queued behind it waited. Nothing raised an alarm, because from the
+  outside the queue looked like it was moving.
+
+  Now such a message is retried a few times with a growing pause between
+  attempts — one second, then four, then sixteen — which is enough for
+  the things worth waiting for, like a database restarting. If it still
+  fails, it is moved to a holding area with the reason recorded, an alert
+  is raised, and everything else carries on. Nothing is discarded: once
+  the cause is fixed, held messages can be put back.
+
+- **Backups now cover everything needed to bring the platform back, and
+  they leave the machine.** Previously only the database was backed up,
+  by hand. A backup that stays on the same computer as the thing it
+  protects does not survive that computer failing.
+
+  Every night the platform now saves its database, its uploaded files,
+  its configuration and its credentials — the credentials encrypted — and
+  copies the whole set to a separate machine. Old copies are cleared out
+  on a schedule so backups cannot fill the disk.
+
+- **The recovery plan has been rehearsed rather than just written.** A
+  restore that has never been performed is a hope. The full recovery is
+  now a script that anybody can run: it rebuilds the database, the files,
+  the configuration and the credentials into a scratch copy, checks each
+  one, and times the whole thing — without touching the live system. It
+  was run, it passed, and the measured times are published.
+
+- **Alerts now reach a person.** The platform's alerting had a stand-in
+  destination that went nowhere. Worse, none of the alert rules could
+  actually run — each pointed at its data source by name where an
+  internal identifier was required, so every one silently did nothing.
+  Alerts now go to a real destination, urgent ones separately from
+  routine ones, and there is a command that fires a genuine alert and
+  confirms it arrives.
+
+- **Anything you do can be followed from end to end.** Each request now
+  carries a reference that travels with it through every queue,
+  background worker and log entry it touches. When something goes wrong,
+  the whole story can be pulled up at once instead of pieced together.
+
+- **Two record-keeping tables no longer grow forever.** Internal logs of
+  scheduled jobs and already-delivered events are now cleared out after a
+  set period. Events still waiting to be delivered are never removed,
+  however old.
+
+### Fixed
+
+- **None of the platform's alert rules could run.** All twelve referred
+  to their data source by its display name where an internal identifier
+  was required. Each was listed, looked correctly configured, and quietly
+  failed every time it was evaluated — so the monitoring appeared healthy
+  while covering nothing. The identifiers are now fixed values, and the
+  verification command fails if this ever recurs.
+
+- **Several alerts had nothing to measure.** Warnings about the disk
+  filling up, about storage being unreachable, and about messages piling
+  up in a holding queue were all written against readings the platform
+  never actually collected. It now collects them: host disk and memory,
+  storage health, and per-queue depth. Writing the warning is not the
+  same as being able to see the thing it warns about.
+
+- **The "a scheduled job has stopped" warning compared everything to one
+  deadline.** Jobs here run anywhere from every five seconds to once a
+  day, so a single deadline meant the daily ones always looked overdue —
+  it would have raised a false alarm every morning until somebody turned
+  it off. Each job is now judged against its own schedule. It also no
+  longer reports on jobs that are not scheduled at all.
+
+- **The log dashboards showed nothing**, for the same reason: they
+  pointed at an identifier the log store did not have.
+
+- **A retired alert destination was still selectable.** Renaming it had
+  removed it from the configuration but not from the system, leaving a
+  stand-in that pointed nowhere available to anyone editing an alert. It
+  has now been removed properly.
+
+- **Every service running in production now has a memory limit, a
+  restart policy, a health check and log rotation.** Three were missing
+  from the production configuration entirely — including the one that
+  records billable usage — which meant an unbounded process could have
+  taken the machine down with it.
+
+### Security
+
+- **Internal metrics are no longer reachable from the public internet.**
+  The metrics endpoint exposes request volumes and timings — useful to
+  the monitoring system, and an unnecessary disclosure to anybody else.
+  It is now restricted to the monitoring network, with the block
+  confirmed from outside it.
+
+- **Backed-up credentials are encrypted.** The file holding the
+  platform's secrets is stored encrypted within each backup set, so a
+  copy of a backup is not a copy of the credentials.
+
 ## [1.1.0] - 2026-08-05
 
 The first stable release. Everything built and tested through the beta

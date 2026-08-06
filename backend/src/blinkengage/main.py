@@ -3,22 +3,30 @@
 Uvicorn entrypoint: ``blinkengage.main:app``.
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import REGISTRY
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from blinkengage.api.correlation_middleware import CorrelationIdMiddleware
 from blinkengage.api.v1.router import api_router
+from blinkengage.core.celery_app import celery_app
 from blinkengage.core.changelog import ChangelogFormatError, current_release, load_releases
 from blinkengage.core.config import get_settings
 from blinkengage.core.container import Container
 from blinkengage.core.correlation import CORRELATION_HEADER
 from blinkengage.core.exceptions import register_exception_handlers
 from blinkengage.core.logging import configure_logging, get_logger
+from blinkengage.core.operational_metrics import (
+    CACHE_SECONDS,
+    OperationalCollector,
+    register,
+)
 from blinkengage.core.security_headers import SecurityHeadersMiddleware
 from blinkengage.core.wiring import verify_wiring
 
@@ -28,7 +36,28 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     logger.info("application_starting", environment=app.state.container.settings().environment)
+
+    # Keeps the operational gauges fresh off the scrape path. Started
+    # here rather than from an @app.on_event("startup") hook because the
+    # app already has a lifespan and mixing the two is deprecated.
+    collector = app.state.operational_collector
+
+    async def _refresh_operational_metrics() -> None:  # pragma: no cover - lifecycle
+        while True:
+            await collector.refresh(app.state.container.session_factory())
+            await asyncio.sleep(CACHE_SECONDS)
+
+    metrics_task = asyncio.create_task(_refresh_operational_metrics())
+
     yield
+
+    # Cancelled and awaited, not just cancelled: leaving the task pending
+    # makes the event loop complain on shutdown and can hold the session
+    # open past the engine's disposal below.
+    metrics_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await metrics_task
+
     engine = app.state.container.engine()
     await engine.dispose()
     redis = app.state.container.redis()
@@ -122,6 +151,24 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.api_v1_prefix)
 
     Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+    # Two gauges the silent-failure alerts need — outbox backlog and
+    # scheduler staleness. Refreshed on a timer rather than on the scrape
+    # path, so a slow database cannot slow a scrape and a broken one
+    # cannot fail it.
+    # Only tasks the beat schedule actually declares, and each one's
+    # interval — see the notes on OperationalCollector.__init__.
+    intervals = {
+        str(entry["task"]): float(entry["schedule"])
+        for entry in celery_app.conf.beat_schedule.values()
+        if isinstance(entry.get("schedule"), int | float)
+    }
+    collector = OperationalCollector(
+        scheduled_tasks={entry["task"] for entry in celery_app.conf.beat_schedule.values()},
+        expected_intervals=intervals,
+    )
+    register(REGISTRY, collector)
+    app.state.operational_collector = collector
 
     return app
 

@@ -9,8 +9,10 @@ time.
 """
 
 from celery import Celery
+from celery.signals import task_prerun
 
 from blinkengage.core.config import get_settings
+from blinkengage.core.correlation import set_correlation_id
 
 settings = get_settings()
 
@@ -36,11 +38,30 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.channel_health_check_task",
         "blinkengage.infrastructure.tasks.knowledge_index_sweep_task",
         "blinkengage.infrastructure.tasks.memory_decay_sweep_task",
+        "blinkengage.infrastructure.tasks.operational_retention_task",
         "blinkengage.infrastructure.tasks.learning_settle_sweep_task",
         "blinkengage.infrastructure.tasks.learning_cluster_sweep_task",
         "blinkengage.infrastructure.tasks.learning_analysis_sweep_task",
     ],
 )
+
+
+@task_prerun.connect  # type: ignore[misc]
+def _set_task_correlation(task_id: str | None = None, **_: object) -> None:
+    """Give every task run a correlation id.
+
+    A task is the start of its own causal chain — beat fires it, nobody
+    requested it — so it seeds a new identifier rather than inheriting
+    one. Everything the task logs, and every event it writes to the
+    outbox, then carries the same id, which is what lets an operator ask
+    "what did that 03:00 sweep actually do" and get an answer.
+
+    Derived from the Celery task id so the two are cross-referenceable:
+    finding the task in Flower and finding its logs in Loki are the same
+    lookup.
+    """
+    set_correlation_id(task_id)
+
 
 celery_app.conf.update(
     task_serializer="json",
@@ -59,6 +80,14 @@ celery_app.conf.update(
     worker_send_task_events=True,
     task_send_sent_event=True,
     beat_schedule={
+        # Prunes operational telemetry that would otherwise grow forever —
+        # see docs/deployment/runbooks.md. Daily and off-peak:
+        # the work is bounded and idempotent, and a missed run simply
+        # leaves a day more data for the next one.
+        "prune-operational-tables": {
+            "task": "blinkengage.ops.prune_operational_tables",
+            "schedule": 86400.0,
+        },
         # Drains the transactional outbox to the RabbitMQ event exchange —
         # see docs/architecture/event-bus.md. Runs frequently since it's
         # cheap when the outbox is empty (one indexed, limited SELECT).

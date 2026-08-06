@@ -1,0 +1,20 @@
+[Unit]
+Description=Nightly BlinkEngage backup
+Documentation=file:///opt/blinkengage/docs/deployment/operational-runbook.md
+
+[Timer]
+# 02:30 UTC: after the nightly retention sweeps have pruned, so the
+# backup captures the state that will actually be kept, and outside the
+# working day for every timezone the platform currently serves.
+OnCalendar=*-*-* 02:30:00 UTC
+
+# Spread the load if several hosts ever share a backup target, and stop
+# every install in a fleet from hitting it on the same second.
+RandomizedDelaySec=15m
+
+# A host that was off at 02:30 still gets its backup when it comes back,
+# rather than silently skipping a day.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

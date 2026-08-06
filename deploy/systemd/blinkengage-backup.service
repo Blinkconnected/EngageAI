@@ -1,0 +1,34 @@
+# Nightly full backup. Installed by deploy/systemd/install.sh.
+#
+# Type=oneshot with the timer below rather than a cron entry: cron mails
+# failures to a mailbox nobody reads, while a failed unit is visible to
+# `systemctl --failed`, to `systemctl list-timers`, and to node_exporter's
+# systemd collector — which means the monitoring stack can alert on a
+# backup that stopped running. A backup regime whose failures are silent
+# is the most common way of having no backups.
+
+[Unit]
+Description=BlinkEngage full backup (database, objects, config, secrets)
+Documentation=file://__REPO_ROOT__/docs/deployment/runbooks.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO_ROOT__
+ExecStart=__REPO_ROOT__/scripts/backup_all.sh
+
+# BACKUP_PASSPHRASE and BACKUP_REMOTE live here, not in the unit file:
+# unit files are world-readable and `systemctl cat` prints them.
+# Create with mode 0600, owned by root.
+EnvironmentFile=/etc/blinkengage/backup.env
+
+# A backup that has not finished in two hours has hung; failing is more
+# useful than overlapping with tomorrow's run.
+TimeoutStartSec=2h
+
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

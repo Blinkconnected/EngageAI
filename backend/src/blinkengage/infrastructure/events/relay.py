@@ -36,7 +36,7 @@ from blinkengage.infrastructure.repositories.event_outbox_repository import (
 
 logger = get_logger(__name__)
 
-PublishFn = Callable[[str, bytes], Awaitable[None]]
+PublishFn = Callable[[str, bytes, str | None], Awaitable[None]]
 
 # Lazily created once per worker process — a Celery worker is a separate OS
 # process from the FastAPI app, so it can't share the app's DI-container-
@@ -86,7 +86,7 @@ async def relay_batch(
     relayed = 0
     for event in batch:
         try:
-            await publish(event.event_type, _serialize(event))
+            await publish(event.event_type, _serialize(event), event.correlation_id)
         except Exception:
             await outbox.mark_failed(event)
             if event.attempts >= max_attempts:
@@ -117,8 +117,14 @@ async def _relay_outbox_batch_async() -> int:
         async with connection:
             channel = await connection.channel()
 
-            async def _publish(routing_key: str, body: bytes) -> None:
-                await rabbitmq.publish_event(channel, settings, routing_key=routing_key, body=body)
+            async def _publish(routing_key: str, body: bytes, correlation_id: str | None) -> None:
+                await rabbitmq.publish_event(
+                    channel,
+                    settings,
+                    routing_key=routing_key,
+                    body=body,
+                    correlation_id=correlation_id,
+                )
 
             async with session_scope(session_factory) as session:
                 return await relay_batch(

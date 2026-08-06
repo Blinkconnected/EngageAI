@@ -310,6 +310,24 @@ class Settings(BaseSettings):
     #: observation two weeks stale.
     learning_settle_hours: int = 72
 
+    # --- Operational retention ------------------------------------------
+    #
+    # Both tables are telemetry about the platform running, not records
+    # the platform is for. Unpruned they grow forever — scheduler_runs at
+    # roughly a million rows a year, event_outbox on the write path of
+    # every domain event.
+    #
+    # Thirty days is long enough to investigate an incident from and to
+    # cover a monthly review; ninety would be a quarter of retained data
+    # nobody reads. Audit logs are deliberately excluded from all of this.
+    scheduler_run_retention_days: int = 30
+    #: Dispatched outbox rows only. An undispatched row is work still
+    #: owed, however old, and deleting one would silently drop an event.
+    outbox_retention_days: int = 7
+    #: Rows per delete batch. Batched so the statement never holds a long
+    #: lock on a table the write path depends on.
+    operational_retention_batch_size: int = 5000
+
     # --- Provider apps for channel OAuth (see
     # docs/architecture/channel-connectors.md) ---
     #

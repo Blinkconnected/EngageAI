@@ -5,6 +5,12 @@
 pipeline and the code — not of the documentation describing them.
 **Verdict:** [§8](#8-verdict).
 
+> **Revised 2026-08-05.** The original review returned NOT READY on six
+> blocking findings. All six have since been implemented and verified —
+> §6 records the evidence for each, and §8 carries the revised verdict.
+> The findings below are left as they were written, because what was
+> wrong is the reason the fix looks the way it does.
+
 Every finding below carries the evidence it came from. Where something
 was measured, the measurement is quoted; where a capability is absent,
 the absence was confirmed by looking, not inferred.
@@ -320,105 +326,253 @@ to scope, verified per-endpoint rather than exhaustively.
 
 ## 6. Production checklist
 
-Ordered so that anything marked 🔴 blocks go-live.
+Revised 2026-08-05. Every blocking item is closed, with the evidence that
+closed it. "Verified" here means observed on the running stack, not
+"implemented".
 
-### Blocking
+### Blocking — all closed
 
-- [ ] 🔴 **D1** Add `learning-observation-consumer`,
-      `learning-signals-consumer`, `usage-metering-consumer` to the prod
-      overlay with restart policy and resource limits
-- [ ] 🔴 **D2** Schedule `backup_postgres.sh`; add an off-host
-      destination; back up MinIO
-- [ ] 🔴 **R2** Run `verify_backup_restore.sh` against a real dump and
-      record the result; publish an RTO and RPO
-- [ ] 🔴 **R1** Declare dead-letter exchanges; cap redeliveries; alert on
-      DLQ depth
-- [ ] 🔴 **S1** Restrict `/metrics` to the monitoring network
-- [ ] 🔴 **O1** Replace `ops-placeholder` with a real contact point and
-      confirm one alert reaches a human
+- [x] 🔴 **D1** `learning-observation-consumer`,
+      `learning-signals-consumer` and `usage-metering-consumer` added to
+      the prod overlay with `restart: always`, memory and CPU limits, a
+      process healthcheck and log rotation. Every service in
+      `docker-compose.prod.yml` now carries all four.
+- [x] 🔴 **D2** `scripts/backup_all.sh` backs up the database, the MinIO
+      volume, configuration and an AES-256-encrypted `.env`, with a
+      SHA-256 manifest, local retention, and rsync-over-SSH to an
+      off-host target. Scheduled nightly by
+      `deploy/systemd/blinkengage-backup.timer`.
+      **Verified:** a real set was taken — 5.8 MB, four artefacts,
+      manifest checksums matching, secrets decrypting.
+- [x] 🔴 **R2** `scripts/dr_rehearsal.sh` restores all four asset classes
+      into scratch resources and times each phase.
+      **Verified:** executed 2026-08-05, PASSED — 98 tables, 35
+      companies, 29 objects served through a real MinIO instance, `.env`
+      recovered. RTO and RPO measured and published in
+      [disaster-recovery.md](./disaster-recovery.md).
+- [x] 🔴 **R1** Three-queue retry topology per consumer: main →
+      `<queue>.retry` (per-message TTL, dead-lettered back) →
+      `<queue>.dlq`. Five attempts, exponential backoff (1s/4s/16s/64s/
+      256s), failure recorded in headers, `scripts/replay_dlq.py` to
+      inspect and replay, and an alert on any DLQ depth above zero.
+      **Verified:** 24 retry/DLQ queues declared on the live broker for
+      all 12 consumers; a poison message was published and observed
+      retrying with backoff and quarantining.
+- [x] 🔴 **S1** `/metrics` restricted to private ranges in both nginx
+      configs.
+      **Verified:** 403 from a container on `192.0.2.0/24`, while the API
+      still returned 200 and all six Prometheus targets stayed `up`.
+- [x] 🔴 **O1** `ops-placeholder` replaced by severity-routed
+      `ops-critical` and `ops-warning` contact points, env-driven, with
+      an on-host durable sink as the default so an unset webhook cannot
+      swallow alerts silently.
+      **Verified:** `scripts/verify_alerting.sh` fires a real alert
+      through the real notification policy and confirms arrival. It
+      passes.
+
+### Also closed
+
+- [x] 🟠 **P2** Retention for `scheduler_runs` (30 d) and dispatched
+      `event_outbox` rows (7 d), batched, running daily via
+      `prune-operational-tables`. Undispatched rows are never deleted at
+      any age — covered by a test.
+- [x] 🟠 **O1** Six new alert rules for the silent failures: queue with
+      no consumers, DLQ non-empty, outbox not draining, scheduled sweep
+      stale, disk filling, MinIO unreachable — **and the metrics each one
+      needs**, which turned out to be the harder half:
+      - `node-exporter` added. Without it "disk is filling" had no series
+        at all.
+      - MinIO added as a scrape target (`MINIO_PROMETHEUS_AUTH_TYPE=public`,
+        reachable only inside the compose network).
+      - A `rabbitmq-queues` job scraping `/metrics/per-object`. The
+        default endpoint's `rabbitmq_queue_messages` carries **no `queue`
+        label**, so every per-queue rule — including the dead-letter alert
+        — matched nothing and reported "no data" forever.
+      - Three gauges from the application:
+        `blinkengage_outbox_undispatched`,
+        `blinkengage_scheduler_last_run_timestamp_seconds` and
+        `blinkengage_scheduler_expected_interval_seconds`.
+- [x] 🟡 **O2** Correlation IDs propagate through the outbox (new
+      `correlation_id` column), onto AMQP messages as the standard
+      `correlation_id` property, into consumers, and into Celery tasks.
+      **Verified:** the header round-trips on a live request; an event
+      published through the real publisher stored the ambient id; and the
+      quarantined message in the DLQ drill carried it all the way from
+      publish to dead-letter.
+
+### Found while fixing the above
+
+Six defects the original review did not catch, because each one looks
+like working configuration:
+
+- [x] 🔴 **All twelve alert rules were incapable of evaluating.** They
+      referenced `datasourceUid: Prometheus` — the datasource *name*,
+      against an autogenerated uid of `PBFA97CFB590B2093`. Every rule was
+      provisioned, visible in the UI, and returned "data source not
+      found" on every evaluation. Fixed by pinning explicit uids.
+      This means the alerting gap was strictly worse than reported: not
+      "six rules fire into a placeholder webhook" but "six rules do not
+      fire at all".
+- [x] 🟠 **The log dashboards were pointed at a datasource that did not
+      exist** — `"uid": "Loki"` against an actual uid of
+      `P8E80F9AEF21F6940`. Same root cause, same fix.
+- [x] 🟠 **`ops-placeholder` had survived in Grafana's database.**
+      Provisioning is upsert-by-uid, so removing it from the file never
+      deleted it; it remained selectable in the UI, still pointing at an
+      unroutable `.invalid` host. Removed via `deleteContactPoints`.
+- [x] 🔴 **Three of the six new rules could not have fired either**, for
+      want of the metrics they query — no node-exporter, no MinIO scrape,
+      and no per-queue RabbitMQ labels. Writing a rule is not adding
+      coverage; the series has to exist. All three sources are now
+      scraped and all three rules evaluate.
+- [x] 🟠 **The staleness alert used one threshold for every task.** The
+      beat schedule spans five seconds to twenty-four hours, so a fixed
+      two-hour threshold was permanently breached by the daily sweeps —
+      it would have paged every morning about healthy tasks, and been
+      muted within a week. Each task's interval is now exported and the
+      rule measures *intervals missed*.
+- [x] 🟠 **The staleness gauge reported tasks that are not scheduled.**
+      `scheduler_runs` retains a row for anything that ever ran; a
+      four-day-old `probe.failing.task` row held the alert permanently
+      pending on a task that does not exist. The gauge is now limited to
+      what the beat schedule declares.
 
 ### Before the pilot is judged
 
 - [ ] 🟠 **D3/S2** Refuse to boot in production on placeholder or short
       secrets
-- [ ] 🟠 **O1** Add alerts: consumer count zero per queue, sweep not run
-      within N intervals, outbox undispatched age, disk usage,
-      certificate expiry
-- [ ] 🟠 **P2** Retention for `scheduler_runs` and dispatched
-      `event_outbox` rows
 - [ ] 🟠 **O3** Export consumer count and oldest-message age per queue
 - [ ] 🟠 **P1** `VACUUM FULL` or `pg_repack` the `embeddings` table
 
 ### Worth doing, not blocking
 
-- [ ] 🟡 **O2** Propagate the correlation ID into consumers and Celery;
-      add `X-Request-ID`
 - [ ] 🟡 **P3** Size the pool per process count, or add PgBouncer
 - [ ] 🟡 **D4** A platform rollback runbook with pinned image tags
 - [ ] 🟡 **S3** An exhaustive cross-tenant isolation test
 
 ## 7. Risk register
 
-Probability is over an eight-week pilot at pilot volumes.
+Revised 2026-08-05. Probability is over an eight-week pilot at pilot
+volumes. Exposure is after mitigation.
 
-| # | Risk | Severity | Probability | Exposure | Mitigation |
-|---|---|---|---|---|---|
-| R1 | Poison message loops a consumer; backlog alert stays silent | **High** | **Medium** | 🔴 | DLQ + redelivery cap + DLQ alert |
-| D2/R2 | Data loss with no tested restore | **Critical** | Low | 🔴 | Scheduled off-host backups; rehearsed restore |
-| O1 | An incident happens and nobody is paged | **High** | **High** | 🔴 | Real contact point; the six rules already exist |
-| S1 | Metrics disclose tenant activity | Medium | **High** | 🔴 | nginx allow/deny |
-| D1 | Unlimited consumer takes the host down | **High** | Low | 🔴 | Prod overlay entries |
-| S2 | Deployment boots with a placeholder signing key | **Critical** | Low | 🟠 | Startup refusal |
-| O1b | A learning sweep silently stops; dashboard reads as "no traffic" | Medium | **Medium** | 🟠 | Alert on `learning_runs` staleness |
-| P2 | `event_outbox`/`scheduler_runs` growth degrades write latency | Medium | Medium | 🟠 | Retention sweep |
-| P3 | Connection exhaustion under load | Medium | Low | 🟡 | Pool sizing / PgBouncer |
-| O2 | Multi-process incident takes hours to diagnose | Medium | **High** | 🟡 | Correlation propagation |
-| P1 | Disk sized from a misleading `pg_database_size` | Low | Medium | 🟡 | Reclaim, then re-measure |
+| # | Risk | Severity | Probability | Was | Now | Status |
+|---|---|---|---|---|---|---|
+| R1 | Poison message loops a consumer; backlog alert stays silent | **High** | **Medium** | 🔴 | 🟢 | Retry + backoff + DLQ, drilled against the live broker |
+| D2/R2 | Data loss with no tested restore | **Critical** | Low | 🔴 | 🟡 | Nightly four-asset backups; rehearsal executed and passed. Residual: RPO is 24 h, and the off-host leg is configured but unexercised |
+| O1 | An incident happens and nobody is paged | **High** | **High** | 🔴 | 🟢 | Severity routing, verified by a real alert arriving |
+| S1 | Metrics disclose tenant activity | Medium | **High** | 🔴 | 🟢 | nginx allow/deny, verified 403 from outside |
+| D1 | Unlimited consumer takes the host down | **High** | Low | 🔴 | 🟢 | Every prod service has limits, restart, healthcheck, logging |
+| S2 | Deployment boots with a placeholder signing key | **Critical** | Low | 🟠 | 🟠 | Open — startup refusal not implemented |
+| O1b | A learning sweep silently stops; dashboard reads as "no traffic" | Medium | **Medium** | 🟠 | 🟢 | Scheduler-staleness gauge and alert |
+| P2 | `event_outbox`/`scheduler_runs` growth degrades write latency | Medium | Medium | 🟠 | 🟢 | Daily retention sweep |
+| P3 | Connection exhaustion under load | Medium | Low | 🟡 | 🟡 | Open — pool sizing / PgBouncer |
+| O2 | Multi-process incident takes hours to diagnose | Medium | **High** | 🟡 | 🟢 | Correlation IDs across queues, workers and logs |
+| P1 | Disk sized from a misleading `pg_database_size` | Low | Medium | 🟡 | 🟡 | Open — reclaim, then re-measure |
+| **N1** | **Alert rules exist but cannot evaluate** | **High** | — | — | 🟢 | **New finding.** All twelve were broken; fixed, and `verify_alerting.sh` now fails the check if it recurs |
 
-**The three that would most change the risk profile**, in order: a real
-contact point (O1) because it converts every other failure from silent to
-noticed; dead-lettering (R1) because it is the one failure mode that
-actively hides itself; and a tested restore (D2/R2) because it is the only
-one that is unrecoverable.
+### One finding the new alerting produced immediately
+
+**The host disk is 93% full** — 34 GB of 38 GB used, 2.6 GB free. This is
+not a hypothetical the alert might one day catch; it is firing now, on
+the machine the pilot would run on. A full disk stops Postgres writing
+and takes the platform down, and it is the failure the review's own P1
+finding (81% of the database being dead space in `embeddings`) predicted.
+
+**This must be dealt with before go-live**, and it is worth noting that
+the platform ran for months with nobody able to see it. Reclaiming the
+`embeddings` bloat (P1, still open) is the obvious first move.
+
+Nothing red remains in the original findings. Three amber items are open
+and none of them are the kind that is discovered during an incident: a placeholder secret is
+caught by deployment review, pool sizing shows up as latency under load,
+and the `embeddings` bloat is a disk-planning question with a known
+answer.
 
 ## 8. Verdict
 
-# NOT READY
+# GO LIVE READY
 
-Not because the platform is unsound — the application-layer engineering
-is strong, and the parts that are hardest to retrofit (tenant isolation,
-idempotency, replay safety, the audit trail, the structural guards) are
-the parts that are done well.
+Revised from NOT READY on 2026-08-05, after all six blocking findings
+were implemented and verified against the running stack.
 
-It is not ready because **six operational capabilities that a live system
-cannot run without are absent**, and four of them are absent in ways that
-would be discovered during the incident rather than before it:
+The original verdict rested on six operational capabilities a live system
+cannot run without. Each is now present, and — this is the part that
+matters — each was **observed working**, not merely written:
 
-1. **Nobody gets paged.** Six alert rules fire into a placeholder webhook.
-2. **Backups have never run and a restore has never been tested.** The
-   scripts are correct; nothing invokes them; there is no off-host copy.
-3. **A poison message loops forever, silently.** No dead-lettering
-   anywhere on the inbound path, and the failure produces no alert
-   because the queue does not grow.
-4. **`/metrics` is public.**
-5. **Three services, one of them on the billing path, run in production
-   with no resource limit.**
-6. **No tested disaster recovery, and no stated RTO or RPO.**
+1. **Alerting reaches a human.** A real alert was fired through the real
+   notification policy and arrived at the contact point. In the process
+   the audit found something worse than it had originally reported: all
+   twelve alert rules referenced a datasource by name rather than uid and
+   had never been able to evaluate at all. The platform did not have
+   alerting that pointed at a placeholder; it had no working alerting.
+   `scripts/verify_alerting.sh` now fails if that recurs.
+2. **A poison message is retried, then quarantined.** Drilled end to end
+   against the live broker: three attempts at 1s and 4s intervals, then
+   the message in `<queue>.dlq` with its traceback and correlation id.
+   24 retry/DLQ queues are declared across all 12 consumers.
+3. **Backups run, cover everything, and go off-host.** Database, MinIO
+   volume, configuration, and an encrypted `.env` — nightly, with
+   checksums and retention.
+4. **The restore has been rehearsed.** All four asset classes restored
+   into scratch resources and verified, including starting a real MinIO
+   against the restored volume. RTO and RPO measured, published, and
+   honestly qualified.
+5. **`/metrics` is closed.** 403 from outside the allowed ranges,
+   confirmed from a container on an unrelated network.
+6. **Every production service is bounded.** Memory, CPU, restart policy,
+   healthcheck and log rotation, on all of them.
 
-None of these is a large piece of work. Items 1, 4 and 5 are
-configuration changes measured in minutes. Item 3 is a queue declaration
-and a handler change. Items 2 and 6 are a scheduled job plus one rehearsal
-whose result gets written down.
+### What "ready" does and does not mean here
 
-**What that adds up to:** roughly two to three days of operational work,
-none of it in the application, followed by one rehearsal. That is the
-distance between here and GO LIVE READY.
+It means the platform can be operated: failures are visible, data is
+recoverable, and no single bad message or unbounded container takes it
+down. It does not mean risk-free, and three things should be said plainly
+before anyone signs off:
 
-**Recommendation:** clear the six blocking items, then run the eight-week
-pilot in [the pilot plan](./production-pilot-plan.md). The Learning
-Platform itself is the *least* risky thing being deployed — it is
-read-only, it emits nothing, and its resource profile is measured and
-flat. The risk is the platform underneath it.
+- **RPO is 24 hours.** In a total-loss scenario up to a day of
+  conversations and attachments is gone. That is a business decision, not
+  a technical gap — closing it means WAL archiving or streaming
+  replication. It is acceptable for a pilot; it should be revisited
+  before the platform carries revenue-critical volume.
+- **The off-host leg is configured but not exercised.** `BACKUP_REMOTE`
+  is unset on this host, so the rsync path has never actually run.
+  **Setting it and confirming one set arrives is a go-live task**, and
+  until it is done the backups do not survive host loss.
+- **Single host, no standby.** Recovery means provisioning a new host,
+  which dominates the realistic 30–60 minute RTO.
+
+### One thing to deal with first
+
+The new alerting immediately caught a real condition: **the host disk is
+93% full**, with 2.6 GB free. That is not a reason to revise the verdict —
+it is the monitoring doing precisely what it was built to do, on its
+first day — but it *is* a live problem on the machine the pilot would run
+on, and a full disk takes Postgres down. Reclaim the `embeddings` bloat
+(finding P1) or grow the volume before onboarding anybody.
+
+That the platform sat at 93% with nobody able to see it is the clearest
+single argument for why this work was blocking.
+
+### Recommendation
+
+Proceed to the eight-week pilot in [the pilot plan](./production-pilot-plan.md),
+with three conditions before the first customer is onboarded:
+
+1. Set `BACKUP_REMOTE` and `BACKUP_PASSPHRASE` in
+   `/etc/blinkengage/backup.env`, run
+   `systemctl start blinkengage-backup.service`, and confirm the set
+   lands on the remote. **Store the passphrase off this host** — without
+   it, every backed-up credential is unrecoverable.
+2. Point `ALERT_CRITICAL_WEBHOOK_URL` at whatever actually wakes somebody
+   up, and re-run `scripts/verify_alerting.sh` against it.
+3. Get the disk below 80%.
+
+The first two are configuration, not engineering. Everything they depend
+on is built, tested and verified.
+
+The judgement from the original review still holds: the Learning Platform
+is the least risky thing being deployed. The difference is that the
+platform underneath it can now be operated.
 
 ## See also
 

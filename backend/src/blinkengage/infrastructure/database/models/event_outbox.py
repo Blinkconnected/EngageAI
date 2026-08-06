@@ -41,3 +41,9 @@ class EventOutbox(UUIDPrimaryKeyMixin, Base):
     )
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Ties this event back to the action that caused it, across the
+    #: process boundary. Without it the chain breaks at the outbox: the
+    #: request that wrote the row is in one process, the consumer that
+    #: acts on it is in another, and nothing connects them but timestamps
+    #: — which stop working the moment two things happen in one second.
+    correlation_id: Mapped[str | None] = mapped_column(String(64), default=None)

@@ -1,18 +1,58 @@
 apiVersion: 1
 
-# The actual notification destination (Slack, PagerDuty, email, etc.) is
-# an operator/business decision this codebase can't make on its own — see
-# docs/architecture/observability.md. This webhook URL is a deliberate,
-# obviously-fake placeholder; replace it (or add a second contact point)
-# before relying on this in production. Alert rules and routing are fully
-# wired regardless, so plugging in a real destination is a one-line change.
+# Where an alert actually goes.
+#
+# Two destinations, split by severity, because they are read differently:
+# a critical page interrupts somebody at 03:00 and must be rare enough
+# that it is always answered; a warning goes to a channel that is read
+# during the working day. One destination for both trains people to mute
+# the one that wakes them.
+#
+# URLs come from the environment. They are secrets — a Slack webhook URL
+# is a bearer credential — so they belong in the deployment's secret store
+# rather than in this file. Grafana substitutes ${VAR} from its own
+# environment at provisioning time.
+#
+# The default lives in docker-compose.yml, NOT here. Grafana substitutes
+# plain ${VAR} only — it has no shell-style ${VAR:-default} form, and an
+# unset variable expands to an empty string, which fails the webhook
+# integration's required-'url' validation. That failure is not confined
+# to the contact point: provisioning is a start-up module, so Grafana
+# exits and the entire monitoring stack goes down. Verified by doing it.
+#
+# So the fallback is applied by Compose, where ${VAR:-default} does work,
+# and Grafana is guaranteed a non-empty URL. Point these at Slack or
+# PagerDuty by setting the variables in .env; leave them unset and alerts
+# still land durably in the on-host sink rather than nowhere.
+# Renaming a contact point does not remove the old one. Grafana's
+# provisioning is upsert-by-uid, so `ops-placeholder` survived in the
+# database after this file stopped mentioning it — still selectable,
+# still pointing at an unroutable .invalid host, and still able to be
+# picked as a destination by anybody editing a rule in the UI. A
+# placeholder that is merely unreferenced has not been replaced.
+deleteContactPoints:
+  - orgId: 1
+    uid: ops-placeholder-webhook
+
 contactPoints:
   - orgId: 1
-    name: ops-placeholder
+    name: ops-critical
     receivers:
-      - uid: ops-placeholder-webhook
+      - uid: ops-critical-webhook
         type: webhook
         settings:
-          url: https://ops-placeholder.invalid/blinkengage-alerts
+          url: ${ALERT_CRITICAL_WEBHOOK_URL}
           httpMethod: POST
+          maxAlerts: 0
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: ops-warning
+    receivers:
+      - uid: ops-warning-webhook
+        type: webhook
+        settings:
+          url: ${ALERT_WARNING_WEBHOOK_URL}
+          httpMethod: POST
+          maxAlerts: 0
         disableResolveMessage: false

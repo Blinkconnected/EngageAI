@@ -11,11 +11,44 @@
 # below wherever a base list/map must be fully replaced rather than
 # appended to.
 
+# Log rotation, applied to every service below.
+#
+# Without it the json-file driver grows without limit, and the first
+# symptom is the host filling up — which takes the database with it. Three
+# 50 MB files per container is enough to investigate an incident from and
+# bounded enough that thirty containers cannot exhaust a disk.
+x-logging: &prod-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+# Liveness for the consumer processes.
+#
+# The image's baked-in HEALTHCHECK curls :8000, which is right for the API
+# and wrong for these — they run a consumer script and nothing listens on
+# that port, so it would report permanently unhealthy. This checks the
+# process is actually there instead, which catches it dying without the
+# container exiting.
+#
+# It proves the process exists, not that it is consuming. Queue-level
+# consumer count is the authoritative signal and is alerted on
+# (docker/grafana/provisioning/alerting/rules.yml).
+x-consumer-healthcheck: &consumer-healthcheck
+  test:
+    - CMD-SHELL
+    - "grep -l blinkengage.infrastructure.events.consumers /proc/*/cmdline >/dev/null 2>&1"
+  interval: 30s
+  timeout: 5s
+  start_period: 20s
+  retries: 3
+
 services:
   backend:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
     deploy:
       resources:
@@ -37,6 +70,7 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
     healthcheck:
       test: ["CMD", "celery", "-A", "blinkengage.core.celery_app.celery_app", "inspect", "ping"]
@@ -60,9 +94,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -73,9 +107,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -86,9 +120,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -99,9 +133,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -112,9 +146,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -125,9 +159,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -138,9 +172,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -151,9 +185,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -164,9 +198,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -177,9 +211,9 @@ services:
     build:
       target: runtime
     restart: always
+    logging: *prod-logging
     volumes: !override []
-    healthcheck:
-      disable: true
+    healthcheck: *consumer-healthcheck
     deploy:
       resources:
         limits:
@@ -190,10 +224,66 @@ services:
   # into the `nginx` image below. Gate it behind a profile that stays
   # inactive unless explicitly requested, so `docker compose up` never
   # starts it under this overlay.
+  # Missing from this overlay until the operational hardening pass, which
+  # meant they ran in production with no resource limit at all — a leak in
+  # one would take the host down rather than being OOM-killed and
+  # restarted. usage-metering-consumer is the one that mattered most: it
+  # is on the billing path.
+  usage-metering-consumer:
+    build:
+      target: runtime
+    restart: always
+    logging: *prod-logging
+    volumes: !override []
+    healthcheck: *consumer-healthcheck
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
+  learning-observation-consumer:
+    build:
+      target: runtime
+    restart: always
+    logging: *prod-logging
+    volumes: !override []
+    healthcheck: *consumer-healthcheck
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
+  learning-signals-consumer:
+    build:
+      target: runtime
+    restart: always
+    logging: *prod-logging
+    volumes: !override []
+    healthcheck: *consumer-healthcheck
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
   frontend:
+    logging: *prod-logging
     profiles: ["dev-only"]
 
   nginx:
+    logging: *prod-logging
+    # The edge: if it is not serving, nothing is. Checked against its own
+    # stub_status rather than a proxied route, so a backend outage does not
+    # also mark the proxy unhealthy and restart it — which would turn one
+    # failure into two.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile
@@ -213,6 +303,7 @@ services:
           memory: 256m
 
   postgres:
+    logging: *prod-logging
     restart: always
     deploy:
       resources:
@@ -221,7 +312,190 @@ services:
           memory: 2g
 
   redis:
+    logging: *prod-logging
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
 
   rabbitmq:
+    logging: *prod-logging
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+
+  # --- Storage and monitoring -----------------------------------------
+  #
+  # These were left out of this overlay entirely, so they ran in
+  # production on the base file's `restart: unless-stopped` and with no
+  # memory limit and no log rotation at all. That is the same unbounded
+  # failure the consumers were fixed for, on the services that are
+  # supposed to tell you the host is in trouble — Loki and Prometheus
+  # both grow with retention, and a monitoring stack that fills the disk
+  # takes the database down with it and then cannot report why.
+  #
+  # Limits are sized for the pilot's single host. Prometheus and Loki get
+  # the most because they hold series and index in memory; the exporters
+  # are scrape-and-forget and need almost nothing.
+
+  minio:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+
+  prometheus:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  grafana:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      # Provisioning runs at start-up and fails the boot if a contact
+      # point or datasource is malformed, so this needs long enough to
+      # tell "still provisioning" from "refusing to start".
+      start_period: 60s
+      retries: 3
+
+  loki:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+
+  promtail:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9080/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # The destination alerts fall back to when no external webhook is set.
+  # It must outlive the incident it is reporting, hence `always`.
+  alert-sink:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64m
+
+  postgres-exporter:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  redis-exporter:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  celery-exporter:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9808/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # Runs once, creates the bucket, exits. `restart: always` would put it
+  # in a loop and a healthcheck has nothing to probe — but its logs are
+  # where a failed bucket creation shows up, so it still gets rotation.
+  minio-init:
+    logging: *prod-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+
+  # A test SMTP server has no business in production. Scaled to zero
+  # rather than removed, because Compose cannot delete a service an
+  # overlay inherits — and leaving it running would mean production mail
+  # silently landing in a fake inbox.
+  greenmail:
+    deploy:
+      replicas: 0
+    restart: "no"
+
+  node-exporter:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m

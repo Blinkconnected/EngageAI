@@ -51,18 +51,26 @@ this checklist does not itself satisfy on its own.
 
 ## Data & backups
 
-- [x] Automated Postgres backups + a verified restore drill —
-      `scripts/backup_postgres.sh`/`verify_backup_restore.sh`
-- [x] Disaster recovery plan — `docs/deployment/disaster-recovery.md`
-- [ ] **Off-host backup shipping** — backups currently land in
-      `backups/` on the same host as the database. A full host loss
-      today loses the backups along with everything else. **Wire backup
-      upload to off-host storage before launch.**
-- [ ] **MinIO/attachment backup** — no automated backup exists for
-      uploaded attachments (a real, documented gap — see
-      `docs/deployment/disaster-recovery.md`). Matters most for
-      compliance-sensitive customers who may need to retain/produce
-      customer-uploaded files.
+- [x] Automated backups of everything needed to rebuild — database,
+      MinIO volume, configuration and an encrypted `.env` —
+      `scripts/backup_all.sh`, nightly via
+      `deploy/systemd/blinkengage-backup.timer`
+- [x] **MinIO/attachment backup** — every set contains the object
+      volume, and the restore is exercised by the rehearsal below
+- [x] Disaster recovery plan, **rehearsed and timed** —
+      `docs/deployment/disaster-recovery.md`. `scripts/dr_rehearsal.sh`
+      restored all four asset classes and passed on 2026-08-05; RTO and
+      RPO are measured and published
+- [x] Off-host shipping **implemented** — `backup_all.sh` rsyncs each
+      set to `BACKUP_REMOTE` and applies remote retention
+- [ ] **Off-host shipping exercised on this host** — `BACKUP_REMOTE` is
+      unset, so the rsync leg has never actually run. **Set it, run
+      `systemctl start blinkengage-backup.service`, and confirm the set
+      lands on the remote.** Until then a full host loss still takes the
+      backups with it.
+- [ ] **`BACKUP_PASSPHRASE` stored off this host** — it decrypts the
+      `.env` in every backup set. Lost with the host, every backed-up
+      credential is unrecoverable. Put it in the password manager.
 - [ ] **Encryption key rotation drill** — `docs/deployment/runbooks.md`
       documents the *procedure* but it has not been executed as a live
       drill against this specific deployment.
@@ -70,15 +78,25 @@ this checklist does not itself satisfy on its own.
 ## Observability
 
 - [x] Prometheus metrics (backend, Postgres, Redis, RabbitMQ, Celery)
-- [x] Grafana dashboards (5) + alerting rules (6), provisioned and
-      verified loaded
+- [x] Grafana dashboards (5) + alerting rules (12), provisioned and
+      **verified to actually evaluate**. All twelve previously referenced
+      their datasource by name rather than uid and could never fire;
+      `scripts/verify_alerting.sh` now fails if that recurs
+- [x] Dead-letter queues on all 12 consumers, with retry, backoff and
+      `scripts/replay_dlq.py` — drilled end to end against the broker
+- [x] `/metrics` restricted to the monitoring network — verified 403
+      from an out-of-range source while other routes still served
 - [x] Structured JSON logging → Loki, with level-based labels
 - [x] Dependency-aware readiness probe (`/health/ready`)
-- [ ] **Real alert notification destination** — the contact point is a
-      deliberate placeholder webhook (`docker/grafana/provisioning/
-      alerting/contact-points.yml`). **Wire in a real Slack/PagerDuty/
-      email destination before launch** — alerts that fire into a void
-      are worse than no alerting, since they create false confidence.
+- [x] **Alert delivery verified end to end** — severity-routed contact
+      points, and a real alert fired through the real notification policy
+      and observed arriving (`scripts/verify_alerting.sh`). The default
+      destination is a durable on-host sink, so an unset webhook cannot
+      swallow alerts silently.
+- [ ] **Point alerts at what actually wakes somebody up** — set
+      `ALERT_CRITICAL_WEBHOOK_URL` (Slack/PagerDuty) in `.env` and re-run
+      `scripts/verify_alerting.sh` against it. Until then critical alerts
+      land in the on-host sink, which nobody is watching at 03:00.
 - [ ] **On-call rotation / paging policy** — an organizational decision
       outside this codebase's scope; needs to exist before alerting is
       meaningful.
