@@ -16,6 +16,23 @@ is reconnaissance information, not something to expose publicly). Access
 them against a `development`/`staging` deployment, or generate the schema
 locally.
 
+## Building a mobile or native client
+
+Read [mobile-integration-guide.md](./mobile-integration-guide.md) before
+you start. It covers token refresh (and the single-flight rule that stops
+a resume from logging users out), the two WebSocket endpoints — which do
+**not** appear in the OpenAPI schema, because FastAPI does not document
+WebSocket routes — paging behaviour on lists that change while you read
+them, attachment streaming, push registration, and an honest audit of the
+gaps a native client will hit.
+
+## Events
+
+Integrating with the platform asynchronously? The
+[Event Catalogue](../architecture/event-catalogue.md) lists all 99 domain
+event types with their producers and consumers. A workflow can trigger a
+webhook on any of them.
+
 ## Base URL and versioning
 
 Every endpoint is namespaced under `settings.api_v1_prefix`

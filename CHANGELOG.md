@@ -315,6 +315,25 @@ for more detail on how this page is put together.
   set period. Events still waiting to be delivered are never removed,
   however old.
 
+- **A complete documentation set.** Until now the written material
+  explained how the platform was built; there was very little explaining
+  how to *use* it. New: a User Guide covering every feature task by task,
+  an Administrator Guide covering every setting and what happens when it
+  is wrong, and an FAQ grouped by who is asking.
+
+  Also new for the first production release: a deployment guide that ends
+  in a verification checklist rather than a "you're done", a catalogue of
+  all 99 events the platform emits, an index over the sixty-eight
+  architecture documents, and a baseline document recording what is
+  settled so future work has something to be measured against.
+
+- **A specification for a stricter onboarding wizard.** The wizard that
+  exists walks an administrator through four steps but requires nothing —
+  it is possible to finish setup for a workspace with no channel
+  connected, which no customer can reach, and be told setup is complete.
+  The specification makes each step's completion derive from what is
+  actually configured rather than from which screens were visited.
+
 ### Fixed
 
 - **None of the platform's alert rules could run.** All twelve referred
