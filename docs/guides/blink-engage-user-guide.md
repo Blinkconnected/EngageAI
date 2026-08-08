@@ -1341,6 +1341,26 @@ Stated plainly, because knowing these prevents most disappointment.
 
 # 6. Knowledge Base
 
+> **Note — there is no Knowledge screen in this release.**
+>
+> Knowledge is **real and working**: articles, FAQs and quick replies are
+> stored, they are what the AI answers from, and knowledge results appear
+> in global search. What does not exist yet is a **screen for managing
+> them**. There is no Knowledge item in the menu, no article editor and
+> no FAQ editor.
+>
+> Knowledge results found by search also cannot be opened — they show as
+> a result, but there is no page to open.
+>
+> **How knowledge is maintained today:** through the platform API, which
+> means your provider or IT team loads and updates it for you. If you
+> need an article changed, that is who to ask.
+>
+> **This section describes what knowledge *is* and how it behaves**, so
+> you understand what the AI is drawing on and can brief whoever
+> maintains it. The step-by-step instructions in §6.2 to §6.5 describe
+> the API-backed capability, not screens you can open today.
+
 ## 6.1 What the knowledge base is for
 
 **Purpose:** the reference material your team and your AI answer from.
@@ -1562,6 +1582,19 @@ Version history is a planned improvement.
 ---
 
 # 7. Workflows
+
+> **Note — there is no Workflows screen in this release.**
+>
+> The workflow engine exists in the platform and can be configured
+> through the API, but there is **no workflow builder in the interface**.
+> You cannot create, edit, test or activate a workflow yourself.
+>
+> **How workflows are set up today:** ask your provider or IT team. They
+> can configure triggers, conditions and actions for you.
+>
+> **This section explains how workflows think**, so you can describe what
+> you want precisely. The screens and buttons described in §7.2 to §7.6
+> describe the capability, not something you can open today.
 
 ## 7.1 What workflows are
 
@@ -2899,7 +2932,9 @@ and its exact answer, written to be shown.
 An FAQ. Articles may be paraphrased; FAQs are quoted.
 
 **81. Why is my new FAQ not appearing?**
-New FAQs start **unpublished**. Publish it.
+Either it is still unpublished — new FAQs start that way deliberately —
+or it was never created, because there is no FAQ screen in this release.
+Ask whoever maintains your knowledge base.
 
 **82. What happens when I unpublish an FAQ?**
 It is hidden and removed from search, so nothing can quote it.
@@ -2912,13 +2947,15 @@ content.
 No. Keep significant rewrites in a document outside Blink Engage first.
 
 **85. What is a quick reply?**
-Saved text an agent inserts and edits before sending.
+Saved text an agent inserts and edits before sending. There is no screen
+for managing the list in this release — ask your provider to add one.
 
 **86. How does knowledge search work?**
 It understands meaning, so "cannot log in" finds "reset your password".
 
 **87. How should I title articles?**
-As the question a customer would ask.
+As the question a customer would ask. Pass this to whoever maintains your
+knowledge base — there is no editor in the interface yet.
 
 **88. How often should we review knowledge?**
 Anything with a price, date or policy — quarterly at least.
@@ -2949,7 +2986,9 @@ legal consequences.
 ## Workflows and automation
 
 **95. What is a workflow?**
-When something happens, if conditions are met, do something.
+When something happens, if conditions are met, do something. There is no
+workflow builder in the interface in this release — your provider
+configures them for you.
 
 **96. Can a workflow send a message to a customer?**
 It can notify and act on the conversation. Design carefully — automated
@@ -2962,8 +3001,9 @@ Check it is Active, then check the conditions match your test.
 Its conditions are too broad.
 
 **99. How do I test a workflow safely?**
-Save it inactive, activate it, send yourself a test message, and check
-**Runs**. Test something that should *not* match too.
+Ask whoever configured it to leave it inactive first, then send a test
+message that should match — and one that should not. There is no
+workflow screen for you to do this yourself in this release.
 
 **100. Can two workflows conflict?**
 Yes. Two workflows acting on the same event can fight. Keep them
@@ -3020,6 +3060,11 @@ ERPNext.
 
 **114. Can I generate an API key?**
 Not in this release. There is no API key screen.
+
+**114a. Which screens do not exist yet?**
+Knowledge, FAQs, quick replies, workflows and API keys have no interface
+in this release. The capabilities exist in the platform and are
+configured by your provider.
 
 **115. Can Blink Engage push data to another system?**
 Yes, through a workflow webhook action.
@@ -3123,7 +3168,9 @@ release**, so nobody spends time looking for them:
 | Feature | Section |
 |---|---|
 | Conversation tags | [§4.5](#45-tags) |
+| **A Knowledge screen** (articles, FAQs, quick replies) | [§6](#6-knowledge-base) |
 | Knowledge version history | [§6.7](#67-drafts-and-version-history) |
+| **A Workflows screen** (builder, testing, activation) | [§7](#7-workflows) |
 | API key management | [§11.4](#114-api-keys) |
 | A dedicated escalation screen | [§8.3](#83-escalations) |
 | A native mobile application | [§13](#13-mobile) |

@@ -181,6 +181,12 @@ that is wrong or out of date, so is the suggestion.
 
 ## 6. Knowledge, FAQs and quick replies
 
+> **There is no Knowledge screen in this release.** Knowledge is real and
+> working — it is what the AI answers from, and it appears in global
+> search — but articles, FAQs and quick replies are maintained through
+> the API by your provider, not through a screen you can open. The same
+> is true of workflows.
+
 Three different things, often confused:
 
 | | Audience | Used by | Purpose |

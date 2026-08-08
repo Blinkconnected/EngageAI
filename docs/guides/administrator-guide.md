@@ -277,6 +277,11 @@ auto-sent.
 
 ## 11. Knowledge, FAQs and quick replies
 
+> **No management screen exists in this release.** The capability is real
+> — knowledge powers AI answers and appears in search — but it is
+> maintained through the API. Ask your provider to load or change
+> content. The same applies to §12 Workflows.
+
 | | Visibility | Publishing |
 |---|---|---|
 | **Knowledge article** | Internal by default | Immediate |
@@ -291,6 +296,9 @@ nothing can quote something you have taken down.
 produces a confidently wrong answer, which is worse than no answer.
 
 ## 12. Workflows
+
+> **No workflow builder exists in the interface.** Workflows are
+> configured through the API by your provider.
 
 The workflow engine triggers actions on events — assign, notify, tag,
 transfer, call a webhook.

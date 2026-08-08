@@ -327,6 +327,22 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **A complete Help Center content set** — the words the product shows
+  you without leaving it. Context help for every screen, one-line
+  explanations for 88 fields, friendly messages for 30 empty screens, 47
+  error messages rewritten into plain English, a guided first-run tour,
+  and a search index built around the words people actually type rather
+  than the official feature names.
+
+  Two ideas run through it. Errors say what happened, why, and what to do
+  next — and never blame the reader. And an empty screen explains *why*
+  it is empty: "no conversations yet" and "no conversations match these
+  filters" are different problems that send you in opposite directions.
+
+  Every screen and feature now has a permanent identifier, so a future
+  interface can open the right help automatically and keep doing so after
+  screens are renamed or moved.
+
 - **The official Blink Engage User Guide.** A complete product manual
   written for people who have never used the platform, rather than for
   the people who built it. Fifteen chapters covering every screen, every
@@ -361,6 +377,18 @@ for more detail on how this page is put together.
   actually configured rather than from which screens were visited.
 
 ### Fixed
+
+- **The user guide described two screens that do not exist.** It gave
+  step-by-step instructions for a Knowledge screen and a Workflows
+  screen — opening menus, selecting buttons, saving articles. Neither
+  exists in the interface. Both capabilities are real and working in the
+  platform, and both are maintained through the API by your provider,
+  but there is nothing to open.
+
+  Checking this is what the Help Center work turned up. Every section of
+  the guide is now verified against the running product, and all six
+  things people go looking for and will not find are named in the place
+  they would look.
 
 - **None of the platform's alert rules could run.** All twelve referred
   to their data source by its display name where an internal identifier
