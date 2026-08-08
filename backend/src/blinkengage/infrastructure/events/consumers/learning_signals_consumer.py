@@ -105,8 +105,24 @@ async def handle_event(event: dict[str, Any], session: AsyncSession) -> str:
         )
     ).scalar_one_or_none()
 
-    escalated = event.get("event_type") == "conversation.sla_breached"
-    transferred = 1 if event.get("event_type") == "conversation.transferred" else 0
+    event_type = event.get("event_type")
+    escalated = event_type == "conversation.sla_breached"
+    transferred = 1 if event_type == "conversation.transferred" else 0
+
+    # A reopen is the only signal here whose *own* timing is the point, and
+    # both facts it needs are gone from the conversation row by the time
+    # this runs: the ingest consumer clears ``closed_at`` when it reopens,
+    # and ``updated_at`` has already moved to the reopen itself. So they
+    # are read from the payload the publisher carried them on. Without
+    # this, ``derive`` was handed ``reopened_at=None`` and reported
+    # ``reopened=False`` for the one event whose entire purpose is to say
+    # a resolution did not hold.
+    reopened_at: datetime | None = None
+    ended_at = conversation.updated_at
+    if event_type == "conversation.reopened":
+        payload = event.get("payload") or {}
+        reopened_at = _parse_timestamp(payload.get("reopened_at")) or datetime.now(UTC)
+        ended_at = _parse_timestamp(payload.get("ended_at")) or ended_at
 
     service = LearningObservationService(observations=LearningObservationRepository(session))
     row = await service.attach_outcome(
@@ -115,7 +131,8 @@ async def handle_event(event: dict[str, Any], session: AsyncSession) -> str:
         outcome_inputs=OutcomeInputs(
             status=str(conversation.status),
             started_at=conversation.created_at or datetime.now(UTC),
-            ended_at=conversation.updated_at,
+            ended_at=ended_at,
+            reopened_at=reopened_at,
             now=datetime.now(UTC),
             # Preserved from the assembled row rather than re-inferred:
             # the signal says nothing about who resolved it, and guessing
@@ -136,10 +153,27 @@ async def handle_event(event: dict[str, Any], session: AsyncSession) -> str:
     logger.info(
         "learning_signal_attached",
         conversation_id=str(conversation_id),
-        event_type=event.get("event_type"),
+        event_type=event_type,
         state=row.state,
     )
     return row.state
+
+
+def _parse_timestamp(raw: Any) -> datetime | None:
+    """An ISO-8601 timestamp off an event payload, or ``None``.
+
+    Malformed input answers ``None`` rather than raising: a signal is an
+    optimisation over the settle sweep, and a badly-formed timestamp must
+    not park a message in a redelivery loop when the sweep would have
+    settled the observation anyway.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _conversation_id(event: dict[str, Any]) -> UUID | None:

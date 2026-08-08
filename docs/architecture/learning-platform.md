@@ -215,6 +215,20 @@ Two paths close the window:
   `conversation.reopened`, `.transferred`, `.sla_breached`). A rated
   conversation settles immediately; waiting further would delay learning
   for no gain.
+
+  `conversation.reopened` **had no publisher until 1.1.0** — the binding
+  was written, its handler was tested against fabricated event dicts, and
+  no code path in the platform ever produced the key, so a settled
+  observation went on claiming a resolution the customer had contradicted
+  by writing back. Both reopen paths now publish it (`ConversationService.
+  update` on leaving a finished status, and the ingest consumer when a
+  customer message reopens one), the consumer reads `reopened_at` and
+  `ended_at` off the payload — the ingest path clears `closed_at`, so the
+  publisher is the last thing that holds them — and `attach_outcome`
+  returns a no-longer-settled observation to `pending` with no settle
+  deadline. `tests/unit/test_bound_routing_keys_have_publishers.py` now
+  fails the build for any binding with no publisher. See
+  [the 1.1.0 release report](../releases/1.1.0.md).
 - **`settle-learning-observations`** (Celery beat, every 15 min) promotes
   the ones where nothing ever arrives, which is most of them, after
   `LEARNING_SETTLE_HOURS` (default 72).

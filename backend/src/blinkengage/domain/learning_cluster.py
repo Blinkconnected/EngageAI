@@ -52,11 +52,47 @@ from uuid import UUID
 CLUSTER_ALGORITHM_VERSION = 1
 
 #: Cosine similarity above which an observation joins a cluster.
-#: Deliberately high. A loose threshold produces one enormous cluster
-#: containing everything, which reads as a finding and is an artefact.
-DEFAULT_JOIN_THRESHOLD = 0.42
+#:
+#: **0.15, lowered from 0.42 in phase 2.5 on measured evidence.** The
+#: original value was set by intuition — "a loose threshold produces one
+#: enormous cluster" — and the intuition was right about the failure mode
+#: and wrong about where it starts.
+#:
+#: Measured by sweeping the threshold over corpora with known group
+#: structure (``scripts/validate_learning_pipeline.py --thresholds``),
+#: across five shapes varying conversation length and how much vocabulary
+#: distinct problems share. Both failure directions were measured:
+#:
+#: - **Conflation** (distinct problems merged into one finding) appears
+#:   at 0.10 and below, where purity falls to 0.86.
+#: - **Fragmentation** (one problem split across many clusters) appears
+#:   from 0.20–0.25 upward and gets rapidly worse. **At the old 0.42, a
+#:   realistic corpus fragmented six- to ten-fold and produced 76–99%
+#:   singletons** — the platform holding the evidence for a pattern and
+#:   unable to see it, because every piece sat below the floors.
+#:
+#: 0.15 is the only value that scored purity 1.000 *and* fragmentation
+#: 1.000 on every shape tested. The usable band is 0.15–0.20; outside it
+#: one of the two failures is happening.
+#:
+#: The right value is corpus-dependent, which is why it is now a setting
+#: (``LEARNING_CLUSTER_JOIN_THRESHOLD``) rather than only a constant.
+DEFAULT_JOIN_THRESHOLD = 0.15
 
 #: Above this, two clusters are the same cluster and one must go.
+#:
+#: **Left at 0.72, and that is a measurement rather than an omission.**
+#: With the join threshold corrected, the merge pass never fires on any
+#: corpus tested — because a correctly-set join threshold leaves nothing
+#: to repair. Lowering it showed no benefit and would risk folding
+#: genuinely distinct clusters together.
+#:
+#: Worth knowing: the merge pass **cannot rescue a badly-set join
+#: threshold**. At join 0.42 with merge dropped to 0.30, 53 merges still
+#: recovered only a third of the true structure — it is single-pass and
+#: non-transitive by design, so repair is partial. The join threshold has
+#: to be right in the first place; this is a drift safety net, not a
+#: primary control.
 DEFAULT_MERGE_THRESHOLD = 0.72
 
 #: **Floors, checked before any score.** Charter I-9: a cluster clears

@@ -251,9 +251,25 @@ class LearningObservationService:
             return row
 
         outcome = derive(outcome_inputs)
-        state = ObservationState.READY if outcome.settled else ObservationState(row.state)
+        # An outcome that is no longer settled sends the observation back
+        # to ``pending``. Only ``pending`` and ``ready`` can reach here —
+        # ``excluded`` returned above — so this is total, and it closes a
+        # real inconsistency the reopen signal exposed: a reopen makes the
+        # outcome provisional again, and leaving ``state`` at ``ready``
+        # produced a row that was simultaneously ready and unsettled,
+        # which the settle sweep (``state == pending``) could never
+        # correct.
+        state = ObservationState.READY if outcome.settled else ObservationState.PENDING
         _apply(row, state=state, exclusion=None, provenance=None, outcome=outcome)
-        row.settle_due_at = _settle_due(outcome_inputs, hours=self._settle_hours)
+        # A conversation that is open again has no end to settle from, so
+        # it gets no deadline: the settle sweep must not promote it on a
+        # window computed from the resolution it just lost. The next
+        # ``conversation.resolved``/``.closed`` re-assembles it — assembly
+        # is idempotent on ``(source_id, pipeline_version)`` — and that is
+        # what sets a fresh window.
+        row.settle_due_at = (
+            _settle_due(outcome_inputs, hours=self._settle_hours) if outcome.resolved else None
+        )
         return row
 
     async def settle(self, *, observation: LearningObservation) -> LearningObservation:

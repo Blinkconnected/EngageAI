@@ -36,6 +36,7 @@ from blinkengage.domain.routing_decisions import (
     RoutingDecisionReason,
     ai_deferred_decision,
     ai_pickup_decision,
+    ai_released_decision,
     ai_stood_down_decision,
     assignment_decision,
     autopilot_decision,
@@ -156,6 +157,19 @@ def _an_execution(*, status: str = "waiting") -> ExecutionContext:
             status=status,
         ),
     )
+
+
+def _released(reason: str) -> RoutingDecision:
+    """One hand-off decision, or a failure that names the gap.
+
+    ``ai_released_decision`` answers ``None`` for a reason outside its
+    vocabulary — deliberately, so production records nothing rather than an
+    invented cause. Here that would silently drop a key and surface as a
+    confusing set-difference, so it is asserted at the point it happens.
+    """
+    decision = ai_released_decision(reason)
+    assert decision is not None, f"{reason!r} is not mapped onto the decision vocabulary"
+    return decision
 
 
 def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
@@ -367,6 +381,14 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
         RoutingDecisionReason.HUMAN_ARRIVED_FIRST: ai_stood_down_decision(
             queue_id=queue_id, queue_name="Support"
         ),
+        # The four hand-off reasons. Built through the real factory, which is
+        # also the assertion that its mapping covers the vocabulary: a reason
+        # the factory does not know returns ``None`` and fails here loudly
+        # rather than silently recording nothing in production.
+        RoutingDecisionReason.MODEL_REQUESTED_HANDOFF: _released("model_requested_handoff"),
+        RoutingDecisionReason.CONFIDENCE_BELOW_THRESHOLD: _released("low_confidence"),
+        RoutingDecisionReason.NO_REPLY_GENERATED: _released("no_reply_generated"),
+        RoutingDecisionReason.ACTIVATION_MODE_EXCLUDES_THIS: _released("mode_disabled"),
     }
 
 
@@ -470,6 +492,11 @@ def test_each_decision_kind_matches_its_outcome() -> None:
                 # nothing — nothing was chosen — and that is the point of
                 # the row rather than a gap in it.
                 RoutingDecisionKind.AI_DEFERRED,
+                # And AI giving one *back* is the same shape: it names no
+                # destination because it chose none. Where the conversation
+                # goes next is the ownership timeline's answer, and a
+                # decision that also named a queue would be a second one.
+                RoutingDecisionKind.AI_RELEASED,
             )
 
 

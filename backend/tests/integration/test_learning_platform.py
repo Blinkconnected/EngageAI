@@ -688,6 +688,113 @@ class TestSettlement:
         # and re-derives it, not that an absent rating settles anything.
         assert row.state in {ObservationState.PENDING.value, ObservationState.READY.value}
 
+    async def test_a_reopen_invalidates_a_settled_resolution(self, app: Any) -> None:
+        """The signal the consumer calls "the one that matters most".
+
+        Its handler was always here; the routing key it binds had no
+        publisher anywhere in the platform, so this path had never once
+        run in production. A settled observation therefore went on
+        claiming a resolution — and first-contact resolution — that the
+        customer had contradicted by writing back.
+
+        The payload carries ``ended_at`` and ``reopened_at`` because the
+        publisher is the last thing that holds them: the ingest consumer
+        clears ``closed_at`` when it reopens, and ``updated_at`` has
+        already moved on by the time a consumer reads the row.
+        """
+        company_id = await _company_id(app)
+        conversation_id, _ = await _a_conversation(
+            app,
+            company_id=company_id,
+            turns=((MessageDirection.INBOUND, CUSTOMER_TEXT, None),),
+        )
+        await _consume(app, _resolved_event(company_id=company_id, conversation_id=conversation_id))
+
+        # Settle it the way the sweep would, so what the reopen has to
+        # undo is a genuinely finished observation rather than a pending
+        # one that was going to change anyway.
+        later = datetime.now(UTC) + timedelta(hours=get_settings().learning_settle_hours + 1)
+        async with app.state.container.session_factory()() as session:
+            repository = LearningObservationRepository(session)
+            due = await repository.claim_settled(now=later, limit=10)
+            assert len(due) == 1
+            await LearningObservationService(observations=repository).settle(observation=due[0])
+            await session.commit()
+
+        before = await _observation(app, conversation_id)
+        assert before is not None
+        assert before.settled is True
+        assert before.resolved is True
+        assert before.first_contact_resolution is True
+
+        ended_at = datetime.now(UTC) - timedelta(hours=2)
+        async with app.state.container.session_factory()() as session:
+            conversation = await session.get(Conversation, conversation_id)
+            assert conversation is not None
+            conversation.status = ConversationStatus.WAITING
+            conversation.closed_at = None
+            await session.commit()
+
+        async with app.state.container.session_factory()() as session:
+            await learning_signals_consumer.handle_event(
+                {
+                    "company_id": str(company_id),
+                    "event_type": "conversation.reopened",
+                    "aggregate_type": "conversation",
+                    "aggregate_id": str(conversation_id),
+                    "payload": {
+                        "conversation_id": str(conversation_id),
+                        "previous_status": "resolved",
+                        "status": "waiting",
+                        "ended_at": ended_at.isoformat(),
+                        "reopened_at": datetime.now(UTC).isoformat(),
+                    },
+                },
+                session,
+            )
+            await session.commit()
+
+        row = await _observation(app, conversation_id)
+        assert row is not None
+        assert row.reopened is True
+        assert row.resolved is False
+        assert row.first_contact_resolution is False
+        # Provisional again — and back to pending, or the settle sweep
+        # (which claims on ``state == pending``) could never correct a row
+        # left simultaneously ready and unsettled.
+        assert row.settled is False
+        assert row.state == ObservationState.PENDING.value
+        # No deadline: a conversation that is open again has no end to
+        # settle from, and a window computed from the resolution it just
+        # lost would have the sweep promote it straight back.
+        assert row.settle_due_at is None
+
+    async def test_a_reopen_without_a_payload_still_reaches_the_observation(self, app: Any) -> None:
+        """A malformed or empty payload must not park the message.
+
+        A signal is an optimisation over the settle sweep. Raising on a
+        bad timestamp would put the message into a redelivery loop for an
+        observation the sweep would have settled anyway.
+        """
+        company_id = await _company_id(app)
+        conversation_id, _ = await _a_conversation(app, company_id=company_id)
+        await _consume(app, _resolved_event(company_id=company_id, conversation_id=conversation_id))
+
+        async with app.state.container.session_factory()() as session:
+            outcome = await learning_signals_consumer.handle_event(
+                {
+                    "company_id": str(company_id),
+                    "event_type": "conversation.reopened",
+                    "aggregate_type": "conversation",
+                    "aggregate_id": str(conversation_id),
+                    "payload": {"ended_at": "not-a-timestamp", "reopened_at": None},
+                },
+                session,
+            )
+            await session.commit()
+
+        assert outcome in {ObservationState.PENDING.value, ObservationState.READY.value}
+
     async def test_a_signal_never_un_excludes_an_observation(self, app: Any) -> None:
         """A company that forbade learning does not start learning because
         a survey came back."""

@@ -9,6 +9,7 @@ from blinkengage.infrastructure.database.models.conversation import (
     ConversationStatus,
 )
 from blinkengage.infrastructure.database.models.customer import Customer
+from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
 from blinkengage.infrastructure.database.models.message import Message, MessageAttachment
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
@@ -330,6 +331,126 @@ async def test_new_message_on_a_closed_conversation_reopens_it_and_clears_closed
 
     assert conversation.status == ConversationStatus.WAITING
     assert conversation.closed_at is None
+
+
+async def test_a_customer_message_reopening_a_conversation_publishes_conversation_reopened(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """The event ``learning-signals-consumer`` binds, and nothing published.
+
+    This is the *publisher* half. The consumer's handler was tested against
+    a fabricated event dict, so the binding looked covered while no code
+    path in the platform ever produced the routing key — the same shape as
+    the outbox relay incident, where every consumer test passed against
+    hand-built dicts while the real pipeline was dead.
+
+    ``ended_at`` is asserted specifically: this handler *clears*
+    ``closed_at`` as part of reopening, so if it were not carried on the
+    payload, when the conversation had ended would be unrecoverable by the
+    time any consumer read it back.
+    """
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+    closed_at = datetime.now(UTC)
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-0",
+                    "body": "first message",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        conversation = (await db_session.execute(select(Conversation))).scalar_one()
+        conversation.status = ConversationStatus.RESOLVED
+        conversation.closed_at = closed_at
+        await db_session.commit()
+
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-1",
+                    "body": "this never actually got fixed",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        events = list(
+            (
+                await db_session.execute(
+                    select(EventOutbox).where(EventOutbox.event_type == "conversation.reopened")
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(events) == 1
+    payload = events[0].payload
+    assert payload["conversation_id"] == str(conversation.id)
+    assert payload["previous_status"] == "resolved"
+    assert payload["status"] == "waiting"
+    assert payload["ended_at"] is not None
+    assert payload["reopened_at"] is not None
+
+
+async def test_a_first_message_does_not_publish_conversation_reopened(
+    client: AsyncClient, owner_headers: dict, registered_owner: dict, app
+) -> None:
+    """A new conversation is not a reopened one.
+
+    Guards the other direction: an event published on every inbound
+    message would make every observation look invalidated.
+    """
+    session = await _create_web_chat_session(client, owner_headers)
+    company_id = registered_owner["user"]["company"]["id"]
+
+    session_factory = app.state.container.session_factory()
+    async with session_factory() as db_session:
+        await handle_message_received(
+            _event(
+                company_id=company_id,
+                payload={
+                    "channel_config_id": session["channel_config_id"],
+                    "channel_type": "web_chat",
+                    "external_thread_id": session["session_token"],
+                    "external_customer_id": session["customer_id"],
+                    "external_message_id": "ext-0",
+                    "body": "hello, first contact",
+                },
+            ),
+            db_session,
+        )
+        await db_session.commit()
+
+        events = list(
+            (
+                await db_session.execute(
+                    select(EventOutbox).where(EventOutbox.event_type == "conversation.reopened")
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert events == []
 
 
 async def test_duplicate_external_message_id_is_ignored(
