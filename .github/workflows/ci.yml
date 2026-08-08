@@ -38,6 +38,21 @@ jobs:
       - name: mypy --strict
         working-directory: backend
         run: mypy src
+      # A single head, and every revision reachable. pytest imports the
+      # application and so catches a missing module, but it never touches
+      # the migration graph — a revision whose `down_revision` names a
+      # file nobody committed passes every other check in this pipeline
+      # and fails on the deploy, which is the worst place to find it.
+      - name: alembic — one head, chain intact
+        working-directory: backend
+        run: |
+          heads=$(alembic heads 2>/dev/null | grep -c '(head)')
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::expected exactly 1 alembic head, found $heads"
+            alembic heads
+            exit 1
+          fi
+          alembic history >/dev/null
 
   backend-test:
     name: Backend / tests
