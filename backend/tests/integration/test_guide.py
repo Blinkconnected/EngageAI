@@ -11,19 +11,32 @@ translation must fall back to English rather than fail, because somebody
 who opened help has a question now.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 
 @pytest.fixture
-def guides(tmp_path: Path, app) -> Path:
+def guides(tmp_path: Path, app) -> Iterator[Path]:
+    """Points the guide endpoint at throwaway files, then puts it back.
+
+    ``Settings`` is built once per application and shared by every test
+    in the session, so a fixture that only sets these paths leaves every
+    later test reading a ``tmp_path`` pytest has already deleted. That
+    surfaces as an unrelated failure somewhere further down the run,
+    which is the most expensive kind of test failure to diagnose.
+    """
     english = tmp_path / "guide.md"
     english.write_text("# Inbox\n\nEnglish guide.\n", encoding="utf-8")
     settings = app.state.container.settings()
+    original = (settings.guide_path, settings.guide_path_ar)
     settings.guide_path = str(english)
     settings.guide_path_ar = str(tmp_path / "guide.ar.md")
-    return tmp_path
+    try:
+        yield tmp_path
+    finally:
+        settings.guide_path, settings.guide_path_ar = original
 
 
 class TestAccess:

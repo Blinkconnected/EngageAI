@@ -12,6 +12,7 @@ change what the platform reports itself to be.
 """
 
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -48,17 +49,29 @@ AR = """\
 
 
 @pytest.fixture
-def changelogs(tmp_path: Path, app) -> Path:
-    """An English changelog with two releases; Arabic translates only one."""
+def changelogs(tmp_path: Path, app) -> Iterator[Path]:
+    """An English changelog with two releases; Arabic translates only one.
+
+    Restores both paths afterwards. ``Settings`` is built once per
+    application and shared by every test in the session, so leaving
+    these pointed at a ``tmp_path`` pytest then deletes breaks every
+    later test that reads the changelog — including ``/version``, which
+    would start reporting the wrong build. The failure lands in an
+    unrelated file, which is the most expensive kind to diagnose.
+    """
     en = tmp_path / "CHANGELOG.md"
     en.write_text(EN, encoding="utf-8")
     ar = tmp_path / "CHANGELOG.ar.md"
     ar.write_text(AR, encoding="utf-8")
 
     settings = app.state.container.settings()
+    original = (settings.changelog_path, settings.changelog_path_ar)
     settings.changelog_path = str(en)
     settings.changelog_path_ar = str(ar)
-    return tmp_path
+    try:
+        yield tmp_path
+    finally:
+        settings.changelog_path, settings.changelog_path_ar = original
 
 
 class TestLanguageSelection:
