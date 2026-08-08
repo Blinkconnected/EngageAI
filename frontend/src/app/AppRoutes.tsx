@@ -84,6 +84,11 @@ const InboxPage = lazy(() =>
     default: m.InboxWorkspace,
   })),
 )
+const DeletionApprovalsPage = lazy(() =>
+  import('../features/conversations/DeletionApprovalsPage').then((m) => ({
+    default: m.DeletionApprovalsPage,
+  })),
+)
 const CustomersPage = lazy(() =>
   import('../features/customers/CustomersPage').then((m) => ({ default: m.CustomersPage })),
 )
@@ -249,6 +254,14 @@ export function AppRoutes() {
             element={
               <RequirePermission permission="conversations.read">
                 <InboxPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="deletion-approvals"
+            element={
+              <RequirePermission permission="conversations.delete">
+                <DeletionApprovalsPage />
               </RequirePermission>
             }
           />

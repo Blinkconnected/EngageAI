@@ -16,6 +16,7 @@ import { resetQueuesMock } from '../mocks/handlers/queues'
 import { resetRolesMock } from '../mocks/handlers/roles'
 import { resetSlaMock } from '../mocks/handlers/sla'
 import { resetCsatMock } from '../mocks/handlers/csat'
+import { resetConversationDeletionMock } from '../mocks/handlers/conversationDeletion'
 import { installMatchMedia, resetViewport } from './viewport'
 
 // vitest-axe@0.1.0's own "vitest-axe/extend-expect" side-effect import ships
@@ -55,6 +56,7 @@ afterEach(async () => {
   resetRolesMock()
   resetSlaMock()
   resetCsatMock()
+  resetConversationDeletionMock()
   resetViewport()
   // Some panels (e.g. company Language settings) call `i18n.changeLanguage`
   // as a real side effect of saving. i18next is a module-level singleton,

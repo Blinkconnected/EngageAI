@@ -46,6 +46,7 @@
     "groupRouting": "Routing",
     "groupConnections": "Connections",
     "groupOrganisation": "Organisation",
-    "navGuide": "Guide"
+    "navGuide": "Guide",
+    "navDeletionApprovals": "Deletion requests"
   }
 }

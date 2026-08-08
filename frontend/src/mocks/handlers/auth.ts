@@ -43,6 +43,8 @@ export const MOCK_USER: UserProfile = {
     'queues.read',
     'queues.manage',
     'quick_replies.read',
+    'conversations.delete_request',
+    'conversations.delete',
   ],
 }
 

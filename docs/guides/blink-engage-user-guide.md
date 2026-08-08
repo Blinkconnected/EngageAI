@@ -913,6 +913,7 @@ open anything to know where a conversation stands.
 | **Take over** | Header, while AI holds it | Takes it back from the AI |
 | **Transfer** | Header | Moves it to another agent, queue or department |
 | **Release** | Header | Gives it up so somebody else can take it |
+| **Ask to delete** (bin) | Header | Asks an administrator to delete the conversation |
 | **Details** (i) | Header | Opens status, queue, customer and the AI summary |
 | **Send** | Reply box | Sends your reply over the customer's own channel |
 | **Attach** (paperclip) | Reply box | Adds a file |
@@ -923,6 +924,80 @@ open anything to know where a conversation stands.
 > **Note** — Status, priority and queue are changed from **Details**.
 > They are re-filing rather than replying, which is why they are one
 > click away instead of on screen all day.
+
+### Deleting a conversation
+
+**Purpose:** remove a conversation that should not be kept — a customer
+exercising their right to be forgotten, a duplicate, something posted to
+the wrong account.
+
+**Permissions required:** `conversations.delete_request` to ask (every
+agent has it). `conversations.delete` to decide (administrators).
+
+**Deleting takes two people.** A conversation is the record of what your
+company said to a customer: evidence in a dispute, an input to every
+report, and in some industries something you are obliged to keep. So
+nobody removes one on their own.
+
+#### Step by step — asking
+
+1. Open the conversation.
+2. Select the **bin icon** at the end of the row of buttons at the top.
+3. Write **why** it should be deleted. At least a sentence — an
+   administrator will read it, possibly days later, and it is all they
+   will have.
+4. Select **Send request**.
+
+`[Screenshot placeholder: The "Ask to delete this conversation" dialog with the reason field]`
+
+> **Note** — Nothing is deleted at this point. The conversation stays
+> exactly where it is until an administrator agrees.
+
+Once you have asked, everybody who opens that conversation sees a banner
+naming you and quoting your reason, and the bin icon disappears. That is
+deliberate: a colleague about to write a long reply should know it may be
+on its way out, and nobody should ask twice.
+
+#### Step by step — deciding
+
+**Permissions required:** `conversations.delete`.
+
+1. Open **Deletion requests** in the left menu, under **Work**.
+2. Read the reason. It is the whole basis of the decision.
+3. Either:
+   - **Approve and delete** — the conversation is deleted immediately. A
+     note is optional.
+   - **Reject** — the conversation is kept. A note is **required**; the
+     person who asked only sees what you write.
+
+`[Screenshot placeholder: Deletion requests queue with a pending request and its reason]`
+
+> **Warning** — Approving deletes the conversation and cannot be undone.
+
+> **Note** — You cannot decide your own request. If you asked, somebody
+> else has to agree. An administrator who does not want a second opinion
+> can delete a conversation directly instead, and the record will show
+> that is what they did.
+
+> **Note** — Whoever asked is told the outcome either way, and
+> administrators are told as soon as a request arrives. Nobody has to go
+> looking.
+
+#### What is kept afterwards
+
+The request survives the conversation. Long after the messages are gone,
+the record still shows the customer's name, the reason given, who asked,
+who agreed and when. That is the point — a deletion nobody can account
+for later is indistinguishable from a mistake.
+
+#### Common mistakes
+
+- **Writing "spam" as the reason.** It will be refused, and rightly: it
+  tells the administrator nothing.
+- **Asking twice.** One request can be open per conversation at a time.
+  If the button has gone, somebody has already asked.
+- **Expecting it to disappear immediately.** It does not. Watch for the
+  banner, and the notification when a decision is made.
 
 ### Saved replies
 

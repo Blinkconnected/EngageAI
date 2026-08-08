@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
@@ -28,7 +29,9 @@ import { useAllChannelsQuery } from '../channels/api'
 import { useAllQueuesQuery } from '../queues/api'
 import { useCurrentUserQuery } from '../session/api'
 import { AutopilotBadge, ChannelIcon, SlaIndicator } from './ConversationCells'
+import { RequestDeletionDialog } from './RequestDeletionDialog'
 import { TransferDialog } from './TransferDialog'
+import { useConversationDeletionRequestQuery } from './deletionApi'
 import {
   CONVERSATION_KEY,
   CONVERSATIONS_LIST_KEY,
@@ -99,6 +102,7 @@ export function ConversationHeaderBar({
   const now = useNow()
   const [actionError, setActionError] = useState<string | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [deletionOpen, setDeletionOpen] = useState(false)
 
   const { data: currentUser } = useCurrentUserQuery()
   const channelsQuery = useAllChannelsQuery()
@@ -123,6 +127,13 @@ export function ConversationHeaderBar({
   const isAssignedToSelf =
     conversation.assigned_agent_id != null && conversation.assigned_agent_id === myAgentId
   const canRelease = hasPermission('conversations.release') && (canTransfer || isAssignedToSelf)
+  const canRequestDeletion = hasPermission('conversations.delete_request')
+  // Read for everybody who can see the conversation, not only for people
+  // who can ask: an open request is a fact about the conversation, and an
+  // agent who cannot see it would keep replying to something on its way
+  // out.
+  const deletionQuery = useConversationDeletionRequestQuery(conversation.id)
+  const pendingDeletion = deletionQuery.data ?? null
 
   const isUnclaimed = !conversation.assigned_agent_id && !conversation.autopilot_active
 
@@ -269,6 +280,18 @@ export function ConversationHeaderBar({
               : t('ConversationSidebar.releaseButton')}
           </Button>
         )}
+        {canRequestDeletion && pendingDeletion === null && (
+          <Tooltip title={t('ConversationHeaderBar.requestDeletionTooltip')}>
+            <IconButton
+              onClick={() => setDeletionOpen(true)}
+              size="small"
+              color="error"
+              aria-label={t('ConversationHeaderBar.requestDeletion')}
+            >
+              <DeleteOutlineIcon />
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title={t('ConversationViewPage.conversationDetails')}>
           <IconButton
             onClick={onOpenDetails}
@@ -279,6 +302,19 @@ export function ConversationHeaderBar({
           </IconButton>
         </Tooltip>
       </Stack>
+
+      {/* Said out loud, and to everybody. An agent replying to a
+          conversation somebody has asked to have deleted needs to know
+          before they invest in it — and a second agent needs to know
+          not to ask again. */}
+      {pendingDeletion !== null && (
+        <Alert severity="warning" sx={{ mx: 2, mb: 1 }} icon={<DeleteOutlineIcon />}>
+          {t('ConversationHeaderBar.deletionPending', {
+            requester: pendingDeletion.requested_by_name ?? t('ConversationHeaderBar.someone'),
+            reason: pendingDeletion.reason,
+          })}
+        </Alert>
+      )}
 
       {actionError && (
         <Alert severity="error" sx={{ mx: 2, mb: 1 }} onClose={() => setActionError(null)}>
@@ -359,6 +395,11 @@ export function ConversationHeaderBar({
       {transferOpen && (
         <TransferDialog conversation={conversation} onClose={() => setTransferOpen(false)} />
       )}
+      <RequestDeletionDialog
+        conversationId={conversation.id}
+        open={deletionOpen}
+        onClose={() => setDeletionOpen(false)}
+      />
     </Box>
   )
 }

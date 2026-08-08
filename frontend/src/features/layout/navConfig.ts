@@ -15,6 +15,7 @@ import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
 import FormatListNumberedOutlinedIcon from '@mui/icons-material/FormatListNumberedOutlined'
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined'
 import RuleOutlinedIcon from '@mui/icons-material/RuleOutlined'
+import DeleteSweepOutlinedIcon from '@mui/icons-material/DeleteSweepOutlined'
 import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined'
 
 /** The groups the sidebar renders, in order.
@@ -88,6 +89,16 @@ export const NAV_ITEMS: NavItem[] = [
     group: 'work',
     icon: ContactsOutlinedIcon,
     permission: 'customers.read',
+  },
+  {
+    // Under Work, not Organisation: it is a queue somebody owes an
+    // answer to, not a settings page. Only visible to the people who
+    // can actually decide, which is what `conversations.delete` means.
+    label: 'SideNav.navDeletionApprovals',
+    path: '/deletion-approvals',
+    group: 'work',
+    icon: DeleteSweepOutlinedIcon,
+    permission: 'conversations.delete',
   },
   {
     label: 'SideNav.navAgents',

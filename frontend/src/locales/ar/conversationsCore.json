@@ -213,7 +213,11 @@
     "lastMessage": "آخر رسالة",
     "opened": "بدأت",
     "firstReply": "أول رد",
-    "queue": "قائمة الانتظار"
+    "queue": "قائمة الانتظار",
+    "requestDeletion": "اطلب حذف هذه المحادثة",
+    "requestDeletionTooltip": "اطلب من المسؤول حذف هذه المحادثة",
+    "deletionPending": "طلب {{requester}} حذف هذه المحادثة: «{{reason}}» وتحتاج موافقة المسؤول.",
+    "someone": "أحدهم"
   },
   "QuickReplyPicker": {
     "searchPlaceholder": "ابحث في الردود المحفوظة…",
@@ -222,5 +226,50 @@
     "noMatches": "لا يوجد رد محفوظ يطابق \"{{query}}\".",
     "noneConfigured": "لا توجد ردود محفوظة بعد. يمكن للمسؤول إضافتها من الإعدادات.",
     "loadFailed": "تعذّر تحميل الردود المحفوظة."
+  },
+  "RequestDeletionDialog": {
+    "title": "اطلب حذف هذه المحادثة",
+    "description": "لا يُحذف شيء الآن. سيقرأ المسؤول سببك ويقرّر، وستُبلَّغ بالنتيجة في الحالتين.",
+    "reasonLabel": "لماذا ينبغي حذفها؟",
+    "reasonPlaceholder": "مثال: طلب العميل حذف بياناته الشخصية.",
+    "reasonHelp": "{{count}} أحرف على الأقل. هذا كل ما سيعتمد عليه المسؤول.",
+    "cancel": "إلغاء",
+    "submit": "أرسل الطلب",
+    "submitting": "جارٍ الإرسال…",
+    "errorFallback": "تعذّر إرسال الطلب."
+  },
+  "DeletionApprovals": {
+    "title": "طلبات الحذف",
+    "description": "محادثات طلب أحدهم حذفها. الموافقة تحذفها.",
+    "tab": {
+      "pending": "بانتظار القرار",
+      "approved": "موافَق عليها",
+      "rejected": "مرفوضة"
+    },
+    "loading": "جارٍ تحميل الطلبات…",
+    "empty": {
+      "pending": "لا شيء ينتظر",
+      "approved": "لم يُوافَق على شيء بعد",
+      "rejected": "لم يُرفض شيء بعد"
+    },
+    "emptyDescription": "تظهر الطلبات هنا فور أن يطلبها أحد.",
+    "unknownCustomer": "عميل بلا اسم",
+    "someone": "أحدهم",
+    "askedBy": "طلبها {{name}} · منذ {{duration}}",
+    "decidedBy": "{{status}} بواسطة {{name}}",
+    "approve": "الموافقة والحذف",
+    "reject": "رفض",
+    "approveTitle": "الموافقة والحذف",
+    "rejectTitle": "رفض هذا الطلب",
+    "approveWarning": "ستُحذف المحادثة مع {{customer}}، ولا يمكن التراجع عن ذلك.",
+    "rejectExplanation": "اذكر سبب الرفض. لن يرى صاحب الطلب سوى ما تكتبه هنا.",
+    "noteOptionalLabel": "ملاحظة (اختيارية)",
+    "noteRequiredLabel": "لماذا ترفض الطلب؟",
+    "noteHelp": "{{count}} أحرف على الأقل.",
+    "cancel": "إلغاء",
+    "confirmApprove": "احذف المحادثة",
+    "confirmReject": "ارفض الطلب",
+    "working": "جارٍ التنفيذ…",
+    "errorFallback": "تعذّر الحفظ."
   }
 }

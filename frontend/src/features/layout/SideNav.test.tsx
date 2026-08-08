@@ -106,6 +106,23 @@ describe('SideNav', () => {
     expect(heading).toHaveAttribute('aria-expanded')
   })
 
+  it('shows the deletion queue only to somebody who can decide', async () => {
+    const user = userEvent.setup()
+    renderNav()
+
+    // Work, not Organisation: it is a queue somebody owes an answer to,
+    // not a settings page. And it is gated on the permission that
+    // decides, not the one that asks — an agent who can request a
+    // deletion has no business seeing everybody else's requests.
+    const heading = (await screen.findByText('Work')).closest('div[role="button"]')
+    await user.click(heading as HTMLElement)
+
+    expect(await screen.findByRole('link', { name: /deletion requests/i })).toHaveAttribute(
+      'href',
+      '/deletion-approvals',
+    )
+  })
+
   it('never renders a group heading with nothing under it', async () => {
     renderNav()
 

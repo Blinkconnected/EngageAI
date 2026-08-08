@@ -60,6 +60,16 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("conversations.read", "View conversations"),
     Permission("conversations.manage", "Reply, assign, close conversations"),
     Permission("conversations.delete", "Permanently delete conversations"),
+    # Asking is not deleting. A conversation is the record of what a
+    # company said to a customer — evidence in a dispute, an input to
+    # every report, and in some industries something the company is
+    # obliged to keep. Every agent may ask for one to go; somebody
+    # holding conversations.delete above decides. Splitting the two is
+    # what makes the deletion accountable rather than merely possible.
+    Permission(
+        "conversations.delete_request",
+        "Request that a conversation be deleted, for an administrator to approve",
+    ),
     # A separate, narrower permission than conversations.manage: replying/
     # closing/queue-assigning a conversation is routine agent work, but
     # transferring it to another agent or department is a supervisory
@@ -177,6 +187,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.transfer",
             "conversations.pick",
             "conversations.release",
+            "conversations.delete",
+            "conversations.delete_request",
             "reports.read",
             "audit_logs.read",
             "channels.read",
@@ -210,6 +222,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.manage",
             "conversations.pick",
             "conversations.release",
+            "conversations.delete_request",
             "reports.read",
             "queues.read",
             "workflows.read",

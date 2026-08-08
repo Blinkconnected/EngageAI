@@ -37,6 +37,9 @@ from blinkengage.application.services.company_service import CompanyService
 from blinkengage.application.services.connector_certification_service import (
     ConnectorCertificationService,
 )
+from blinkengage.application.services.conversation_deletion_service import (
+    ConversationDeletionService,
+)
 from blinkengage.application.services.conversation_inspector import (
     ConversationInspectorService,
 )
@@ -55,6 +58,8 @@ from blinkengage.application.services.device_token_service import DeviceTokenSer
 from blinkengage.application.services.embedding_service import EmbeddingService
 from blinkengage.application.services.erp_config_service import ErpConfigService
 from blinkengage.application.services.erp_sync_service import ErpSyncService
+from blinkengage.application.services.faq_retrieval_service import FaqRetrievalService
+from blinkengage.application.services.faq_service import FaqService
 from blinkengage.application.services.feature_service import FeatureService
 from blinkengage.application.services.financial_audit_service import FinancialAuditRecorder
 from blinkengage.application.services.internal_note_service import InternalNoteService
@@ -163,6 +168,9 @@ from blinkengage.infrastructure.repositories.channel_connection_log_repository i
     ChannelConnectionLogRepository,
 )
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
+from blinkengage.infrastructure.repositories.conversation_deletion_repository import (
+    ConversationDeletionRepository,
+)
 from blinkengage.infrastructure.repositories.conversation_repository import (
     ConversationRepository,
 )
@@ -187,6 +195,10 @@ from blinkengage.infrastructure.repositories.erp_synced_record_repository import
 )
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
+)
+from blinkengage.infrastructure.repositories.faq_repository import (
+    FaqLexicalSearchRepository,
+    FaqRepository,
 )
 from blinkengage.infrastructure.repositories.financial_audit_repository import (
     FinancialAuditRepository,
@@ -836,6 +848,12 @@ def get_conversation_service_ws(
     )
 
 
+def get_user_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> UserRepository:
+    return UserRepository(session)
+
+
 def get_conversation_inspector(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ConversationInspectorService:
@@ -967,6 +985,26 @@ def get_notification_service_ws(
         notifications=NotificationRepository(session),
         companies=CompanyRepository(session),
         realtime=realtime,
+    )
+
+
+def get_conversation_deletion_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    conversations: Annotated[ConversationService, Depends(get_conversation_service)],
+    notifications: Annotated[NotificationService, Depends(get_notification_service)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> ConversationDeletionService:
+    """Composed from the conversation service rather than the repository:
+    approving a request performs the same deletion — same soft delete,
+    same ``conversation.deleted`` event — that a direct delete does, so
+    the two paths cannot drift apart."""
+    return ConversationDeletionService(
+        requests=ConversationDeletionRepository(session),
+        conversations=conversations,
+        customers=CustomerRepository(session),
+        roles=RoleRepository(session),
+        notifications=notifications,
+        events=events,
     )
 
 
@@ -1455,6 +1493,29 @@ async def get_knowledge_retrieval_service(
         chunks=KnowledgeChunkRepository(session),
         # Chosen by the session's dialect, not by configuration — which
         # index can run is a fact about the database, not a preference.
+        vector_index=build_vector_index(session),
+        embeddings=embeddings,
+        candidate_pool=settings.retrieval_candidate_pool,
+    )
+
+
+def get_faq_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> FaqService:
+    return FaqService(faqs=FaqRepository(session), events=events)
+
+
+async def get_faq_retrieval_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    embeddings: Annotated[EmbeddingService, Depends(get_embedding_service)],
+) -> FaqRetrievalService:
+    return FaqRetrievalService(
+        faqs=FaqRepository(session),
+        lexical=FaqLexicalSearchRepository(session),
+        # Same index, same session-dialect choice as article retrieval —
+        # FAQ vectors live in the same table under a different owner type.
         vector_index=build_vector_index(session),
         embeddings=embeddings,
         candidate_pool=settings.retrieval_candidate_pool,

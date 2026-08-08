@@ -46,6 +46,7 @@
     "groupRouting": "التوجيه",
     "groupConnections": "الاتصالات",
     "groupOrganisation": "التنظيم",
-    "navGuide": "الدليل"
+    "navGuide": "الدليل",
+    "navDeletionApprovals": "طلبات الحذف"
   }
 }

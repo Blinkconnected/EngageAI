@@ -71,6 +71,34 @@ class RoleRepository:
         )
         return list(result.scalars().all())
 
+    async def list_users_with_permission(self, *, company_id: UUID, code: str) -> list[User]:
+        """Everybody in the company whose role grants this permission.
+
+        Used to work out who to tell when something needs a decision. It
+        asks the permission rather than a role name on purpose: roles are
+        editable, companies rename and reshape them, and a notification
+        addressed to "Admin" would silently stop reaching the people who
+        can actually act the moment somebody makes a "Supervisor" role.
+
+        Deactivated users are excluded — telling somebody who has left
+        that work is waiting is the same as telling nobody.
+        """
+        result = await self._session.execute(
+            select(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .where(
+                Role.company_id == company_id,
+                RolePermission.permission_code == code,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+            .order_by(User.full_name)
+            .distinct()
+        )
+        return list(result.scalars().all())
+
     async def get_role_for_user(self, *, company_id: UUID, user_id: UUID) -> Role | None:
         """A user has exactly one role in practice (assigned at company
         creation for the Owner, at invite time for everyone else) even

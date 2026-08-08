@@ -16,6 +16,46 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Deleting a conversation now takes two people.** Until now one
+  person could remove a conversation on their own, quietly, with no
+  reason recorded and nothing to consult afterwards — and only the
+  company Owner could do it at all, so in practice nobody could.
+
+  A conversation is the record of what your company said to a customer:
+  evidence in a dispute, an input to every report, and in some
+  industries something you are obliged to keep. So an agent now **asks**,
+  and an administrator decides.
+
+  **Asking** is a bin icon on the conversation and a sentence explaining
+  why. Nothing is deleted at that point, and the dialog says so. Once a
+  request is open, everybody who opens that conversation sees who asked
+  and why — a colleague about to write a long reply should know it may
+  be on its way out, and nobody should ask twice.
+
+  **Deciding** is a new **Deletion requests** queue under Work, visible
+  only to people who can actually decide. Approving deletes the
+  conversation there and then. Rejecting keeps it and requires a note,
+  because the person who asked only ever sees what you write.
+
+  **Nobody decides their own request.** Not because it would be unsafe —
+  anybody who can approve can already delete outright — but because an
+  approval showing one name on both halves is not an approval. An
+  administrator who does not want a second opinion can still delete
+  directly, and the record will show that is what they did.
+
+  **The record outlives the conversation.** Long after the messages are
+  gone, it still shows the customer's name, the reason, who asked, who
+  agreed and when. A deletion nobody can account for later is
+  indistinguishable from a mistake.
+
+  Administrators are told the moment a request arrives; whoever asked is
+  told the outcome. Nobody has to go looking.
+
+  New permission: `conversations.delete_request`, held by every agent.
+  `conversations.delete` — which decides, and still deletes directly —
+  now belongs to Administrators as well as Owners, since the tenant
+  administrator is exactly who a request is addressed to.
+
 - **The Inbox is one screen now, not two.** Opening a conversation used
   to replace the whole page. An agent working through a queue went list →
   conversation → Back → list → conversation, losing their place in the

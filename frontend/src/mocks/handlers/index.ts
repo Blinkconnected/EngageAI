@@ -17,6 +17,7 @@ import { erpHandlers } from './erp'
 import { reportsHandlers } from './reports'
 import { searchHandlers } from './search'
 import { quickRepliesHandlers } from './quickReplies'
+import { conversationDeletionHandlers } from './conversationDeletion'
 
 export const handlers = [
   ...authHandlers,
@@ -38,4 +39,5 @@ export const handlers = [
   ...reportsHandlers,
   ...searchHandlers,
   ...quickRepliesHandlers,
+  ...conversationDeletionHandlers,
 ]

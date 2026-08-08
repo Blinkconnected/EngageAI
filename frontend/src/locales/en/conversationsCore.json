@@ -213,7 +213,11 @@
     "lastMessage": "Last message",
     "opened": "Opened",
     "firstReply": "First reply",
-    "queue": "Queue"
+    "queue": "Queue",
+    "requestDeletion": "Ask to delete this conversation",
+    "requestDeletionTooltip": "Ask an administrator to delete this conversation",
+    "deletionPending": "{{requester}} has asked for this conversation to be deleted: “{{reason}}” An administrator has to approve it.",
+    "someone": "Someone"
   },
   "QuickReplyPicker": {
     "searchPlaceholder": "Search saved replies…",
@@ -222,5 +226,50 @@
     "noMatches": "No saved reply matches \"{{query}}\".",
     "noneConfigured": "No saved replies yet. An administrator can add them in Settings.",
     "loadFailed": "Saved replies could not be loaded."
+  },
+  "RequestDeletionDialog": {
+    "title": "Ask to delete this conversation",
+    "description": "Nothing is deleted yet. An administrator will read your reason and decide. You will be told either way.",
+    "reasonLabel": "Why should this be deleted?",
+    "reasonPlaceholder": "For example: the customer asked us to remove their personal data.",
+    "reasonHelp": "At least {{count}} characters. This is all the administrator will have to go on.",
+    "cancel": "Cancel",
+    "submit": "Send request",
+    "submitting": "Sending…",
+    "errorFallback": "The request could not be sent."
+  },
+  "DeletionApprovals": {
+    "title": "Deletion requests",
+    "description": "Conversations somebody has asked to have deleted. Approving one deletes it.",
+    "tab": {
+      "pending": "Waiting",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "loading": "Loading requests…",
+    "empty": {
+      "pending": "Nothing waiting",
+      "approved": "Nothing approved yet",
+      "rejected": "Nothing rejected yet"
+    },
+    "emptyDescription": "Requests appear here as soon as somebody asks.",
+    "unknownCustomer": "Unnamed customer",
+    "someone": "Someone",
+    "askedBy": "Asked by {{name}} · {{duration}} ago",
+    "decidedBy": "{{status}} by {{name}}",
+    "approve": "Approve and delete",
+    "reject": "Reject",
+    "approveTitle": "Approve and delete",
+    "rejectTitle": "Reject this request",
+    "approveWarning": "The conversation with {{customer}} will be deleted. This cannot be undone.",
+    "rejectExplanation": "Say why you are turning this down. The person who asked only sees what you write here.",
+    "noteOptionalLabel": "Note (optional)",
+    "noteRequiredLabel": "Why are you rejecting this?",
+    "noteHelp": "At least {{count}} characters.",
+    "cancel": "Cancel",
+    "confirmApprove": "Delete the conversation",
+    "confirmReject": "Reject the request",
+    "working": "Working…",
+    "errorFallback": "That could not be saved."
   }
 }

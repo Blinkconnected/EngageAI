@@ -159,6 +159,8 @@ rationale:
 | `/ai` | `ai.use` (rate limited per user) | `docs/architecture/ai-engine.md` |
 | `/reports` | `reports.read` | `docs/architecture/reports-analytics.md` |
 | `/search` | authentication only — filtered per entity type inside (see architecture doc) | `docs/architecture/global-search.md` |
+| `/conversations/{id}/deletion-request` | `conversations.delete_request` to ask; `conversations.read` to see one | `docs/architecture/conversation-deletion.md` |
+| `/conversation-deletion-requests` | `conversations.delete` — deciding, not asking | `docs/architecture/conversation-deletion.md` |
 | `/csat` | see "Public endpoints" above (respond) / `conversations.manage` (generate link) | `docs/architecture/reports-analytics.md` |
 | `/erp-configs`, `/webhooks/erpnext` | `erp.manage` / shared secret | `docs/architecture/erp-integration.md` |
 | `/billing` | `billing.read` — the caller's **own** company only; there is deliberately no `company_id` parameter | `docs/architecture/billing.md` |

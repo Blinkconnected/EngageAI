@@ -21,6 +21,9 @@ from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
     ConversationStatus,
 )
+from blinkengage.infrastructure.database.models.conversation_deletion_request import (
+    ConversationDeletionRequest,
+)
 from blinkengage.infrastructure.database.models.conversation_transfer import (
     ConversationTransfer,
     TransferTargetType,
@@ -43,6 +46,10 @@ from blinkengage.infrastructure.database.models.erp import (
     ErpSyncedRecord,
 )
 from blinkengage.infrastructure.database.models.event_outbox import EventOutbox
+from blinkengage.infrastructure.database.models.faq import (
+    Faq,
+    FaqTag,
+)
 from blinkengage.infrastructure.database.models.financial_audit import FinancialAuditEvent
 from blinkengage.infrastructure.database.models.internal_note import InternalNote
 from blinkengage.infrastructure.database.models.invoicing import (
@@ -217,7 +224,10 @@ __all__ = [
     "Holiday",
     "InternalNote",
     "OWNER_KNOWLEDGE_CHUNK",
+    "ConversationDeletionRequest",
     "Embedding",
+    "Faq",
+    "FaqTag",
     "KnowledgeArticle",
     "KnowledgeArticleTag",
     "KnowledgeCategory",

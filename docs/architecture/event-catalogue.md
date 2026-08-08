@@ -108,6 +108,9 @@ the request that produced it.
 | `conversation.autopilot_stopped` | `conversation_service` | *audit + workflow only* |
 | `conversation.created` | `events/consumers/conversation_ingest_consumer` | `reporting`, `usage-metering` |
 | `conversation.deleted` | `conversation_service` | *audit + workflow only* |
+| `conversation.deletion_requested` | `conversation_deletion_service` | *audit + workflow only* |
+| `conversation.deletion_approved` | `conversation_deletion_service` | *audit + workflow only* |
+| `conversation.deletion_rejected` | `conversation_deletion_service` | *audit + workflow only* |
 | `conversation.picked` | `conversation_service` | *audit + workflow only* |
 | `conversation.queued` | `events/consumers/conversation_ingest_consumer` | *audit + workflow only* |
 | `conversation.released` | `conversation_service` | *audit + workflow only* |

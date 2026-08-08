@@ -14,6 +14,7 @@ from blinkengage.api.v1.endpoints import (
     channel_configs,
     channel_connect,
     company,
+    conversation_deletion,
     conversations,
     csat,
     customers,
@@ -99,6 +100,7 @@ api_router.include_router(channel_connect.router)
 api_router.include_router(webhooks.router)
 api_router.include_router(web_chat.router)
 api_router.include_router(conversations.router)
+api_router.include_router(conversation_deletion.router)
 api_router.include_router(queues.router)
 api_router.include_router(services.router)
 api_router.include_router(routing_rules.router)
