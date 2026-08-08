@@ -9,6 +9,7 @@
  * type.
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { axe } from 'vitest-axe'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -148,6 +149,13 @@ describe('Saved replies in the composer', () => {
       .click(await screen.findByRole('button', { name: /insert a saved reply/i }))
 
     expect(await screen.findByText(/no saved replies yet/i)).toBeInTheDocument()
+  })
+
+  it('has no detectable accessibility violations while open', async () => {
+    const { container } = renderComposer()
+    await openPicker()
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 
   it('is not offered at all without permission to read saved replies', async () => {

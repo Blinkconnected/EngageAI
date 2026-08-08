@@ -7,6 +7,7 @@
  * the reason travels with the request all the way to the decision.
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { axe } from 'vitest-axe'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -183,6 +184,14 @@ describe('Deciding on a deletion request', () => {
     await user.click(screen.getByRole('tab', { name: /approved/i }))
 
     expect(await screen.findByText(/duplicate conversation/i)).toBeInTheDocument()
+  })
+
+  it('has no detectable accessibility violations', async () => {
+    seedDeletionRequest({ reason: REASON })
+    const { container } = renderAuthenticated(<DeletionApprovalsPage />)
+    await screen.findByText(REASON)
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 
   it('says nothing is waiting rather than showing an empty list', async () => {

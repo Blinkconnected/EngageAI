@@ -10,6 +10,7 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
+import { axe } from 'vitest-axe'
 import { Route, Routes } from 'react-router-dom'
 import { store } from '../../app/store'
 import { queryClient } from '../../app/queryClient'
@@ -156,6 +157,17 @@ describe('InboxWorkspace', () => {
     // The empty pane is the one place on this screen with room to
     // explain itself.
     expect(await screen.findByText(/pick a conversation/i)).toBeInTheDocument()
+  })
+
+  it('has no detectable accessibility violations, list and conversation together', async () => {
+    // The screen an agent has open all day, and the one that had no axe
+    // assertion — which is how `ChannelIcon` shipped putting `aria-label`
+    // on a role-less div, dropping the channel name for screen readers on
+    // every row here.
+    const { container } = renderWorkspace('/conversations/conv-1')
+    await screen.findByRole('region', { name: /status and timings/i })
+
+    expect(await axe(container)).toHaveNoViolations()
   })
 
   it('offers Pick up from the list, without opening the conversation first', async () => {
