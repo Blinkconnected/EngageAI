@@ -16,6 +16,34 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Search now finds everything in your account, not just the inbox.**
+  The search box covered conversations, customers, agents, knowledge and
+  the routing objects — and not one single thing on a settings page. An
+  administrator asked to change *the Platinum SLA* or *the Riyadh
+  department* arrived knowing a name and nothing else, and the only way
+  there was remembering which of a dozen pages it lived on.
+
+  It now also searches **FAQs, services, departments, channels, SLA
+  policies and roles**, grouped after the day-to-day results so an agent
+  looking for a customer never has to scroll past a queue that happens
+  to share a word.
+
+  **It matches the name things are actually known by.** A channel is
+  found by its type as well as the name you gave it, so hunting for the
+  WhatsApp channel by typing "whatsapp" works even though somebody
+  called it "Main line". A service is found by its code, which is what
+  routing rules refer to and therefore what you arrive with when tracing
+  where a rule points. An FAQ is found by words in its **answer**, not
+  only its question — the question reads "Do you deliver?" and what
+  makes it the right one is the city in the answer.
+
+  **Permissions are unchanged.** Each new type is filtered by the same
+  permission that already governs its own page, so search still never
+  shows you a kind of thing you could not open yourself, and it still
+  reports which types it looked in. Roles are the strictest of them:
+  only somebody who can manage roles can find one, because a list of
+  role names describes how a company delegates authority.
+
 - **Frequently asked questions are now a real thing you can write, not
   just something search was named after.** Until now everything went into
   a knowledge article: written as a document, kept internal by default,

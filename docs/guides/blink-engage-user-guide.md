@@ -1062,31 +1062,71 @@ you are waiting for.
 
 ## 4.6 Search
 
-**Purpose:** find a conversation, customer or article.
+**Purpose:** find anything in your account — a conversation, a customer,
+or a setting — without knowing which page it lives on.
 
 **Permissions required:** you only ever see results you are allowed to
-see.
+see. Search never shows you a type of thing you could not already open
+yourself, and it tells you which types it looked in.
 
 ### Step by step
 
-1. Select the **search box** at the top of the screen.
-2. Type what you are looking for — a customer name, a phone number, words
-   from a message.
+1. Select the **search box** at the top of the screen, or press
+   **Ctrl + K** (**Cmd + K** on a Mac) from anywhere.
+2. Type what you are looking for — a customer name, a phone number, a
+   department, an FAQ.
 3. Results appear grouped by type.
 4. Select a result to open it.
 
-`[Screenshot placeholder: Global search with results grouped under Conversations, Customers and Knowledge]`
+`[Screenshot placeholder: Global search with results grouped under Conversations, Customers and Departments]`
 
 ### What you can search
 
 | Type | Search by |
 |---|---|
-| **Conversations** | Message content, customer name |
+| **Conversations** | The customer's name or email |
 | **Customers** | Name, email, phone |
-| **Knowledge** | Article and FAQ content |
+| **Agents** | Name, email |
+| **Knowledge articles** | Title, content |
+| **Knowledge categories** | Name |
+| **FAQs** | The question **and** the answer |
+| **Quick replies** | Shortcut, title, text |
+| **Teams** | Name, description |
+| **Queues** | Name, description |
+| **Workflows** | Name, description |
+| **Services** | Name, code, description |
+| **Departments** | Name, description |
+| **Channels** | The name you gave it **and** its type, such as `whatsapp` |
+| **SLA policies** | Name, description |
+| **Roles** | Name, description — administrators only |
+
+> **Note** — Search does not look inside the text of messages. It finds
+> the **conversation** by the person it is with, which is how the Inbox
+> identifies conversations anyway. To find words inside a conversation,
+> open it and use your browser's own find.
 
 > **Tip** — Searching a phone number is the fastest way to find a
 > customer when they call you rather than message.
+
+> **Tip** — You do not need to remember which settings page something is
+> on. Type the name of the department, channel, service or SLA policy
+> and go straight there.
+
+> **Note** — Roles are the one exception: only people who can manage
+> roles can find them in search. A list of your role names describes how
+> you delegate authority, so it is not shown to everybody.
+
+> **Note** — Some results appear greyed out and say *No page for this
+> yet*. The record is real and the match is real; that part of the
+> product has no screen of its own yet, so there is nowhere to send you.
+
+### Common mistakes
+
+- **Typing one character.** Search needs at least two. One letter
+  matches almost everything, which is the same as matching nothing.
+- **Expecting every match.** Search shows the best five of each type. If
+  what you want is not there, open that type's own page and filter it —
+  that list is complete and paginated.
 
 > **Note** — Knowledge search understands **meaning**, not just exact
 > words. Searching "cannot log in" finds an article titled "Password

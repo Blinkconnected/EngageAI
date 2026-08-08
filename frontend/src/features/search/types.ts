@@ -9,6 +9,12 @@ export type SearchEntityType =
   | 'team'
   | 'queue'
   | 'workflow'
+  | 'faq'
+  | 'service'
+  | 'department'
+  | 'channel'
+  | 'sla_policy'
+  | 'role'
 
 /** Matches the backend's `SearchHitResponse`. */
 export interface SearchHit {
@@ -31,7 +37,7 @@ export interface SearchResults {
 /** Where a result of each type navigates to, given its id.
  *
  * `null` means this entity type has no page to open yet — Knowledge
- * Base, Quick Replies, Teams and Workflows are fully built and
+ * Base, FAQs, Quick Replies, Teams and Workflows are fully built and
  * searchable on the backend but have no frontend route at all (see
  * `AppRoutes.tsx`). Their results are still shown, as non-navigable
  * rows, rather than hidden: "this exists, and here it is" is more
@@ -39,18 +45,24 @@ export interface SearchResults {
  * navigable for free the moment those pages are built — only this map
  * changes.
  *
- * Queues and Agents have a list page but no per-entity detail route, so
+ * Several types have a list page but no per-entity detail route, so
  * they deep-link to the list itself. */
 export const SEARCH_RESULT_PATHS: Record<SearchEntityType, ((id: string) => string) | null> = {
   conversation: (id) => `/conversations/${id}`,
   customer: (id) => `/customers/${id}`,
   agent: () => '/agents',
   queue: () => '/queues',
+  department: () => '/departments',
+  service: () => '/services',
+  channel: () => '/channels',
+  sla_policy: () => '/sla',
+  role: () => '/roles',
   knowledge_article: null,
   knowledge_category: null,
   quick_reply: null,
   team: null,
   workflow: null,
+  faq: null,
 }
 
 /** Render order for the grouped result list, and the i18n key suffix for
@@ -66,6 +78,12 @@ export const SEARCH_ENTITY_TYPE_ORDER: SearchEntityType[] = [
   'team',
   'queue',
   'workflow',
+  'faq',
+  'service',
+  'department',
+  'channel',
+  'sla_policy',
+  'role',
 ]
 
 /** Server-side minimum too (`SearchService.MIN_QUERY_LENGTH`) — mirrored

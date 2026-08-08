@@ -7,6 +7,7 @@ from typing import Any
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from blinkengage.application.services.search_service import _SEARCHABLES
 from blinkengage.infrastructure.database.models.rbac import Role, RolePermission
 from blinkengage.infrastructure.events.consumers.conversation_ingest_consumer import (
     handle_message_received,
@@ -145,12 +146,189 @@ async def test_finds_a_conversation_via_its_customers_name(
     assert _titles(body, "conversation") == ["Marisol Okonkwo"]
 
 
+async def test_finds_the_things_an_administrator_configures(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    """Configuration is searchable, not only day-to-day work.
+
+    An administrator asked to change "the Platinum SLA" or "the Riyadh
+    department" arrives knowing the name and nothing else. Before this,
+    search covered conversations and customers but not a single thing on
+    a settings screen, so the only route to them was remembering which
+    of a dozen pages each one lived on.
+    """
+    await client.post(
+        "/api/v1/departments", json={"name": "Riyadh Operations"}, headers=owner_headers
+    )
+    await client.post(
+        "/api/v1/services",
+        json={
+            "code": "platinum-onboarding",
+            "name": "Platinum Onboarding",
+            "sla": {"first_response_minutes": 15},
+        },
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/sla-policies",
+        json={"name": "Platinum Response", "first_response_target_minutes": 5},
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/channel-configs",
+        json={
+            "channel_type": "whatsapp",
+            "display_name": "Riyadh Hotline",
+            "credentials": {
+                "access_token": "test-token",
+                "phone_number_id": "1234567890",
+                "verify_token": "verify-me",
+            },
+            # A Meta channel: the App Secret is required rather than
+            # generated, so creation 400s without it.
+            "webhook_secret": "meta-app-secret",
+        },
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/faqs",
+        json={"question": "When does Riyadh Operations open?", "answer": "Sunday to Thursday."},
+        headers=owner_headers,
+    )
+
+    riyadh = await _search(client, owner_headers, "Riyadh")
+    assert _titles(riyadh, "department") == ["Riyadh Operations"]
+    assert _titles(riyadh, "channel") == ["Riyadh Hotline"]
+    assert _titles(riyadh, "faq") == ["When does Riyadh Operations open?"]
+
+    platinum = await _search(client, owner_headers, "Platinum")
+    assert _titles(platinum, "service") == ["Platinum Onboarding"]
+    assert _titles(platinum, "sla_policy") == ["Platinum Response"]
+
+
+async def test_finds_a_channel_by_its_type_and_a_service_by_its_code(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    """The name somebody gave a thing is rarely the name it is known by.
+
+    Channels get called "Main line"; the person hunting for one searches
+    "whatsapp". Services are referenced by code in routing rules, so a
+    code is what an administrator arrives with when tracing where a rule
+    points.
+    """
+    await client.post(
+        "/api/v1/channel-configs",
+        json={
+            "channel_type": "whatsapp",
+            "display_name": "Main line",
+            "credentials": {
+                "access_token": "test-token",
+                "phone_number_id": "1234567890",
+                "verify_token": "verify-me",
+            },
+            # A Meta channel: the App Secret is required rather than
+            # generated, so creation 400s without it.
+            "webhook_secret": "meta-app-secret",
+        },
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/services",
+        json={"code": "vip-escalation", "name": "Concierge", "sla": {}},
+        headers=owner_headers,
+    )
+
+    assert _titles(await _search(client, owner_headers, "whatsapp"), "channel") == ["Main line"]
+    assert _titles(await _search(client, owner_headers, "vip-escal"), "service") == ["Concierge"]
+
+
+async def test_finds_an_faq_by_words_that_appear_only_in_its_answer(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    """The distinguishing words are usually in the answer.
+
+    A question reads "Do you deliver?"; what makes it the right FAQ is
+    the city named in the answer. Matching questions alone would miss
+    the entry that answers exactly what was asked.
+    """
+    await client.post(
+        "/api/v1/faqs",
+        json={"question": "Do you deliver?", "answer": "We deliver across Jeddah within a day."},
+        headers=owner_headers,
+    )
+
+    body = await _search(client, owner_headers, "Jeddah")
+    assert _titles(body, "faq") == ["Do you deliver?"]
+
+
+async def test_a_long_faq_answer_is_shortened_to_one_line(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    """Answers run to paragraphs; result rows are one line.
+
+    Sent whole, a single FAQ would push every other result off the
+    screen, and its newlines would break the layout the other types use.
+    """
+    answer = "Paragraph one.\n\n" + ("Refund terms in detail. " * 40)
+    await client.post(
+        "/api/v1/faqs",
+        json={"question": "Kaleidoscope refunds?", "answer": answer},
+        headers=owner_headers,
+    )
+
+    body = await _search(client, owner_headers, "Kaleidoscope")
+    subtitle = next(h["subtitle"] for h in body["results"] if h["entity_type"] == "faq")
+    assert "\n" not in subtitle
+    assert len(subtitle) <= 121  # 120 characters plus the ellipsis
+    assert subtitle.endswith("…")
+
+
+async def test_roles_are_searchable_only_by_somebody_who_can_manage_them(
+    client: AsyncClient, owner_headers: dict
+) -> None:
+    """Stricter than the rest of the configuration types, on purpose.
+
+    There is no `roles.read` — only `roles.manage`. A list of role names
+    is a sketch of how a company delegates authority, which is not
+    something an agent needs and not something to hand out through a
+    search box.
+    """
+    await client.post(
+        "/api/v1/roles",
+        json={"name": "Nightshift Supervisor", "permission_codes": ["conversations.read"]},
+        headers=owner_headers,
+    )
+    await client.post(
+        "/api/v1/agents",
+        json={
+            "email": "role-search-agent@acme.example",
+            "full_name": "Role Search Agent",
+            "password": "correct-horse-battery-9",
+        },
+        headers=owner_headers,
+    )
+
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "role-search-agent@acme.example", "password": "correct-horse-battery-9"},
+    )
+    agent_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    assert _titles(await _search(client, owner_headers, "Nightshift"), "role") == [
+        "Nightshift Supervisor"
+    ]
+
+    agent_view = await _search(client, agent_headers, "Nightshift")
+    assert "role" not in set(agent_view["searched_entity_types"])
+    assert _titles(agent_view, "role") == []
+
+
 async def test_a_query_shorter_than_two_characters_returns_nothing(
     client: AsyncClient, owner_headers: dict
 ) -> None:
     """Enforced server-side, not only in the UI — an ILIKE '%a%' fan-out
-    across nine tables matches nearly everything while telling the caller
-    nothing."""
+    across every searchable table matches nearly everything while telling
+    the caller nothing."""
     await client.post(
         "/api/v1/customers", json={"full_name": "Ada Lovelace"}, headers=owner_headers
     )
@@ -219,8 +397,8 @@ async def _revoke_agent_role_permissions(app: Any, company_id: str, codes: set[s
 async def test_only_searches_entity_types_the_caller_can_read(
     client: AsyncClient, owner_headers: dict, app: Any
 ) -> None:
-    """One search spans nine entity types with nine different
-    permissions, so the route can't be gated by a single
+    """One search spans every entity type at once, each with its own
+    permission, so the route can't be gated by a single
     `require_permission` — SearchService filters per type instead. A
     caller lacking `queues.read`/`workflows.read` must get neither those
     results nor those types listed as searched, while still getting the
@@ -283,19 +461,11 @@ async def test_a_caller_with_no_readable_entity_types_gets_an_empty_result(
         headers=owner_headers,
     )
 
+    # Taken from the registry rather than listed by hand: a new searchable
+    # entity type would otherwise leave this agent able to read one thing,
+    # and the test would keep passing while proving nothing.
     await _revoke_agent_role_permissions(
-        app,
-        company_id,
-        {
-            "conversations.read",
-            "customers.read",
-            "agents.read",
-            "knowledge_base.read",
-            "quick_replies.read",
-            "teams.read",
-            "queues.read",
-            "workflows.read",
-        },
+        app, company_id, {searchable.permission for searchable in _SEARCHABLES}
     )
 
     login = await client.post(

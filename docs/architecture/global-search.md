@@ -1,16 +1,28 @@
 # Global Search
 
 One search box (`GET /search`, Ctrl/Cmd-K anywhere in the app) that spans
-nine entity types at once: conversations, customers, agents, knowledge
-base articles and categories, quick replies, teams, queues, and
-workflows.
+fifteen entity types at once.
 
-## One endpoint, nine permissions
+**Work** — conversations, customers, agents, knowledge base articles and
+categories, quick replies, teams, queues, workflows.
+
+**Configuration** — FAQs, services, departments, channels, SLA policies,
+roles.
+
+The configuration half is what makes this "search everything" rather
+than "search the inbox". An administrator asked to change *the Platinum
+SLA* or *the Riyadh department* arrives knowing a name and nothing else;
+without those types the only route to them was remembering which of a
+dozen settings pages each one lives on. They are ordered after the work
+entities so an agent searching a customer's name never has to scroll
+past a queue that happens to share a word.
+
+## One endpoint, fifteen permissions
 
 Every other list endpoint in this codebase is gated by exactly one
 `require_permission(...)` on the route. Global search can't be: one
-request spans nine entity types with nine different permissions, and a
-route-level gate on any single one of them would 403 a caller who
+request spans fifteen entity types with fifteen different permissions,
+and a route-level gate on any single one of them would 403 a caller who
 legitimately can't read that one type but can read the rest.
 
 So `GET /search` is gated on **authentication only**
@@ -29,12 +41,12 @@ permission sets.
 ## Why a dedicated repository, not the existing list endpoints
 
 The roadmap item said "reuse existing backend APIs wherever possible,"
-and four of the nine types (customers, agents, quick replies, KB
-articles) already accept a `search` param. Reusing those
+and four of the types (customers, agents, quick replies, KB articles)
+already accept a `search` param. Reusing those
 `list_for_company(search=...)` methods verbatim was the obvious reading
 — and the wrong call:
 
-- **16 queries, not 8.** Each list method also runs a separate
+- **Twice the queries.** Each list method also runs a separate
   `COUNT(*)` over the same filtered subquery to populate `Page.total`,
   which global search never shows (it shows "top 5 per type", not "1 of
   4,213").
@@ -51,8 +63,44 @@ searchable columns each entity's own list endpoint already searches**, so
 a global-search hit and that entity's own filtered list can never
 disagree about what matches.
 
-Three types gained text search they never had: **queues** and **teams**
-(matched on name + description) and **conversations**.
+Several types gained text search they never had: **queues** and
+**teams** (name + description), **conversations**, and every
+configuration type below.
+
+Two of them match on more than their own name, because the name somebody
+typed in is rarely the name a thing is known by:
+
+- **Channels** match on `channel_type` as well as `display_name`. The
+  person hunting for the WhatsApp channel searches "whatsapp"; whoever
+  set it up called it "Main line".
+- **Services** match on `code` as well as name and description. Routing
+  rules and integrations refer to services by code, so a code is what an
+  administrator arrives with when tracing where a rule points.
+
+**FAQs match on their answer as well as their question**, and the
+question is what the result row shows. A question reads "Do you
+deliver?"; what makes it the right FAQ is the city named in the answer.
+Matching questions alone would miss the entry that answers exactly what
+was asked. Answers run to paragraphs, so the subtitle is flattened to
+one line and cut at 120 characters (`SearchRepository._snippet`) — sent
+whole, one FAQ would push every other result off the screen and its
+newlines would break the single-line layout the other types use.
+
+Unpublished FAQs are returned rather than filtered out: an administrator
+searching their own knowledge needs to find the draft they are part-way
+through writing. Published ones are ordered first, so what customers can
+actually see outranks a draft when the per-type cap bites.
+
+**SLA policies and roles have no soft-delete column**, unlike most
+models here, so those two methods alone have no `deleted_at IS NULL`
+filter. Everything else is company-scoped, soft-delete filtered and
+capped identically.
+
+**Roles are gated on `roles.manage`**, which is stricter than every
+other type here — there is no `roles.read` to fall back on. That is the
+right level: a list of role names is a sketch of how a company delegates
+authority, which is not something an agent needs and not something to
+hand out through a search box.
 
 ## Conversations are matched through their customer
 
@@ -76,13 +124,18 @@ not an `ILIKE` bolted onto this fan-out.
 
 Every existing search in this codebase is a leading-wildcard
 `ILIKE '%term%'`, which **cannot use a btree index** — each one is a
-sequential scan. Fanning nine of those out on every keystroke is exactly
-the pathological case, so four things bound it:
+sequential scan. Fanning fifteen of those out on every keystroke is
+exactly the pathological case, so four things bound it:
+
+The configuration tables added here are the cheap half of the fan-out —
+departments, channels, services and SLA policies are counted in tens per
+tenant, not the hundreds of thousands conversations and customers reach.
+FAQs are the one to watch, since its answer column is long-form text.
 
 1. **Minimum query length (2 chars)** — enforced in `SearchService`, not
    only in the UI, so a direct API caller can't trigger the fan-out with
-   a single character either. `ILIKE '%a%'` across nine tables matches
-   nearly everything while telling the caller nothing.
+   a single character either. `ILIKE '%a%'` across every searchable
+   table matches nearly everything while telling the caller nothing.
 2. **Per-type cap (5)** — global search is a "jump to the thing I'm
    thinking of" affordance, not a report. More matches than that is a
    signal to open that entity's own paginated list page.
@@ -103,12 +156,12 @@ statements on one connection and raise `InterfaceError` under load.
 **If search volume ever outgrows this**, the fix is a real index
 (Postgres `tsvector` + GIN, or `pg_trgm` for substring matching), not
 more parallelism. Nothing in the current design blocks that: the swap
-would be confined to `SearchRepository`'s nine methods.
+would be confined to `SearchRepository`'s per-type methods.
 
-## Four entity types have no page to open
+## Five entity types have no page to open
 
-Knowledge Base, Quick Replies, Teams, and Workflows are fully built and
-searchable on the backend but have **no frontend route at all** (see
+Knowledge Base, FAQs, Quick Replies, Teams, and Workflows are fully built
+and searchable on the backend but have **no frontend route at all** (see
 `AppRoutes.tsx` — no page, no nav entry, no API client). Their search
 results are still returned and still rendered, as **disabled rows
 labelled "No page for this yet"**, rather than hidden.
@@ -118,8 +171,27 @@ dropping it would make search look broken to anyone who knows the record
 exists. They become navigable for free the moment those pages get built
 — only `SEARCH_RESULT_PATHS` in `features/search/types.ts` changes.
 
-Queues and Agents have a list page but no per-entity detail route, so
-they deep-link to the list.
+Queues, Agents, Departments, Services, Channels, SLA policies and Roles
+have a list page but no per-entity detail route, so they deep-link to
+the list.
+
+## The registry is a contract in three places
+
+`_SEARCHABLES` in `search_service.py` names an entity type, a permission
+and a repository method. Nothing at import time checks that the method
+exists, that the permission is real, or that the API's
+`SearchEntityType` literal knows the type — the first two fail at
+request time, and the third fails as a response validation error only
+once something actually matches. Adding a type is exactly when somebody
+updates two of the three and not the third, so
+`tests/unit/test_search_registry.py` checks all of them, and
+`features/search/types.test.ts` does the same for the frontend's render
+order, route map and en/ar group labels.
+
+The permission-filtering integration test derives its revoke set from
+`_SEARCHABLES` rather than listing codes by hand: a new searchable type
+would otherwise leave the test's agent able to read one thing, and it
+would keep passing while proving nothing.
 
 ## Frontend
 
@@ -142,7 +214,7 @@ they deep-link to the list.
 15 new tests, all green under `pytest -q`, `ruff check`, `mypy src`,
 `tsc`, `eslint`, `vitest`, and `vite build`:
 
-- `tests/integration/test_search_api.py` (9, new file) — matching a
+- `tests/integration/test_search_api.py` (14) — matching a
   customer by name/email/phone; a queue by name *and* description
   (search-only behavior, since `GET /queues` has no `search` param, so
   this proves the new repository rather than a pre-existing one); teams,
@@ -153,7 +225,20 @@ they deep-link to the list.
   `workflows.read` revoked gets neither those results nor those types
   listed as searched, while a matching queue is proven to exist by
   searching as the owner); a caller with no readable types getting an
-  empty result rather than a 403; and unauthenticated access rejected.
+  empty result rather than a 403; unauthenticated access rejected; every
+  configuration type found by name; a channel found by its *type* and a
+  service by its *code*; an FAQ found by words appearing only in its
+  answer; a long FAQ answer shortened to a single line; and a role
+  visible to the owner but neither returned to nor searched for an agent
+  without `roles.manage`.
+- `tests/unit/test_search_registry.py` (5, new file) — every searchable
+  names a real repository method and a real permission code, the API
+  literal and the registry agree in both directions, and no two entries
+  share an entity type.
+- `features/search/types.test.ts` (4, new file) — every type in the
+  render order has a route decision and a label in both English and
+  Arabic, the render order and route map agree, and no label is left
+  behind for a type that is no longer returned.
 - `features/search/GlobalSearchDialog.test.tsx` (6, new file) — the
   minimum-length prompt, grouping by entity type, navigating to a
   customer on select, **disabled non-navigable rows** for types with no

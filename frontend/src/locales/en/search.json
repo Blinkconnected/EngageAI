@@ -1,7 +1,7 @@
 {
   "GlobalSearchDialog": {
     "title": "Search",
-    "placeholder": "Search conversations, customers, articles…",
+    "placeholder": "Search conversations, customers, settings…",
     "inputAriaLabel": "Search everything",
     "minLengthHint": "Type at least {{count}} characters to search.",
     "loadingLabel": "Searching…",
@@ -17,7 +17,13 @@
       "quick_reply": "Quick replies",
       "team": "Teams",
       "queue": "Queues",
-      "workflow": "Workflows"
+      "workflow": "Workflows",
+      "faq": "FAQs",
+      "service": "Services",
+      "department": "Departments",
+      "channel": "Channels",
+      "sla_policy": "SLA policies",
+      "role": "Roles"
     }
   }
 }

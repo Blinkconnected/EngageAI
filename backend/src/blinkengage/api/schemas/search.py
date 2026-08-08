@@ -16,6 +16,12 @@ SearchEntityType = Literal[
     "team",
     "queue",
     "workflow",
+    "faq",
+    "service",
+    "department",
+    "channel",
+    "sla_policy",
+    "role",
 ]
 
 

@@ -4,8 +4,8 @@ caller is actually allowed to read. See
 
 Permission handling is the whole reason this is a service and not a bare
 endpoint: unlike every other list endpoint (each gated by exactly one
-``require_permission`` on the route), one search request spans nine
-entity types with nine different permissions. Gating the *route* on any
+``require_permission`` on the route), one search request spans every
+entity type at once, each with its own permission. Gating the *route* on any
 single one of them would 403 an agent who legitimately can't read
 workflows but can read customers. Instead the route requires only
 authentication, and this service filters per entity type against the
@@ -27,7 +27,7 @@ from blinkengage.infrastructure.repositories.search_repository import (
 #: list page (which does paginate), not scroll a palette.
 DEFAULT_PER_TYPE_LIMIT = 5
 
-#: Below this, an ILIKE '%a%' across nine tables matches nearly
+#: Below this, an ILIKE '%a%' across every searchable table matches nearly
 #: everything while telling the caller nothing — enforced here (not only
 #: in the UI) so a direct API caller can't trigger the expensive
 #: full-scan fan-out with a single character either.
@@ -53,6 +53,16 @@ _SEARCHABLES: tuple[_Searchable, ...] = (
     _Searchable("team", "teams.read", "search_teams"),
     _Searchable("queue", "queues.read", "search_queues"),
     _Searchable("workflow", "workflows.read", "search_workflows"),
+    # Configuration, added because "search everything" is what an
+    # administrator reasonably expects of a search box. Ordered after the
+    # working entities above: an agent searching a customer's name should
+    # not have to scroll past a queue that happens to share a word.
+    _Searchable("faq", "knowledge_base.read", "search_faqs"),
+    _Searchable("service", "queues.read", "search_services"),
+    _Searchable("department", "departments.read", "search_departments"),
+    _Searchable("channel", "channels.read", "search_channels"),
+    _Searchable("sla_policy", "sla_policies.read", "search_sla_policies"),
+    _Searchable("role", "roles.manage", "search_roles"),
 )
 
 
@@ -86,7 +96,7 @@ class SearchService:
         # request's single AsyncSession, and a SQLAlchemy AsyncSession is
         # explicitly not safe for concurrent use — gathering here would
         # interleave statements on one connection and raise
-        # InterfaceError under load. Nine capped, indexed-company-scoped
+        # InterfaceError under load. Fifteen capped, company-scoped
         # queries in sequence is the correct trade for that safety; see
         # docs/architecture/global-search.md on why the per-type limit
         # and minimum query length matter more than parallelism here.

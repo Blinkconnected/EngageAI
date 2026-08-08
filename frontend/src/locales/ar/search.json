@@ -1,7 +1,7 @@
 {
   "GlobalSearchDialog": {
     "title": "البحث",
-    "placeholder": "ابحث في المحادثات والعملاء والمقالات…",
+    "placeholder": "ابحث في المحادثات والعملاء والإعدادات…",
     "inputAriaLabel": "البحث في كل شيء",
     "minLengthHint": "اكتب {{count}} أحرف على الأقل للبحث.",
     "loadingLabel": "جارٍ البحث…",
@@ -17,7 +17,13 @@
       "quick_reply": "الردود السريعة",
       "team": "الفرق",
       "queue": "قوائم الانتظار",
-      "workflow": "سير العمل"
+      "workflow": "سير العمل",
+      "faq": "الأسئلة الشائعة",
+      "service": "الخدمات",
+      "department": "الأقسام",
+      "channel": "القنوات",
+      "sla_policy": "سياسات مستوى الخدمة",
+      "role": "الأدوار"
     }
   }
 }

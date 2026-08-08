@@ -5,9 +5,9 @@ Deliberately **not** built by calling each entity's own paginated
 ``list_for_company(search=...)``, even though four of them already accept
 a ``search`` param and reusing them would be the obvious "reuse existing
 backend functionality" reading. Those methods are built for a full list
-page, and fanning out across 8 of them per keystroke would mean:
+page, and fanning out across all of them per keystroke would mean:
 
-* 16 queries, not 8 — each one also runs a separate ``COUNT(*)`` over the
+* Twice the queries — each one also runs a separate ``COUNT(*)`` over the
   same filtered subquery to populate ``Page.total``, which global search
   never displays (it shows "top N per type", not "1 of 4,213").
 * Eager loads global search doesn't need — ``CustomerRepository`` pulls
@@ -34,14 +34,20 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.infrastructure.database.models.agent import Agent
+from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.customer import Customer
+from blinkengage.infrastructure.database.models.department import Department
+from blinkengage.infrastructure.database.models.faq import Faq
 from blinkengage.infrastructure.database.models.knowledge import (
     KnowledgeArticle,
     KnowledgeCategory,
 )
 from blinkengage.infrastructure.database.models.queue import Queue
 from blinkengage.infrastructure.database.models.quick_reply import QuickReply
+from blinkengage.infrastructure.database.models.rbac import Role
+from blinkengage.infrastructure.database.models.service_directory import Service
+from blinkengage.infrastructure.database.models.sla import SlaPolicy
 from blinkengage.infrastructure.database.models.team import Team
 from blinkengage.infrastructure.database.models.user import User
 from blinkengage.infrastructure.database.models.workflow import WorkflowDefinition
@@ -66,6 +72,20 @@ class SearchRepository:
     @staticmethod
     def _pattern(term: str) -> str:
         return f"%{term}%"
+
+    @staticmethod
+    def _snippet(body: str, *, length: int = 120) -> str:
+        """A one-line preview of long-form text.
+
+        FAQ answers run to paragraphs. Sent whole they would push the
+        result list off the screen, and their newlines would break the
+        single-line layout every other result type uses, so they are
+        flattened and cut here rather than in each caller.
+        """
+        flattened = " ".join(body.split())
+        if len(flattened) <= length:
+            return flattened
+        return flattened[:length].rstrip() + "…"
 
     async def search_customers(self, *, company_id: UUID, term: str, limit: int) -> list[SearchHit]:
         pattern = self._pattern(term)
@@ -260,5 +280,143 @@ class SearchRepository:
         )
         return [
             SearchHit(entity_type="workflow", id=row[0], title=row[1], subtitle=row[2])
+            for row in result.all()
+        ]
+
+    async def search_departments(
+        self, *, company_id: UUID, term: str, limit: int
+    ) -> list[SearchHit]:
+        pattern = self._pattern(term)
+        result = await self._session.execute(
+            select(Department.id, Department.name, Department.description)
+            .where(
+                Department.company_id == company_id,
+                Department.deleted_at.is_(None),
+                or_(Department.name.ilike(pattern), Department.description.ilike(pattern)),
+            )
+            .order_by(Department.name)
+            .limit(limit)
+        )
+        return [
+            SearchHit(entity_type="department", id=row[0], title=row[1], subtitle=row[2])
+            for row in result.all()
+        ]
+
+    async def search_services(self, *, company_id: UUID, term: str, limit: int) -> list[SearchHit]:
+        pattern = self._pattern(term)
+        result = await self._session.execute(
+            select(Service.id, Service.name, Service.code, Service.description)
+            .where(
+                Service.company_id == company_id,
+                Service.deleted_at.is_(None),
+                # Code as well as name: routing rules and integrations
+                # refer to services by code, so that is what somebody
+                # arrives with when they are tracing where a rule points.
+                or_(
+                    Service.name.ilike(pattern),
+                    Service.code.ilike(pattern),
+                    Service.description.ilike(pattern),
+                ),
+            )
+            .order_by(Service.name)
+            .limit(limit)
+        )
+        return [
+            SearchHit(entity_type="service", id=row[0], title=row[1], subtitle=row[3] or row[2])
+            for row in result.all()
+        ]
+
+    async def search_sla_policies(
+        self, *, company_id: UUID, term: str, limit: int
+    ) -> list[SearchHit]:
+        # No soft-delete column on this model, unlike most of the others.
+        pattern = self._pattern(term)
+        result = await self._session.execute(
+            select(SlaPolicy.id, SlaPolicy.name, SlaPolicy.description)
+            .where(
+                SlaPolicy.company_id == company_id,
+                or_(SlaPolicy.name.ilike(pattern), SlaPolicy.description.ilike(pattern)),
+            )
+            .order_by(SlaPolicy.name)
+            .limit(limit)
+        )
+        return [
+            SearchHit(entity_type="sla_policy", id=row[0], title=row[1], subtitle=row[2])
+            for row in result.all()
+        ]
+
+    async def search_channels(self, *, company_id: UUID, term: str, limit: int) -> list[SearchHit]:
+        pattern = self._pattern(term)
+        result = await self._session.execute(
+            select(ChannelConfig.id, ChannelConfig.display_name, ChannelConfig.channel_type)
+            .where(
+                ChannelConfig.company_id == company_id,
+                ChannelConfig.deleted_at.is_(None),
+                # Type as well as name, so somebody searching "whatsapp"
+                # finds the channel whoever set it up called "Main line".
+                or_(
+                    ChannelConfig.display_name.ilike(pattern),
+                    ChannelConfig.channel_type.ilike(pattern),
+                ),
+            )
+            .order_by(ChannelConfig.display_name)
+            .limit(limit)
+        )
+        return [
+            SearchHit(entity_type="channel", id=row[0], title=row[1], subtitle=row[2])
+            for row in result.all()
+        ]
+
+    async def search_faqs(self, *, company_id: UUID, term: str, limit: int) -> list[SearchHit]:
+        """Both the question and the answer.
+
+        A customer's wording rarely matches the question as written, and
+        the distinguishing words are often only in the answer — a product
+        name, a price, a place. Searching the question alone would miss
+        the FAQ that answers exactly what was asked.
+
+        Unpublished FAQs are included rather than filtered out: an
+        administrator searching their own knowledge needs to find the
+        draft they are part-way through writing. Published ones come
+        first, so what customers can actually see outranks what is still
+        being drafted when the per-type cap bites.
+        """
+        pattern = self._pattern(term)
+        result = await self._session.execute(
+            select(Faq.id, Faq.question, Faq.answer)
+            .where(
+                Faq.company_id == company_id,
+                Faq.deleted_at.is_(None),
+                or_(Faq.question.ilike(pattern), Faq.answer.ilike(pattern)),
+            )
+            .order_by(Faq.is_published.desc(), Faq.question)
+            .limit(limit)
+        )
+        return [
+            SearchHit(entity_type="faq", id=row[0], title=row[1], subtitle=self._snippet(row[2]))
+            for row in result.all()
+        ]
+
+    async def search_roles(self, *, company_id: UUID, term: str, limit: int) -> list[SearchHit]:
+        """Gated on ``roles.manage`` — there is no ``roles.read``.
+
+        That is stricter than the other configuration types on purpose. A
+        list of role names is a sketch of how the company delegates
+        authority, which is not something an agent needs and not
+        something to hand out through a search box.
+        """
+        # No soft-delete column on this model.
+        pattern = self._pattern(term)
+        result = await self._session.execute(
+            select(Role.id, Role.name, Role.description)
+            .where(
+                Role.company_id == company_id,
+                or_(Role.name.ilike(pattern), Role.description.ilike(pattern)),
+            )
+            .order_by(Role.name)
+            .limit(limit)
+        )
+        return [
+            SearchHit(entity_type="role", id=row[0], title=row[1], subtitle=row[2])
             for row in result.all()
         ]
