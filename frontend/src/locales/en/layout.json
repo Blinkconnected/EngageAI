@@ -40,6 +40,12 @@
     "navErpNext": "ERPNext",
     "navSettings": "Settings",
     "navServices": "Services",
-    "navIntelligence": "Pattern detection"
+    "navIntelligence": "Pattern detection",
+    "groupWork": "Work",
+    "groupInsights": "Insights",
+    "groupRouting": "Routing",
+    "groupConnections": "Connections",
+    "groupOrganisation": "Organisation",
+    "navGuide": "Guide"
   }
 }

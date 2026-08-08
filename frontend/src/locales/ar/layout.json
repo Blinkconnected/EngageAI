@@ -40,6 +40,12 @@
     "navErpNext": "ERPNext",
     "navSettings": "الإعدادات",
     "navServices": "الخدمات",
-    "navIntelligence": "اكتشاف الأنماط"
+    "navIntelligence": "اكتشاف الأنماط",
+    "groupWork": "العمل",
+    "groupInsights": "التحليلات",
+    "groupRouting": "التوجيه",
+    "groupConnections": "الاتصالات",
+    "groupOrganisation": "التنظيم",
+    "navGuide": "الدليل"
   }
 }

@@ -20,6 +20,8 @@ from blinkengage.api.v1.endpoints import (
     departments,
     erp_configs,
     erp_webhooks,
+    faqs,
+    guide,
     health,
     inspector,
     knowledge,
@@ -61,6 +63,7 @@ from blinkengage.api.v1.endpoints import (
 # `domain/features.py`.
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(guide.router)
 api_router.include_router(version.router)
 api_router.include_router(auth.router)
 api_router.include_router(platform.router)
@@ -105,6 +108,11 @@ api_router.include_router(workflows.router, dependencies=[Depends(require_featur
 api_router.include_router(
     knowledge.router, dependencies=[Depends(require_feature("knowledge_base"))]
 )
+# Same entitlement as the articles it sits beside — the `knowledge_base`
+# feature is already described as "Internal knowledge articles and FAQ
+# search", so an FAQ router gated differently would split one product
+# capability across two things a customer can buy.
+api_router.include_router(faqs.router, dependencies=[Depends(require_feature("knowledge_base"))])
 # No `require_feature` gate. Memory is platform infrastructure that the
 # Customer Timeline, CRM and Reporting read as ordinary product surface —
 # not a purchasable add-on like AI or SLA — and gating it would 402 an

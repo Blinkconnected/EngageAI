@@ -152,6 +152,9 @@ services:
       - ./backend:/app
       - ./CHANGELOG.md:/app/CHANGELOG.md:ro
       - ./CHANGELOG.ar.md:/app/CHANGELOG.ar.md:ro
+      # The product guide, served to the app by GET /guide so in-product
+      # help and the file reviewed on disk are the same text.
+      - ./docs/guides:/app/docs/guides:ro
       # Not consumed by the running application at all — only read by
       # backend/tests/unit/test_version_consistency.py, which cross-checks
       # this repo-root file's version against the backend's own. There is

@@ -327,6 +327,31 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **The left menu is grouped instead of being one long list.** Seventeen
+  entries sat side by side, mixing work somebody does hourly with
+  settings they touch once a year — and an administrator had no way to
+  tell which was which.
+
+  Related destinations now sit under **Work**, **Insights**, **Routing**,
+  **Connections** and **Organisation**, with Dashboard, Billing, Settings
+  and Guide staying where they are. Groups remember whether you left them
+  open, the one containing the page you are on opens itself, and a group
+  you have no access to shows nothing at all rather than an empty heading
+  listing what you cannot reach. Services and Queues also stop sharing an
+  icon.
+
+- **The guide is now inside the product.** Until now the manual explaining
+  how to use Blink Engage was a document everybody except the customer
+  could read. There is a **Guide** entry in the menu that opens it, with
+  a contents list and a search box that looks inside the text as well as
+  the headings — so searching "business hours" finds the section on
+  response targets even though the heading does not say it.
+
+  It is the same document, fetched rather than copied. A second copy
+  would drift, and the copy that drifts is the one customers read. It is
+  available to everybody who can sign in, because help behind a
+  permission is help the person who needs it most cannot reach.
+
 - **The changelog now reads in Arabic.** Arabic-speaking users opened
   "What's new" and got English. Release notes are now served in the
   language the person is reading the product in.

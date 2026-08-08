@@ -464,6 +464,12 @@ class Settings(BaseSettings):
     #: missing from this file falls back to its English entry, so a
     #: late translation shows English rather than nothing.
     changelog_path_ar: str = "CHANGELOG.ar.md"
+    #: The product guide, served to the application by ``GET /guide`` so
+    #: help inside the product and the file people read in review are the
+    #: same text. Re-typing it into the frontend catalogue would create a
+    #: copy, and the copy that drifts is the one customers read.
+    guide_path: str = "docs/guides/blink-engage-user-guide.md"
+    guide_path_ar: str = "docs/guides/blink-engage-user-guide.ar.md"
     # Populated by the CI/CD build pipeline (see .github/workflows/ci.yml);
     # left at their defaults for local `docker compose` development, where
     # there is no build pipeline to inject them.

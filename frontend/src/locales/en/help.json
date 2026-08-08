@@ -1,0 +1,10 @@
+{
+  "HelpPage": {
+    "title": "Guide",
+    "description": "How to use Blink Engage, screen by screen.",
+    "loading": "Loading the guide…",
+    "searchPlaceholder": "Search the guide",
+    "noResults": "Nothing in the guide matches \"{{query}}\".",
+    "englishFallback": "This guide is not translated yet, so it is shown in English."
+  }
+}

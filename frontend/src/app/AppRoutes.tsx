@@ -34,6 +34,9 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 // render a sign-in form or a 4.8 KB feedback form. React.lazy splits
 // each route's own component into a chunk Vite emits separately; nothing
 // here changes what's imported, only when.
+const HelpPage = lazy(() =>
+  import('../features/help/HelpPage').then((m) => ({ default: m.HelpPage })),
+)
 const LandingPage = lazy(() =>
   import('../features/marketing/LandingPage').then((m) => ({ default: m.LandingPage })),
 )
@@ -207,6 +210,7 @@ export function AppRoutes() {
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
         <Route path="/" element={<RootRoute />}>
           <Route index element={<DashboardPage />} />
+          <Route path="help" element={<HelpPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route
