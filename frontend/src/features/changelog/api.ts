@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { apiClient } from '../../shared/api/client'
 import type { Release, VersionInfo } from './types'
 
@@ -7,8 +8,8 @@ async function fetchVersion(): Promise<VersionInfo> {
   return data
 }
 
-async function fetchReleases(): Promise<Release[]> {
-  const { data } = await apiClient.get<Release[]>('/releases')
+async function fetchReleases(lang: string): Promise<Release[]> {
+  const { data } = await apiClient.get<Release[]>('/releases', { params: { lang } })
   return data
 }
 
@@ -24,9 +25,17 @@ export function useVersionQuery() {
 }
 
 export function useReleasesQuery() {
+  const { i18n } = useTranslation()
+  // Only 'en' and 'ar' exist server-side; anything else would 422, so a
+  // language the interface gains before the changelog is translated
+  // reads English rather than failing.
+  const lang = i18n.language.startsWith('ar') ? 'ar' : 'en'
+
   return useQuery({
-    queryKey: ['changelog', 'releases'],
-    queryFn: fetchReleases,
+    // Language is part of the key: switching language must refetch
+    // rather than serve the previous language from cache.
+    queryKey: ['changelog', 'releases', lang],
+    queryFn: () => fetchReleases(lang),
     // Static release history parsed from CHANGELOG.md — effectively never
     // changes at runtime, same rationale as useVersionQuery above.
     staleTime: 5 * 60 * 1000,

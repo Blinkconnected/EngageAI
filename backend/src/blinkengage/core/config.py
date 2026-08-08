@@ -10,6 +10,11 @@ from typing import Annotated, Literal
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from blinkengage.domain.learning_cluster import (
+    DEFAULT_JOIN_THRESHOLD,
+    DEFAULT_MERGE_THRESHOLD,
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -292,6 +297,19 @@ class Settings(BaseSettings):
     #: be picked up, and re-reading an already-clustered one costs a
     #: single indexed lookup that finds it and skips it.
     learning_cluster_lookback_days: int = 14
+    #: Cosine similarity above which an observation joins a cluster, and
+    #: above which two clusters fold together. Settings rather than only
+    #: constants because the right value is **corpus-dependent**: phase
+    #: 2.5 measured the usable band at 0.15–0.20 across five synthetic
+    #: corpus shapes, and an installation whose conversations are longer
+    #: or more repetitive will sit elsewhere in it. Tuning must not
+    #: require a deploy.
+    #:
+    #: Changing either invalidates existing clusters — bump
+    #: ``CLUSTER_ALGORITHM_VERSION`` alongside, so the new grouping is a
+    #: parallel generation that can be compared against the old one.
+    learning_cluster_join_threshold: float = DEFAULT_JOIN_THRESHOLD
+    learning_cluster_merge_threshold: float = DEFAULT_MERGE_THRESHOLD
     #: Trend windows, and their width. Eight weekly windows is long enough
     #: for two seasonal cycles and short enough that last spring does not
     #: define what is normal now.
@@ -437,6 +455,15 @@ class Settings(BaseSettings):
     # Overridden in tests to point at a small, stable test fixture instead
     # of the real, ever-growing repo-root CHANGELOG.md.
     changelog_path: str = "CHANGELOG.md"
+    #: The Arabic edition, served to Arabic readers by ``GET /releases``.
+    #:
+    #: A parallel file rather than translations inside the English one:
+    #: the parser, the running version and the version-consistency guard
+    #: all read ``changelog_path``, and interleaving a second language
+    #: there would put all three at the mercy of a translator. A release
+    #: missing from this file falls back to its English entry, so a
+    #: late translation shows English rather than nothing.
+    changelog_path_ar: str = "CHANGELOG.ar.md"
     # Populated by the CI/CD build pipeline (see .github/workflows/ci.yml);
     # left at their defaults for local `docker compose` development, where
     # there is no build pipeline to inject them.

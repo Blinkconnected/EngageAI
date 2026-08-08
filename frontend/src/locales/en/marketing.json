@@ -4,10 +4,12 @@
     "signIn": "Sign in",
     "getStarted": "Get started",
     "hero": {
+      "badge": "Omnichannel customer engagement",
       "title": "Every customer conversation, in one place",
       "subtitle": "WhatsApp, Messenger, Instagram, Telegram, email, SMS and web chat arrive in a single shared inbox — routed to the right person, measured against your response targets, and answered with help from AI when you want it.",
       "primaryCta": "Create a workspace",
-      "secondaryCta": "Sign in"
+      "secondaryCta": "Sign in",
+      "reassurance": "Start with one channel. Everything else has a sensible default you can change later."
     },
     "channels": {
       "eyebrow": "Channels",
@@ -122,6 +124,151 @@
     "footer": {
       "copyright": "© {{year}} Blink Engage",
       "whatsNew": "What's new"
+    },
+    "stats": {
+      "channels": {
+        "value": "7",
+        "label": "Channels in one inbox"
+      },
+      "clocks": {
+        "value": "4",
+        "label": "Response clocks per conversation"
+      },
+      "reports": {
+        "value": "10",
+        "label": "Built-in reports"
+      },
+      "languages": {
+        "value": "2",
+        "label": "Interface languages, with full RTL"
+      }
+    },
+    "deepDives": {
+      "ai": {
+        "eyebrow": "AI Assistant",
+        "title": "An assistant that hands over instead of guessing",
+        "body": "The AI drafts replies, summarises long threads, translates, and can answer straightforward questions on its own. What makes it safe to switch on is what it does when it is unsure.",
+        "points": {
+          "one": "Answers only from your knowledge base, so replies reflect what your company has decided — not what a model inferred.",
+          "two": "Stops and asks for a person when confidence is below the threshold you set.",
+          "three": "Runs on OpenAI, Claude, or locally with Ollama so conversations never leave your systems."
+        },
+        "pullQuote": "When it is not sure, it stops. A confident wrong answer costs more than a slow right one."
+      },
+      "sla": {
+        "eyebrow": "Response targets",
+        "title": "Know you are late before the customer tells you",
+        "body": "Four clocks run against every conversation — first response, next response, resolution, and idle — and each one pauses outside your working hours.",
+        "points": {
+          "one": "Warnings arrive early enough to act on, not once the target has already gone.",
+          "two": "Business hours and holidays are respected, so an evening message does not burn your target overnight.",
+          "three": "A conversation in trouble is taken off AI automatically and handed to a person."
+        },
+        "pullQuote": "An SLA nobody meets is ignored within a fortnight. Set targets you can keep, then watch them."
+      },
+      "intelligence": {
+        "eyebrow": "Intelligence",
+        "title": "See what your customers keep asking",
+        "body": "The platform reads finished conversations and groups the similar ones, then reports trends and unusual spikes. It tells you what is happening; you decide what to do about it.",
+        "points": {
+          "one": "Clusters show the questions that come up again and again, ranked by how often.",
+          "two": "Trends and anomalies surface changes you would not spot one conversation at a time.",
+          "three": "It observes only — it never changes how a conversation is handled or what the AI says."
+        },
+        "pullQuote": "It shows you the question customers keep asking. Writing the answer down is still yours to do."
+      }
+    },
+    "security": {
+      "title": "Built for organisations that get audited",
+      "subtitle": "The controls regulated customers ask about first.",
+      "items": {
+        "isolation": {
+          "title": "Complete separation",
+          "body": "No company can reach another's data. Enforced on every single request, not by convention."
+        },
+        "permissions": {
+          "title": "Permissions on every action",
+          "body": "Roles decide what each person may do, and the server checks it every time — hiding a button protects nothing."
+        },
+        "audit": {
+          "title": "A permanent audit trail",
+          "body": "Every significant action is recorded with who did it and when, and is never deleted."
+        },
+        "local": {
+          "title": "Your data can stay put",
+          "body": "Run the AI locally with Ollama and conversation content never leaves your own systems."
+        }
+      }
+    },
+    "faq": {
+      "title": "Questions people ask before signing up",
+      "items": {
+        "setup": {
+          "q": "How long does it take to set up?",
+          "a": "Minutes for the parts that matter. Your workspace is created with a queue, a service and a routing rule already in place, so the only genuinely required step is connecting one channel."
+        },
+        "channels": {
+          "q": "Can I connect my existing WhatsApp number?",
+          "a": "You need WhatsApp Business API access through Meta rather than a personal number, and Meta's approval is not instant — worth starting early. Telegram takes about a minute if you want to try the platform today."
+        },
+        "ai": {
+          "q": "Will the AI reply to customers without us?",
+          "a": "Only if you switch that on, and only when it is confident enough by a threshold you choose. Otherwise it drafts and one of your team sends. Nothing is ever sent without a person, unless you decide otherwise."
+        },
+        "data": {
+          "q": "Where does our data go?",
+          "a": "Into your own workspace, which no other company can reach. If you use OpenAI or Claude, conversation content goes to that provider when the AI is used; choose Ollama and it stays on your systems entirely."
+        },
+        "languages": {
+          "q": "Does it work in Arabic?",
+          "a": "Yes — the whole interface, including right-to-left layout. Each person chooses their own language, so an Arabic-speaking agent and an English-speaking manager use the same workspace."
+        },
+        "migrate": {
+          "q": "Can we bring our existing customers across?",
+          "a": "There is no bulk import screen today. Customer records are created automatically the first time somebody contacts you, and if you use ERPNext, customers sync from there."
+        },
+        "size": {
+          "q": "Is this only for large teams?",
+          "a": "No. A one-person workspace works properly — you can complete setup without inviting anybody. It also handles departments, queues and service levels when you grow into them."
+        },
+        "support": {
+          "q": "What happens if something goes wrong?",
+          "a": "Every screen has help, every error explains what to do next, and every request carries a reference that lets an operator find exactly what happened rather than guessing."
+        }
+      }
+    }
+  },
+  "ProductMockup": {
+    "ariaLabel": "An illustration of the Blink Engage inbox, showing a conversation list and an open conversation",
+    "title": "Blink Engage — Inbox",
+    "rows": {
+      "first": {
+        "name": "Layla H.",
+        "time": "2m",
+        "preview": "Is the blue chair still available?",
+        "channel": "WhatsApp",
+        "badge": "Mine"
+      },
+      "second": {
+        "name": "Ahmad K.",
+        "time": "14m",
+        "preview": "My order hasn't arrived yet",
+        "channel": "Instagram",
+        "badge": "At risk"
+      },
+      "third": {
+        "name": "Sara M.",
+        "time": "1h",
+        "preview": "Thank you, that's sorted",
+        "channel": "Email",
+        "badge": "Resolved"
+      }
+    },
+    "conversation": {
+      "status": "In progress",
+      "inbound": "Is the blue chair still available?",
+      "outbound": "Yes — we have three left. Would you like me to reserve one for you?",
+      "aiHint": "AI suggested this reply from your knowledge base. You send it."
     }
   }
 }

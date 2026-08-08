@@ -327,6 +327,17 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **The changelog now reads in Arabic.** Arabic-speaking users opened
+  "What's new" and got English. Release notes are now served in the
+  language the person is reading the product in.
+
+  English stays the spine: it decides which releases exist and in what
+  order, and a translation may only replace the prose of a release
+  already there. A translation that falls behind shows that release in
+  English rather than hiding it, a broken one is ignored rather than
+  breaking the page, and the version the platform reports itself to be is
+  never read from a translated file at all.
+
 - **The front door is now a website, not a login form.** Visiting the
   platform's address used to send anybody without an account straight to
   a sign-in box, which told somebody evaluating Blink Engage nothing at
@@ -337,6 +348,13 @@ for more detail on how this page is put together.
   and who uses it — in English and Arabic, light and dark, and readable on
   a phone. Signing in is one click away in the top corner, and anyone who
   is already signed in still lands on their dashboard exactly as before.
+
+  The page shows the product rather than only describing it: an
+  illustration of the inbox drawn from the live theme (so it follows
+  light, dark and right-to-left, and cannot show a layout the product no
+  longer has), figures you can check, longer sections on the AI, response
+  targets and the intelligence layer, what the security controls actually
+  are, and the questions people ask before signing up.
 
   It also has a short section on **what the product does not do yet**,
   which is unusual on a landing page and deliberate: somebody who finds

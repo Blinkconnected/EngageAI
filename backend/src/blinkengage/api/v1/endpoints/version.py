@@ -7,9 +7,9 @@ can discover which release is running without an API credential.
 
 from datetime import date
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from blinkengage.api.deps import get_settings_dep
@@ -41,8 +41,12 @@ def _load_releases_or_503(settings: Settings) -> list[Release]:
     ``AiNotConfiguredError``/``ErpNotConfiguredError`` in
     ``core/exceptions.py`` rather than 400/404/500.
     """
+    return _load_from(Path(settings.changelog_path))
+
+
+def _load_from(path: Path) -> list[Release]:
     try:
-        return load_releases(Path(settings.changelog_path))
+        return load_releases(path)
     except (ChangelogFormatError, OSError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -84,9 +88,38 @@ async def get_version(settings: Annotated[Settings, Depends(get_settings_dep)]) 
 
 
 @router.get("/releases", response_model=list[Release])
-async def list_releases(settings: Annotated[Settings, Depends(get_settings_dep)]) -> list[Release]:
-    """The full parsed release history from ``settings.changelog_path``,
-    excluding the ``Unreleased`` entry — an "About" / "What's new" page's
-    data source. Not paginated: changelog history is small and read
-    infrequently, matching ``health.py``'s "keep it simple" bar."""
-    return _load_releases_or_503(settings)
+async def list_releases(
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    lang: Annotated[
+        Literal["en", "ar"],
+        Query(description="Language for release notes. Untranslated entries fall back to English."),
+    ] = "en",
+) -> list[Release]:
+    """The full parsed release history, excluding the ``Unreleased``
+    entry — an "About" / "What's new" page's data source. Not paginated:
+    changelog history is small and read infrequently, matching
+    ``health.py``'s "keep it simple" bar.
+
+    **English is the spine.** The English file decides which releases
+    exist and in what order; a translation may only replace the prose of
+    a release already there. It cannot add a release, remove one, or
+    reorder them, so a translation that falls behind — or one somebody
+    edits carelessly — degrades to English rather than misrepresenting
+    the history.
+
+    A missing or malformed translation file is not an error either: it
+    logs nothing to the caller and the whole response is English. Release
+    notes are the wrong thing to fail a request over.
+    """
+    english = _load_releases_or_503(settings)
+    if lang == "en":
+        return english
+
+    try:
+        translated = {
+            release.version: release for release in _load_from(Path(settings.changelog_path_ar))
+        }
+    except HTTPException:
+        return english
+
+    return [translated.get(release.version, release) for release in english]

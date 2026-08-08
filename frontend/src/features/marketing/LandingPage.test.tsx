@@ -51,7 +51,9 @@ describe('LandingPage', () => {
       'SMS',
       'Web Chat',
     ]) {
-      expect(screen.getByText(channel)).toBeInTheDocument()
+      // getAllBy: the hero illustration names some channels too, which
+      // is the point — the same names appear in the product.
+      expect(screen.getAllByText(channel).length).toBeGreaterThan(0)
     }
   })
 
@@ -72,6 +74,17 @@ describe('LandingPage', () => {
     // one h1, and this page has enough sections to make it easy to add a
     // second by accident.
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
+  it('renders translated copy, never raw translation keys', () => {
+    const { container } = renderWithProviders(<LandingPage />)
+
+    // Written after shipping a locale edit that replaced the hero object
+    // instead of merging into it, deleting hero.title and hero.subtitle.
+    // Every key still existed in both languages, so a parity check passed
+    // and the page rendered "LandingPage.hero.title" to real visitors.
+    // Any untranslated key on this page now fails here.
+    expect(container.textContent).not.toMatch(/LandingPage\.|ProductMockup\./)
   })
 
   it('has no accessibility violations', async () => {

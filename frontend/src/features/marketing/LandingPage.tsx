@@ -1,8 +1,12 @@
 import { Link as RouterLink } from 'react-router-dom'
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   AppBar,
   Box,
   Button,
+  Chip,
   Container,
   Divider,
   Grid,
@@ -12,6 +16,12 @@ import {
   Toolbar,
   Typography,
 } from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlined'
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
+import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined'
+import HistoryEduOutlinedIcon from '@mui/icons-material/HistoryEduOutlined'
+import PublicOutlinedIcon from '@mui/icons-material/PublicOutlined'
 import ForumOutlinedIcon from '@mui/icons-material/ForumOutlined'
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
 import AltRouteOutlinedIcon from '@mui/icons-material/AltRouteOutlined'
@@ -24,6 +34,7 @@ import ContactsOutlinedIcon from '@mui/icons-material/ContactsOutlined'
 import { useTranslation } from 'react-i18next'
 import type { ComponentType } from 'react'
 import { LanguageThemeControls } from '../../shared/components/LanguageThemeControls'
+import { ProductMockup } from './ProductMockup'
 import logoLight from '../../assets/logo-light.png'
 
 /**
@@ -73,6 +84,21 @@ const CHANNELS = [
 
 const STEPS = ['arrives', 'routed', 'answered', 'measured'] as const
 
+/** Counts a reader can check against the product, not invented figures. */
+const STATS = ['channels', 'clocks', 'reports', 'languages'] as const
+
+/** Longer sections for the three things people ask most about. */
+const DEEP_DIVES = ['ai', 'sla', 'intelligence'] as const
+
+const SECURITY = [
+  { icon: LockOutlinedIcon, key: 'isolation' },
+  { icon: VerifiedUserOutlinedIcon, key: 'permissions' },
+  { icon: HistoryEduOutlinedIcon, key: 'audit' },
+  { icon: PublicOutlinedIcon, key: 'local' },
+] as const
+
+const FAQS = ['setup', 'channels', 'ai', 'data', 'languages', 'migrate', 'size', 'support'] as const
+
 const AUDIENCES = ['smb', 'enterprise', 'government', 'healthcare', 'financial'] as const
 
 export function LandingPage() {
@@ -107,24 +133,87 @@ export function LandingPage() {
       </AppBar>
 
       {/* Hero */}
-      <Box component="section" sx={{ py: { xs: 6, md: 10 } }}>
+      <Box
+        component="section"
+        sx={{
+          py: { xs: 7, md: 12 },
+          position: 'relative',
+          overflow: 'hidden',
+          // A tint rather than a photograph: it follows the theme, costs
+          // nothing to load, and cannot look dated the way stock imagery
+          // does within a year.
+          background: (theme) =>
+            theme.palette.mode === 'dark'
+              ? `radial-gradient(1200px 500px at 15% -10%, ${theme.palette.primary.dark}33, transparent 60%)`
+              : `radial-gradient(1200px 500px at 15% -10%, ${theme.palette.primary.light}44, transparent 60%)`,
+        }}
+      >
         <Container maxWidth="lg">
-          <Stack spacing={3} sx={{ maxWidth: 760 }}>
-            <Typography variant="h2" component="h1" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
-              {t('LandingPage.hero.title')}
-            </Typography>
-            <Typography variant="h6" component="p" color="text.secondary" sx={{ fontWeight: 400 }}>
-              {t('LandingPage.hero.subtitle')}
-            </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ pt: 1 }}>
-              <Button component={RouterLink} to="/register" size="large" variant="contained">
-                {t('LandingPage.hero.primaryCta')}
-              </Button>
-              <Button component={RouterLink} to="/login" size="large" variant="outlined">
-                {t('LandingPage.hero.secondaryCta')}
-              </Button>
-            </Stack>
-          </Stack>
+          <Grid container spacing={{ xs: 5, md: 6 }} sx={{ alignItems: 'center' }}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Stack spacing={3}>
+                <Chip
+                  label={t('LandingPage.hero.badge')}
+                  color="primary"
+                  variant="outlined"
+                  sx={{ alignSelf: 'flex-start', fontWeight: 600 }}
+                />
+                <Typography variant="h2" component="h1" sx={{ fontWeight: 700, lineHeight: 1.12 }}>
+                  {t('LandingPage.hero.title')}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  component="p"
+                  color="text.secondary"
+                  sx={{ fontWeight: 400 }}
+                >
+                  {t('LandingPage.hero.subtitle')}
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ pt: 1 }}>
+                  <Button component={RouterLink} to="/register" size="large" variant="contained">
+                    {t('LandingPage.hero.primaryCta')}
+                  </Button>
+                  <Button component={RouterLink} to="/login" size="large" variant="outlined">
+                    {t('LandingPage.hero.secondaryCta')}
+                  </Button>
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  {t('LandingPage.hero.reassurance')}
+                </Typography>
+              </Stack>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <ProductMockup />
+            </Grid>
+          </Grid>
+        </Container>
+      </Box>
+
+      {/* Numbers a reader can verify in the product itself. */}
+      <Box component="section" sx={{ py: { xs: 4, md: 5 }, borderY: 1, borderColor: 'divider' }}>
+        <Container maxWidth="lg">
+          <Grid container spacing={3}>
+            {STATS.map((stat) => (
+              <Grid key={stat} size={{ xs: 6, md: 3 }}>
+                <Stack spacing={0.5}>
+                  {/* component="p": these are display figures, not
+                      headings. MUI maps variant="h3" to an <h3> element,
+                      which put a heading-order jump straight after the
+                      page h1 and failed the axe check. */}
+                  <Typography
+                    variant="h3"
+                    component="p"
+                    sx={{ fontWeight: 700, color: 'primary.main' }}
+                  >
+                    {t(`LandingPage.stats.${stat}.value`)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {t(`LandingPage.stats.${stat}.label`)}
+                  </Typography>
+                </Stack>
+              </Grid>
+            ))}
+          </Grid>
         </Container>
       </Box>
 
@@ -231,6 +320,106 @@ export function LandingPage() {
         </Container>
       </Box>
 
+      {/* Deep dives — alternating, for the three things people ask about */}
+      <Box component="section" sx={{ py: { xs: 6, md: 10 } }}>
+        <Container maxWidth="lg">
+          <Stack spacing={{ xs: 6, md: 10 }}>
+            {DEEP_DIVES.map((topic, index) => (
+              <Grid
+                key={topic}
+                container
+                spacing={{ xs: 3, md: 6 }}
+                sx={{ alignItems: 'center' }}
+                direction={index % 2 === 1 ? 'row-reverse' : 'row'}
+              >
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Stack spacing={2}>
+                    <Typography variant="overline" color="primary.main" sx={{ fontWeight: 700 }}>
+                      {t(`LandingPage.deepDives.${topic}.eyebrow`)}
+                    </Typography>
+                    <Typography variant="h4" component="h2" sx={{ fontWeight: 600 }}>
+                      {t(`LandingPage.deepDives.${topic}.title`)}
+                    </Typography>
+                    <Typography color="text.secondary">
+                      {t(`LandingPage.deepDives.${topic}.body`)}
+                    </Typography>
+                    <Stack component="ul" spacing={1.25} sx={{ listStyle: 'none', p: 0, m: 0 }}>
+                      {['one', 'two', 'three'].map((point) => (
+                        <Stack
+                          key={point}
+                          component="li"
+                          direction="row"
+                          spacing={1.5}
+                          sx={{ alignItems: 'flex-start' }}
+                        >
+                          <CheckCircleOutlineIcon
+                            fontSize="small"
+                            sx={{ color: 'success.main', mt: 0.25 }}
+                          />
+                          <Typography variant="body2" color="text.secondary">
+                            {t(`LandingPage.deepDives.${topic}.points.${point}`)}
+                          </Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Stack>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: { xs: 3, md: 4 },
+                      borderRadius: 3,
+                      bgcolor: 'action.hover',
+                      minHeight: 200,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Typography
+                      variant="h6"
+                      component="p"
+                      sx={{ fontWeight: 400, fontStyle: 'italic', color: 'text.secondary' }}
+                    >
+                      {t(`LandingPage.deepDives.${topic}.pullQuote`)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+            ))}
+          </Stack>
+        </Container>
+      </Box>
+
+      {/* Security */}
+      <Box component="section" sx={{ py: { xs: 6, md: 8 }, bgcolor: 'action.hover' }}>
+        <Container maxWidth="lg">
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
+            {t('LandingPage.security.title')}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 4, maxWidth: 720 }}>
+            {t('LandingPage.security.subtitle')}
+          </Typography>
+          <Grid container spacing={3}>
+            {SECURITY.map(({ icon: Icon, key }) => (
+              <Grid key={key} size={{ xs: 12, sm: 6, md: 3 }}>
+                <Stack spacing={1.5}>
+                  <Box sx={{ color: 'primary.main', display: 'flex' }}>
+                    <Icon fontSize="large" />
+                  </Box>
+                  <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>
+                    {t(`LandingPage.security.items.${key}.title`)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {t(`LandingPage.security.items.${key}.body`)}
+                  </Typography>
+                </Stack>
+              </Grid>
+            ))}
+          </Grid>
+        </Container>
+      </Box>
+
       {/* Who it is for */}
       <Box component="section" sx={{ py: { xs: 6, md: 8 } }}>
         <Container maxWidth="lg">
@@ -257,6 +446,29 @@ export function LandingPage() {
               </Grid>
             ))}
           </Grid>
+        </Container>
+      </Box>
+
+      {/* FAQ */}
+      <Box component="section" sx={{ py: { xs: 6, md: 8 } }}>
+        <Container maxWidth="md">
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 4 }}>
+            {t('LandingPage.faq.title')}
+          </Typography>
+          {FAQS.map((item) => (
+            <Accordion key={item} disableGutters elevation={0} sx={{ bgcolor: 'transparent' }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {t(`LandingPage.faq.items.${item}.q`)}
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Typography variant="body2" color="text.secondary">
+                  {t(`LandingPage.faq.items.${item}.a`)}
+                </Typography>
+              </AccordionDetails>
+            </Accordion>
+          ))}
         </Container>
       </Box>
 
