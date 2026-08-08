@@ -161,7 +161,26 @@ to 24 hours; they do not make the object store itself redundant.
 
 1. Provision a new host with Docker + Compose (see
    `docs/deployment/production.md`'s bring-up steps).
-2. Restore `.env`, either from the organization's secrets manager or
+2. **Restore the source.** Every later step needs it — step 4 builds
+   images from it, and the checkout in step 6 has nothing to check out
+   without it. `source.bundle` in the backup set is a single file
+   containing the whole repository, every branch and tag:
+   ```bash
+   git clone backups/<TIMESTAMP>/source.bundle blinkengage
+   cd blinkengage
+   ```
+   A bundle clones exactly like a remote. Verify it before relying on
+   it — `git bundle verify backups/<TIMESTAMP>/source.bundle` — though
+   `backup_all.sh` already verified it at creation time and refuses to
+   ship one that fails.
+
+   > This step was missing until 2026-08-08, and its absence made this
+   > scenario unexecutable: the runbook told you to `git checkout` a
+   > commit on a host that had no repository, and to `--build` images
+   > from source that no longer existed anywhere. The repository has no
+   > remote, so the bundle is not a convenience — it is the only copy.
+
+3. Restore `.env`, either from the organization's secrets manager or
    from the encrypted `secrets.tar.gz.gpg` in the backup set:
    ```bash
    gpg --decrypt backups/<TIMESTAMP>/secrets.tar.gz.gpg | tar -xz
@@ -173,8 +192,8 @@ to 24 hours; they do not make the object store itself redundant.
    it in the organisation's password manager before go-live. See
    `docs/security/hardening.md` for why secrets never live in version
    control.
-3. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
-4. Fetch the most recent set from off-host and verify it before
+4. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+5. Fetch the most recent set from off-host and verify it before
    trusting it:
    ```bash
    rsync -az backup@backups.internal:/srv/blinkengage/<TIMESTAMP> ./backups/
@@ -182,13 +201,13 @@ to 24 hours; they do not make the object store itself redundant.
    ```
    A checksum failure means fetch an older set — restoring a corrupt
    archive spends the outage and then fails.
-5. Check out the commit the set was taken at. The dump carries a schema
+6. Check out the commit the set was taken at. The dump carries a schema
    at a specific Alembic head, and application code newer than that
    schema fails on its first write:
    ```bash
    git checkout $(grep '^git_commit=' backups/<TIMESTAMP>/MANIFEST | cut -d= -f2)
    ```
-6. Restore configuration, secrets, database and objects from that set,
+7. Restore configuration, secrets, database and objects from that set,
    then follow the PostgreSQL and MinIO scenarios above.
 
 `scripts/backup_all.sh` pushes each set off-host via rsync when
@@ -267,6 +286,15 @@ false positive is a worse failure than a slow manual one.
 
 **Single host, no standby.** Recovery means provisioning a new host,
 which is the bulk of the realistic RTO.
+
+**The repository has no remote.** `git remote -v` is empty; 194 commits
+exist on this host and inside `source.bundle` in each backup set, and
+nowhere else. The bundle makes the code survivable *provided the set
+reaches off-host storage* — which means `BACKUP_REMOTE` must be set. It
+also means CI has never run, since `.github/workflows/ci.yml` triggers
+on push to `main` and nothing has ever been pushed. Adding a remote
+closes both at once and is the single highest-value action available
+here.
 
 **The rehearsal ran against a small dataset.** The measured restore time
 does not extrapolate to production volume; re-run it as data grows.

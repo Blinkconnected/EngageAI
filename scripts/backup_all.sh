@@ -11,6 +11,13 @@
 #   objects     the MinIO bucket the rows point at
 #   config      compose files, nginx, provisioning — how it is assembled
 #   secrets     .env, without which nothing starts
+#   source      the code and its full history
+#
+# Source is here because it was the one thing missing and the only one
+# with no other copy. The manifest has always recorded `git_commit=`, so
+# a restore was told exactly which commit it needed and given no way to
+# obtain it. This repository has no remote; without the bundle below, a
+# lost disk loses the product, not just the deployment.
 #
 # And they have to survive *off this host*. A backup on the same disk as
 # the thing it backs up covers exactly one failure mode (somebody dropped
@@ -135,7 +142,28 @@ tar --ignore-failed-read -czf "${SET_DIR}/config.tar.gz" \
   backend/alembic.ini \
   2>/dev/null || true
 
-# --- 4. Secrets, encrypted -------------------------------------------
+# --- 4. Source ---------------------------------------------------------
+log "bundling source"
+# `--all`, not HEAD: every branch and tag, so the bundle is the
+# repository rather than one line through it. A bundle is a single file
+# that clones like a remote — `git clone source.bundle blinkengage` —
+# which is what makes it survivable when there is nowhere to push.
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  git bundle create "${SET_DIR}/source.bundle" --all 2>/dev/null
+  # Verified here, not at restore time. A corrupt bundle discovered
+  # during a restore is discovered too late to do anything about.
+  if git bundle verify "${SET_DIR}/source.bundle" >/dev/null 2>&1; then
+    log "  source: $(du -h "${SET_DIR}/source.bundle" | cut -f1), $(git rev-list --count --all) commits"
+  else
+    log "WARNING: source bundle failed verification — treat it as absent"
+    mv "${SET_DIR}/source.bundle" "${SET_DIR}/source.bundle.CORRUPT"
+  fi
+else
+  log "WARNING: not a git repository — source NOT backed up"
+  echo "not a git repository at backup time" > "${SET_DIR}/source.SKIPPED"
+fi
+
+# --- 5. Secrets, encrypted -------------------------------------------
 if [ -f .env ]; then
   if [ -z "${BACKUP_PASSPHRASE:-}" ]; then
     # Not fatal: refusing to back up the database because a passphrase is
@@ -153,7 +181,7 @@ if [ -f .env ]; then
   fi
 fi
 
-# --- 5. Manifest ------------------------------------------------------
+# --- 6. Manifest ------------------------------------------------------
 # Checksums, so a restore can tell "this file is intact" from "this file
 # arrived". Silent corruption in transit is the failure that only shows
 # up when you are already restoring.
@@ -165,6 +193,8 @@ log "writing manifest"
   echo "database=${postgres_db}"
   echo "postgres_version=$(docker compose exec -T postgres postgres --version | tr -d '\r')"
   echo "git_commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  echo "git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  echo "git_commits_bundled=$(git rev-list --count --all 2>/dev/null || echo 0)"
   echo "alembic_head=$(docker compose exec -T backend alembic current 2>/dev/null | tail -n1 | tr -d '\r' || echo unknown)"
   echo "duration_seconds=$(( $(date -u +%s) - STARTED_EPOCH ))"
   echo "---"

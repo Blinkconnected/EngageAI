@@ -23,6 +23,10 @@ backend/celerybeat-schedule*
 # creates an empty placeholder at this exact host path (the mount's
 # underlying inode) before mounting the real file over it in-container.
 backend/CHANGELOG.md
+# Its Arabic sibling, created the same way: `changelog_path`/
+# `changelog_path_ar` default to bare filenames, so a process started
+# from `backend/` touches them there instead of at the repo root.
+backend/CHANGELOG.ar.md
 
 # --- Node / frontend ---
 node_modules/
