@@ -29,6 +29,7 @@ them silently unretrievable.
 
 import asyncio
 from collections import defaultdict
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -41,6 +42,7 @@ from blinkengage.core.celery_app import celery_app
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
 from blinkengage.infrastructure.database.models.embedding import KnowledgeIndexState
+from blinkengage.infrastructure.database.models.faq import Faq
 from blinkengage.infrastructure.database.models.knowledge import KnowledgeArticle
 from blinkengage.infrastructure.database.session import (
     create_engine,
@@ -49,6 +51,7 @@ from blinkengage.infrastructure.database.session import (
 )
 from blinkengage.infrastructure.embeddings.factory import build_embedding_provider_for_company
 from blinkengage.infrastructure.repositories.company_repository import CompanyRepository
+from blinkengage.infrastructure.repositories.faq_repository import FaqRepository
 from blinkengage.infrastructure.repositories.knowledge_index_repository import (
     EmbeddingRepository,
     KnowledgeChunkRepository,
@@ -138,6 +141,91 @@ async def _index_one(
     return "indexed" if result.chunks_embedded else "chunked_only"
 
 
+async def _index_one_faq(session: AsyncSession, *, faq: Faq, settings: Settings) -> str:
+    """Indexes one FAQ inside its own transaction.
+
+    Shorter than the article path because there is no chunk set to
+    reconcile: an FAQ is one embeddable unit, so this is at most one
+    provider call and one upsert.
+    """
+    faqs = FaqRepository(session)
+    company = await CompanyRepository(session).get_by_id(faq.company_id)
+    service = _build_service(
+        session,
+        settings=settings,
+        company_ai_config=company.ai_config if company is not None else None,
+    )
+
+    result = await service.index_faq(faq)
+
+    if faq.deleted_at is not None or not faq.is_published:
+        # Out of the index and out of the queue. `SKIPPED` rather than
+        # `INDEXED` so the two are distinguishable: an operator asking
+        # "why is this FAQ not being found" needs to see that it was
+        # deliberately withdrawn, not that indexing silently no-opped.
+        faq.index_state = KnowledgeIndexState.SKIPPED
+        faq.indexed_content_hash = None
+        faq.index_attempts = 0
+        faq.index_error = None
+        await session.flush()
+        return "faq_removed" if result.removed else "faq_skipped"
+
+    await faqs.mark_indexed(faq=faq, content_hash=result.digest or "")
+    logger.info(
+        "faq_indexed",
+        faq_id=str(faq.id),
+        company_id=str(faq.company_id),
+        embedded=result.embedded,
+        unchanged=result.unchanged,
+    )
+    if result.unchanged:
+        return "faq_unchanged"
+    return "faq_indexed" if result.embedded else "faq_no_provider"
+
+
+async def _sweep_faqs(session_factory: Any, *, settings: Settings, report: Any) -> dict[str, int]:
+    """The FAQ half of the sweep.
+
+    A separate claim and a separate loop rather than one merged queue,
+    because the two have different failure modes and different costs — an
+    article can be forty embedding calls, an FAQ is one — and a batch that
+    interleaved them would make "how much did indexing cost this hour"
+    unanswerable from the counters.
+    """
+    outcomes: dict[str, int] = defaultdict(int)
+    async with session_scope(session_factory) as session:
+        claimed = await FaqRepository(session).claim_index_batch(
+            limit=settings.embedding_index_batch_size,
+            max_attempts=settings.embedding_index_max_attempts,
+        )
+        faq_ids = [faq.id for faq in claimed]
+
+    for faq_id in faq_ids:
+        try:
+            async with session_scope(session_factory) as session:
+                claimed_faq = await session.get(Faq, faq_id)
+                if claimed_faq is None:
+                    outcomes["faq_vanished"] += 1
+                    continue
+                outcomes[await _index_one_faq(session, faq=claimed_faq, settings=settings)] += 1
+        except Exception as exc:  # noqa: BLE001
+            report.record_failure()
+            outcomes["faq_failed"] += 1
+            logger.exception("faq_not_indexed", faq_id=str(faq_id))
+            try:
+                async with session_scope(session_factory) as session:
+                    failed = await session.get(Faq, faq_id)
+                    if failed is not None:
+                        await FaqRepository(session).mark_failed(
+                            faq=failed, error=f"{type(exc).__name__}: {exc}"
+                        )
+            except Exception:  # noqa: BLE001
+                logger.exception("faq_index_failure_not_recorded", faq_id=str(faq_id))
+
+    outcomes["faqs_claimed"] = len(faq_ids)
+    return outcomes
+
+
 async def _sweep_async() -> int:
     settings = get_settings()
     session_factory = _get_session_factory(settings)
@@ -196,12 +284,22 @@ async def _sweep_async() -> int:
                                 article_id=str(article_id),
                             )
 
+            # FAQs share this sweep rather than getting a schedule of
+            # their own: both call the same metered provider for the same
+            # company, and two schedules would mean two independent
+            # bursts against one rate limit.
+            faq_outcomes = await _sweep_faqs(session_factory, settings=settings, report=report)
+
             report.count("articles_claimed", sum(len(ids) for ids in pending.values()))
             report.count("articles_indexed", outcomes["indexed"])
             report.count("articles_unchanged", outcomes["unchanged"])
             report.count("articles_removed", outcomes["removed"])
             report.count("articles_failed", outcomes["failed"])
-            return outcomes["indexed"]
+            report.count("faqs_claimed", faq_outcomes["faqs_claimed"])
+            report.count("faqs_indexed", faq_outcomes["faq_indexed"])
+            report.count("faqs_removed", faq_outcomes["faq_removed"])
+            report.count("faqs_failed", faq_outcomes["faq_failed"])
+            return outcomes["indexed"] + faq_outcomes["faq_indexed"]
     finally:
         # Required, not tidiness — see ``events/relay.py``.
         if _engine is not None:

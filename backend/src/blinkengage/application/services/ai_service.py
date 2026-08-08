@@ -292,24 +292,48 @@ class AiService:
         conversation_id: UUID | None,
         query: str,
         candidate_articles: list[tuple[str, str]],
+        candidate_faqs: list[tuple[str, str]] | None = None,
         actor_user_id: UUID | None = None,
     ) -> str:
-        """Covers both "Knowledge Search" and "FAQ Search" — the same
-        capability (answer a question by grounding in a set of help-
-        center articles), not two separate systems; this project's
-        Knowledge Base (M20) never named a distinct "FAQ" entity for a
-        parallel search to be built against."""
+        """Answers from the company's own published material.
+
+        This covered "Knowledge Search" and "FAQ Search" with one call
+        because no FAQ entity existed to search — *"this project's
+        Knowledge Base never named a distinct FAQ entity for a parallel
+        search to be built against"*. One exists now, so this grounds on
+        both, and the ordering is the point rather than a detail.
+
+        **FAQs come first, and are labelled as approved answers.** An FAQ
+        is a complete answer somebody wrote and published for exactly this
+        question; an article passage is raw material the model has to
+        summarise. Handing the model both without saying which is which
+        invites it to paraphrase a curated answer into an uncurated one —
+        which is how a company that carefully worded its refund policy
+        finds the platform explaining refunds in its own words instead.
+        """
         provider = self._require_provider()
-        if not candidate_articles:
+        faqs = candidate_faqs or []
+        if not candidate_articles and not faqs:
             return "No relevant knowledge base articles were found."
-        articles_text = "\n\n".join(
-            f"Article: {title}\n{body}" for title, body in candidate_articles
-        )
+
+        sections: list[str] = []
+        if faqs:
+            sections.append(
+                "APPROVED ANSWERS (prefer these; they are published answers to this "
+                "exact kind of question — reuse their wording where it fits):\n"
+                + "\n\n".join(f"Q: {question}\nA: {answer}" for question, answer in faqs)
+            )
+        if candidate_articles:
+            sections.append(
+                "REFERENCE MATERIAL (background; summarise only what is needed):\n"
+                + "\n\n".join(f"Article: {title}\n{body}" for title, body in candidate_articles)
+            )
+        articles_text = "\n\n".join(sections)
+
         result = await provider.complete(
             system=(
-                "Answer the user's question using only the information in the provided "
-                "knowledge base articles below. If the articles don't contain an answer, "
-                "say so rather than guessing.\n\n" + articles_text
+                "Answer the user's question using only the information provided below. "
+                "If it does not contain an answer, say so rather than guessing.\n\n" + articles_text
             ),
             prompt=query,
             max_tokens=500,

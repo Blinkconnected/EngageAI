@@ -15,6 +15,7 @@ from blinkengage.api.deps import (
     enforce_ai_rate_limit,
     get_ai_service,
     get_conversation_service,
+    get_faq_retrieval_service,
     get_knowledge_retrieval_service,
     get_tag_repository,
 )
@@ -34,6 +35,7 @@ from blinkengage.api.schemas.ai import (
 )
 from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.faq_retrieval_service import FaqRetrievalService
 from blinkengage.application.services.knowledge_retrieval_service import (
     KnowledgeRetrievalService,
 )
@@ -229,6 +231,7 @@ async def knowledge_search(
     auth: Annotated[AuthContext, Depends(enforce_ai_rate_limit)],
     ai_service: Annotated[AiService, Depends(get_ai_service)],
     retrieval: Annotated[KnowledgeRetrievalService, Depends(get_knowledge_retrieval_service)],
+    faq_retrieval: Annotated[FaqRetrievalService, Depends(get_faq_retrieval_service)],
 ) -> KnowledgeSearchResponse:
     """Grounds an answer in hybrid retrieval rather than a substring match.
 
@@ -253,11 +256,21 @@ async def knowledge_search(
         company_id=auth.company_id, query=payload.query, limit=5
     )
     candidates = [(hit.article.title, hit.excerpt or hit.article.body) for hit in hits]
+    # "FAQ Search" is now a real retrieval against a real entity rather
+    # than another name for this one. Published FAQs are handed over as
+    # *approved answers* and articles as reference material — see
+    # ``AiService.answer_from_knowledge_base`` for why the distinction is
+    # made in the prompt rather than by merging them.
+    faq_hits = await faq_retrieval.grounding_answers(
+        company_id=auth.company_id, query=payload.query, limit=3
+    )
+    faq_candidates = [(hit.faq.question, hit.faq.answer) for hit in faq_hits]
     answer = await ai_service.answer_from_knowledge_base(
         company_id=auth.company_id,
         conversation_id=None,
         query=payload.query,
         candidate_articles=candidates,
+        candidate_faqs=faq_candidates,
         actor_user_id=auth.user_id,
     )
     return KnowledgeSearchResponse(answer=answer)

@@ -34,6 +34,13 @@ DEFAULT_EMBEDDING_DIMENSIONS = 1536
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS") or DEFAULT_EMBEDDING_DIMENSIONS)
 
 OWNER_KNOWLEDGE_CHUNK = "KNOWLEDGE_CHUNK"
+#: An FAQ embeds as **one** vector hanging off the FAQ row itself, not off
+#: a chunk. A question and a short answer are a single embeddable unit, so
+#: routing them through ``knowledge_chunks`` would mean one chunk per FAQ
+#: with ``ordinal=0`` forever. This is the payoff of ``owner_type`` being
+#: polymorphic: a second kind of owner arrived and this table did not
+#: change. See ``domain/faq.py``.
+OWNER_FAQ = "FAQ"
 
 
 class KnowledgeChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):

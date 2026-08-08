@@ -32,10 +32,14 @@ from blinkengage.domain.chunking import (
 )
 from blinkengage.domain.embedding_provider import EmbeddingProvider
 from blinkengage.domain.exceptions import EmbeddingDimensionMismatchError
+from blinkengage.domain.faq import FaqContent
+from blinkengage.domain.faq import embeddable_text as faq_embeddable_text
 from blinkengage.infrastructure.database.models.embedding import (
+    OWNER_FAQ,
     OWNER_KNOWLEDGE_CHUNK,
     KnowledgeChunk,
 )
+from blinkengage.infrastructure.database.models.faq import Faq
 from blinkengage.infrastructure.database.models.knowledge import KnowledgeArticle
 from blinkengage.infrastructure.repositories.knowledge_index_repository import (
     EmbeddingRepository,
@@ -88,6 +92,23 @@ class IndexResult:
     @property
     def changed(self) -> bool:
         return bool(self.chunks_created or self.chunks_updated or self.chunks_deleted)
+
+
+@dataclass(frozen=True)
+class FaqIndexResult:
+    """What one FAQ's re-index actually did.
+
+    ``removed`` and ``embedded`` are separate rather than one enum
+    because they are different facts with different costs: removing a
+    vector is free and happens on every unpublish, while embedding one
+    is the metered call somebody is billed for.
+    """
+
+    faq_id: UUID
+    embedded: bool
+    removed: bool
+    digest: str | None = None
+    unchanged: bool = False
 
 
 class EmbeddingService:
@@ -312,6 +333,73 @@ class EmbeddingService:
                 )
                 embedded += 1
         return embedded
+
+    async def index_faq(self, faq: "Faq") -> FaqIndexResult:
+        """Embeds one FAQ as a **single** vector, or removes it.
+
+        No chunking, deliberately: a question and a short answer are one
+        embeddable unit, and routing them through ``knowledge_chunks``
+        would create a chunk row per FAQ with ``ordinal=0`` forever. The
+        vector hangs directly off the FAQ's own id through the polymorphic
+        ``owner_type``.
+
+        An FAQ that is unpublished or soft-deleted is **removed from the
+        index** rather than skipped. That is the whole reason the delete
+        path marks it ``PENDING``: skipping would leave a vector for an
+        answer the company has taken down, and the AI would go on quoting
+        it to customers while it was invisible in every list.
+        """
+        if faq.deleted_at is not None or not faq.is_published:
+            removed = await self.remove_faq(company_id=faq.company_id, faq_id=faq.id)
+            return FaqIndexResult(faq_id=faq.id, embedded=False, removed=bool(removed))
+
+        embed_text = faq_embeddable_text(FaqContent(question=faq.question, answer=faq.answer))
+        digest = content_hash(embed_text)
+
+        if self._provider is None:
+            # Nothing to do and nothing wrong: chunking is free for
+            # articles, but an FAQ's only index artefact *is* its vector,
+            # so with no provider configured this is a no-op that still
+            # marks the row done rather than leaving it PENDING forever.
+            return FaqIndexResult(faq_id=faq.id, embedded=False, removed=False, digest=digest)
+
+        existing = await self._embeddings.get_for_owner(
+            company_id=faq.company_id,
+            owner_type=OWNER_FAQ,
+            owner_id=faq.id,
+            model=self._provider.model,
+        )
+        if existing is not None and existing.content_hash == digest:
+            return FaqIndexResult(
+                faq_id=faq.id, embedded=False, removed=False, digest=digest, unchanged=True
+            )
+
+        vectors = await self._provider.embed([embed_text])
+        if not vectors:
+            raise ValueError("embedding provider returned no vector for an FAQ")
+        self._verify_dimensions(vectors[0])
+        await self._embeddings.upsert(
+            company_id=faq.company_id,
+            owner_type=OWNER_FAQ,
+            owner_id=faq.id,
+            model=self._provider.model,
+            dimensions=len(vectors[0]),
+            content_hash=digest,
+            vector=vectors[0],
+        )
+        return FaqIndexResult(faq_id=faq.id, embedded=True, removed=False, digest=digest)
+
+    async def remove_faq(self, *, company_id: UUID, faq_id: UUID) -> int:
+        """Drops an FAQ's vector, under every model.
+
+        Every model, not just the active one: a half-finished migration
+        leaves rows under the old model name, and an unpublish that only
+        cleaned up the current one would leave the FAQ retrievable again
+        the moment somebody rolled the model back.
+        """
+        return await self._embeddings.delete_for_owners(
+            company_id=company_id, owner_type=OWNER_FAQ, owner_ids=[faq_id]
+        )
 
     async def remove_article(self, *, company_id: UUID, article_id: UUID) -> int:
         """Drops an article's chunks and their vectors.
