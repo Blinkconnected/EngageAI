@@ -18,6 +18,8 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
+from blinkengage.domain.exceptions import DomainError
+
 DEFAULT_MIN_PASSWORD_LENGTH = 10
 
 
@@ -181,7 +183,7 @@ LEARNING_THRESHOLD_BOUNDS: dict[str, tuple[float, float]] = {
 }
 
 
-class ThresholdOutOfBoundsError(ValueError):
+class ThresholdOutOfBoundsError(DomainError):
     """A threshold outside its measured safe range.
 
     Refused rather than clamped. Clamping would accept the request and
