@@ -49,6 +49,11 @@ pnpm-debug.log*
 docker/**/data/
 docker/postgres/data/
 docker/minio/data/
+# The whole directory, not four extensions. `backup_all.sh` writes a
+# timestamped *subdirectory* per run (MANIFEST, database.sql.gz,
+# minio.tar.gz, secrets.tar.gz.gpg), which the extension patterns below
+# do not match — one `git add -A` would have committed a database dump.
+backups/
 backups/*.sql
 backups/*.sql.gz
 backups/*.dump
