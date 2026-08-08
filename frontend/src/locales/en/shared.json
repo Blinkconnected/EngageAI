@@ -22,5 +22,9 @@
   "OfflineBanner": {
     "offlineMessage": "You're offline. You can keep working — messages you send will be delivered automatically once you're back online.",
     "reconnectedMessage": "Back online. Syncing anything that was waiting to send…"
+  },
+  "LanguageThemeControls": {
+    "switchLanguage": "Switch language",
+    "toggleTheme": "Switch between light and dark"
   }
 }

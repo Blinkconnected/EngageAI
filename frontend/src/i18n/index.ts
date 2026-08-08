@@ -21,6 +21,7 @@ import enDepartments from '../locales/en/departments.json'
 import enErp from '../locales/en/erp.json'
 import enFeedback from '../locales/en/feedback.json'
 import enLayout from '../locales/en/layout.json'
+import enMarketing from '../locales/en/marketing.json'
 import enNotifications from '../locales/en/notifications.json'
 import enOnboarding from '../locales/en/onboarding.json'
 import enProfile from '../locales/en/profile.json'
@@ -56,6 +57,7 @@ import arDepartments from '../locales/ar/departments.json'
 import arErp from '../locales/ar/erp.json'
 import arFeedback from '../locales/ar/feedback.json'
 import arLayout from '../locales/ar/layout.json'
+import arMarketing from '../locales/ar/marketing.json'
 import arNotifications from '../locales/ar/notifications.json'
 import arOnboarding from '../locales/ar/onboarding.json'
 import arProfile from '../locales/ar/profile.json'
@@ -99,6 +101,7 @@ export const NAMESPACES = [
   'erp',
   'feedback',
   'layout',
+  'marketing',
   'notifications',
   'onboarding',
   'profile',
@@ -165,6 +168,7 @@ void i18n.use(initReactI18next).init({
       erp: enErp,
       feedback: enFeedback,
       layout: enLayout,
+      marketing: enMarketing,
       notifications: enNotifications,
       onboarding: enOnboarding,
       profile: enProfile,
@@ -201,6 +205,7 @@ void i18n.use(initReactI18next).init({
       erp: arErp,
       feedback: arFeedback,
       layout: arLayout,
+      marketing: arMarketing,
       notifications: arNotifications,
       onboarding: arOnboarding,
       profile: arProfile,

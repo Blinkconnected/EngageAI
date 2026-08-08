@@ -1,5 +1,7 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
+import { useAppSelector } from './hooks'
+import { selectIsAuthenticated } from '../features/auth/authSlice'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { PlatformRoute } from '../features/platform/PlatformRoute'
 import { PlatformLayout } from '../features/platform/PlatformLayout'
@@ -32,6 +34,9 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 // render a sign-in form or a 4.8 KB feedback form. React.lazy splits
 // each route's own component into a chunk Vite emits separately; nothing
 // here changes what's imported, only when.
+const LandingPage = lazy(() =>
+  import('../features/marketing/LandingPage').then((m) => ({ default: m.LandingPage })),
+)
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })),
 )
@@ -200,14 +205,7 @@ export function AppRoutes() {
           <Route path="pricing/companies/:companyId" element={<PlatformCompanyBillingPage />} />
         </Route>
         <Route path="/feedback/:conversationId" element={<FeedbackPage />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
+        <Route path="/" element={<RootRoute />}>
           <Route index element={<DashboardPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
@@ -371,5 +369,35 @@ export function AppRoutes() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
+  )
+}
+
+/**
+ * What an anonymous visitor sees at the root.
+ *
+ * Until now `/` was inside `ProtectedRoute`, so anybody arriving without
+ * a session was bounced straight to a sign-in form — which tells
+ * somebody evaluating the product nothing about what it is. The root is
+ * now the public site for signed-out visitors and the dashboard for
+ * everybody else.
+ *
+ * **Only the exact root changes.** A signed-out visitor deep-linking to
+ * `/agents` still goes to sign-in and is returned there afterwards,
+ * because showing marketing to somebody who asked for a specific screen
+ * would lose their destination. That is why this checks the pathname
+ * rather than simply branching on authentication.
+ */
+function RootRoute() {
+  const isAuthenticated = useAppSelector(selectIsAuthenticated)
+  const location = useLocation()
+
+  if (!isAuthenticated && location.pathname === '/') {
+    return <LandingPage />
+  }
+
+  return (
+    <ProtectedRoute>
+      <AppLayout />
+    </ProtectedRoute>
   )
 }

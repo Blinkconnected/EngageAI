@@ -68,6 +68,7 @@ screen · `provider` — visible only to the platform provider.
 
 | help_id | Screen | Route | Status |
 |---|---|---|---|
+| `be.marketing.landing` | Public site (signed-out root) | `/` | live |
 | `be.auth.login` | Sign in | `/login` | live |
 | `be.auth.register` | Create a company | `/register` | live |
 | `be.auth.verify_email` | Verify your email | `/verify-email` | live |

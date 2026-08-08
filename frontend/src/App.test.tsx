@@ -21,18 +21,29 @@ describe('App', () => {
     goTo('/')
   })
 
-  it('redirects unauthenticated users to the login page', async () => {
+  it('shows the public site at the root when signed out', async () => {
+    // The root used to redirect straight to sign-in, which told somebody
+    // evaluating the product nothing. It is now the public site; the
+    // redirect still applies to every other path (below).
+    render(<App />)
+    expect(await screen.findByRole('heading', { level: 1, name: /one place/i })).toBeInTheDocument()
+  })
+
+  it('redirects an unauthenticated visitor from a protected page to the login page', async () => {
+    goTo('/agents')
     render(<App />)
     expect(await screen.findByText(/sign in to your workspace/i)).toBeInTheDocument()
   })
 
   it('renders the email and password fields on the login page', async () => {
+    goTo('/login')
     render(<App />)
     expect(await screen.findByLabelText(/email/i)).toBeInTheDocument()
     expect(await screen.findByLabelText(/password/i)).toBeInTheDocument()
   })
 
   it('has no detectable accessibility violations on the login page', async () => {
+    goTo('/login')
     const { container } = render(<App />)
     await screen.findByLabelText(/email/i)
     expect(await axe(container)).toHaveNoViolations()
@@ -40,6 +51,7 @@ describe('App', () => {
 
   it('logs a user in and lands on the live dashboard', async () => {
     const user = userEvent.setup()
+    goTo('/login')
     render(<App />)
 
     await user.type(await screen.findByLabelText(/email/i), 'owner@example.com')
@@ -92,6 +104,7 @@ describe('App', () => {
       ),
     )
     const user = userEvent.setup()
+    goTo('/login')
     render(<App />)
 
     await user.type(await screen.findByLabelText(/email/i), 'owner@example.com')

@@ -1,0 +1,127 @@
+{
+  "LandingPage": {
+    "logoAlt": "Blink Engage",
+    "signIn": "Sign in",
+    "getStarted": "Get started",
+    "hero": {
+      "title": "Every customer conversation, in one place",
+      "subtitle": "WhatsApp, Messenger, Instagram, Telegram, email, SMS and web chat arrive in a single shared inbox — routed to the right person, measured against your response targets, and answered with help from AI when you want it.",
+      "primaryCta": "Create a workspace",
+      "secondaryCta": "Sign in"
+    },
+    "channels": {
+      "eyebrow": "Channels",
+      "title": "Wherever your customers already are",
+      "note": "Connect a channel once. From then on, messages arriving there become conversations automatically, and your reply goes back the way the customer came in — you never choose which channel to answer on."
+    },
+    "how": {
+      "title": "How it works",
+      "subtitle": "Four steps, from a customer's message to a reply you can measure.",
+      "steps": {
+        "arrives": {
+          "title": "It arrives",
+          "body": "A customer messages you on any connected channel. It becomes a conversation in the shared inbox within seconds."
+        },
+        "routed": {
+          "title": "It is routed",
+          "body": "Rules you write send it to the right queue. A catch-all rule is created with your workspace, so nothing can ever arrive with nowhere to go."
+        },
+        "answered": {
+          "title": "It is answered",
+          "body": "An agent picks it up and replies, with AI drafting, summarising or translating alongside them. Simple questions can be answered by AI on its own."
+        },
+        "measured": {
+          "title": "It is measured",
+          "body": "Four response clocks run against your targets, pausing outside your working hours, so you know where you stand before a customer tells you."
+        }
+      }
+    },
+    "features": {
+      "title": "What you get",
+      "subtitle": "Built for teams that answer customers all day, and for the people who have to report on it.",
+      "items": {
+        "inbox": {
+          "title": "One shared inbox",
+          "body": "Every channel in one list. Pick a conversation up, reply, add notes only your team sees, attach files, and transfer it when somebody else should take over."
+        },
+        "ai": {
+          "title": "AI that knows when to stop",
+          "body": "Drafts replies, summarises long threads, translates, and can answer straightforward questions unattended. When it is unsure it hands over to a person rather than guessing."
+        },
+        "routing": {
+          "title": "Routing that cannot drop anything",
+          "body": "Send conversations to the right queue by channel, keyword, language or customer. The catch-all rule underneath means nothing is ever lost."
+        },
+        "sla": {
+          "title": "Response targets",
+          "body": "Four clocks — first response, next response, resolution and idle — each pausing outside your business hours, with a warning before you miss one."
+        },
+        "customers": {
+          "title": "Customer history",
+          "body": "Everyone who has contacted you, with their whole history across every channel in one timeline, plus tags, notes and your own internal rating."
+        },
+        "knowledge": {
+          "title": "Knowledge the AI answers from",
+          "body": "Articles and FAQs your AI draws on, so answers reflect what your company has actually decided rather than what a model guessed."
+        },
+        "reports": {
+          "title": "Reporting",
+          "body": "Ten reports covering volume, speed, queues, satisfaction and AI use — from a live view of right now to an executive summary of the quarter."
+        },
+        "intelligence": {
+          "title": "Patterns you would not have spotted",
+          "body": "The platform groups similar conversations and reports trends and unusual spikes, so you can see what customers keep asking about."
+        },
+        "security": {
+          "title": "Enterprise controls",
+          "body": "Role-based permissions on every action, complete separation between companies, encrypted credentials, and a permanent audit trail."
+        }
+      }
+    },
+    "audience": {
+      "title": "Who uses it",
+      "subtitle": "From a two-person shop to a regulated institution.",
+      "items": {
+        "smb": {
+          "title": "Small businesses",
+          "body": "One person answering WhatsApp and email without losing track of either."
+        },
+        "enterprise": {
+          "title": "Enterprises",
+          "body": "Large teams split across departments, queues and service levels."
+        },
+        "government": {
+          "title": "Government",
+          "body": "Public-facing services with audit requirements and Arabic-first users."
+        },
+        "healthcare": {
+          "title": "Healthcare",
+          "body": "Patient enquiries handled with a permanent record of who did what."
+        },
+        "financial": {
+          "title": "Financial institutions",
+          "body": "Strict access control, complete audit trails, and the option to run AI locally so conversations never leave your systems."
+        }
+      }
+    },
+    "honesty": {
+      "title": "What it does not do yet",
+      "subtitle": "Worth knowing before you sign up rather than after.",
+      "items": {
+        "mobile": "There is no mobile app. The interface works in a phone browser and adapts to small screens, but there is nothing to install.",
+        "knowledge": "Knowledge articles and FAQs are loaded and maintained for you rather than through a screen you edit yourself.",
+        "workflows": "Automation rules are configured for you rather than built through a drag-and-drop editor."
+      }
+    },
+    "cta": {
+      "title": "Start with one channel",
+      "body": "Create a workspace, connect a channel, and see a real conversation arrive. Everything else has a sensible default you can change later.",
+      "primaryCta": "Create a workspace",
+      "secondaryCta": "I already have an account"
+    },
+    "footer": {
+      "copyright": "© {{year}} Blink Engage",
+      "whatsNew": "What's new"
+    }
+  }
+}

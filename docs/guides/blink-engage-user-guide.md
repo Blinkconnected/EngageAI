@@ -217,6 +217,8 @@ your own account inside somebody else's workspace.
 2. **Set your password.** Choose something you do not use elsewhere.
 3. **Go to your company's Blink Engage address.** It usually looks like
    `https://engage.yourcompany.com`. Your administrator will tell you.
+   You land on the public site describing the product — select **Sign
+   in** in the top right.
 4. **Enter your email and password**, then select **Sign in**.
 5. You land on the **Dashboard**.
 

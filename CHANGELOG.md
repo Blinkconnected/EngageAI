@@ -327,6 +327,22 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **The front door is now a website, not a login form.** Visiting the
+  platform's address used to send anybody without an account straight to
+  a sign-in box, which told somebody evaluating Blink Engage nothing at
+  all about what it is.
+
+  The address now opens a page explaining the product: the channels it
+  covers, how a customer's message becomes a measured reply, what you get,
+  and who uses it — in English and Arabic, light and dark, and readable on
+  a phone. Signing in is one click away in the top corner, and anyone who
+  is already signed in still lands on their dashboard exactly as before.
+
+  It also has a short section on **what the product does not do yet**,
+  which is unusual on a landing page and deliberate: somebody who finds
+  out after buying asks for a refund, and somebody who finds out here
+  either does not mind or was never a good fit.
+
 - **Help now knows who is reading it.** The same content is delivered to
   three audiences — the public site anyone can read without signing in, a
   customer's own workspace, and the provider's admin area — from one
