@@ -340,6 +340,16 @@ for more detail on how this page is put together.
   listing what you cannot reach. Services and Queues also stop sharing an
   icon.
 
+- **The guide reads in Arabic.** The in-product manual was English only,
+  so an Arabic-speaking agent opening **Guide** got a notice telling them
+  the translation was missing. All fifteen chapters are now translated —
+  every screen, the callouts, the troubleshooting tables and 88 of the
+  most-asked questions.
+
+  English remains the fuller version and the one to trust if the two ever
+  disagree, and the page still says so rather than leaving anybody
+  guessing which they are reading.
+
 - **The guide is now inside the product.** Until now the manual explaining
   how to use Blink Engage was a document everybody except the customer
   could read. There is a **Guide** entry in the menu that opens it, with
