@@ -98,7 +98,7 @@ async def _second_admin(client: AsyncClient, owner_headers: dict, app: Any) -> d
                 select(Role).where(Role.company_id == UUID(company_id), Role.name == "Agent")
             )
         ).scalar_one()
-        session.add(RolePermission(role_id=role.id, permission_code="conversations.delete"))
+        session.add(RolePermission(role_id=role.id, permission_code="conversations.delete_approve"))
         await session.commit()
 
     login = await client.post(
@@ -398,6 +398,46 @@ class TestWhoMayDoWhat:
                 headers=agent_headers,
             )
         ).status_code == 403
+
+    async def test_an_administrator_approves_but_cannot_delete_behind_the_process(
+        self, client: AsyncClient, owner_headers: dict, conversation_id: str, app: Any
+    ) -> None:
+        """What the two-permission split is for.
+
+        `conversations.delete_approve` decides; `conversations.delete`
+        removes a conversation outright, with no request and no recorded
+        reason, and belongs to the Owner alone. Without the split an
+        administrator could walk around the approval they are the point
+        of — and leave nothing behind saying why.
+        """
+        approver = await _second_admin(client, owner_headers, app)
+
+        # Can decide.
+        assert (
+            await client.get("/api/v1/conversation-deletion-requests", headers=approver)
+        ).status_code == 200
+
+        # Cannot delete directly.
+        response = await client.delete(f"/api/v1/conversations/{conversation_id}", headers=approver)
+        assert response.status_code == 403
+        assert (
+            await client.get(f"/api/v1/conversations/{conversation_id}", headers=owner_headers)
+        ).status_code == 200
+
+    async def test_the_owner_can_still_delete_directly(
+        self, client: AsyncClient, owner_headers: dict, conversation_id: str
+    ) -> None:
+        """The escape hatch stays, and stays with one accountable person.
+
+        An Owner who does not want a second opinion should not be forced
+        to stage one; they should delete it and be recorded as having
+        done exactly that.
+        """
+        response = await client.delete(
+            f"/api/v1/conversations/{conversation_id}", headers=owner_headers
+        )
+
+        assert response.status_code == 204
 
     async def test_the_queue_is_scoped_to_the_callers_company(
         self, client: AsyncClient, owner_headers: dict, conversation_id: str

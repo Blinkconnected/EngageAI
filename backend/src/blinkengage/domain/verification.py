@@ -62,6 +62,7 @@ UNVERIFIED_BLOCKED_ACTIONS: Final[frozenset[str]] = frozenset(
         "conversations.release",
         "conversations.delete",
         "conversations.delete_request",
+        "conversations.delete_approve",
         "customers.manage",
         "channels.manage",
         "users.manage",

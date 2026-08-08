@@ -92,13 +92,14 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     // Under Work, not Organisation: it is a queue somebody owes an
-    // answer to, not a settings page. Only visible to the people who
-    // can actually decide, which is what `conversations.delete` means.
+    // answer to, not a settings page. Gated on `delete_approve`, which
+    // is deciding — not `conversations.delete`, which is removing a
+    // conversation outright and belongs to the Owner alone.
     label: 'SideNav.navDeletionApprovals',
     path: '/deletion-approvals',
     group: 'work',
     icon: DeleteSweepOutlinedIcon,
-    permission: 'conversations.delete',
+    permission: 'conversations.delete_approve',
   },
   {
     label: 'SideNav.navAgents',

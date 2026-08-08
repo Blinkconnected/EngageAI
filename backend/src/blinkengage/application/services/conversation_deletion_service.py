@@ -31,7 +31,7 @@ from blinkengage.infrastructure.repositories.role_repository import RoleReposito
 #: to whoever holds it rather than to a role by name, because roles are
 #: renameable and a company that invents a "Supervisor" must not silently
 #: stop anybody being told.
-APPROVER_PERMISSION = "conversations.delete"
+APPROVER_PERMISSION = "conversations.delete_approve"
 
 NOTIFICATION_REQUESTED = "conversation.deletion_requested"
 NOTIFICATION_DECIDED = "conversation.deletion_decided"

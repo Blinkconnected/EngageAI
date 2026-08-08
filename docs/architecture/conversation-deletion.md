@@ -20,14 +20,47 @@ outlives the conversation either way.
 | Permission | Who has it by default | What it allows |
 |---|---|---|
 | `conversations.delete_request` | Agent, Admin, Owner | Ask for a conversation to be deleted |
-| `conversations.delete` | Admin, Owner | Decide on a request, and delete outright |
+| `conversations.delete_approve` | Admin, Owner | Decide on a request |
+| `conversations.delete` | **Owner only** | Delete outright, with no request and no recorded reason |
 
-`conversations.delete` was Owner-only before this. Admin gained it
-because the tenant administrator is precisely who a request is addressed
-to — an approval queue nobody but the Owner can clear is a queue that
-does not get cleared.
+Deciding and deleting are separate permissions, and that separation is
+what makes approval the route rather than a formality.
 
-Requests are addressed to **whoever holds `conversations.delete`**, never
+An earlier version of this feature gave Admin `conversations.delete` —
+the tenant administrator is precisely who a request is addressed to, and
+an approval queue only the Owner can clear does not get cleared. But
+that one permission also carried the direct `DELETE /conversations/{id}`
+endpoint, so an administrator could walk around the process they exist
+to be the second half of, and leave nothing behind saying why: a direct
+delete records no reason. Splitting it means the only way anybody but
+the Owner removes a conversation is with a written reason and a second
+name against it.
+
+`conversations.delete` also gates something that is not obvious from
+its name: `POST /agents/{agent_id}/removal` with `mode: "permanent"`,
+which destroys every conversation belonging to a departing agent in one
+call. `docs/architecture/administration.md` records that the check was
+added precisely so "a default Admin, who is explicitly denied
+`conversations.delete`", could not reach that effect in bulk — an
+explicit separation-of-duties boundary. Granting Admin the permission
+silently removed that boundary as well as the approval one. Anything
+gated on `conversations.delete` should be read as *destroys records
+without recording why*, and granted accordingly.
+
+The Owner keeps the direct route deliberately. One accountable person
+per company should not have to stage an approval they do not want, and
+the audit log records that they did exactly that.
+
+**The revocation needed a migration** (`d1c8b30f5a27`). The generic
+permission sync is additive-only and never revokes, so removing the
+grant from `DEFAULT_ROLE_PERMISSIONS` alone would have left every
+existing Admin still holding it. The migration skips roles with
+`permissions_customized = true`: a company that deliberately gave its
+Admins direct deletion has made a decision, and silently overruling it
+is worse than the inconsistency. Verified on 37 live companies — Admin
+0/37 direct after, 37/37 approve, Owner 37/37 direct — and reversible.
+
+Requests are addressed to **whoever holds `conversations.delete_approve`**, never
 to a role by name. Roles are renameable and companies invent their own;
 a notification addressed to "Admin" would silently stop reaching the
 people who can act the moment somebody creates a "Supervisor".
@@ -145,7 +178,7 @@ and a second agent needs to know not to ask again.
 
 **The queue** is `/deletion-approvals`, under **Work** in the sidebar
 rather than under Organisation — it is a queue somebody owes an answer
-to, not a settings page. It is gated on `conversations.delete`, so it
+to, not a settings page. It is gated on `conversations.delete_approve`, so it
 only appears for people who can actually decide. Each request is a card,
 not a table row, because the reason is the whole basis of the decision
 and it is set as prose rather than truncated into a cell. Tabs separate

@@ -70,6 +70,16 @@ PERMISSIONS: tuple[Permission, ...] = (
         "conversations.delete_request",
         "Request that a conversation be deleted, for an administrator to approve",
     ),
+    # Deciding, which is not the same as deleting. Administrators hold
+    # this; only the Owner holds `conversations.delete` above. The split
+    # is what makes approval the actual route rather than a formality an
+    # administrator can walk around: with it, the only way anyone but the
+    # Owner removes a conversation is with a written reason and a second
+    # person's name against it. A direct delete records neither.
+    Permission(
+        "conversations.delete_approve",
+        "Approve or reject a request to delete a conversation",
+    ),
     # A separate, narrower permission than conversations.manage: replying/
     # closing/queue-assigning a conversation is routine agent work, but
     # transferring it to another agent or department is a supervisory
@@ -187,8 +197,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.transfer",
             "conversations.pick",
             "conversations.release",
-            "conversations.delete",
             "conversations.delete_request",
+            "conversations.delete_approve",
             "reports.read",
             "audit_logs.read",
             "channels.read",

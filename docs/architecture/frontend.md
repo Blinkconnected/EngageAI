@@ -71,7 +71,7 @@ direction)`) and `theme/emotionCache.ts` (RTL-aware Emotion cache using
   profile. There is no `user` object in Redux — see below.
 - Page-local filter/pagination state that must survive a round trip to a
   sibling route (not a nested one) lives in the URL via `useSearchParams`
-  instead of `useState` — `InboxPage.tsx` is the reference: navigating to
+  instead of `useState` — `InboxWorkspace.tsx` is the reference: navigating to
   `/conversations/:id` and back fully unmounts/remounts `InboxPage`, so
   local state would silently reset, but the URL (and a `replace: true`
   history entry so filter changes don't spam browser Back) survives.
@@ -602,7 +602,7 @@ loading/empty/error states:
 
 ## Inbox as the design standard (Beta 4)
 
-`InboxPage.tsx`/`ConversationCells.tsx` is the reference implementation
+`InboxWorkspace.tsx`/`ConversationCells.tsx` is the reference implementation
 for how a dense, triage-oriented list page should look and behave in
 this app — future list pages that need to convey priority/urgency at a
 glance should follow its patterns rather than inventing new ones:

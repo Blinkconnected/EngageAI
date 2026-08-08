@@ -3,8 +3,9 @@
 Two permissions, deliberately different people:
 
 * ``conversations.delete_request`` — ask. Every agent has it.
-* ``conversations.delete`` — decide, and delete outright. Company
-  administrators have it.
+* ``conversations.delete_approve`` — decide. Company administrators.
+* ``conversations.delete`` — delete outright, with no request and no
+  recorded reason. The Owner alone.
 
 See ``docs/architecture/conversation-deletion.md``.
 """
@@ -128,7 +129,7 @@ async def get_pending_deletion_request(
     response_model=Page[ConversationDeletionRequestResponse],
 )
 async def list_deletion_requests(
-    auth: Annotated[AuthContext, Depends(require_permission("conversations.delete"))],
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.delete_approve"))],
     service: Annotated[ConversationDeletionService, Depends(get_conversation_deletion_service)],
     users: Annotated[UserRepository, Depends(get_user_repository)],
     page_params: Annotated[PageParams, Depends()],
@@ -158,7 +159,7 @@ async def list_deletion_requests(
 async def approve_deletion_request(
     request_id: UUID,
     payload: ConversationDeletionDecision,
-    auth: Annotated[AuthContext, Depends(require_permission("conversations.delete"))],
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.delete_approve"))],
     service: Annotated[ConversationDeletionService, Depends(get_conversation_deletion_service)],
     users: Annotated[UserRepository, Depends(get_user_repository)],
 ) -> ConversationDeletionRequestResponse:
@@ -182,7 +183,7 @@ async def approve_deletion_request(
 async def reject_deletion_request(
     request_id: UUID,
     payload: ConversationDeletionDecision,
-    auth: Annotated[AuthContext, Depends(require_permission("conversations.delete"))],
+    auth: Annotated[AuthContext, Depends(require_permission("conversations.delete_approve"))],
     service: Annotated[ConversationDeletionService, Depends(get_conversation_deletion_service)],
     users: Annotated[UserRepository, Depends(get_user_repository)],
 ) -> ConversationDeletionRequestResponse:

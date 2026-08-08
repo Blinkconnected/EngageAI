@@ -31,7 +31,7 @@ export const MOCK_USER: UserProfile = {
     'channels.manage',
     'conversations.read',
     'conversations.manage',
-    'conversations.delete',
+    'conversations.delete_approve',
     'conversations.transfer',
     'conversations.pick',
     'conversations.release',

@@ -932,7 +932,8 @@ exercising their right to be forgotten, a duplicate, something posted to
 the wrong account.
 
 **Permissions required:** `conversations.delete_request` to ask (every
-agent has it). `conversations.delete` to decide (administrators).
+agent has it). `conversations.delete_approve` to decide (administrators). Deleting a
+conversation outright, without a request, stays with the Owner alone.
 
 **Deleting takes two people.** A conversation is the record of what your
 company said to a customer: evidence in a dispute, an input to every
@@ -960,7 +961,7 @@ on its way out, and nobody should ask twice.
 
 #### Step by step — deciding
 
-**Permissions required:** `conversations.delete`.
+**Permissions required:** `conversations.delete_approve`.
 
 1. Open **Deletion requests** in the left menu, under **Work**.
 2. Read the reason. It is the whole basis of the decision.

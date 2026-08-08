@@ -260,7 +260,7 @@ export function AppRoutes() {
           <Route
             path="deletion-approvals"
             element={
-              <RequirePermission permission="conversations.delete">
+              <RequirePermission permission="conversations.delete_approve">
                 <DeletionApprovalsPage />
               </RequirePermission>
             }
