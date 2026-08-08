@@ -145,7 +145,11 @@
     "replyPlaceholder": "اكتب ردًا…",
     "sendTooltip": "إرسال",
     "sendAriaLabel": "إرسال الرد",
-    "messageQueuedOfflineLabel": "أنت غير متصل بالإنترنت — هذه الرسالة في قائمة الانتظار وسيتم إرسالها تلقائيًا بمجرد عودة الاتصال."
+    "messageQueuedOfflineLabel": "أنت غير متصل بالإنترنت — هذه الرسالة في قائمة الانتظار وسيتم إرسالها تلقائيًا بمجرد عودة الاتصال.",
+    "quickRepliesTooltip": "الردود المحفوظة — أو اكتب / للبحث فيها",
+    "quickRepliesAriaLabel": "إدراج رد محفوظ",
+    "replyPlaceholderWithQuickReplies": "اكتب رداً، أو / لاختيار رد محفوظ",
+    "replyAriaLabel": "اكتب رداً"
   },
   "Inbox": {
     "summaryAria": "حجم عمل اليوم",
@@ -190,12 +194,33 @@
       "at_risk": "لا شيء في خطر",
       "breached": "لم يتم تجاوز أي هدف",
       "resolved_today": "لم يُحل شيء اليوم بعد"
-    }
+    },
+    "noSelectionTitle": "اختر محادثة",
+    "noSelectionDescription": "اختر واحدة من القائمة لقراءتها والرد عليها. ستُفتح هنا بجانب القائمة."
   },
   "health": {
     "healthy": "سليمة",
     "attention": "انتباه",
     "at_risk": "في خطر",
     "breached": "تم التجاوز"
+  },
+  "ConversationHeaderBar": {
+    "statusStripAria": "حالة المحادثة وأوقاتها",
+    "emptyValue": "—",
+    "ago": "منذ {{duration}}",
+    "owner": "المسؤول",
+    "waiting": "الانتظار",
+    "lastMessage": "آخر رسالة",
+    "opened": "بدأت",
+    "firstReply": "أول رد",
+    "queue": "قائمة الانتظار"
+  },
+  "QuickReplyPicker": {
+    "searchPlaceholder": "ابحث في الردود المحفوظة…",
+    "searchAriaLabel": "ابحث في الردود المحفوظة",
+    "listAriaLabel": "الردود المحفوظة",
+    "noMatches": "لا يوجد رد محفوظ يطابق \"{{query}}\".",
+    "noneConfigured": "لا توجد ردود محفوظة بعد. يمكن للمسؤول إضافتها من الإعدادات.",
+    "loadFailed": "تعذّر تحميل الردود المحفوظة."
   }
 }

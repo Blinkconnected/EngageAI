@@ -84,11 +84,6 @@ const InboxPage = lazy(() =>
     default: m.InboxWorkspace,
   })),
 )
-const ConversationViewPage = lazy(() =>
-  import('../features/conversations/ConversationViewPage').then((m) => ({
-    default: m.ConversationViewPage,
-  })),
-)
 const CustomersPage = lazy(() =>
   import('../features/customers/CustomersPage').then((m) => ({ default: m.CustomersPage })),
 )
@@ -245,11 +240,15 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          {/* Both paths render the same workspace: the conversation is a
+              pane beside the list, not a screen that replaces it. The id
+              stays in the URL so a link to one conversation still opens
+              it — the list simply comes with it. */}
           <Route
             path="conversations/:conversationId"
             element={
               <RequirePermission permission="conversations.read">
-                <ConversationViewPage />
+                <InboxPage />
               </RequirePermission>
             }
           />

@@ -16,6 +16,7 @@ import { notificationsHandlers } from './notifications'
 import { erpHandlers } from './erp'
 import { reportsHandlers } from './reports'
 import { searchHandlers } from './search'
+import { quickRepliesHandlers } from './quickReplies'
 
 export const handlers = [
   ...authHandlers,
@@ -36,4 +37,5 @@ export const handlers = [
   ...erpHandlers,
   ...reportsHandlers,
   ...searchHandlers,
+  ...quickRepliesHandlers,
 ]

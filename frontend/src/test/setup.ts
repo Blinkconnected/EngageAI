@@ -16,6 +16,7 @@ import { resetQueuesMock } from '../mocks/handlers/queues'
 import { resetRolesMock } from '../mocks/handlers/roles'
 import { resetSlaMock } from '../mocks/handlers/sla'
 import { resetCsatMock } from '../mocks/handlers/csat'
+import { installMatchMedia, resetViewport } from './viewport'
 
 // vitest-axe@0.1.0's own "vitest-axe/extend-expect" side-effect import ships
 // with an empty build output (confirmed: dist/extend-expect.js is 0 bytes),
@@ -34,6 +35,11 @@ expect.extend(axeMatchers)
 // every findBy call across a growing test suite.
 configure({ asyncUtilTimeout: 5000 })
 
+// Before any component renders: jsdom ships no matchMedia, so every MUI
+// breakpoint would read false and every responsive layout would be
+// tested in its narrowest form only.
+installMatchMedia()
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(async () => {
   server.resetHandlers()
@@ -49,6 +55,7 @@ afterEach(async () => {
   resetRolesMock()
   resetSlaMock()
   resetCsatMock()
+  resetViewport()
   // Some panels (e.g. company Language settings) call `i18n.changeLanguage`
   // as a real side effect of saving. i18next is a module-level singleton,
   // so without resetting it here that language leaks into every later test

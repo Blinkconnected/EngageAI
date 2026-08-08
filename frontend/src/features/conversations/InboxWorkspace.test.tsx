@@ -9,13 +9,34 @@
  */
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { Route, Routes } from 'react-router-dom'
+import { store } from '../../app/store'
+import { queryClient } from '../../app/queryClient'
+import { loggedOut } from '../auth/authSlice'
 import { renderAuthenticated } from '../../test/renderAuthenticated'
 import { InboxWorkspace } from './InboxWorkspace'
 
+/** Both paths render the same workspace — the conversation is a pane
+ * beside the list, not a screen that replaces it. */
+function renderWorkspace(entry = '/conversations') {
+  return renderAuthenticated(
+    <Routes>
+      <Route path="/conversations" element={<InboxWorkspace />} />
+      <Route path="/conversations/:conversationId" element={<InboxWorkspace />} />
+    </Routes>,
+    [entry],
+  )
+}
+
 describe('InboxWorkspace', () => {
+  afterEach(() => {
+    store.dispatch(loggedOut())
+    queryClient.clear()
+  })
+
   it('answers the workload before it answers which conversation', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     // The summary is the first landmark on the page, ahead of the queues and
     // the list. That order is the design: it is the order of the questions
@@ -27,7 +48,7 @@ describe('InboxWorkspace', () => {
   })
 
   it('shows every work queue, including the empty ones', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const queues = await screen.findByRole('tablist', { name: /work queues/i })
 
@@ -38,9 +59,13 @@ describe('InboxWorkspace', () => {
   })
 
   it('puts the count in the label, so a queue answers before it is clicked', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
-    const queues = await screen.findByRole('tablist', { name: /work queues/i })
+    // Waiting for one count to land means waiting for the workload
+    // request itself — the tablist renders before it resolves.
+    await screen.findByRole('tab', { name: /needs attention \(\d+\)/i })
+
+    const queues = screen.getByRole('tablist', { name: /work queues/i })
     // Every tab carries a number: "Breached" invites a click to find out,
     // "Breached (0)" does not.
     for (const tab of within(queues).getAllByRole('tab')) {
@@ -49,7 +74,7 @@ describe('InboxWorkspace', () => {
   })
 
   it('opens on what needs attention rather than on everything', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const queues = await screen.findByRole('tablist', { name: /work queues/i })
     const selected = within(queues)
@@ -61,7 +86,7 @@ describe('InboxWorkspace', () => {
 
   it('changes the work when a queue is chosen, not just the rows', async () => {
     const user = userEvent.setup()
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const queues = await screen.findByRole('tablist', { name: /work queues/i })
     await user.click(within(queues).getByRole('tab', { name: /breached/i }))
@@ -75,7 +100,7 @@ describe('InboxWorkspace', () => {
 
   it('says which good news an empty queue is', async () => {
     const user = userEvent.setup()
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const queues = await screen.findByRole('tablist', { name: /work queues/i })
     await user.click(within(queues).getByRole('tab', { name: /breached/i }))
@@ -87,7 +112,7 @@ describe('InboxWorkspace', () => {
   })
 
   it('explains a conversation before showing its content', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const row = await screen.findByRole('button', { name: /Grace Blake/i })
 
@@ -101,30 +126,50 @@ describe('InboxWorkspace', () => {
   })
 
   it('shows what most recently changed, from the platform not the thread', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const row = await screen.findByRole('button', { name: /Grace Blake/i })
 
     expect(within(row).getByText(/Routed to the "Support" queue/i)).toBeInTheDocument()
   })
 
-  it('stays scrollable when a queue holds more than fits the window', async () => {
-    renderAuthenticated(<InboxWorkspace />)
+  it('keeps the list beside the conversation instead of replacing it', async () => {
+    // The whole reason for the redesign. Opening a conversation used to
+    // navigate away, so working a queue meant list → conversation → Back,
+    // losing your place in the list every single time.
+    renderWorkspace('/conversations/conv-1')
 
-    // `main` is a bounded flex column, so this section is a flex item, and
-    // its `overflow: hidden` (which clips the rows to the rounded border)
-    // gives it an automatic minimum size of zero. Left shrinkable it was
-    // squeezed into the leftover space instead of overflowing, and every row
-    // past the fold was clipped with nothing to scroll — the whole page had
-    // no scrollbar because, as far as layout was concerned, nothing overflowed.
-    const workspace = await screen.findByRole('region', { name: /needs attention/i })
+    expect(await screen.findByRole('tablist', { name: /work queues/i })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: /status and timings/i })).toBeInTheDocument()
+  })
 
-    expect(workspace).toHaveStyle({ flexShrink: '0' })
+  it('marks which row is being read', async () => {
+    renderWorkspace('/conversations/conv-1')
+
+    const row = await screen.findByRole('button', { name: /Grace Blake/i })
+    expect(row).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('says what the empty half is for rather than leaving it blank', async () => {
+    renderWorkspace()
+
+    // The empty pane is the one place on this screen with room to
+    // explain itself.
+    expect(await screen.findByText(/pick a conversation/i)).toBeInTheDocument()
+  })
+
+  it('offers Pick up from the list, without opening the conversation first', async () => {
+    // An agent working a pickup queue claims several in a row. Making
+    // each one a round trip through the conversation is the slow path.
+    renderWorkspace()
+
+    const rows = await screen.findAllByRole('listitem')
+    expect(within(rows[0]).getByRole('button', { name: /pick up/i })).toBeInTheDocument()
   })
 
   it('is operable from the keyboard', async () => {
     const user = userEvent.setup()
-    renderAuthenticated(<InboxWorkspace />)
+    renderWorkspace()
 
     const row = await screen.findByRole('button', { name: /Grace Blake/i })
     row.focus()

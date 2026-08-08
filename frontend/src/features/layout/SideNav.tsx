@@ -28,6 +28,12 @@ import { NAV_GROUPS, NAV_ITEMS, type NavGroupKey, type NavItem } from './navConf
  * re-collapse under somebody mid-task. */
 const EXPANDED_STORAGE_KEY = 'blinkengage.nav.expandedGroups'
 
+/** One size for every line in the sidebar — group headings and the items
+ * inside them alike. MUI's default list text is 1rem and its
+ * `ListSubheader` is smaller again, which put each heading below the
+ * items it introduces. */
+const NAV_FONT_SIZE = '0.875rem'
+
 function readStoredExpanded(): NavGroupKey[] {
   try {
     const raw = localStorage.getItem(EXPANDED_STORAGE_KEY)
@@ -97,10 +103,13 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
         onClick={onNavigate}
         sx={{ borderRadius: 2, mb: 0.5, ...(nested && { ps: 2 }) }}
       >
-        <ListItemIcon sx={{ minWidth: 40 }}>
+        <ListItemIcon sx={{ minWidth: 36 }}>
           <Icon fontSize="small" />
         </ListItemIcon>
-        <ListItemText primary={t(item.label)} />
+        <ListItemText
+          primary={t(item.label)}
+          slotProps={{ primary: { fontSize: NAV_FONT_SIZE } }}
+        />
       </ListItemButton>
     )
   }
@@ -154,9 +163,17 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
                       sx={{
                         bgcolor: 'transparent',
                         lineHeight: 2,
-                        fontSize: 11,
-                        letterSpacing: '.08em',
+                        // The same size as the items underneath, not
+                        // smaller. A heading set below its own children
+                        // inverts the hierarchy — it read as a caption
+                        // for the group rather than as the thing that
+                        // opens it. Weight, colour and letterspacing do
+                        // the separating instead of size.
+                        fontSize: NAV_FONT_SIZE,
+                        fontWeight: 700,
+                        letterSpacing: '.06em',
                         textTransform: 'uppercase',
+                        color: 'text.secondary',
                       }}
                     >
                       {t(group.label)}

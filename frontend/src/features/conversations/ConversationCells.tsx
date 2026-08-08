@@ -53,6 +53,11 @@ export function ChannelIcon({ channelType }: { channelType: string }) {
           color: entry?.color ?? 'text.secondary',
           flexShrink: 0,
         }}
+        // `role="img"`, not a bare labelled div: `aria-label` is
+        // prohibited on an element with no role, so without this the
+        // name is silently dropped by assistive technology and axe
+        // flags it. The badge *is* a graphic conveying the channel.
+        role="img"
         aria-label={label}
       >
         {entry?.icon ?? <ExtensionOutlinedIcon fontSize="small" />}

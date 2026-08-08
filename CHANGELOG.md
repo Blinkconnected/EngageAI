@@ -16,6 +16,58 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The Inbox is one screen now, not two.** Opening a conversation used
+  to replace the whole page. An agent working through a queue went list →
+  conversation → Back → list → conversation, losing their place in the
+  list every single time and paying a page load for each one — and the
+  queue they had deliberately chosen did not survive the round trip
+  either.
+
+  The list and the conversation are now side by side. Your place in the
+  list is kept, the row you are reading is marked, and a link to a
+  single conversation still opens that conversation — the list simply
+  comes with it. On a phone there is not room for both, so you get one at
+  a time and a back arrow, which is the only place the old behaviour was
+  ever right.
+
+  **Everything you need before replying is now on screen.** Who the
+  customer is, what the conversation is waiting on, whether it has missed
+  a target, who owns it, which queue it is in — and, the part that was
+  missing entirely, **how long**. Waiting, since the last message, since
+  it opened, and since the customer first got an answer. Those figures
+  keep counting while you watch them, because a duration that was written
+  once and never updated is not out of date, it is wrong.
+
+  All of it used to be behind a **⋮** menu that opened a drawer.
+
+- **Pick up is where you can see it.** Claiming a conversation is the
+  most common thing anybody does on this screen and it was three clicks
+  deep. It is now the first button on an unclaimed conversation, and it
+  is on unclaimed rows in the list too — so an agent working a pickup
+  queue can take several without opening each one first.
+
+  Ask AI to reply, Take over from AI, Transfer and Release moved out with
+  it. They are in one place now rather than two: status and queue stayed
+  in the details panel, because re-filing a conversation is not the same
+  job as answering it.
+
+- **Saved replies, finally reachable from the reply box.** The wording a
+  team agrees on — the refund policy, opening hours, the apology legal
+  signed off — has been in Blink Engage since the beginning with no way
+  to reach it from the one screen where it gets used. People retyped it,
+  which is slower and means the wording drifts a little every time.
+
+  Press **/** in an empty reply box, or select the lightning icon. Search
+  by shortcut, by title, or by any words in the reply itself — the
+  distinguishing phrase is often in the body. Arrow keys and Enter, or
+  the mouse. The wording lands in the box for you to edit before sending;
+  nothing is ever sent on your behalf.
+
+  A slash only opens the picker when it is the first thing in an empty
+  box, so "12/05" and "and/or" stay typeable. Replies an administrator
+  has turned off are never offered, so withdrawn wording cannot go back
+  out to a customer.
+
 - **Search now finds everything in your account, not just the inbox.**
   The search box covered conversations, customers, agents, knowledge and
   the routing objects — and not one single thing on a settings page. An
@@ -488,6 +540,16 @@ for more detail on how this page is put together.
   actually configured rather than from which screens were visited.
 
 ### Fixed
+
+- **The left menu's group headings were smaller than the items inside
+  them**, which read as a caption under its own list rather than as the
+  heading that opens it. Headings and items are now the same size, and
+  weight and colour do the separating.
+
+- **Channel badges were invisible to screen readers.** The badge carried
+  its name in a way browsers are required to ignore, so the channel a
+  conversation arrived on was announced as nothing at all. Every list and
+  every conversation header is affected.
 
 - **The user guide described two screens that do not exist.** It gave
   step-by-step instructions for a Knowledge screen and a Workflows

@@ -43,8 +43,7 @@ async function waitForLoaded() {
  * has to open it first, exactly as an agent now does. */
 async function openDetails() {
   const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /conversation actions/i }))
-  await user.click(await screen.findByRole('menuitem', { name: /conversation details/i }))
+  await user.click(await screen.findByRole('button', { name: /conversation details/i }))
   return screen.findByLabelText(/^status/i)
 }
 
@@ -214,10 +213,14 @@ describe('ConversationViewPage', () => {
   // what an agent lands on after being paged by an SLA-breach or
   // autopilot-handoff notification, which deep-links straight here with
   // no way back to the Inbox's own Pick row action.
-  it('claims an unassigned conversation via the sidebar Pick button', async () => {
+  it('offers Pick up on the conversation itself, without opening anything', async () => {
+    // The action an agent performs more than any other. It used to be
+    // behind a menu and then a drawer; the whole point of the header bar
+    // is that claiming an unclaimed conversation is one click from
+    // reading it.
     const user = userEvent.setup()
     renderConversationView()
-    await openDetails()
+    await waitForLoaded()
 
     const pickButton = await screen.findByRole('button', { name: /pick up/i })
     await user.click(pickButton)
@@ -296,6 +299,9 @@ describe('ConversationViewPage', () => {
   // through the mock's real /pick endpoint (rather than reaching into the
   // mock module's internal state) keeps these tests exercising the same
   // request path InboxPage.test.tsx's Pick-flow tests do.
+  // Release lives in the header bar with the other ownership actions, so
+  // none of these open the details drawer — reaching them is the thing
+  // that got easier.
   describe('Release', () => {
     async function pickTheConversation() {
       await apiClient.post('/conversations/conv-1/pick')
@@ -304,14 +310,14 @@ describe('ConversationViewPage', () => {
 
     it('is hidden while the conversation is unassigned', async () => {
       renderConversationView()
-      await openDetails()
+      await waitForLoaded()
       expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
     })
 
     it('appears once assigned, and releasing it clears the assignment', async () => {
       const user = userEvent.setup()
       renderConversationView()
-      await openDetails()
+      await waitForLoaded()
 
       await pickTheConversation()
       expect(await screen.findByText('Mock Self Agent')).toBeInTheDocument()
@@ -327,7 +333,7 @@ describe('ConversationViewPage', () => {
 
     it('has no detectable accessibility violations once shown', async () => {
       const { container } = renderConversationView()
-      await openDetails()
+      await waitForLoaded()
       await pickTheConversation()
       await screen.findByRole('button', { name: /^release$/i })
 
@@ -345,7 +351,7 @@ describe('ConversationViewPage', () => {
       )
       queryClient.clear()
       renderConversationView()
-      await openDetails()
+      await waitForLoaded()
 
       await pickTheConversation()
       await screen.findByText('Mock Self Agent')
@@ -407,7 +413,7 @@ describe('ConversationViewPage', () => {
       )
       queryClient.clear()
       renderConversationView()
-      await openDetails()
+      await waitForLoaded()
 
       expect(await screen.findByText('Grace Hopper')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^release$/i })).not.toBeInTheDocument()
@@ -416,7 +422,7 @@ describe('ConversationViewPage', () => {
     it('a 409 conflict shows an error and immediately refetches the conversation', async () => {
       const user = userEvent.setup()
       renderConversationView()
-      await openDetails()
+      await waitForLoaded()
 
       await pickTheConversation()
       const releaseButton = await screen.findByRole('button', { name: /^release$/i })

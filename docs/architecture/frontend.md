@@ -287,116 +287,44 @@ chunks loaded only by the routes that actually render a grid or a chart,
 and the main entry chunk dropped to ~345 KB (110 KB gzip) with `/login`
 and `/feedback` now each under 5 KB of their own code.
 
-## Conversation workspace layout (only the message thread scrolls)
+## Conversation workspace layout (only the panes scroll)
 
-`/conversations/:conversationId` renders `ConversationWorkspacePage.tsx`, a
-3-pane layout: a persistent, compact `ConversationListPanel.tsx` on the
-left (own status quick-filter, own internal scroll), the existing
-`ConversationViewPage.tsx` (message thread + composer + tabs + the
-customer info `ConversationSidebar.tsx`) filling the rest, unchanged
-internally. Deliberately **not** a replacement for `/conversations`
-(`InboxPage.tsx`, unchanged) — that full, filterable/sortable table
-(queue mode, mine-only, unassigned-only, the Pick action) stays the
-richer triage surface, one click away via the back button; the
-workspace's own list is intentionally lighter (a single status
-quick-filter, no bulk actions), since its job is fast switching between
-conversations without losing the one you have open, not triage.
+`/conversations` and `/conversations/:conversationId` render the **same**
+component, `InboxWorkspace.tsx`: the conversation list on the left, the
+open conversation (`ConversationViewPage.tsx`) on the right. The id in
+the URL selects which conversation the right pane shows; it does not
+select a different screen.
 
-Responsive: below `THREE_PANE_MIN_WIDTH` there's no room for both the
-list and an open conversation, so only `ConversationViewPage` shows at
-this route — `ConversationSidebar`'s existing back button already
-returns to `/conversations` (the Inbox, full-width), giving the same
-list → detail → back pattern a phone's Mail app uses. No routing change
-was needed for this: `ConversationWorkspacePage` simply doesn't render
-`ConversationListPanel` when `useMediaQuery` reports below that width.
+That is the correction to the design this replaces, where opening a
+conversation navigated to a separate page. An agent working a queue did
+list → conversation → Back → list on every item, losing their scroll
+position and their chosen queue each time. Now the list keeps both, and
+marks the selected row with `aria-current`.
 
-`THREE_PANE_MIN_WIDTH` is a computed custom breakpoint
-(`ConversationWorkspacePage.tsx`), not MUI's stock `md` (900px), which
-this used to switch on (P6.20's final review: it left only ~40px for the
-message column at exactly 900px). `AppLayout`'s nav (260px) + the list
-pane (320px) + `ConversationSidebar`'s fixed customer panel (280px) is
-860px of chrome that never shrinks; the message column needs a genuine
-400px to stay usable, so the 3-pane layout now only turns on at 1260px
-and above — below that, it's single-pane exactly like true mobile. The
-message column's wrapping `Box` also gained a matching `minWidth: 400`
-as defense-in-depth, so a future breakpoint miscalculation would
-overflow with horizontal scroll rather than silently collapsing to 0px.
+Inside the right pane, top to bottom:
 
-**Making "only the message thread scrolls" actually work required a
-one-time, global fix to `AppLayout.tsx`, not just local CSS on this one
-page.** Every other page in the app relies on the *whole document*
-scrolling (nav sidebar and top bar scroll away with tall content) because
-`main`'s `sx` had `flexGrow: 1` but no `minHeight: 0` or `overflow`: a
-flex item's automatic minimum size (CSS Flexbox's
-`min-height: auto` default) refuses to shrink below its content's
-natural height unless overridden, so `main` — and everything above it —
-just grew to fit whatever a page rendered, and the browser scrolled the
-whole page instead of any one region. `MessageThread.tsx`'s own
-`overflowY: 'auto'` Stack was already written assuming a properly
-height-bounded ancestor — it just never had one, and (P6.20's final
-review) was itself still missing `minHeight: 0`, the same gotcha one
-level up: on a phone, `ConversationViewPage.tsx`'s message column has no
-`minHeight: 0` either, so in the column-flex direction (mobile stacks
-the message column above the sidebar) it refused to shrink below its
-own content's natural minimum, starving the sidebar below it of the
-fixed `maxHeight: 320` it was supposed to get. Both now have
-`minHeight: 0`. Adding `minHeight: 0` to the content column and
-`minHeight: 0` + `overflowY: 'auto'` to `main` itself fixes this at the
-root: `main`
-becomes the one scroll container for ordinary pages (visually identical
-to before — nav/top bar simply stay pinned now instead of scrolling
-away, which is a strict improvement, not a regression), while the
-conversation workspace's own subtree, sized to exactly `main`'s
-available height with its own `overflow: hidden`, never needs `main`
-to grow at all — its list panel, `MessageThread`, and (should a future
-page need it) any other region can scroll independently within that
-fixed budget.
+- `ConversationHeaderBar.tsx` — who, what state, the SLA band, the
+  ticking durations, and every ownership action (Pick up, Ask AI, Take
+  over, Transfer, Release). Fixed; `flexShrink: 0`.
+- Tabs — Messages / Internal notes / Transfers. Fixed.
+- `MessageThread.tsx` — the only region that scrolls.
+- `ReplyBox.tsx` — the composer, including the saved-reply picker.
+  Fixed.
+- `ConversationSidebar.tsx` — in a right-anchored `Drawer`, opened from
+  the header's (i). Status, queue, customer, channel, AI summary. It
+  overlays rather than reflowing, so opening it never resizes the thread.
 
-**The customer sidebar's own scroll containment (fixed 2026-07-28).**
-`ConversationSidebar` had no scroll container of its own on desktop at
-all: its wrapping `Box` in `ConversationViewPage.tsx` was
-`overflowY: 'visible'` / `maxHeight: 'none'` there (only bounded on
-mobile, `xs`, at a fixed 320px). `overflow: visible` doesn't create a
-scrolling box — a sidebar tall enough to overflow the row (many
-ratings, a long transfer note) grew the whole row past its
-`minHeight: 0` bound instead, which grew `ConversationViewPage`'s own
-root past the viewport, which made `main` (the nearest actual
-scrolling ancestor) scroll to reveal it — dragging the message list and
-thread along with it. Reported as "scrolling moves the list panel too."
-Now `overflowY: 'auto'` and `maxHeight: '100%'` on both breakpoints: the
-sidebar fills and scrolls within its own row on desktop, the same way
-`MessageThread`'s Stack already did.
+Ownership actions are in the header and *nowhere else*; status and queue
+are in the drawer and nowhere else. The split is replying versus
+re-filing, and nothing appears in both places.
 
-**The five-column workspace (2026-07-28).** The conversation workspace is:
+Responsive: below MUI's `md`, `InboxWorkspace` renders one pane at a
+time — the list, or the conversation with a back arrow. Stock `md` is
+the right breakpoint here because the workspace no longer carries a
+third fixed column: the customer details became an overlay drawer, so
+the only fixed chrome is the app nav and the 380px list pane, leaving
+the thread a genuine working width at 900px.
 
-```
-| Sidebar | Filters & Queues | Conversation List | Conversation | Customer Details |
-```
-
-The Sidebar is `AppLayout`'s nav; the rest live in
-`ConversationWorkspacePage` (the last two inside `ConversationViewPage`).
-**Filters are a dedicated column, not tabs above the list**: filters are
-navigation, not a property of the list, and stacking them on top costs
-the list the vertical space it needs for rows. Filter state lives in the
-URL (`?status=&queue=`) because this component fully unmounts when the
-agent navigates away and back, which would otherwise reset their choice
-every time.
-
-`FIVE_COLUMN_MIN_WIDTH` is 1480px — the sum of the four fixed columns
-(260 nav + 220 filters + 320 list + 280 details) plus the 400px the
-message column needs to stay usable. Below it, the filters and list
-columns drop out and only the conversation shows, the master-detail
-fallback a phone's Mail app uses.
-
-**The app shell is bounded to the viewport** (`height: 100dvh;
-overflow: hidden` on `AppLayout`'s root). This is load-bearing and was
-originally wrong: with only `minHeight: '100%'`, the shell had no
-definite height to distribute down the flex chain, `main` had nothing to
-size against, and its content grew the shell past the viewport so the
-*document* scrolled — measured in a real browser at 2980px of
-scrollHeight in a 900px viewport, with zero actual scroll containers.
-`100dvh` rather than `100vh` so a mobile browser's collapsing address bar
-doesn't leave an unreachable strip. Verified in Chromium at 1680/1500/
 1280/820px: the page never scrolls, every column reports its own scroll
 region, and the composer stays put while the thread scrolls. The harness
 lives in `frontend/.visual-check/` — CSS reasoning alone had previously
@@ -424,12 +352,11 @@ panels side by side must behave like an enterprise workspace
   two rules above: no shared scroll ancestor exists to propagate.
 
 The conversation workspace is the reference implementation:
-`ConversationWorkspacePage` (list pane | conversation), and inside it
-`ConversationViewPage` (fixed header bar, then the chat column and the
-customer-details column). The list panel's status tabs are fixed while
-its rows scroll; the chat column's `MessageThread` scrolls while
-`ReplyBox` stays put; the details panel scrolls independently at a fixed
-280px. Opening a conversation always lands on the newest message —
+`InboxWorkspace` (list pane | conversation), and inside it
+`ConversationViewPage` (fixed header bar and tabs, then the thread and
+the composer). The list pane's queue chips and heading are fixed while
+its rows scroll; `MessageThread` scrolls while `ReplyBox` stays put; the
+details drawer scrolls independently. Opening a conversation always lands on the newest message —
 `MessageThread` re-arms its stick-to-bottom ref on every
 `conversationId` change, because that ref intentionally survives
 re-renders and the component's prop changes rather than it remounting
@@ -471,6 +398,9 @@ composer or the pane framing:
   the column is already height-bounded, so the composer is on-screen by
   construction — sticky would add z-index/backdrop concerns for no gain.
   `ConversationViewPage.test.tsx` asserts the `flexShrink` directly.
+  `src/test/viewport.ts` installs the `matchMedia` jsdom lacks, defaulting
+  to a 1280px laptop — without it every `useMediaQuery` reads false and
+  the two-pane layout could never be exercised by a test at all.
 - The message column and the sidebar each drew **their own borders**
   inside a separately-bordered rounded card, so the sidebar read as a
   mismatched sub-panel bolted onto the conversation rather than the same
@@ -712,8 +642,7 @@ glance should follow its patterns rather than inventing new ones:
   left the grid's `error`/`onRetry` props unset, so a failed fetch
   silently rendered an empty grid instead of the shared `ErrorState` —
   fixed in Beta 4. Every new `DataTable` usage should wire both from the
-  start; `ConversationListPanel.tsx` was already doing this correctly and
-  is the reference for the pattern.
+  start; `DepartmentsPage.tsx` is the reference for the pattern.
 - **Keyboard efficiency is additive, never a reimplementation.** The
   Inbox's `j`/`k` row navigation (Gmail-style, moves focus to the next/
   previous row at the currently-focused column) is layered on top of

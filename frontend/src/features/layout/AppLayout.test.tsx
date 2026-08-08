@@ -71,10 +71,15 @@ describe('AppLayout', () => {
     vi.useRealTimers()
   })
 
-  it('shows no logo image by default', async () => {
+  it('shows no company logo until the company uploads one', async () => {
     renderLayout()
     await screen.findByText('Acme Corp')
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+
+    // Specifically the *company* logo. The sidebar always carries the
+    // product one, which this used to catch by accident: jsdom has no
+    // matchMedia, so the permanent drawer never rendered and there was
+    // no image on screen to find.
+    expect(screen.queryByRole('img', { name: /acme corp logo/i })).not.toBeInTheDocument()
   })
 
   it('shows the logo once the company sets one', async () => {

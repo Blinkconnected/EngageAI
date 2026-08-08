@@ -1,8 +1,3 @@
-import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
-import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined'
-import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { useTranslation } from 'react-i18next'
 import {
   Alert,
@@ -23,18 +18,8 @@ import { useAllAgentsQuery } from '../agents/api'
 import { useAllChannelsQuery } from '../channels/api'
 import { useAllDepartmentsQuery } from '../departments/api'
 import { useAllQueuesQuery } from '../queues/api'
-import { useCurrentUserQuery } from '../session/api'
 import { useSummarizeConversationMutation } from './aiApi'
-import {
-  CONVERSATION_KEY,
-  CONVERSATIONS_LIST_KEY,
-  usePickConversationMutation,
-  useRequestAutopilotMutation,
-  useStopAutopilotMutation,
-  useReleaseConversationMutation,
-  useUpdateConversationMutation,
-} from './api'
-import { TransferDialog } from './TransferDialog'
+import { useUpdateConversationMutation } from './api'
 import { CONVERSATION_STATUSES, type Conversation, type ConversationStatus } from './types'
 
 // Maps each status to the i18n key holding its dropdown label — the label
@@ -51,6 +36,19 @@ const STATUS_OPTION_KEY: Record<ConversationStatus, string> = {
   closed: 'statusClosed',
 }
 
+/**
+ * The occasional half of a conversation's controls.
+ *
+ * Ownership — Pick up, Ask AI, Take over, Transfer, Release — used to
+ * live here too, which meant the four actions an agent performs all day
+ * were behind a menu and a drawer. They are in `ConversationHeaderBar`
+ * now, permanently visible, and deliberately not repeated here: the same
+ * button in two places is how a screen stops being trustworthy.
+ *
+ * What stayed is what genuinely is occasional — re-filing the
+ * conversation under a different status or queue, and reading the
+ * customer, the channel and the AI summary.
+ */
 export function ConversationSidebar({
   conversation,
   customerName,
@@ -64,98 +62,13 @@ export function ConversationSidebar({
 }) {
   const { t } = useTranslation('conversationsCore')
   const { hasPermission } = usePermissions()
-  const canTransfer = hasPermission('conversations.transfer')
-  const canPick = hasPermission('conversations.pick')
-  // The Autopilot request endpoint rides conversations.manage — an
-  // agent who may reply may also ask AI to reply for them.
-  const canManage = hasPermission('conversations.manage')
-  const [transferOpen, setTransferOpen] = useState(false)
-  const [releaseError, setReleaseError] = useState<string | null>(null)
-  const [pickError, setPickError] = useState<string | null>(null)
 
-  const { data: currentUser } = useCurrentUserQuery()
   const channelsQuery = useAllChannelsQuery()
   const agentsQuery = useAllAgentsQuery()
   const departmentsQuery = useAllDepartmentsQuery()
   const queuesQuery = useAllQueuesQuery()
   const updateMutation = useUpdateConversationMutation(conversation.id)
-  const releaseMutation = useReleaseConversationMutation()
-  const pickMutation = usePickConversationMutation()
-  const autopilotMutation = useRequestAutopilotMutation()
-  const stopAutopilotMutation = useStopAutopilotMutation()
   const summaryMutation = useSummarizeConversationMutation()
-  const queryClient = useQueryClient()
-
-  const myAgentId = agentsQuery.data?.find((agent) => agent.user_id === currentUser?.id)?.id
-  // Mirrors the backend's own authorization rule (ConversationService
-  // .release()): releasing your own actively-assigned conversation only
-  // needs the routine conversations.release permission, but releasing a
-  // colleague's is a reassignment, which requires the supervisory
-  // conversations.transfer permission (same gate as the Transfer button
-  // above) — otherwise any Agent-role principal (conversations.release is
-  // granted to every Agent by default) could re-home someone else's
-  // conversation to themselves via Release-then-Pick.
-  const isAssignedToSelf =
-    conversation.assigned_agent_id != null && conversation.assigned_agent_id === myAgentId
-  const canRelease = hasPermission('conversations.release') && (canTransfer || isAssignedToSelf)
-
-  function handleRelease() {
-    setReleaseError(null)
-    releaseMutation.mutate(conversation.id, {
-      onError: (error) => {
-        setReleaseError(extractErrorMessage(error, t('ConversationSidebar.releaseErrorFallback')))
-        // A 409 means the conversation's assignment already changed
-        // server-side (e.g. transferred away) since this sidebar last
-        // loaded it — refetch immediately rather than leaving the stale
-        // "assigned to" state on screen.
-        if (isAxiosError(error) && error.response?.status === 409) {
-          void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversation.id) })
-          void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
-        }
-      },
-    })
-  }
-
-  // The only ownership action reachable from this page before this fix
-  // was Transfer/Release, both of which require an existing assignment —
-  // an agent arriving here from an unassigned-conversation notification
-  // (SLA breach, autopilot handoff) had no way to actually claim it
-  // without going back to the Inbox and hunting the row. Mirrors
-  // InboxPage.tsx's own handlePick.
-  function handlePick() {
-    setPickError(null)
-    pickMutation.mutate(conversation.id, {
-      onError: (error) => {
-        setPickError(extractErrorMessage(error, t('ConversationSidebar.pickErrorFallback')))
-        if (isAxiosError(error) && error.response?.status === 409) {
-          void queryClient.invalidateQueries({ queryKey: CONVERSATION_KEY(conversation.id) })
-          void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_KEY })
-        }
-      },
-    })
-  }
-
-  function handleTakeOverFromAutopilot() {
-    setPickError(null)
-    stopAutopilotMutation.mutate(conversation.id, {
-      onError: (error) => {
-        setPickError(
-          extractErrorMessage(error, t('ConversationSidebar.autopilotTakeOverErrorFallback')),
-        )
-      },
-    })
-  }
-
-  function handleRequestAutopilot() {
-    setPickError(null)
-    autopilotMutation.mutate(conversation.id, {
-      onError: (error) => {
-        setPickError(
-          extractErrorMessage(error, t('ConversationSidebar.autopilotRequestErrorFallback')),
-        )
-      },
-    })
-  }
 
   const channel = channelsQuery.data?.find((c) => c.id === conversation.channel_config_id)
   const assignedAgent = agentsQuery.data?.find((a) => a.id === conversation.assigned_agent_id)
@@ -163,8 +76,6 @@ export function ConversationSidebar({
 
   return (
     <Stack spacing={2} sx={{ p: 2, width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
-      {releaseError && <Alert severity="error">{releaseError}</Alert>}
-      {pickError && <Alert severity="error">{pickError}</Alert>}
       {updateMutation.isError && (
         <Alert severity="error" onClose={() => updateMutation.reset()}>
           {extractErrorMessage(updateMutation.error, t('ConversationSidebar.updateErrorFallback'))}
@@ -276,99 +187,6 @@ export function ConversationSidebar({
                 : t('ConversationSidebar.unassignedValue'))}
           </Typography>
         )}
-        {/* Reassignment always goes through the Transfer dialog, not a
-            free-form dropdown — see TransferDialog.tsx's docstring on why
-            (permission gate, history, recipient notification). Hidden
-            entirely (not just disabled) for anyone without
-            conversations.transfer, matching this feature's RBAC
-            requirement rather than only cosmetically discouraging it. */}
-        {/* Wraps rather than forcing one row: this column is a fixed
-            280px, and three actions (Pick up / Ask AI / Transfer /
-            Release) overflowed it and overlapped. `alignItems: flex-start`
-            keeps wrapped buttons their natural height instead of
-            stretching them into different sizes per row. */}
-        <Stack
-          direction="row"
-          spacing={1}
-          useFlexGap
-          sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1, alignItems: 'flex-start' }}
-        >
-          {/* Only offered when there is genuinely no one holding the
-              conversation yet (and it isn't Autopilot's) — once someone
-              does, claiming it is a reassignment and goes through
-              Transfer instead, not a second Pick. */}
-          {/* Taking the conversation back from AI. Shown whenever
-              Autopilot holds it, regardless of assignment: an agent who
-              handed their *own* chat to AI still holds the assignment, so
-              there is nothing for Pick up to claim and it stays hidden
-              below — this is the only route back for them. */}
-          {canManage && conversation.autopilot_active && (
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<PersonOutlineIcon />}
-              disabled={stopAutopilotMutation.isPending}
-              onClick={handleTakeOverFromAutopilot}
-            >
-              {stopAutopilotMutation.isPending
-                ? t('ConversationSidebar.autopilotTakingOverButton')
-                : t('ConversationSidebar.autopilotTakeOverButton')}
-            </Button>
-          )}
-          {canPick && !conversation.assigned_agent_id && !conversation.autopilot_active && (
-            <Button
-              size="small"
-              variant="contained"
-              disabled={pickMutation.isPending}
-              onClick={handlePick}
-            >
-              {pickMutation.isPending
-                ? t('ConversationSidebar.pickingButton')
-                : t('ConversationSidebar.pickButton')}
-            </Button>
-          )}
-          {/* "Ask AI to reply" — the On Agent Request activation mode.
-              Offered only while a human still holds the conversation:
-              once Autopilot has it, it keeps answering on its own and the
-              relevant action becomes picking it back up. A 409 (the mode
-              is off company-wide) surfaces through the same error banner
-              as every other action here. */}
-          {canManage && !conversation.autopilot_active && (
-            <Button
-              size="small"
-              startIcon={<SmartToyOutlinedIcon />}
-              disabled={autopilotMutation.isPending}
-              onClick={handleRequestAutopilot}
-            >
-              {autopilotMutation.isPending
-                ? t('ConversationSidebar.autopilotRequestingButton')
-                : t('ConversationSidebar.autopilotRequestButton')}
-            </Button>
-          )}
-          {canTransfer && (
-            <Button size="small" onClick={() => setTransferOpen(true)}>
-              {t('ConversationSidebar.transferButton')}
-            </Button>
-          )}
-          {/* Only offered once someone actually holds the conversation —
-              releasing an already-unassigned one is a no-op the backend
-              400s on, not a real action to expose. `canRelease` above
-              already folds in the "is this my own conversation, or do I
-              hold conversations.transfer" check, so this second
-              condition only needs to confirm *something* is assigned. */}
-          {canRelease && conversation.assigned_agent_id && (
-            <Button
-              size="small"
-              color="warning"
-              disabled={releaseMutation.isPending}
-              onClick={handleRelease}
-            >
-              {releaseMutation.isPending
-                ? t('ConversationSidebar.releasingButton')
-                : t('ConversationSidebar.releaseButton')}
-            </Button>
-          )}
-        </Stack>
       </div>
 
       <TextField
@@ -386,10 +204,6 @@ export function ConversationSidebar({
           </MenuItem>
         ))}
       </TextField>
-
-      {transferOpen && (
-        <TransferDialog conversation={conversation} onClose={() => setTransferOpen(false)} />
-      )}
     </Stack>
   )
 }

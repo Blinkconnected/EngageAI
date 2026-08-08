@@ -13,10 +13,13 @@ import {
 import SendIcon from '@mui/icons-material/Send'
 import AttachFileIcon from '@mui/icons-material/AttachFile'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
+import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined'
 import { extractErrorMessage } from '../../shared/api/errors'
 import { usePermissions } from '../../shared/hooks/usePermissions'
 import { useSuggestReplyMutation } from './aiApi'
 import { useSendMessageMutation, useUploadAttachmentMutation } from './api'
+import { QuickReplyPicker } from './QuickReplyPicker'
+import type { QuickReply } from '../quickReplies/types'
 import type { Attachment } from './types'
 
 const TYPING_THROTTLE_MS = 3000
@@ -39,8 +42,15 @@ export function ReplyBox({
   // read only at send time.
   const draftCameFromAi = useRef(false)
   const lastTypingSentAt = useRef(0)
+  const [quickReplyAnchor, setQuickReplyAnchor] = useState<HTMLElement | null>(null)
+  // Seeded when the picker was opened by typing a slash, so `/ref` lands
+  // on `/refund` without retyping it in the search box.
+  const [quickReplyFilter, setQuickReplyFilter] = useState('')
+  const quickReplyButtonRef = useRef<HTMLButtonElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
 
   const { hasPermission } = usePermissions()
+  const canUseQuickReplies = hasPermission('quick_replies.read')
   const sendMutation = useSendMessageMutation(conversationId)
   const uploadMutation = useUploadAttachmentMutation(conversationId)
   const suggestReplyMutation = useSuggestReplyMutation()
@@ -55,7 +65,41 @@ export function ReplyBox({
     })
   }
 
+  function openQuickReplies(filter = '') {
+    setQuickReplyFilter(filter)
+    setQuickReplyAnchor(quickReplyButtonRef.current)
+  }
+
+  function handleInsertQuickReply(reply: QuickReply) {
+    setQuickReplyAnchor(null)
+    // Replaces the draft rather than appending. A saved reply is a whole
+    // answer somebody approved the wording of, and the only thing in the
+    // box when the slash opened this was the slash itself. Appending
+    // would also make picking twice silently produce a doubled message.
+    setBody(reply.body)
+    // Not AI-assisted: a human chose an approved phrase. Counting it as
+    // AI would overstate what the model contributed.
+    draftCameFromAi.current = false
+    setSendFailure(null)
+    // Back to the composer with the caret at the end, so the agent can
+    // add a name or a date without reaching for the mouse.
+    requestAnimationFrame(() => {
+      const input = composerRef.current
+      if (!input) return
+      input.focus()
+      input.setSelectionRange(reply.body.length, reply.body.length)
+    })
+  }
+
   function handleBodyChange(value: string) {
+    // A slash typed as the very first character of an empty composer is
+    // a request for a saved reply, so it opens the picker and is not
+    // kept. Restricted to the first character on purpose: "12/05" and
+    // "and/or" must stay typeable, and neither starts with one.
+    if (canUseQuickReplies && body === '' && value === '/') {
+      openQuickReplies()
+      return
+    }
     // Editing an AI draft keeps it AI-assisted (that's the point — it
     // measures AI's contribution, not verbatim sending). Clearing the
     // box entirely is the one thing that resets it: whatever is typed
@@ -193,6 +237,17 @@ export function ReplyBox({
             <AttachFileIcon />
           </IconButton>
         </Tooltip>
+        {canUseQuickReplies && (
+          <Tooltip title={t('ReplyBox.quickRepliesTooltip')}>
+            <IconButton
+              ref={quickReplyButtonRef}
+              onClick={() => openQuickReplies()}
+              aria-label={t('ReplyBox.quickRepliesAriaLabel')}
+            >
+              <BoltOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+        )}
         {hasPermission('ai.use') && (
           <Tooltip title={t('ReplyBox.suggestReplyTooltip')}>
             <span>
@@ -214,7 +269,16 @@ export function ReplyBox({
           multiline
           maxRows={4}
           fullWidth
-          placeholder={t('ReplyBox.replyPlaceholder')}
+          placeholder={
+            canUseQuickReplies
+              ? t('ReplyBox.replyPlaceholderWithQuickReplies')
+              : t('ReplyBox.replyPlaceholder')
+          }
+          inputRef={composerRef}
+          // A placeholder is not a label: it disappears the moment
+          // anybody types, and this field had nothing else. The name is
+          // also what does not change when the placeholder does.
+          slotProps={{ htmlInput: { 'aria-label': t('ReplyBox.replyAriaLabel') } }}
           value={body}
           onChange={(event) => handleBodyChange(event.target.value)}
           onKeyDown={(event) => {
@@ -237,6 +301,18 @@ export function ReplyBox({
           </span>
         </Tooltip>
       </Stack>
+
+      {/* Mounted only while open: that is what makes each open start
+          clean, with the filter seeded from whatever followed the slash. */}
+      {canUseQuickReplies && quickReplyAnchor && (
+        <QuickReplyPicker
+          open
+          anchorEl={quickReplyAnchor}
+          initialFilter={quickReplyFilter}
+          onSelect={handleInsertQuickReply}
+          onClose={() => setQuickReplyAnchor(null)}
+        />
+      )}
     </Box>
   )
 }

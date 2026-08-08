@@ -145,7 +145,11 @@
     "replyPlaceholder": "Write a reply…",
     "sendTooltip": "Send",
     "sendAriaLabel": "Send reply",
-    "messageQueuedOfflineLabel": "You're offline — this message is queued and will send automatically once you're back online."
+    "messageQueuedOfflineLabel": "You're offline — this message is queued and will send automatically once you're back online.",
+    "quickRepliesTooltip": "Saved replies — or type / to search them",
+    "quickRepliesAriaLabel": "Insert a saved reply",
+    "replyPlaceholderWithQuickReplies": "Write a reply, or / for a saved one",
+    "replyAriaLabel": "Write a reply"
   },
   "Inbox": {
     "summaryAria": "Today's workload",
@@ -190,12 +194,33 @@
       "at_risk": "Nothing at risk",
       "breached": "Nothing has breached",
       "resolved_today": "Nothing resolved yet today"
-    }
+    },
+    "noSelectionTitle": "Pick a conversation",
+    "noSelectionDescription": "Choose one from the list to read it and reply. It opens here, beside the list."
   },
   "health": {
     "healthy": "Healthy",
     "attention": "Attention",
     "at_risk": "At risk",
     "breached": "Breached"
+  },
+  "ConversationHeaderBar": {
+    "statusStripAria": "Conversation status and timings",
+    "emptyValue": "—",
+    "ago": "{{duration}} ago",
+    "owner": "Owner",
+    "waiting": "Waiting",
+    "lastMessage": "Last message",
+    "opened": "Opened",
+    "firstReply": "First reply",
+    "queue": "Queue"
+  },
+  "QuickReplyPicker": {
+    "searchPlaceholder": "Search saved replies…",
+    "searchAriaLabel": "Search saved replies",
+    "listAriaLabel": "Saved replies",
+    "noMatches": "No saved reply matches \"{{query}}\".",
+    "noneConfigured": "No saved replies yet. An administrator can add them in Settings.",
+    "loadFailed": "Saved replies could not be loaded."
   }
 }

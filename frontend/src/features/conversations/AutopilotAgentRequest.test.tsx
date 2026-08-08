@@ -32,11 +32,13 @@ async function waitForComposer() {
   return screen.findByRole('tab', { name: /messages/i })
 }
 
+/** Ownership actions are in the header now, so nothing has to be opened
+ * to reach them — waiting for the status strip is waiting for the
+ * buttons. That is the point of the change: an agent handing a
+ * conversation to AI, or taking it back, no longer goes through a menu
+ * and a drawer to do it. */
 async function waitForLoaded() {
-  const user = userEvent.setup()
-  await user.click(await screen.findByRole('button', { name: /conversation actions/i }))
-  await user.click(await screen.findByRole('menuitem', { name: /conversation details/i }))
-  return screen.findByLabelText(/^status/i)
+  return screen.findByRole('region', { name: /status and timings/i })
 }
 
 /** A conversation Autopilot holds *and* that is still assigned — the

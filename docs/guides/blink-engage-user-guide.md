@@ -792,18 +792,67 @@ permission to reply.
 
 ### Screen explained — the Inbox
 
-`[Screenshot placeholder: Inbox with three panels — filters on the left, conversation list in the middle, conversation detail on the right]`
+`[Screenshot placeholder: Inbox with the conversation list on the left and the open conversation on the right]`
 
-| Panel | Contains |
+The Inbox is two panes side by side. Opening a conversation does **not**
+take you off the list — it opens beside it, so you keep your place and
+can move straight on to the next one.
+
+| Pane | Contains |
 |---|---|
-| **Left — filters** | Views, queues, channels, states |
-| **Middle — list** | Conversations matching your filter |
-| **Right — detail** | The selected conversation, its messages, and the reply box |
+| **Left — the list** | The queue you have chosen, and every conversation in it |
+| **Right — the conversation** | Who it is with, what state it is in, the messages, and the reply box |
+
+On a phone or a narrow window there is not room for both, so you see one
+at a time and a back arrow returns you to the list.
+
+### Choosing what to work on
+
+At the top of the list are the **work queues** — *Needs attention*,
+*Waiting pickup*, *Assigned to me*, *AI working*, *Waiting customer*,
+*At risk*, *Breached*, *Resolved today*. Each one carries its own count,
+so you can see how much is in it before you open it. Choosing one is
+like sitting at a different desk: the list below shows only that work.
+
+> **Tip** — Empty queues stay on screen showing a zero. "Breached (0)"
+> is worth seeing.
 
 ### The conversation list
 
-Each row shows the customer's name, a preview of the last message, the
-channel, how long it has been waiting, and any badges.
+Each row is written to be read in the order you decide in: **who** it is
+with, **why** it is in front of you, **how urgent** it is, **who owns
+it** and **for how long**, and finally what most recently changed. The
+message text is deliberately not the first thing — you should know why a
+conversation needs you before you read a word of it.
+
+Rows nobody has claimed carry a **Pick up** button, so you can take one
+without opening it first.
+
+### What you see at the top of an open conversation
+
+`[Screenshot placeholder: Conversation header showing customer, channel, state, SLA and the timings strip]`
+
+This strip is always on screen while you read. You should never have to
+open anything to know where a conversation stands.
+
+| Shown | What it tells you |
+|---|---|
+| **Customer name** | Who you are talking to. Select it to open their profile |
+| **Channel icon** | Which line the conversation arrived on |
+| **Star rating** | How this customer has been rated internally, if at all |
+| **State** | What the conversation is waiting on right now |
+| **SLA badge** | Attention, At risk or Breached. Nothing shown means healthy |
+| **Priority** | Only when it is not Normal |
+| **Unread** | How many customer messages you have not read |
+| **Owner** | Who is answerable — an agent, a queue, or nobody |
+| **Waiting** | How long it has been in that state. This keeps counting while you watch |
+| **Last message** | How long since anybody said anything |
+| **Opened** | How old the whole conversation is |
+| **First reply** | How long ago the customer first got an answer. Absent until they get one |
+| **Queue** | Which queue it belongs to |
+
+> **Tip** — **Waiting** is the number to read first. "Waiting 4m" and
+> "Waiting 4h" call for completely different behaviour.
 
 ### Badges explained
 
@@ -846,28 +895,69 @@ channel, how long it has been waiting, and any badges.
 ### Step by step — answering a conversation
 
 1. Open **Inbox**.
-2. Select a conversation from the list.
-3. Read the history in the right-hand panel.
-4. Select **Pick** to take it, if it is unassigned.
-5. Type in the reply box.
-6. Select **Send**.
+2. Choose a work queue, if you are not already in the right one.
+3. Select a conversation from the list. It opens beside the list.
+4. Read the strip at the top: who, what state, how long.
+5. Select **Pick up** to take it, if nobody has.
+6. Type in the reply box — or press **/** for a saved reply.
+7. Select **Send**.
 
-`[Screenshot placeholder: Conversation detail with message history, reply box, and Pick / Transfer / Resolve buttons]`
+`[Screenshot placeholder: Open conversation with the timings strip, message history and the reply box]`
 
 ### Buttons explained
 
-| Button | What it does |
-|---|---|
-| **Pick** | Assigns the conversation to you |
-| **Send** | Sends your reply to the customer over their channel |
-| **Note** | Switches the box to an internal note nobody outside sees |
-| **Attach** (paperclip) | Adds a file |
-| **Quick reply** | Inserts saved text |
-| **AI** | Opens the assistant — suggest, summarise, translate and more |
-| **Transfer** | Moves the conversation to another agent, queue or department |
-| **Resolve** | Marks it dealt with |
-| **Close** | Ends it |
-| **Priority** | Changes urgency |
+| Button | Where | What it does |
+|---|---|---|
+| **Pick up** | Header, and on unclaimed rows in the list | Assigns the conversation to you |
+| **Ask AI to reply** | Header | Hands answering to the AI |
+| **Take over** | Header, while AI holds it | Takes it back from the AI |
+| **Transfer** | Header | Moves it to another agent, queue or department |
+| **Release** | Header | Gives it up so somebody else can take it |
+| **Details** (i) | Header | Opens status, queue, customer and the AI summary |
+| **Send** | Reply box | Sends your reply over the customer's own channel |
+| **Attach** (paperclip) | Reply box | Adds a file |
+| **Saved replies** (lightning) | Reply box | Inserts wording your company has approved |
+| **AI** (sparkle) | Reply box | Drafts a reply for you to edit |
+| **Internal notes** | Tab | Switches to notes nobody outside your company sees |
+
+> **Note** — Status, priority and queue are changed from **Details**.
+> They are re-filing rather than replying, which is why they are one
+> click away instead of on screen all day.
+
+### Saved replies
+
+**Purpose:** send the wording your company agreed on, without retyping
+it.
+
+**Permissions required:** `quick_replies.read`.
+
+Saved replies are the phrases you use over and over — the refund policy,
+opening hours, the apology your legal team approved. Typing them out
+each time is slower, and the wording drifts a little every time somebody
+does.
+
+#### Step by step
+
+1. Put your cursor in the reply box.
+2. Press **/**, or select the lightning icon.
+3. Start typing — the shortcut (`/refund`), the title (*Refund policy*),
+   or any words from the reply itself.
+4. Use the arrow keys and **Enter**, or select one with the mouse.
+5. The wording appears in the reply box. Edit it if you need to — add a
+   name, a date — then **Send**.
+
+> **Tip** — **/** only opens the picker when it is the very first thing
+> in an empty box. You can still type "12/05" or "and/or" normally.
+
+> **Note** — A saved reply replaces whatever is in the box. That is
+> deliberate: a saved reply is a whole answer, not a fragment.
+
+> **Warning** — Saved replies are not sent automatically. Nothing goes to
+> the customer until you select **Send**.
+
+Administrators add and edit saved replies; agents use them. A reply
+turned off by an administrator stops being offered immediately, so
+withdrawn wording cannot go back out.
 | **Autopilot** | Turns AI handling on or off for this conversation |
 
 > **Note** — You do not choose which channel your reply goes to. It goes

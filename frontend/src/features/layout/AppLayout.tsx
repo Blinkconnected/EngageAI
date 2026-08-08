@@ -100,9 +100,11 @@ export function AppLayout() {
   // Multi-pane workspaces (currently the conversation workspace) render
   // edge to edge and take over vertical scrolling entirely: every column
   // inside them scrolls on its own, and the page as a whole must not.
-  // Matches `/conversations/<id>` but never the `/conversations` Inbox
-  // list, which is an ordinary padded, document-flow page.
-  const isFullBleedRoute = /^\/conversations\/[^/]+$/.test(location.pathname)
+  // Both the Inbox list and an open conversation: they are the same
+  // two-pane workspace, and the list pane scrolls inside itself. A page
+  // gutter around it would make the panes read as a floating card rather
+  // than as the application chrome they are.
+  const isFullBleedRoute = /^\/conversations(\/[^/]+)?$/.test(location.pathname)
 
   // A personal, per-browser display preference — no permission needed
   // (unlike Settings -> Language, which changes the company-wide

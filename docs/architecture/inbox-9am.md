@@ -33,28 +33,66 @@ The old Inbox collapsed all three into one: a table, and the instruction
 
 ## What this means for the page
 
-Three layers, in this order, and the order is not negotiable because it is the
-order of the questions.
+The three questions are answered in order down the left, and the answer to
+"which one" opens beside them rather than instead of them.
 
 ```
-┌─ Operational summary ──────────────────────────────────────┐
-│  Active 41 · Needs attention 7 · Waiting pickup 11         │
-│  AI working 9 · Waiting customer 8 · At risk 3 · Breached 4│
-└────────────────────────────────────────────────────────────┘
-┌─ Work queues ──────────────────────────────────────────────┐
-│  🚨 Needs attention  📥 Waiting pickup  👤 Mine  🤖 AI ...  │
-└────────────────────────────────────────────────────────────┘
-┌─ Conversations ────────────────────────────────────────────┐
-│  Mona Haddad                                                │
-│  Waiting for pickup · 🔴 Breached · Support queue · 42m     │
-│  AI stood down — an agent took it                           │
-│  "I still haven't had a refund"              💬             │
-└────────────────────────────────────────────────────────────┘
+┌─ Conversations ─────────────┬─ The open conversation ───────────────────┐
+│ Inbox        41 active 4 br.│ Mona Haddad  💬          [Pick up] [⋯] (i)│
+│ 🚨 Needs attention (7) 📥…  │ Waiting for pickup · 🔴 Breached          │
+│ Waiting on us, running out. │ Owner    Waiting  Last msg  Opened  Queue │
+├─────────────────────────────│ Nobody   42m      3m ago    2h ago  Supp. │
+│▎Mona Haddad         [Pick]  ├───────────────────────────────────────────┤
+│ Waiting for pickup 🔴 42m   │ Messages | Internal notes | Transfers     │
+│ AI stood down                │                                          │
+├─────────────────────────────┤   … the thread …                          │
+│ Karim Nasser        [Pick]  │                                           │
+│ Waiting for pickup  8m      ├───────────────────────────────────────────┤
+│ Routed to "Support"         │ 📎 ⚡ ✨ [ Write a reply, or / … ]      ➤ │
+└─────────────────────────────┴───────────────────────────────────────────┘
 ```
 
 The summary is read once a morning. The queues are chosen a few times a day.
 The rows are read constantly. Prominence follows *how much a thing changes a
-decision*, not how often it is looked at.
+decision*, not how often it is looked at — which is why the summary is now one
+line rather than a band of seven figures. Those figures were not wrong, they
+were *duplicated*: every one of them also appears inside its own queue chip
+immediately below. Two of them answer something the chips do not — how much
+there is in total, and how much has already failed — so those two stayed.
+
+## Why the conversation is a pane and not a page
+
+Opening a conversation used to replace this screen entirely. An agent working
+a queue therefore did list → conversation → Back → list → conversation,
+losing their place in the list on every single one and paying a page load for
+each. The queue they had chosen — the desk they sat at — did not survive the
+round trip either.
+
+Both are on screen at once now. The list keeps its scroll position and marks
+the row being read; the URL still carries the open conversation, so a link to
+one still opens it, and the list simply comes with it.
+
+Below `md` there is no room for both without making each unusable, so it
+degrades to one at a time with a back arrow. That is the only place the old
+navigation survives, and it is the only place it was ever right.
+
+## The strip above the thread
+
+An agent needs five things before typing a word: who this is, what it is
+waiting on, whether it is late, who owns it, and *how long it has been like
+that*. Every one of them used to be behind a `⋮` menu that opened a drawer —
+along with **Pick up**, the single most common action on the screen.
+
+They are a permanent strip now. The durations tick (`useNow`), because a
+duration rendered once and left alone is not stale, it is wrong: "Waiting 4m"
+still reading 4m twenty minutes later is a figure somebody makes a decision
+on.
+
+The split between the strip and the drawer is *replying versus re-filing*.
+Ownership — Pick up, Ask AI, Take over, Transfer, Release — is replying, and
+lives in the strip. Status and queue are re-filing, and stay one click away.
+Neither set appears in both places: the same button in two locations is how a
+screen stops being trustworthy.
 
 ## The row, in the order it communicates
 
@@ -111,6 +149,8 @@ things that look reasonable:
 | Status chip | **Removed** — the operational state says it better |
 | Avatar colours | **Removed** — decorative; nine colours that mean nothing |
 | Pagination | **Demoted** — the list is ordered worst-first; page two is where conversations go to be forgotten |
+| Pick up, on a row | **Added** — an agent working a pickup queue claims several in a row, and routing each through the conversation is the slow path |
+| Saved replies | **Added to the composer** — approved wording existed in the database with no way to reach it from the one screen that uses it |
 
 ## The test of success
 

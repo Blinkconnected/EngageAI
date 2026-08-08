@@ -42,6 +42,7 @@ export const MOCK_USER: UserProfile = {
     'ai.use',
     'queues.read',
     'queues.manage',
+    'quick_replies.read',
   ],
 }
 
