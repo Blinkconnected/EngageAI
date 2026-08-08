@@ -327,6 +327,19 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **A post-launch roadmap.** Everything still outstanding, grouped into
+  the first month, the quarter, and later — each item stating what it is
+  worth, what it costs, what could go wrong while doing it, what it
+  depends on, and **why it was deliberately left until now**. That last
+  point is the useful one: it turns a list of unfinished work into a
+  record of decisions, so the same argument does not get had twice.
+
+  A pattern runs through it. Most of the intelligence work is waiting not
+  because it is difficult but because it is unearned — the platform has
+  not yet seen enough real conversations to draw conclusions from, and
+  building inference on top of that would produce confident output with
+  nothing behind it.
+
 - **A specification for a stricter onboarding wizard.** The wizard that
   exists walks an administrator through four steps but requires nothing —
   it is possible to finish setup for a workspace with no channel
