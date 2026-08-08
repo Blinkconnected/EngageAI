@@ -327,6 +327,20 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **Help now knows who is reading it.** The same content is delivered to
+  three audiences — the public site anyone can read without signing in, a
+  customer's own workspace, and the provider's admin area — from one
+  source rather than three copies that drift apart.
+
+  Three things never cross the line. Help describing how to manage *other
+  companies* never reaches a customer. Internal error names never reach
+  the public site. And no real customer data appears anywhere, including
+  in screenshots.
+
+  The provider's own screens — companies, billing, invoices, pricing,
+  platform health — now have their own help, including the six questions
+  customers ask most and what the honest answer to each one is.
+
 - **A complete Help Center content set** — the words the product shows
   you without leaving it. Context help for every screen, one-line
   explanations for 88 fields, friendly messages for 30 empty screens, 47

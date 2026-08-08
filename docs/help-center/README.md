@@ -2,9 +2,11 @@
 
 **The content set that powers in-product help.**
 
-Seven documents. Together they specify everything a user reads inside the
-product without leaving it: the help panel, field tooltips, empty
-screens, error messages, the first-run tour, and what help search finds.
+Nine documents. Together they specify everything a user reads without
+leaving the product — the help panel, field tooltips, empty screens,
+error messages, the first-run tour and help search — and where each piece
+appears: **the public site, a tenant workspace, or the provider's admin
+area**.
 
 - **Source of truth for all content:**
   [blink-engage-user-guide.md](../guides/blink-engage-user-guide.md)
@@ -24,6 +26,23 @@ screens, error messages, the first-run tour, and what help search finds.
 | [error-messages.md](./error-messages.md) | Every user-facing error, in plain English | 47 |
 | [product-tour.md](./product-tour.md) | The guided first-run introduction | 2 tours, 13 steps |
 | [search-index.md](./search-index.md) | Keywords and aliases so search finds things | 70+ features |
+| [surfaces.md](./surfaces.md) | Where each entry appears: public, tenant or admin | 3 surfaces |
+| [context-help-admin.md](./context-help-admin.md) | Help for the provider's own screens | 11 screens |
+
+## Three surfaces
+
+The same content is delivered to three audiences:
+
+| Surface | Who | Signed in? |
+|---|---|---|
+| **Public** | Prospects, customers before login, search engines | No |
+| **Tenant** | People working inside a customer workspace | Yes |
+| **Admin** | The provider running the platform | Yes, provider role |
+
+One source, three renderings — never a forked copy. Three things are
+excluded absolutely: **provider content never reaches a tenant**,
+**internal error names never reach the public**, and **no customer data
+appears on any surface**. Full rules in [surfaces.md](./surfaces.md).
 
 ## How they fit together
 
@@ -118,13 +137,14 @@ one of these deserves an answer rather than silence:
 
 | | |
 |---|---|
-| Screens with context help | 22 |
+| Tenant screens with context help | 22 |
+| Provider screens with context help | 11 |
 | Fields with tooltips | 88 |
 | Empty states | 30 |
 | Error messages | 47 |
 | Tour steps | 13 across 2 tours |
-| Registered help IDs | 89 |
-| **Total help entries** | **~289** |
+| Registered help IDs | 92 |
+| **Total help entries** | **~300** |
 
 Every domain error type the platform maps to an HTTP status has a plain-
 English message. Every screen in the navigation has a context-help entry.
@@ -142,7 +162,15 @@ In priority order, by support tickets prevented:
    [search-index.md](./search-index.md#searches-that-must-return-an-answer).
 5. **The administrator tour** — mostly it prevents the same problems
    earlier.
-6. Everything else.
+6. **The admin surface** — the provider answers the same six questions
+   repeatedly; [context-help-admin.md](./context-help-admin.md) lists
+   them.
+7. Everything else.
+
+**Surfaces come first, not last.** Deciding where an entry appears is
+cheap while it is being written and expensive afterwards — particularly
+for anything published, which cannot be unpublished from a search
+engine's index.
 
 ---
 

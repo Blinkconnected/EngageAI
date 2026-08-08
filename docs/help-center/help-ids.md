@@ -228,7 +228,34 @@ screen.
 | `be.feature.audit_log` | Audit trail |
 | `be.feature.csat` | Satisfaction surveys |
 
-## 5. How the interface should use these
+## 5. Surfaces
+
+Every id also carries a **surface**, which decides where its content
+appears — see [surfaces.md](./surfaces.md).
+
+| Surface | Appears on |
+|---|---|
+| `public` | The public help site, the tenant panel, and admin |
+| `tenant` | The tenant panel and admin |
+| `admin` | Admin only |
+
+Defaults by group, unless an entry says otherwise:
+
+| Group | Surface |
+|---|---|
+| Screen help for tenant screens | `public` |
+| Feature concepts | `public` |
+| Tooltips | `tenant` |
+| Empty states | `tenant` |
+| Product tour | `tenant` |
+| User-facing error text | `public` |
+| Internal error names and status codes | `admin` |
+| **Every `be.platform.*` id** | **`admin`** |
+
+> **`be.platform.*` is always `admin`.** Those screens manage other
+> companies; a tenant must never see help describing them.
+
+## 6. How the interface should use these
 
 1. Every screen declares its `help_id`.
 2. The help button sends that id to the help system.
@@ -245,7 +272,7 @@ screen.
 > file, before the screen ships. An id invented in the interface and
 > never registered here is an id nothing can resolve.
 
-## 6. Coverage
+## 7. Coverage
 
 | Category | Count |
 |---|---|
