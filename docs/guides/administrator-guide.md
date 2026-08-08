@@ -400,6 +400,7 @@ but not obeyed — and reports it.
 
 ## See also
 
+- [**Blink Engage User Guide**](./blink-engage-user-guide.md) — the full product manual
 - [User Guide](./user-guide.md)
 - [FAQ](./faq.md)
 - [Onboarding wizard specification](../product/tenant-onboarding-wizard.md)

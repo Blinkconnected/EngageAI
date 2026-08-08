@@ -327,6 +327,19 @@ for more detail on how this page is put together.
   architecture documents, and a baseline document recording what is
   settled so future work has something to be measured against.
 
+- **The official Blink Engage User Guide.** A complete product manual
+  written for people who have never used the platform, rather than for
+  the people who built it. Fifteen chapters covering every screen, every
+  button and every field, with worked examples, best practices, the
+  mistakes teams actually make, and a 135-question FAQ.
+
+  It is deliberately honest about what is not there. Six things people go
+  looking for — conversation tags, knowledge version history, API keys, a
+  dedicated escalation screen, a mobile app, and the platform acting on
+  what it learns — are each named as unavailable in the place you would
+  expect to find them, so nobody spends an afternoon hunting for a button
+  that does not exist.
+
 - **A post-launch roadmap.** Everything still outstanding, grouped into
   the first month, the quarter, and later — each item stating what it is
   worth, what it costs, what could go wrong while doing it, what it

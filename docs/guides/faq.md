@@ -305,6 +305,7 @@ into a single log query.
 
 ## See also
 
+- [**Blink Engage User Guide**](./blink-engage-user-guide.md) — the full manual, including a 135-question FAQ
 - [User Guide](./user-guide.md)
 - [Administrator Guide](./administrator-guide.md)
 - [Known Limitations](../releases/v1.0-known-limitations.md)

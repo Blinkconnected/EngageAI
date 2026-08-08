@@ -311,6 +311,7 @@ availability, and manage notification preferences.
 
 ## See also
 
+- [**Blink Engage User Guide**](./blink-engage-user-guide.md) — the full product manual, with every screen, field and button explained
 - [Administrator Guide](./administrator-guide.md) — configuring all of the above
 - [FAQ](./faq.md)
 - [SYSTEM.md](../SYSTEM.md) — what each feature is and how it works
