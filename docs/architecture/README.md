@@ -45,6 +45,7 @@ change must not contradict.
 |---|---|
 | [Conversations](./conversations.md) | The core aggregate |
 | [Deleting a conversation](./conversation-deletion.md) | Request, approval, and the record that outlives it |
+| [Redacting a message](./message-redaction.md) | Removing what was said, keeping that it was said |
 | [Inbox](./inbox.md) · [Inbox 9am](./inbox-9am.md) | Agent working surface |
 | [Channels](./channels.md) | Channel abstraction |
 | [Channel connectors](./channel-connectors.md) | Plugin architecture |

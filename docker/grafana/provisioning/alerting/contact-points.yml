@@ -56,3 +56,21 @@ contactPoints:
           httpMethod: POST
           maxAlerts: 0
         disableResolveMessage: false
+
+  # The heartbeat's own destination.
+  #
+  # Deliberately separate. `Alerting heartbeat` fires continuously by
+  # design, so routing it to ops-warning would bury every real warning
+  # under it and teach people to mute the channel — the exact outcome the
+  # split above exists to prevent.
+  #
+  # Point this at a dead-man's-switch service (one that alerts when it
+  # STOPS hearing from you). Left unset it lands in the on-host sink,
+  # where its absence is still observable by reading the log.
+  - orgId: 1
+    name: ops-heartbeat
+    receivers:
+      - uid: blinkengage-ops-heartbeat
+        type: webhook
+        settings:
+          url: ${ALERT_HEARTBEAT_WEBHOOK_URL}

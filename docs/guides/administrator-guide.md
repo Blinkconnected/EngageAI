@@ -414,3 +414,35 @@ but not obeyed — and reports it.
 - [Onboarding wizard specification](../product/tenant-onboarding-wizard.md)
 - [Production Deployment Guide](../deployment/production-deployment-guide.md)
 - [SYSTEM.md](../SYSTEM.md)
+
+## Redacting a message
+
+`messages.redact` — Administrators and the Owner.
+
+Removing what one message said, keeping that it was said. A message sent
+over WhatsApp or email cannot be unsent, so deleting our copy would
+destroy our half of a record the customer still holds.
+
+**It is irreversible and there is no recovery path.** Nothing in the
+product will show the content again, for anybody. Restoring it means
+restoring a backup taken before the redaction.
+
+Redaction removes the text, the provider's stored copy of it, any
+attachments from object storage, and every citation of the message in
+Memory and Learning. It leaves the message in the thread and writes an
+append-only record of who did it, when, and why.
+
+Agents do not hold this permission and should not be granted it lightly:
+a redaction cannot be undone by whoever notices the mistake a minute
+later.
+
+**It is not conversation deletion.** `conversations.delete` — which
+removes a whole conversation with no reason recorded, and which also
+gates bulk destruction through agent removal — remains Owner-only.
+Granting `messages.redact` does not affect it.
+
+Review what has been redacted at `GET /api/v1/message-redactions`. That
+log names customers and quotes the reasons given, so it is gated on the
+same permission as performing a redaction.
+
+See `docs/architecture/message-redaction.md`.

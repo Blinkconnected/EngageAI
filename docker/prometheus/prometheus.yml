@@ -62,3 +62,22 @@ scrape_configs:
     metrics_path: /minio/v2/metrics/cluster
     static_configs:
       - targets: ["minio:9000"]
+
+  # The edge. Every customer request passes through nginx, so its failure
+  # is indistinguishable from a total outage — and until this job existed
+  # there was no target and no alert for it.
+  - job_name: nginx
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+
+  # Self-monitoring. If Grafana or Loki stop, alerting and log search go
+  # dark silently; a monitoring stack nobody monitors reports health right
+  # up to the moment it stops reporting anything.
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+
+  - job_name: loki
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["loki:3100"]

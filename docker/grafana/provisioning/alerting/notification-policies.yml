@@ -24,3 +24,15 @@ policies:
         group_interval: 1m
         repeat_interval: 1h
         continue: false
+
+      # The heartbeat, to its own destination. Never grouped with anything
+      # else and never repeated slowly: its value is a steady pulse, and a
+      # 12-hour repeat interval would make a 12-hour alerting outage
+      # invisible.
+      - receiver: ops-heartbeat
+        object_matchers:
+          - ["severity", "=", "heartbeat"]
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 5m
+        continue: false

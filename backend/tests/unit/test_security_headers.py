@@ -18,7 +18,27 @@ def _minimal_app(*, is_production: bool) -> Starlette:
         return PlainTextResponse("ok")
 
     app = Starlette(routes=[Route("/", _endpoint)])
-    settings = Settings(environment="production" if is_production else "development")
+    # A production Settings has to be a *valid* one. `Settings` refuses to
+    # construct with `environment="production"` on development defaults —
+    # MinIO's published credentials, localhost CORS — which is the point
+    # of that validator and not something to work around here. The
+    # overrides below are the smallest set that makes the object legal;
+    # none of them affects the headers under test.
+    overrides = (
+        {
+            "s3_access_key": "blinkengage",
+            "s3_secret_key": "a-real-object-storage-secret",
+            "cors_allow_origins": ["https://engage.example.com"],
+            "jwt_secret_key": "Ky7pQz3XwR9tLmN4vB6hJ2cF8dS5aG1e",
+            "credentials_encryption_key": "Zt4mW8xQ2rN6yB3vK9pL5cH7dJ1gS0fA",
+        }
+        if is_production
+        else {}
+    )
+    settings = Settings(
+        environment="production" if is_production else "development",
+        **overrides,  # type: ignore[arg-type]
+    )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
     return app
 

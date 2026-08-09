@@ -87,6 +87,7 @@ from blinkengage.application.services.ledger_service import (
 from blinkengage.application.services.memory_erasure_service import MemoryErasureService
 from blinkengage.application.services.memory_manager import MemoryManager
 from blinkengage.application.services.memory_query_service import MemoryQueryService
+from blinkengage.application.services.message_redaction_service import MessageRedactionService
 from blinkengage.application.services.notification_preference_service import (
     NotificationPreferenceService,
 )
@@ -852,6 +853,16 @@ def get_user_repository(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UserRepository:
     return UserRepository(session)
+
+
+def get_message_redaction_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    attachment_store: Annotated[AttachmentStore, Depends(get_attachment_store)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> MessageRedactionService:
+    return MessageRedactionService(
+        session=session, attachment_store=attachment_store, events=events
+    )
 
 
 def get_conversation_inspector(

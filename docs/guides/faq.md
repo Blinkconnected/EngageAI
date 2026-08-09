@@ -237,6 +237,46 @@ Not yet — recorded as [TD-2](../releases/v1.0-technical-debt.md#td-2). If
 Prometheus or Grafana stops, dashboards go quiet and that currently looks
 like a healthy platform.
 
+### Can I delete a message a customer sent by mistake?
+
+You can **redact** it, which removes what it said and keeps that it was
+said. The message stays in the thread, marked as redacted, with a
+permanent record of who removed it and why. Administrators and the
+Owner only.
+
+Not deletion, deliberately: a message sent over WhatsApp or email cannot
+be unsent, so the customer keeps their copy either way. Deleting ours
+would lose our half of a record they can still produce.
+
+### Can the redacted text be recovered?
+
+No. Not through the product, not by an administrator, not by the Owner.
+There is no endpoint, no screen and no export that will show it again.
+The only copy is in a backup taken before the redaction.
+
+### Does a redacted message still affect the AI or reporting?
+
+No. It is excluded from AI transcripts, removed from anything Memory or
+Learning had cited it for, and filtered out of future analysis. It
+cannot become evidence for anything.
+
+### Does redacting remove the attachment too?
+
+Yes. Files attached to that message are deleted from object storage, not
+just unlinked. The count is recorded in the redaction log.
+
+### Can an agent redact?
+
+No. Redaction cannot be undone by whoever notices the mistake a minute
+later, so it is not routine work. Administrators and the Owner hold
+`messages.redact`.
+
+### What is the difference between redaction and deleting a conversation?
+
+Redaction removes what one message said. Deleting a conversation removes
+the whole thread, goes through an approval by a second person, and the
+direct route is Owner-only. See the Administrator Guide for both.
+
 ## For developers
 
 **Where is the API reference?**

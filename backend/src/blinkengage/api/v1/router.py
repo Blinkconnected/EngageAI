@@ -28,6 +28,7 @@ from blinkengage.api.v1.endpoints import (
     knowledge,
     learning,
     memory,
+    message_redaction,
     notifications,
     ownership,
     payment_webhooks,
@@ -101,6 +102,7 @@ api_router.include_router(webhooks.router)
 api_router.include_router(web_chat.router)
 api_router.include_router(conversations.router)
 api_router.include_router(conversation_deletion.router)
+api_router.include_router(message_redaction.router)
 api_router.include_router(queues.router)
 api_router.include_router(services.router)
 api_router.include_router(routing_rules.router)

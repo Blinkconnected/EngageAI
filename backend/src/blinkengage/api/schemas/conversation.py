@@ -195,6 +195,11 @@ class MessageResponse(BaseModel):
     delivery_status: DeliveryStatus
     read_status: ReadStatus
     body: str | None
+    #: Set when the content was removed. ``body`` is ``None`` and
+    #: ``message_metadata`` stripped whenever this is present — the
+    #: interface shows "Message redacted" in the thread rather than an
+    #: empty bubble, which would read as a rendering fault.
+    redacted_at: datetime | None = None
     external_message_id: str | None
     reply_to_message_id: UUID | None
     message_metadata: dict[str, Any]

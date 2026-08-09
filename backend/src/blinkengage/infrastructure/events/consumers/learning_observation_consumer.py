@@ -233,7 +233,20 @@ async def _turns_for(session: AsyncSession, *, conversation_id: UUID) -> tuple[T
         (
             await session.execute(
                 select(Message)
-                .where(Message.conversation_id == conversation_id)
+                .where(
+                    Message.conversation_id == conversation_id,
+                    # A redacted message is not evidence of anything. Its
+                    # body is already NULL, so including it would add an
+                    # empty turn that shifts every ordinal after it and
+                    # lets a conversation be *observed as if the customer
+                    # said nothing* at that point — a worse distortion
+                    # than the turn being absent.
+                    #
+                    # This is the future half of redaction. Redacting
+                    # removes existing citations; this stops the next
+                    # sweep creating new ones from the same message.
+                    Message.redacted_at.is_(None),
+                )
                 .order_by(Message.created_at)
                 .limit(_MAX_TURNS)
             )

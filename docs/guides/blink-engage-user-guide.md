@@ -914,6 +914,7 @@ open anything to know where a conversation stands.
 | **Transfer** | Header | Moves it to another agent, queue or department |
 | **Release** | Header | Gives it up so somebody else can take it |
 | **Ask to delete** (bin) | Header | Asks an administrator to delete the conversation |
+| **Redact** | On a message | Removes what that one message said. Administrators only |
 | **Details** (i) | Header | Opens status, queue, customer and the AI summary |
 | **Send** | Reply box | Sends your reply over the customer's own channel |
 | **Attach** (paperclip) | Reply box | Adds a file |
@@ -924,6 +925,58 @@ open anything to know where a conversation stands.
 > **Note** — Status, priority and queue are changed from **Details**.
 > They are re-filing rather than replying, which is why they are one
 > click away instead of on screen all day.
+
+### Redacting a message
+
+**Purpose:** remove what a single message said — a customer who pasted
+their card number into the chat, a colleague who sent something that
+should not be in the record.
+
+**Permissions required:** `messages.redact`. Administrators and the
+account Owner. Agents cannot redact.
+
+**Redaction removes the words, not the message.** The message stays in
+the conversation — in the right place, with the right time, marked as
+redacted. That is deliberate. A message sent over WhatsApp or email
+cannot be unsent: the customer still has their copy. Deleting ours would
+destroy our half of a record they can still produce, which is the worst
+of both.
+
+#### Step by step
+
+1. Open the conversation and find the message.
+2. Select **Redact** on the message.
+3. Write **why**. At least a sentence — this is what an auditor will
+   read, possibly years later.
+4. Confirm.
+
+`[Screenshot placeholder: The redact dialog on a single message, with the reason field]`
+
+> **Warning** — This cannot be undone. There is no "show me what it said"
+> anywhere in the product afterwards, for anybody, including the Owner.
+
+#### What gets removed
+
+| | |
+|---|---|
+| The message text | Gone |
+| Anything the channel provider stored with it | Gone |
+| Files attached to that message | Deleted from storage |
+| Anything the AI had learned or remembered from it | Removed |
+| The fact that a message was sent, by whom, and when | **Kept** |
+| Who redacted it and why | **Kept, permanently** |
+
+> **Note** — A redacted message can never be used again: it is excluded
+> from AI answers, from what the platform learns, and from search.
+
+#### Common mistakes
+
+- **Using redaction for a whole conversation.** Redaction is one message
+  at a time. To remove an entire conversation, ask for it to be deleted
+  — see below.
+- **Expecting the customer's copy to disappear.** It will not. Redaction
+  removes our record, not theirs.
+- **Writing "PII" as the reason.** It will be refused. Say what happened.
 
 ### Deleting a conversation
 

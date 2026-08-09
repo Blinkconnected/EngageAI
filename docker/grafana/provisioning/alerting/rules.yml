@@ -351,3 +351,127 @@ groups:
               conditions:
                 - evaluator: { type: lt, params: [1] }
               refId: C
+
+      - uid: blinkengage-nginx-down
+        title: nginx is down
+        condition: C
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: The edge is not answering. Every customer request goes through nginx, so this is a total outage from a customer's point of view.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              # `nginx_up`, not `up{job="nginx"}`. The exporter is a
+              # separate process: when nginx dies it keeps answering
+              # Prometheus and reports nginx_up=0, so the scrape stays
+              # healthy and `up` stays 1. A rule on `up` would have been
+              # silent for exactly the outage it is named after —
+              # verified by stopping nginx and watching it not fire.
+              #
+              # `or vector(0)` covers the other direction: if the
+              # exporter itself is gone the series disappears entirely,
+              # and an alert with no data is an alert that does not fire.
+              expr: nginx_up or vector(0)
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+              refId: C
+
+      - uid: blinkengage-grafana-down
+        title: Grafana is down
+        condition: C
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Grafana is unreachable. Alert evaluation and every dashboard stop with it.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: up{job="grafana"}
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+              refId: C
+
+      - uid: blinkengage-loki-down
+        title: Loki is down
+        condition: C
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: Loki is unreachable. Logs are still written to disk but cannot be searched during an incident.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: up{job="loki"}
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+              refId: C
+
+      # A heartbeat that is always firing, on purpose.
+      #
+      # Every other rule here proves something is wrong. None of them can
+      # prove the alerting path itself still works: if Grafana stops
+      # evaluating, or the contact point silently stops delivering, the
+      # symptom is *silence* — which is indistinguishable from a healthy
+      # platform. `vector(1) > 0` is unconditionally true, so this fires
+      # continuously and the sink receives it on every notification cycle.
+      #
+      # The signal is its ABSENCE. If ops-heartbeat stops arriving, alerting
+      # is broken, whatever the dashboards say. Route it somewhere that
+      # notices silence rather than at a human, who would learn to ignore it.
+      - uid: blinkengage-alerting-heartbeat
+        title: Alerting heartbeat
+        condition: C
+        for: 0s
+        labels:
+          severity: heartbeat
+        annotations:
+          summary: >-
+            Always firing. Its absence means the alerting path is broken, not
+            that the platform is healthy.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: vector(1)
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+              refId: C

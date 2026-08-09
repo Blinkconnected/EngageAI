@@ -491,6 +491,15 @@ services:
       replicas: 0
     restart: "no"
 
+  nginx-exporter:
+    logging: *prod-logging
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64m
+
   node-exporter:
     logging: *prod-logging
     restart: always

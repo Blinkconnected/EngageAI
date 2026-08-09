@@ -127,6 +127,22 @@ class Message(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         GUID(), ForeignKey("messages.id", ondelete="SET NULL"), default=None
     )
     message_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+    #: Set when the content was removed. The row stays: a message sent
+    #: over WhatsApp or email cannot be unsent, so deleting our copy
+    #: would destroy our half of a record the customer still holds.
+    #: ``body`` is NULL and ``message_metadata`` stripped once this is
+    #: set — the marker and the removal happen together, in one
+    #: transaction, so a reader can trust one to imply the other.
+    redacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None, index=True
+    )
+    #: ``SET NULL`` rather than cascade: the person may leave, the record
+    #: of the redaction must not. The immutable account of who and why
+    #: lives in ``message_redactions``.
+    redacted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

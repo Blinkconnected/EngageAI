@@ -129,6 +129,43 @@ setting that works is `PAYPAL_SANDBOX=false`. Recorded as
 AI providers (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_BASE_URL`),
 payment providers, ERPNext, rate limits, token lifetimes.
 
+## 4b. Pinned image versions
+
+Every third-party image is pinned to a **content digest**, not a tag.
+`:latest` meant the stack was not reproducible: a `docker compose pull`
+could change MinIO, Prometheus or Grafana underneath a deployed release,
+and the disaster-recovery runbook's "check out the commit the set was
+taken at" could restore the code but not the images it ran with.
+
+Pinned 2026-08-08 to **the digests already running**, read from the live
+containers rather than from a registry — pinning records what is
+deployed, it does not choose new versions. Nothing was upgraded.
+
+| Service | Version | Pinned as |
+|---|---|---|
+| MinIO | `RELEASE.2025-09-07T16-13-09Z` | `minio/minio@sha256:14cea493…` |
+| MinIO client | current | `minio/mc@sha256:…` |
+| Prometheus | 3.13.1 | `prom/prometheus@sha256:3c42b892…` |
+| Grafana | 13.1.1 | `grafana/grafana@sha256:1c1bd67c…` |
+| Loki | 3.7.4 | `grafana/loki@sha256:87f0a067…` |
+| Promtail | 24.04 | `grafana/promtail@sha256:6cfa64ec…` |
+| node-exporter | 1.12.1 | `prom/node-exporter@sha256:1b4e4438…` |
+| redis_exporter | v1.87.0 | `oliver006/redis_exporter@sha256:9ca6f929…` |
+| postgres-exporter | current | `prometheuscommunity/postgres-exporter@sha256:ac5ec343…` |
+| celery-exporter | current | `danihodovic/celery-exporter@sha256:7e462274…` |
+| GreenMail (dev only) | 22.04 | `greenmail/standalone@sha256:53cf220d…` |
+
+Already pinned by tag and left alone: `pgvector/pgvector:pg17`,
+`redis:7-alpine`, `rabbitmq:3.13-management-alpine`, `nginx:1.27-alpine`.
+
+**Upgrading one is now a deliberate, reviewable act.** Pull the new
+image, read its changelog, replace the digest, and deploy — rather than
+discovering the change because something broke.
+
+```bash
+docker image inspect <image>:<new-tag> --format '{{index .RepoDigests 0}}'
+```
+
 ## 5. Start the stack
 
 ```bash
@@ -141,6 +178,32 @@ alone runs a development configuration in production.
 
 Migrations run automatically at container start, serialised by a Postgres
 advisory lock, so several containers starting at once is safe.
+
+> **The Celery worker and beat must actually restart.** Celery builds its
+> task registry once, when the app module is imported at process start.
+> `./backend` is bind-mounted in the development stack, so the *files* on
+> disk are current while the *process* keeps the registry it built when it
+> started — a scheduled task added since then is never registered, and
+> never runs.
+>
+> Observed on this deployment: the worker started `2026-08-05 15:03`;
+> `configuration_drift_task` entered the include list at `19:32` that day
+> and `operational_retention_task` at `03:13` the next. Neither task
+> existed in the worker's registry for three days. Nothing errored —
+> `celery-worker` reported healthy throughout, and only the
+> scheduler-staleness alert caught it.
+>
+> `up -d --build` recreates containers whose image changed, which normally
+> covers this. Confirm rather than assume:
+>
+> ```bash
+> docker compose exec celery-worker \
+>   celery -A blinkengage.core.celery_app inspect registered | grep -c '^    \*'
+> ```
+>
+> Compare that count against the beat schedule in `core/celery_app.py`. A
+> task in `beat_schedule` but absent from the registry is a sweep that
+> will never run.
 
 Watch it come up:
 

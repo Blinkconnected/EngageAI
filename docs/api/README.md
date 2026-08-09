@@ -160,7 +160,9 @@ rationale:
 | `/reports` | `reports.read` | `docs/architecture/reports-analytics.md` |
 | `/search` | authentication only — filtered per entity type inside (see architecture doc) | `docs/architecture/global-search.md` |
 | `/conversations/{id}/deletion-request` | `conversations.delete_request` to ask; `conversations.read` to see one | `docs/architecture/conversation-deletion.md` |
-| `/conversation-deletion-requests` | `conversations.delete_approve` — deciding, not asking | `docs/architecture/conversation-deletion.md` |
+| `/conversation-deletion-requests` | `conversations.delete_approve` — deciding, not asking |
+| `/conversations/{id}/messages/{message_id}/redact` | `messages.redact` — Owner and Admin only, never an Agent |
+| `/message-redactions` | `messages.redact` — the append-only record; never returns redacted content | `docs/architecture/conversation-deletion.md` |
 | `/csat` | see "Public endpoints" above (respond) / `conversations.manage` (generate link) | `docs/architecture/reports-analytics.md` |
 | `/erp-configs`, `/webhooks/erpnext` | `erp.manage` / shared secret | `docs/architecture/erp-integration.md` |
 | `/billing` | `billing.read` — the caller's **own** company only; there is deliberately no `company_id` parameter | `docs/architecture/billing.md` |

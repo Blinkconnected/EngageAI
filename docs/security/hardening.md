@@ -165,3 +165,46 @@ regressions. `docker-compose` files needed no changes — no new service,
 no new runtime dependency requiring a rebuild beyond the existing
 `backend`/`celery-*`/consumer images already rebuilt after each
 milestone's dependency changes.
+
+## Message redaction
+
+Removing customer content on request, without destroying the record that
+a message existed. See `docs/architecture/message-redaction.md`.
+
+**Threat model.** The control exists for content that should never have
+been stored: payment details typed into a chat, credentials, health
+information volunteered in the wrong channel. The requirement is that
+after redaction the content is not retrievable through any interface
+this platform offers.
+
+**What is guaranteed.** The body is overwritten in place, provider
+metadata is filtered through an allow-list, attachments are deleted from
+object storage, and every citation in Memory and Learning is removed.
+Future analysis excludes the message at the source query. Verified by
+tests that assert the string is absent from the API, the database row,
+AI transcripts, search and the Conversation Inspector.
+
+**What is not guaranteed, and must not be claimed to a customer:**
+
+- **Backups taken before the redaction still contain it.** Restoring one
+  restores the content. Erasure obligations that extend to backups need
+  a documented backup-expiry period; this platform's sets are retained
+  14 days locally and 30 remotely by default.
+- **The customer's own copy is untouched.** A message delivered to
+  WhatsApp, SMS or email cannot be recalled.
+- **Postgres may retain the old row version** until the page is vacuumed
+  and reused. The value is unreachable through SQL but is not
+  cryptographically erased from disk.
+
+**Separation of duties.** `messages.redact` is held by Administrators
+and the Owner, never Agents. It is deliberately separate from
+`conversations.delete`, which remains Owner-only and additionally gates
+bulk destruction through agent removal — adding a new destructive
+permission is the natural way to widen an old boundary by accident, so
+`test_destructive_permission_boundaries.py` asserts it did not.
+
+**Audit.** `message_redactions` is append-only: no code path updates or
+deletes a row, and its foreign keys are `SET NULL` so the record outlives
+what it describes. It holds actor, timestamp, reason, message,
+conversation, company, and counts of what was purged — and never the
+content itself.

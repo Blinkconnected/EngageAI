@@ -80,6 +80,15 @@ PERMISSIONS: tuple[Permission, ...] = (
         "conversations.delete_approve",
         "Approve or reject a request to delete a conversation",
     ),
+    # Removing what a single message said, keeping that it was said. A
+    # narrower authority than deleting a conversation and a different
+    # shape: it is irreversible, per-message, always audited, and has no
+    # bulk path. Administrators hold it; agents do not, because a
+    # redaction cannot be undone by the person who notices the mistake.
+    Permission(
+        "messages.redact",
+        "Redact the content of a message, permanently",
+    ),
     # A separate, narrower permission than conversations.manage: replying/
     # closing/queue-assigning a conversation is routine agent work, but
     # transferring it to another agent or department is a supervisory
@@ -199,6 +208,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "conversations.release",
             "conversations.delete_request",
             "conversations.delete_approve",
+            "messages.redact",
             "reports.read",
             "audit_logs.read",
             "channels.read",

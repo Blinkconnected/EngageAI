@@ -67,6 +67,17 @@ class FakeAttachmentStore:
     async def download(self, *, key: str) -> bytes:
         return self._objects[key]
 
+    async def delete(self, *, key: str) -> None:
+        """Actually removes it, so a test can prove purging happened.
+
+        A no-op here would make every redaction test pass while the real
+        object stayed downloadable — the exact failure this fake exists
+        to catch. Tolerant of a missing key for the same reason MinIO is:
+        deleting something already gone is the desired end state, not an
+        error, and a retried purge must not fail on its second attempt.
+        """
+        self._objects.pop(key, None)
+
     async def download_range(self, *, key: str, offset: int, length: int | None) -> bytes:
         """Slices like MinIO does, so range behaviour is actually covered.
 

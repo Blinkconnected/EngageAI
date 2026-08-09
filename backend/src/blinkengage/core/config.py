@@ -7,7 +7,7 @@ All runtime configuration is sourced from environment variables (see
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from blinkengage.domain.learning_cluster import (
@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     #: customer's flow. Semantic, and the pre-release suffix is ignored when
     #: comparing — a connector requiring 1.0.0 is satisfied by 1.0.0-beta.5,
     #: or nothing could declare a minimum before the first stable release.
-    platform_version: str = "1.1.0"
+    platform_version: str = "1.2.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
@@ -492,6 +492,92 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @model_validator(mode="after")
+    def _refuse_unsafe_production(self) -> "Settings":
+        """Refuse to start a production deployment on development defaults.
+
+        Every default in this file is chosen to make a laptop work with
+        no configuration at all, which is right for a laptop and wrong
+        for anything carrying customer data. Nothing previously noticed
+        the difference: a production deployment inheriting `DEBUG=true`
+        or `minioadmin` came up green, served traffic, and reported
+        healthy.
+
+        Fail *closed*, and fail at startup. A misconfiguration that
+        surfaces on the first request has already been deployed, already
+        passed a smoke test, and is already somebody's incident. One that
+        refuses to boot is a five-minute fix before anyone notices.
+
+        Only ``environment == "production"`` is checked. Development,
+        test and staging keep every convenience default — the point is
+        to stop a dangerous *combination*, not to make the stack tedious
+        to run.
+        """
+        if not self.is_production:
+            return self
+
+        problems: list[str] = []
+
+        if self.debug:
+            problems.append("DEBUG=true — tracebacks and configuration are exposed to callers")
+
+        # Well-known defaults. Anyone who has read the MinIO quickstart
+        # knows both of these, which makes them equivalent to no
+        # credential at all.
+        if self.s3_access_key == "minioadmin" or self.s3_secret_key == "minioadmin":
+            problems.append(
+                "S3_ACCESS_KEY/S3_SECRET_KEY are still MinIO's published defaults "
+                "('minioadmin') — object storage, including every customer "
+                "attachment, is effectively unauthenticated"
+            )
+
+        # Length is already enforced by Field(min_length=32); this catches
+        # 32 characters of *nothing*. A key repeated from the example file
+        # or padded with one character is not a secret.
+        for name, value in (
+            ("JWT_SECRET_KEY", self.jwt_secret_key),
+            ("CREDENTIALS_ENCRYPTION_KEY", self.credentials_encryption_key),
+        ):
+            if len(set(value)) < 8:
+                problems.append(
+                    f"{name} has almost no variety in its characters — it looks "
+                    f"like padding rather than a generated secret"
+                )
+            if "change" in value.lower() or "example" in value.lower():
+                problems.append(f"{name} still contains placeholder text")
+
+        if self.jwt_secret_key == self.credentials_encryption_key:
+            # They are separate settings precisely so rotating one does
+            # not invalidate the other; sharing a value silently removes
+            # that property.
+            problems.append(
+                "JWT_SECRET_KEY and CREDENTIALS_ENCRYPTION_KEY are identical — "
+                "rotating either one would invalidate every stored credential "
+                "and every session at once"
+            )
+
+        # A wildcard origin plus cookie-bearing requests is the standard
+        # cross-site read.
+        if "*" in self.cors_allow_origins:
+            problems.append("CORS_ALLOW_ORIGINS contains '*'")
+
+        # `localhost` in a production origin list means the list was
+        # copied from the example and never edited.
+        if any("localhost" in origin for origin in self.cors_allow_origins):
+            problems.append("CORS_ALLOW_ORIGINS still lists localhost — it looks unedited")
+
+        if self.database_echo:
+            problems.append("DATABASE_ECHO=true — every statement, with its values, is logged")
+
+        if problems:
+            raise ValueError(
+                "This configuration is not safe to run as production:\n"
+                + "\n".join(f"  - {problem}" for problem in problems)
+                + "\n\nSet ENVIRONMENT to development/staging, or fix the above. "
+                "See docs/deployment/production-deployment-guide.md."
+            )
+        return self
 
 
 @lru_cache

@@ -100,6 +100,7 @@ from blinkengage.infrastructure.database.models.message import (
     MessageType,
     ReadStatus,
 )
+from blinkengage.infrastructure.database.models.message_redaction import MessageRedaction
 from blinkengage.infrastructure.database.models.notification import Notification
 from blinkengage.infrastructure.database.models.notification_preference import (
     NotificationPreference,
@@ -225,6 +226,7 @@ __all__ = [
     "InternalNote",
     "OWNER_KNOWLEDGE_CHUNK",
     "ConversationDeletionRequest",
+    "MessageRedaction",
     "Embedding",
     "Faq",
     "FaqTag",

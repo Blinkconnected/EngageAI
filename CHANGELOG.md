@@ -14,7 +14,70 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-08
+
 ### Added
+
+- **Message redaction.** Removing what a single message said, keeping
+  that it was said. A message sent over WhatsApp or email cannot be
+  unsent — the customer keeps their copy — so deleting ours would
+  destroy our half of a record they can still produce. The message stays
+  in the thread, in order, marked redacted, with a permanent record of
+  who removed it and why.
+
+  It removes the text, the copy the channel provider stored alongside
+  it, any attached files from object storage, and every citation of the
+  message in Memory and Learning. Future analysis excludes it at source,
+  so a redacted message can never become evidence for anything.
+  Administrators and the Owner; never agents, because a redaction cannot
+  be undone by whoever notices the mistake a minute later.
+
+  New permission `messages.redact`. `conversations.delete` is untouched
+  and remains Owner-only.
+
+### Changed
+
+- **Production configuration now refuses to start when it is unsafe.**
+  Every default in the platform is chosen so a laptop works with no
+  configuration, which is right for a laptop and wrong for anything
+  holding customer data. A production deployment inheriting `DEBUG=true`
+  or MinIO's published `minioadmin` credentials used to come up green
+  and serve traffic. It now fails at startup, listing every problem at
+  once rather than one per restart.
+
+- **Every third-party container image is pinned to a content digest.**
+  `:latest` meant a `docker compose pull` could change MinIO, Prometheus
+  or Grafana underneath a deployed release. Pinned to the versions
+  already running; nothing was upgraded.
+
+- **nginx and the monitoring stack are now monitored.** The edge — which
+  every customer request passes through — had no scrape target and no
+  alert, so its failure was indistinguishable from a total outage and
+  nothing would have paged. Grafana and Loki are watched too, and an
+  always-firing heartbeat makes the alerting path itself observable:
+  if it stops arriving, alerting is broken, whatever the dashboards say.
+
+### Fixed
+
+- **`PAYPAL_ENVIRONMENT` was advertised and read by nothing.** Setting it
+  to `live` left the platform in sandbox — healthy, and taking no real
+  money. The switch is `PAYPAL_SANDBOX`, which is now what the example
+  file documents. A test refuses any future variable that nothing reads.
+
+- **A scheduled task had not run for three days** and nothing but the
+  staleness alert noticed. The worker process predated the code that
+  registers it: Celery builds its task registry once, at start, so a
+  deploy that does not recreate the worker silently loses every
+  scheduled task added since. Documented in the deployment guide with a
+  command to confirm it.
+
+- **156 MB pgvector index on a table with no rows.** HNSW indexes do not
+  return their pages on delete; rebuilt to 16 kB.
+
+- **The new nginx exporter shipped without production hardening** — no
+  memory limit, no log rotation, no healthcheck. Caught by the existing
+  overlay-completeness test, which is exactly the kind of thing that
+  test exists for.
 
 - **Deleting a conversation now takes two people.** Until now one
   person could remove a conversation on their own, quietly, with no
