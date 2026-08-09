@@ -17,15 +17,25 @@ await p.screenshot({ path: '.visual-check/mail-settings.png', fullPage: true })
 
 const body = await p.textContent('body')
 console.log('title present:', body.includes('Email delivery'))
-console.log('env banner:', body.includes("environment configuration"))
+console.log('env banner:', body.includes('environment configuration'))
 console.log('host field:', await p.inputValue('input[value="greenmail"]').catch(() => 'NOT FOUND'))
 
 // Send a real test message through the form.
-await p.fill('input[type="email"]:below(:text("Send a test message"))', 'browser-check@blinkconnected.com')
+await p.fill(
+  'input[type="email"]:below(:text("Send a test message"))',
+  'browser-check@blinkconnected.com',
+)
 await p.click('button:has-text("Send test")')
 await p.waitForTimeout(2500)
 const after = await p.textContent('body')
-console.log('test result shown:', after.includes('Test message sent') ? 'DELIVERED' : after.includes('refused') ? 'REFUSED' : 'no result')
+console.log(
+  'test result shown:',
+  after.includes('Test message sent')
+    ? 'DELIVERED'
+    : after.includes('refused')
+      ? 'REFUSED'
+      : 'no result',
+)
 await p.screenshot({ path: '.visual-check/mail-settings-tested.png', fullPage: true })
-console.log('console errors:', errors.length ? errors.slice(0,3) : 'none')
+console.log('console errors:', errors.length ? errors.slice(0, 3) : 'none')
 await b.close()

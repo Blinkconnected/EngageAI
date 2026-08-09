@@ -12,17 +12,27 @@ const measure = async (label) => {
   const box = await paper.boundingBox()
   const st = await paper.evaluate((el) => {
     const c = getComputedStyle(el)
-    return { w: c.width, h: c.height, bl: c.borderLeftWidth, br: c.borderRightWidth,
-             blc: c.borderLeftColor, brc: c.borderRightColor, dir: getComputedStyle(document.documentElement).direction }
+    return {
+      w: c.width,
+      h: c.height,
+      bl: c.borderLeftWidth,
+      br: c.borderRightWidth,
+      blc: c.borderLeftColor,
+      brc: c.borderRightColor,
+      dir: getComputedStyle(document.documentElement).direction,
+    }
   })
-  const of = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  const of = await p.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
   console.log(label, JSON.stringify({ x: Math.round(box.x), ...st, overflow: of }))
 }
 await measure('LTR light: ')
 
 // Dark mode
 await p.click('button[aria-label*="dark" i], button[aria-label*="theme" i]').catch(async () => {
-  const btns = await p.$$('header button'); if (btns[3]) await btns[3].click()
+  const btns = await p.$$('header button')
+  if (btns[3]) await btns[3].click()
 })
 await p.waitForTimeout(1200)
 await measure('LTR dark:  ')
@@ -30,10 +40,11 @@ await p.screenshot({ path: '.visual-check/sidebar-dark.png', fullPage: false })
 
 // Arabic (RTL)
 await p.click('button[aria-label*="language" i]').catch(async () => {
-  const btns = await p.$$('header button'); if (btns[2]) await btns[2].click()
+  const btns = await p.$$('header button')
+  if (btns[2]) await btns[2].click()
 })
 await p.waitForTimeout(600)
-await p.click('li:has-text("العربية"), [role="menuitem"]:has-text("العربية")').catch(()=>{})
+await p.click('li:has-text("العربية"), [role="menuitem"]:has-text("العربية")').catch(() => {})
 await p.waitForTimeout(2000)
 await measure('RTL dark:  ')
 await p.screenshot({ path: '.visual-check/sidebar-rtl.png', fullPage: false })

@@ -3,8 +3,10 @@ const base = process.argv[2]
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 const errors = []
-page.on('console', m => { if (m.type() === 'error') errors.push('CONSOLE: ' + m.text()) })
-page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message))
+page.on('console', (m) => {
+  if (m.type() === 'error') errors.push('CONSOLE: ' + m.text())
+})
+page.on('pageerror', (e) => errors.push('PAGEERROR: ' + e.message))
 const resp = await page.goto(base + '/changelog', { waitUntil: 'networkidle' })
 await page.waitForTimeout(1200)
 console.log('HTTP:', resp?.status())

@@ -6,7 +6,7 @@ await p.goto(base + '/login', { waitUntil: 'networkidle' })
 await p.locator('input').first().fill(email)
 await p.locator('input[type="password"]').first().fill(password)
 await p.getByRole('button', { name: /sign in/i }).click()
-await p.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 20000 })
+await p.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20000 })
 await p.evaluate(() => {
   localStorage.setItem('blinkengage.language', 'ar')
   localStorage.setItem('blinkengage.direction', 'rtl')

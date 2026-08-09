@@ -13,10 +13,17 @@ await p.waitForTimeout(800)
 await p.click('div.MuiSelect-select')
 await p.waitForTimeout(400)
 const opts = await p.$$('[role="option"]')
-console.log('types:', await Promise.all(opts.map(o => o.textContent())))
-for (const o of opts) { if (/messenger/i.test((await o.textContent()) || '')) { await o.click(); break } }
+console.log('types:', await Promise.all(opts.map((o) => o.textContent())))
+for (const o of opts) {
+  if (/messenger/i.test((await o.textContent()) || '')) {
+    await o.click()
+    break
+  }
+}
 await p.waitForTimeout(900)
-const labels = await p.$$eval('label', els => els.map(e => e.textContent?.trim()).filter(Boolean))
+const labels = await p.$$eval('label', (els) =>
+  els.map((e) => e.textContent?.trim()).filter(Boolean),
+)
 console.log('Messenger fields:', labels)
 const body = await p.textContent('body')
 console.log('says App Secret:', /App Secret/.test(body))

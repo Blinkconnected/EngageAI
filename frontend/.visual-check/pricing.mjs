@@ -1,25 +1,33 @@
 import { chromium } from '@playwright/test'
-const [ , , base, email, password ] = process.argv
+const [, , base, email, password] = process.argv
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } })
 const errors = []
-page.on('console', m => { if (m.type() === 'error') errors.push('CONSOLE: ' + m.text()) })
-page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message))
+page.on('console', (m) => {
+  if (m.type() === 'error') errors.push('CONSOLE: ' + m.text())
+})
+page.on('pageerror', (e) => errors.push('PAGEERROR: ' + e.message))
 
 await page.goto(base + '/login', { waitUntil: 'domcontentloaded' })
-await page.evaluate(() => { sessionStorage.clear(); localStorage.clear() })
+await page.evaluate(() => {
+  sessionStorage.clear()
+  localStorage.clear()
+})
 await page.goto(base + '/login', { waitUntil: 'networkidle' })
 await page.locator('input').first().fill(email)
 await page.locator('input[type="password"]').first().fill(password)
 await page.getByRole('button', { name: /sign in/i }).click()
-await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 20000 })
+await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20000 })
 
 await page.goto(base + '/platform/pricing', { waitUntil: 'networkidle' })
 await page.waitForTimeout(1500)
 const rows = await page.locator('table').first().locator('tbody tr').allInnerTexts()
 console.log('PRICING ROWS:')
 for (const r of rows) console.log('  ', JSON.stringify(r.replace(/\n/g, ' | ')))
-console.log('WARNS ABOUT UNPRICED:', (await page.locator('body').innerText()).includes('No price is configured'))
+console.log(
+  'WARNS ABOUT UNPRICED:',
+  (await page.locator('body').innerText()).includes('No price is configured'),
+)
 
 // Edit the conversation price and confirm it persists + audits.
 const row = page.locator('tbody tr', { hasText: 'Conversation' }).first()
@@ -30,7 +38,7 @@ await input.fill('0.0575')
 await dialog.getByLabel(/reason/i).fill('Browser verification')
 await dialog.getByRole('button', { name: /save price/i }).click()
 await page.waitForTimeout(1800)
-console.log('DIALOG CLOSED:', await dialog.count() === 0)
+console.log('DIALOG CLOSED:', (await dialog.count()) === 0)
 
 await page.reload({ waitUntil: 'networkidle' })
 await page.waitForTimeout(1200)

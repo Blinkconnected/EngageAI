@@ -33,12 +33,20 @@ console.log('PLATFORM NAV:', JSON.stringify(platformNav.replace(/\n/g, ' | ')))
 console.log('DIR:', await page.evaluate(() => document.documentElement.dir))
 
 // --- Cross into the billing console ------------------------------------
-await page.locator('nav a', { hasText: /Billing Console|وحدة تحكم الفوترة/ }).first().click()
+await page
+  .locator('nav a', { hasText: /Billing Console|وحدة تحكم الفوترة/ })
+  .first()
+  .click()
 await page.waitForURL(/\/platform\/billing/, { timeout: 10000 })
 await page.waitForTimeout(1500)
 console.log('URL:', new URL(page.url()).pathname)
-console.log('HEADER:', JSON.stringify((await page.locator('header').innerText()).replace(/\n/g, ' | ')))
-const priceTable = page.locator('table[aria-label="Effective pricing"], table[aria-label="التسعير الساري"]')
+console.log(
+  'HEADER:',
+  JSON.stringify((await page.locator('header').innerText()).replace(/\n/g, ' | ')),
+)
+const priceTable = page.locator(
+  'table[aria-label="Effective pricing"], table[aria-label="التسعير الساري"]',
+)
 const rows = await priceTable.locator('tbody tr').allInnerTexts()
 console.log('CURRENCY SELECTOR:', await page.getByLabel(/^Currency|^العملة/).count())
 console.log('PRICING ROWS:')
@@ -46,7 +54,9 @@ for (const r of rows) console.log('  ', JSON.stringify(r.replace(/\n/g, ' | ')))
 await page.screenshot({ path: `.visual-check/billing-console-${lang}.png`, fullPage: true })
 
 // --- The editor: flat, then tiered, previewed by the server ------------
-const row = priceTable.locator('tbody tr', { hasText: /Billable message|رسالة قابلة للفوترة/ }).first()
+const row = priceTable
+  .locator('tbody tr', { hasText: /Billable message|رسالة قابلة للفوترة/ })
+  .first()
 await row.getByRole('button', { name: /edit|تعديل/i }).click()
 const dialog = page.getByRole('dialog')
 await dialog.waitFor()
@@ -66,9 +76,15 @@ await page.waitForTimeout(400)
 console.log(
   'MODELS OFFERED:',
   JSON.stringify(
-    await page.locator('[role="option"]').evaluateAll((els) =>
-      els.map((e) => e.textContent.trim() + (e.getAttribute('aria-disabled') === 'true' ? ' [disabled]' : '')),
-    ),
+    await page
+      .locator('[role="option"]')
+      .evaluateAll((els) =>
+        els.map(
+          (e) =>
+            e.textContent.trim() +
+            (e.getAttribute('aria-disabled') === 'true' ? ' [disabled]' : ''),
+        ),
+      ),
   ),
 )
 await page.keyboard.press('Escape')
@@ -96,10 +112,7 @@ await upTos.click()
 await page.waitForTimeout(2000)
 const previewTiered = await dialog.locator('[data-testid="pricing-preview"]').innerText()
 console.log('PREVIEW (tiered):', JSON.stringify(previewTiered.replace(/\n/g, ' | ')))
-console.log(
-  'HISTORY NOTE SHOWN:',
-  /never re-rates|لا يعيد تسعير/.test(await dialog.innerText()),
-)
+console.log('HISTORY NOTE SHOWN:', /never re-rates|لا يعيد تسعير/.test(await dialog.innerText()))
 await page.screenshot({ path: `.visual-check/pricing-editor-${lang}.png`, fullPage: true })
 
 // A refusal from the server, shown while typing rather than on save.
@@ -117,7 +130,11 @@ await dialog.getByRole('button', { name: /Cancel|إلغاء/i }).click()
 // --- A company's billing page moved with pricing -----------------------
 await page.goto(base + '/platform', { waitUntil: 'networkidle' })
 await page.waitForTimeout(1200)
-await page.locator('[role="row"] a, tbody a').filter({ hasText: /^Billing$|^الفواتير$/ }).first().click()
+await page
+  .locator('[role="row"] a, tbody a')
+  .filter({ hasText: /^Billing$|^الفواتير$/ })
+  .first()
+  .click()
 await page.waitForTimeout(2000)
 console.log('COMPANY BILLING URL:', new URL(page.url()).pathname)
 console.log(

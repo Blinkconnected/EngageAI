@@ -53,12 +53,19 @@ for (const [label, cardId] of [
   console.log(
     `CARD ${cardId}:`,
     JSON.stringify((await card.innerText()).replace(/\n/g, ' | ')),
-    'label ok:', has(label),
+    'label ok:',
+    has(label),
   )
 }
-console.log('STATUS BANNER:', JSON.stringify((await page.getByTestId('billing-status').innerText()).replace(/\n/g, ' | ')))
+console.log(
+  'STATUS BANNER:',
+  JSON.stringify((await page.getByTestId('billing-status').innerText()).replace(/\n/g, ' | ')),
+)
 console.log('LIVE CHIP:', JSON.stringify(await page.getByTestId('live-chip').innerText()))
-console.log('PROJECTION CARD:', JSON.stringify((await page.getByTestId('projection-card').innerText()).replace(/\n/g, ' | ')))
+console.log(
+  'PROJECTION CARD:',
+  JSON.stringify((await page.getByTestId('projection-card').innerText()).replace(/\n/g, ' | ')),
+)
 
 // --- Estimates and invoices are visibly separate ---------------------
 console.log('ISSUED HEADING:', has('Issued invoices'))
@@ -130,7 +137,10 @@ const dir = await phone.evaluate(() => getComputedStyle(document.documentElement
 const arabic = await phone.locator('body').innerText()
 console.log('RTL DIR:', dir)
 console.log('ARABIC HEADING PRESENT:', arabic.includes('الفواتير'))
-console.log('UNTRANSLATED KEYS:', /\b(page|overview|usage|projection|chart|invoices|prices|configuration)\.[a-zA-Z]+/.test(arabic))
+console.log(
+  'UNTRANSLATED KEYS:',
+  /\b(page|overview|usage|projection|chart|invoices|prices|configuration)\.[a-zA-Z]+/.test(arabic),
+)
 await phone.screenshot({ path: '.visual-check/billing-dashboard-rtl.png', fullPage: true })
 
 console.log('ERRORS:', JSON.stringify(errors))

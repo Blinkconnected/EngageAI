@@ -16,12 +16,22 @@ const paper = await p.$('.MuiDrawer-docked .MuiDrawer-paper')
 const box = await paper.boundingBox()
 const st = await paper.evaluate((el) => {
   const c = getComputedStyle(el)
-  return { w: c.width, h: c.height, borderLeft: c.borderLeftWidth, borderRight: c.borderRightWidth,
-           dir: getComputedStyle(document.documentElement).direction }
+  return {
+    w: c.width,
+    h: c.height,
+    borderLeft: c.borderLeftWidth,
+    borderRight: c.borderRightWidth,
+    dir: getComputedStyle(document.documentElement).direction,
+  }
 })
-const of = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+const of = await p.evaluate(
+  () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+)
 console.log('RTL:', JSON.stringify({ x: Math.round(box.x), ...st, overflow: of }))
 const main = await p.$('main')
-if (main) { const m = await main.boundingBox(); console.log('main x/width:', Math.round(m.x), Math.round(m.width)) }
+if (main) {
+  const m = await main.boundingBox()
+  console.log('main x/width:', Math.round(m.x), Math.round(m.width))
+}
 await p.screenshot({ path: '.visual-check/sidebar-rtl.png', fullPage: false })
 await b.close()
