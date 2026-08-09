@@ -36,7 +36,7 @@ export function LanguageThemeControls() {
   }
 
   return (
-    <Stack direction="row" spacing={0.5} alignItems="center">
+    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
       <Button
         onClick={switchLanguage}
         size="small"

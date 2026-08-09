@@ -46,7 +46,7 @@ export function IntelligencePage() {
       </Typography>
 
       <Alert icon={<VisibilityOutlinedIcon fontSize="inherit" />} severity="info" sx={{ mb: 3 }}>
-        <Typography variant="body2" fontWeight={600}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {t('Page.shadowBannerTitle')}
         </Typography>
         <Typography variant="body2">{t('Page.shadowBannerBody')}</Typography>

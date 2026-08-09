@@ -108,7 +108,10 @@ export function SideNav({ onNavigate }: { onNavigate?: () => void }) {
         </ListItemIcon>
         <ListItemText
           primary={t(item.label)}
-          slotProps={{ primary: { fontSize: NAV_FONT_SIZE } }}
+          // `sx`, not `slotProps.primary.fontSize`: MUI types the primary
+          // slot as TypographyProps, which has no `fontSize` key. The
+          // rendered size is the same; only the typed route differs.
+          slotProps={{ primary: { sx: { fontSize: NAV_FONT_SIZE } } }}
         />
       </ListItemButton>
     )
