@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { Alert, FormControlLabel, Link, MenuItem, Switch, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  FormControlLabel,
+  Link,
+  MenuItem,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { Trans, useTranslation } from 'react-i18next'
 import { FormDialog } from '../../shared/components/FormDialog'
 import { extractErrorMessage } from '../../shared/api/errors'

@@ -97,7 +97,12 @@ export function ThresholdPanel({ canManage }: { canManage: boolean }) {
               onClick={() =>
                 update.mutate(
                   { cluster_join_threshold: pending, reason: reason || undefined },
-                  { onSuccess: () => { setJoin(null); setReason('') } },
+                  {
+                    onSuccess: () => {
+                      setJoin(null)
+                      setReason('')
+                    },
+                  },
                 )
               }
             >

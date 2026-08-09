@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../shared/api/client'
-import type { LearningThresholds, ShadowMetrics, ThresholdUpdateResult, UnclusteredObservation } from './types'
+import type {
+  LearningThresholds,
+  ShadowMetrics,
+  ThresholdUpdateResult,
+  UnclusteredObservation,
+} from './types'
 
 /** The pilot dashboard, in one request.
  *
@@ -72,7 +77,10 @@ export function useUpdateThresholds() {
       cluster_merge_threshold?: number
       reason?: string
     }): Promise<ThresholdUpdateResult> => {
-      const { data } = await apiClient.patch<ThresholdUpdateResult>('/intelligence/thresholds', payload)
+      const { data } = await apiClient.patch<ThresholdUpdateResult>(
+        '/intelligence/thresholds',
+        payload,
+      )
       return data
     },
     onSuccess: () => {

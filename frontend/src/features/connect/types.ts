@@ -15,12 +15,7 @@
 /** How a step is rendered. Six values cover every connector and every one
  * planned; the console switches on this and never on the channel. */
 export type StepKind =
-  | 'select'
-  | 'oauth_redirect'
-  | 'form'
-  | 'resource_picker'
-  | 'checklist'
-  | 'summary'
+  'select' | 'oauth_redirect' | 'form' | 'resource_picker' | 'checklist' | 'summary'
 
 export type StepId = 'select' | 'authenticate' | 'discover' | 'verify' | 'connect'
 

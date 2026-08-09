@@ -36,8 +36,7 @@ import { Amount } from './Money'
 
 function errorText(error: unknown): string | null {
   if (!error) return null
-  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data
-    ?.detail
+  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
   if (typeof detail === 'string') return detail
   return (error as Error).message ?? null
 }
@@ -157,13 +156,7 @@ function RecordPaymentDialog({
 }
 
 /** Returning money, and the history of what has already been returned. */
-function RefundDialog({
-  paymentId,
-  onClose,
-}: {
-  paymentId: string | null
-  onClose: () => void
-}) {
+function RefundDialog({ paymentId, onClose }: { paymentId: string | null; onClose: () => void }) {
   const { t, i18n } = useTranslation('billingOps')
   const refundable = useRefundableQuery(paymentId)
   const refunds = useRefundsQuery(paymentId)
@@ -187,11 +180,7 @@ function RefundDialog({
           {refundable.data && (
             <Typography variant="body2">
               {t('payments.refundable')}{' '}
-              <Amount
-                value={refundable.data.refundable}
-                currency={refundable.data.currency}
-                bold
-              />
+              <Amount value={refundable.data.refundable} currency={refundable.data.currency} bold />
             </Typography>
           )}
           {/* The ceiling comes from the server, which knows what has
@@ -256,10 +245,7 @@ function RefundDialog({
           disabled={!amount.trim() || !reason.trim() || refund.isPending}
           onClick={() =>
             paymentId &&
-            refund.mutate(
-              { paymentId, amount, reason: reason.trim() },
-              { onSuccess: close },
-            )
+            refund.mutate({ paymentId, amount, reason: reason.trim() }, { onSuccess: close })
           }
         >
           {t('payments.refund')}
@@ -472,9 +458,7 @@ export function PaymentsPage() {
                       hover
                       sx={{ opacity: allocation.reversed ? 0.6 : 1 }}
                     >
-                      <TableCell>
-                        {formatMoment(allocation.allocated_at, i18n.language)}
-                      </TableCell>
+                      <TableCell>{formatMoment(allocation.allocated_at, i18n.language)}</TableCell>
                       <TableCell>{allocation.invoice_number ?? '—'}</TableCell>
                       <TableCell>{allocation.payment_reference ?? '—'}</TableCell>
                       <TableCell align="right">

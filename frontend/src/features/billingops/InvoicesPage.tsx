@@ -70,8 +70,7 @@ function CurrencyTable({
             <Amount value={group.total_amount} currency={group.currency} bold />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {t('invoices.paid')}{' '}
-            <Amount value={group.amount_paid} currency={group.currency} />
+            {t('invoices.paid')} <Amount value={group.amount_paid} currency={group.currency} />
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {t('invoices.credited')}{' '}
@@ -190,10 +189,12 @@ export function InvoicesPage() {
 
   // Every filter change returns to the first page. Staying on page four of
   // a result that now has two is how a screen shows nothing and looks broken.
-  const change = <T,>(setter: (value: T) => void) => (value: T) => {
-    setter(value)
-    setPage(0)
-  }
+  const change =
+    <T,>(setter: (value: T) => void) =>
+    (value: T) => {
+      setter(value)
+      setPage(0)
+    }
 
   const total = query.data?.total ?? 0
   const cap = query.data?.export_row_cap ?? 0
@@ -235,9 +236,7 @@ export function InvoicesPage() {
               size="small"
               label={t('filters.status')}
               value={status}
-              onChange={(event) =>
-                change(setStatus)(event.target.value as InvoiceStatus | '')
-              }
+              onChange={(event) => change(setStatus)(event.target.value as InvoiceStatus | '')}
               sx={{ minWidth: 160 }}
             >
               <MenuItem value="">{t('filters.anyStatus')}</MenuItem>
@@ -307,9 +306,7 @@ export function InvoicesPage() {
         <CurrencyTable key={group.currency} group={group} onOpen={setOpen} />
       ))}
 
-      {query.data && total === 0 && (
-        <Alert severity="info">{t('invoices.noMatches')}</Alert>
-      )}
+      {query.data && total === 0 && <Alert severity="info">{t('invoices.noMatches')}</Alert>}
 
       {total > 0 && (
         <TablePagination
@@ -324,9 +321,7 @@ export function InvoicesPage() {
             setPage(0)
           }}
           labelRowsPerPage={t('pagination.perPage')}
-          labelDisplayedRows={({ from, to, count }) =>
-            t('pagination.showing', { from, to, count })
-          }
+          labelDisplayedRows={({ from, to, count }) => t('pagination.showing', { from, to, count })}
         />
       )}
 

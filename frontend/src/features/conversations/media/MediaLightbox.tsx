@@ -183,13 +183,7 @@ export function MediaLightbox({ conversationId }: { conversationId: string }) {
   )
 }
 
-function LightboxSurface({
-  attachment,
-  src,
-}: {
-  attachment: Attachment
-  src: string | null
-}) {
+function LightboxSurface({ attachment, src }: { attachment: Attachment; src: string | null }) {
   const { t } = useTranslation('conversationsExtra')
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)

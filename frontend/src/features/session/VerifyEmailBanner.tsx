@@ -15,9 +15,7 @@ import { useCurrentUserQuery } from './api'
 export function VerifyEmailBanner() {
   const { t } = useTranslation('session')
   const session = useCurrentUserQuery()
-  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'throttled' | 'failed'>(
-    'idle',
-  )
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'throttled' | 'failed'>('idle')
 
   if (!session.data || session.data.company.verified) return null
 

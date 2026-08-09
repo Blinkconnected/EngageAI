@@ -171,7 +171,12 @@ function RequestCard({
 
       {request.status === 'pending' && (
         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-          <Button size="small" color="error" variant="contained" onClick={() => onDecide('approve')}>
+          <Button
+            size="small"
+            color="error"
+            variant="contained"
+            onClick={() => onDecide('approve')}
+          >
             {t('DeletionApprovals.approve')}
           </Button>
           <Button size="small" onClick={() => onDecide('reject')}>
@@ -204,10 +209,7 @@ function DecisionDialog({
 
   function handleConfirm() {
     if (noteTooShort) return
-    mutation.mutate(
-      { requestId: request.id, note: trimmed || undefined },
-      { onSuccess: onClose },
-    )
+    mutation.mutate({ requestId: request.id, note: trimmed || undefined }, { onSuccess: onClose })
   }
 
   return (

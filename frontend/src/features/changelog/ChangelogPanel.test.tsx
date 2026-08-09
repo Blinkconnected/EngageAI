@@ -128,10 +128,7 @@ describe('ChangelogPanel', () => {
     renderWithProviders(<ChangelogPanel />)
     await screen.findByText('Currently running')
 
-    await user.type(
-      screen.getByLabelText('Search release notes'),
-      'nonexistent-feature-xyz',
-    )
+    await user.type(screen.getByLabelText('Search release notes'), 'nonexistent-feature-xyz')
     expect(await screen.findByText('No matching releases')).toBeInTheDocument()
     expect(
       screen.getByText('Nothing in the release history matches "nonexistent-feature-xyz".'),

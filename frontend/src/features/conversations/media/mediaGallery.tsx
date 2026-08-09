@@ -1,10 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import {
-  GalleryContext,
-  type GalleryContextValue,
-  type GalleryItem,
-} from './galleryContext'
+import { GalleryContext, type GalleryContextValue, type GalleryItem } from './galleryContext'
 import type { Message } from '../types'
 
 /** Collects every inline attachment in the thread so the lightbox can move

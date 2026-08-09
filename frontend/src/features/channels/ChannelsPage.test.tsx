@@ -172,10 +172,7 @@ describe('ChannelsPage', () => {
 
     await user.click(screen.getByRole('button', { name: /^connect channel$/i }))
     expect(await screen.findByText(/channel connected/i)).toBeInTheDocument()
-  }, // section on top of the shared heavy DataGrid mount every test in this // the suite that types into two extra fields and toggles a Collapse // this sandbox's constrained (2-core) hardware — it's the one test in // This test alone exceeds the file's already-bumped 15s default under
-  // file pays for. A local override here (not another global bump) keeps
-  // the rest of the suite's timeout tight on ordinary CI hardware.
-  30_000)
+  }, 30_000) // the rest of the suite's timeout tight on ordinary CI hardware. // file pays for. A local override here (not another global bump) keeps // section on top of the shared heavy DataGrid mount every test in this // the suite that types into two extra fields and toggles a Collapse // this sandbox's constrained (2-core) hardware — it's the one test in // This test alone exceeds the file's already-bumped 15s default under
 
   it('connects a Web Chat channel with no credential fields required', async () => {
     const user = userEvent.setup()

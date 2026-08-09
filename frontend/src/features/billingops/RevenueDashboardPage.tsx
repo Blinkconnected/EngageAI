@@ -171,10 +171,7 @@ function CurrencyCard({ row }: { row: CurrencyRevenue }) {
               it really did collect more than it billed, and the percentage
               says so even though a progress bar has nowhere to show it. */}
           {ratio !== null && (
-            <Tooltip
-              title={ratio > 1 ? t('revenue.collectionRatioOver') : ''}
-              disableInteractive
-            >
+            <Tooltip title={ratio > 1 ? t('revenue.collectionRatioOver') : ''} disableInteractive>
               <LinearProgress
                 variant="determinate"
                 value={Math.min(ratio, 1) * 100}

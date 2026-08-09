@@ -104,8 +104,7 @@ function ReasonForm({
 
 function errorText(error: unknown): string | null {
   if (!error) return null
-  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data
-    ?.detail
+  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
   if (typeof detail === 'string') return detail
   return (error as Error).message ?? null
 }
@@ -204,8 +203,7 @@ export function InvoiceDetailDialog({
 
   const detail = query.data
   const invoice = detail?.invoice
-  const pending =
-    issue.isPending || cancel.isPending || writeOff.isPending
+  const pending = issue.isPending || cancel.isPending || writeOff.isPending
   const failure = errorText(issue.error ?? cancel.error ?? writeOff.error)
 
   // What this document actually permits, mirroring the engine's own rules
@@ -223,13 +221,11 @@ export function InvoiceDetailDialog({
     // Only a live debt can be abandoned, and only once.
     writeOff: Boolean(
       invoice &&
-        ['issued', 'overdue'].includes(invoice.status) &&
-        !invoice.written_off_at &&
-        owed > 0,
+      ['issued', 'overdue'].includes(invoice.status) &&
+      !invoice.written_off_at &&
+      owed > 0,
     ),
-    cancelVisible: Boolean(
-      invoice && ['draft', 'issued', 'overdue'].includes(invoice.status),
-    ),
+    cancelVisible: Boolean(invoice && ['draft', 'issued', 'overdue'].includes(invoice.status)),
     // Withdrawing a document somebody has paid against would leave their
     // money attached to nothing.
     cancel: Boolean(invoice && Number(invoice.amount_paid) === 0),

@@ -61,9 +61,7 @@ export function CompanyPicker({
       // hide results it deliberately returned.
       filterOptions={(items) => items}
       noOptionsText={t('filters.noCompanies')}
-      renderInput={(params) => (
-        <TextField {...params} label={label ?? t('filters.company')} />
-      )}
+      renderInput={(params) => <TextField {...params} label={label ?? t('filters.company')} />}
     />
   )
 }

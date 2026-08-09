@@ -103,16 +103,14 @@ export function Figure({
   )
 }
 
-const INVOICE_COLOURS: Record<
-  InvoiceStatus,
-  'default' | 'info' | 'success' | 'error' | 'warning'
-> = {
-  draft: 'default',
-  issued: 'info',
-  paid: 'success',
-  overdue: 'error',
-  cancelled: 'warning',
-}
+const INVOICE_COLOURS: Record<InvoiceStatus, 'default' | 'info' | 'success' | 'error' | 'warning'> =
+  {
+    draft: 'default',
+    issued: 'info',
+    paid: 'success',
+    overdue: 'error',
+    cancelled: 'warning',
+  }
 
 export function InvoiceStatusChip({ status }: { status: InvoiceStatus }) {
   const { t } = useTranslation('billingOps')

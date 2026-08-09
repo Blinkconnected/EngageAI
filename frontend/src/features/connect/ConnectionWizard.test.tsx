@@ -40,9 +40,27 @@ const MANIFEST: ConnectorManifest = {
 
 function session(overrides: Partial<WizardSession> = {}): WizardSession {
   const steps: WizardSession['steps'] = [
-    { id: 'select', kind: 'select', title_key: 'connect.step.select', automatic: false, state: 'complete' },
-    { id: 'authenticate', kind: 'form', title_key: 'connect.step.credentials', automatic: false, state: 'active' },
-    { id: 'connect', kind: 'summary', title_key: 'connect.step.connect', automatic: false, state: 'pending' },
+    {
+      id: 'select',
+      kind: 'select',
+      title_key: 'connect.step.select',
+      automatic: false,
+      state: 'complete',
+    },
+    {
+      id: 'authenticate',
+      kind: 'form',
+      title_key: 'connect.step.credentials',
+      automatic: false,
+      state: 'active',
+    },
+    {
+      id: 'connect',
+      kind: 'summary',
+      title_key: 'connect.step.connect',
+      automatic: false,
+      state: 'pending',
+    },
   ]
   return {
     session_id: 's-1',
@@ -72,7 +90,9 @@ function mockWizard({
   onConnect?: () => void
 } = {}) {
   server.use(
-    http.post(`${API_BASE_URL}/channel-connect/sessions`, () => HttpResponse.json(start, { status: 201 })),
+    http.post(`${API_BASE_URL}/channel-connect/sessions`, () =>
+      HttpResponse.json(start, { status: 201 }),
+    ),
     http.post(`${API_BASE_URL}/channel-connect/sessions/:id/advance`, async ({ request }) => {
       onAdvance((await request.json()) as Record<string, unknown>)
       return HttpResponse.json(advanced ?? start)
@@ -417,9 +437,7 @@ describe('ChannelPicker', () => {
       <ChannelPicker open onClose={() => {}} onPick={(choice) => picked.push(choice)} />,
     )
 
-    await userEvent
-      .setup()
-      .click(await screen.findByText(/connect one whatsapp business number/i))
+    await userEvent.setup().click(await screen.findByText(/connect one whatsapp business number/i))
 
     expect(picked).toEqual([{ templateKey: 'bundle' }])
   })

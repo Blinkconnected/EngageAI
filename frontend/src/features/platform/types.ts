@@ -320,11 +320,7 @@ export interface PricingRate {
  * `redirect` sends them to a hosted checkout, `bill_presentment` publishes
  * a bill they pay at their own bank, `credit_transfer` is money they push
  * to an alias, and `operator_entry` is finance recording what arrived. */
-export type PaymentFlow =
-  | 'redirect'
-  | 'bill_presentment'
-  | 'credit_transfer'
-  | 'operator_entry'
+export type PaymentFlow = 'redirect' | 'bill_presentment' | 'credit_transfer' | 'operator_entry'
 
 /** `awaiting_integration` means credentials can be stored but no adapter
  * exists yet — shown plainly rather than as a button that cannot work. */

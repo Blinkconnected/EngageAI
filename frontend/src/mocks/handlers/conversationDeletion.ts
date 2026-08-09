@@ -95,7 +95,10 @@ export const conversationDeletionHandlers = [
           )
         }
         if (decision === 'reject' && !body.note) {
-          return HttpResponse.json({ detail: 'Say why you are turning this down.' }, { status: 400 })
+          return HttpResponse.json(
+            { detail: 'Say why you are turning this down.' },
+            { status: 400 },
+          )
         }
         found.status = decision === 'approve' ? 'approved' : 'rejected'
         found.decided_by_name = 'Mock Self Agent'

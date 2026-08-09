@@ -37,8 +37,7 @@ import type { CompanyStanding, CurrencyAging } from './types'
 
 function errorText(error: unknown): string | null {
   if (!error) return null
-  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data
-    ?.detail
+  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
   if (typeof detail === 'string') return detail
   return (error as Error).message ?? null
 }
@@ -80,9 +79,7 @@ function AgingTable({ books }: { books: CurrencyAging }) {
             {books.buckets.map((bucket) => (
               <TableRow key={bucket.bucket}>
                 <TableCell>
-                  <Typography variant="body2">
-                    {t(`agingBucket.${bucket.bucket}`)}
-                  </Typography>
+                  <Typography variant="body2">{t(`agingBucket.${bucket.bucket}`)}</Typography>
                 </TableCell>
                 <TableCell align="right">
                   <Count value={bucket.invoice_count} />
@@ -151,10 +148,7 @@ function ExemptionDialog({
           {exemption.error && <Alert severity="error">{errorText(exemption.error)}</Alert>}
           <FormControlLabel
             control={
-              <Switch
-                checked={exempt}
-                onChange={(event) => setExempt(event.target.checked)}
-              />
+              <Switch checked={exempt} onChange={(event) => setExempt(event.target.checked)} />
             }
             label={t('collections.neverAutoSuspend')}
           />
@@ -317,11 +311,7 @@ export function CollectionsPage() {
                       <StandingChip status={row.billing_status} />
                       {row.never_auto_suspend && (
                         <Tooltip title={t('collections.exemptHelp')} disableInteractive>
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={t('collections.exempt')}
-                          />
+                          <Chip size="small" variant="outlined" label={t('collections.exempt')} />
                         </Tooltip>
                       )}
                     </Stack>

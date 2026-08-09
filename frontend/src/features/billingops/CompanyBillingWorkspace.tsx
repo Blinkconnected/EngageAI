@@ -71,9 +71,7 @@ function useCompanyDashboard(companyId: string | undefined) {
     queryKey: ['billing-ops', 'company', companyId, 'dashboard'],
     enabled: Boolean(companyId),
     queryFn: async (): Promise<DashboardSnapshot> => {
-      const { data } = await apiClient.get(
-        `/platform/billing/companies/${companyId}/dashboard`,
-      )
+      const { data } = await apiClient.get(`/platform/billing/companies/${companyId}/dashboard`)
       return data as DashboardSnapshot
     },
   })
@@ -159,10 +157,7 @@ export function CompanyBillingWorkspace() {
                 caption={
                   standing.data.billing_suspended_at
                     ? t('company.suspendedOn', {
-                        moment: formatMoment(
-                          standing.data.billing_suspended_at,
-                          i18n.language,
-                        ),
+                        moment: formatMoment(standing.data.billing_suspended_at, i18n.language),
                       })
                     : undefined
                 }
@@ -173,9 +168,7 @@ export function CompanyBillingWorkspace() {
                   <Amount
                     value={standing.data.amount_outstanding}
                     currency={standing.data.currency}
-                    colour={
-                      standing.data.overdue_invoices > 0 ? 'warning.main' : undefined
-                    }
+                    colour={standing.data.overdue_invoices > 0 ? 'warning.main' : undefined}
                   />
                 }
                 caption={t('company.openInvoices', {
@@ -188,10 +181,7 @@ export function CompanyBillingWorkspace() {
                 <Figure
                   label={t('company.monthToDate')}
                   value={
-                    <Amount
-                      value={overview.estimated_month_to_date}
-                      currency={overview.currency}
-                    />
+                    <Amount value={overview.estimated_month_to_date} currency={overview.currency} />
                   }
                   caption={t('company.monthToDateCaption', {
                     elapsed: overview.days_elapsed,
@@ -204,10 +194,7 @@ export function CompanyBillingWorkspace() {
                   label={t('company.projected')}
                   value={
                     projection.projected_total ? (
-                      <Amount
-                        value={projection.projected_total}
-                        currency={projection.currency}
-                      />
+                      <Amount value={projection.projected_total} currency={projection.currency} />
                     ) : (
                       <Typography variant="h6" component="span" color="text.secondary">
                         {t('company.projectionUnavailable')}
@@ -228,9 +215,7 @@ export function CompanyBillingWorkspace() {
               {overview && Number(overview.credit_balance) > 0 && (
                 <Figure
                   label={t('company.creditHeld')}
-                  value={
-                    <Amount value={overview.credit_balance} currency={overview.currency} />
-                  }
+                  value={<Amount value={overview.credit_balance} currency={overview.currency} />}
                   caption={t('company.creditHeldCaption')}
                 />
               )}

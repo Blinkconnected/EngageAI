@@ -17,12 +17,7 @@ import { LoadingState } from '../../../shared/components/LoadingState'
 import { useAiReportQuery, useAiUsageReportQuery } from '../api'
 import { ReportDataGrid } from '../ReportDataGrid'
 import { ReportExportButtons } from '../ReportExportButtons'
-import type {
-  AiAgentUsageRow,
-  AiOperationRow,
-  AiUsageGranularity,
-  DateRange,
-} from '../types'
+import type { AiAgentUsageRow, AiOperationRow, AiUsageGranularity, DateRange } from '../types'
 
 export function AiReportPanel({ range }: { range: DateRange }) {
   const { t, i18n } = useTranslation('reportsPanels')
@@ -169,12 +164,7 @@ export function AiReportPanel({ range }: { range: DateRange }) {
 
           <Card variant="outlined" sx={{ mt: 3 }}>
             <CardContent>
-              <Typography
-                variant="subtitle1"
-                component="h2"
-                sx={{ fontWeight: 600 }}
-                gutterBottom
-              >
+              <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }} gutterBottom>
                 {t('AiReportPanel.byAgentTitle')}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

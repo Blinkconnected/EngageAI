@@ -134,7 +134,9 @@ describe('DashboardPage', () => {
     expect(breachedCard).toBeInTheDocument()
 
     // Non-zero reads as an alert, unlike the neutral counts beside it.
-    const totalCard = screen.getByText('Total conversations').closest('.MuiCard-root') as HTMLElement
+    const totalCard = screen
+      .getByText('Total conversations')
+      .closest('.MuiCard-root') as HTMLElement
     expect(breachedCard.className).not.toEqual(totalCard.className)
   })
 
@@ -160,7 +162,9 @@ describe('DashboardPage', () => {
     ) as HTMLElement
     expect(breachedCard).toBeInTheDocument()
 
-    const totalCard = screen.getByText('Total conversations').closest('.MuiCard-root') as HTMLElement
+    const totalCard = screen
+      .getByText('Total conversations')
+      .closest('.MuiCard-root') as HTMLElement
     expect(breachedCard.className).toEqual(totalCard.className)
   })
 

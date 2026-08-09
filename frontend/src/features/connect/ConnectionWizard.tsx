@@ -14,11 +14,7 @@ import {
 } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { extractErrorMessage } from '../../shared/api/errors'
-import {
-  useAdvanceSessionMutation,
-  useConnectMutation,
-  useStartSessionMutation,
-} from './api'
+import { useAdvanceSessionMutation, useConnectMutation, useStartSessionMutation } from './api'
 import {
   ChecklistStep,
   FormStep,
@@ -110,9 +106,7 @@ export function ConnectionWizard({
         ? { ...values, display_name: displayName }
         : current?.kind === 'resource_picker'
           ? {
-              selected: Object.fromEntries(
-                session.channel_types.map((type) => [type, selected]),
-              ),
+              selected: Object.fromEntries(session.channel_types.map((type) => [type, selected])),
             }
           : {}
 
@@ -174,9 +168,7 @@ export function ConnectionWizard({
             <FormStep
               fields={session?.fields ?? []}
               values={values}
-              onChange={(name, value) =>
-                setValues((previous) => ({ ...previous, [name]: value }))
-              }
+              onChange={(name, value) => setValues((previous) => ({ ...previous, [name]: value }))}
               disabled={busy}
             />
           )}
@@ -194,8 +186,7 @@ export function ConnectionWizard({
               emptyKey={manifest?.required_resources[0]?.empty_key}
               onToggle={(id) =>
                 setSelected((previous) => {
-                  const multiple =
-                    manifest?.required_resources.some((r) => r.multiple) ?? false
+                  const multiple = manifest?.required_resources.some((r) => r.multiple) ?? false
                   if (previous.includes(id)) return previous.filter((x) => x !== id)
                   return multiple ? [...previous, id] : [id]
                 })

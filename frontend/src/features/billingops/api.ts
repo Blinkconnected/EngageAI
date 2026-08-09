@@ -75,10 +75,9 @@ export function useInvoiceSearchQuery(params: InvoiceSearchParams) {
   return useQuery({
     queryKey: [...INVOICES_KEY, 'search', params],
     queryFn: async (): Promise<InvoiceSearchResult> => {
-      const { data } = await apiClient.get<InvoiceSearchResult>(
-        '/platform/invoices/search',
-        { params },
-      )
+      const { data } = await apiClient.get<InvoiceSearchResult>('/platform/invoices/search', {
+        params,
+      })
       return data
     },
   })
@@ -89,9 +88,7 @@ export function useInvoiceQuery(invoiceId: string | null) {
     queryKey: [...INVOICES_KEY, invoiceId],
     enabled: Boolean(invoiceId),
     queryFn: async (): Promise<InvoiceDetail> => {
-      const { data } = await apiClient.get<InvoiceDetail>(
-        `/platform/invoices/${invoiceId}`,
-      )
+      const { data } = await apiClient.get<InvoiceDetail>(`/platform/invoices/${invoiceId}`)
       return data
     },
   })
@@ -176,9 +173,7 @@ export function useIssueInvoiceMutation() {
   const invalidate = useInvalidateBilling()
   return useMutation({
     mutationFn: async (invoiceId: string): Promise<InvoiceDetail> => {
-      const { data } = await apiClient.post<InvoiceDetail>(
-        `/platform/invoices/${invoiceId}/issue`,
-      )
+      const { data } = await apiClient.post<InvoiceDetail>(`/platform/invoices/${invoiceId}/issue`)
       return data
     },
     onSuccess: invalidate,
@@ -264,10 +259,9 @@ export function useWriteOffMutation() {
   const invalidate = useInvalidateBilling()
   return useMutation({
     mutationFn: async (input: { invoiceId: string; reason: string }) => {
-      const { data } = await apiClient.post(
-        `/platform/ledger/write-offs/${input.invoiceId}`,
-        { reason: input.reason },
-      )
+      const { data } = await apiClient.post(`/platform/ledger/write-offs/${input.invoiceId}`, {
+        reason: input.reason,
+      })
       return data
     },
     onSuccess: invalidate,
@@ -366,9 +360,7 @@ export function useRefundsQuery(paymentId: string | null) {
     queryKey: [...PAYMENTS_KEY, paymentId, 'refunds'],
     enabled: Boolean(paymentId),
     queryFn: async (): Promise<Refund[]> => {
-      const { data } = await apiClient.get<Refund[]>(
-        `/platform/payments/${paymentId}/refunds`,
-      )
+      const { data } = await apiClient.get<Refund[]>(`/platform/payments/${paymentId}/refunds`)
       return data
     },
   })
@@ -429,10 +421,9 @@ export function useAgingQuery(companyId?: string) {
   return useQuery({
     queryKey: [...COLLECTIONS_KEY, 'aging', companyId ?? 'all'],
     queryFn: async (): Promise<AgingReport> => {
-      const { data } = await apiClient.get<AgingReport>(
-        '/platform/payments/collections/aging',
-        { params: companyId ? { company_id: companyId } : undefined },
-      )
+      const { data } = await apiClient.get<AgingReport>('/platform/payments/collections/aging', {
+        params: companyId ? { company_id: companyId } : undefined,
+      })
       return data
     },
   })
@@ -493,9 +484,7 @@ export function useReinstateMutation() {
   const invalidate = useInvalidateBilling()
   return useMutation({
     mutationFn: async (companyId: string) => {
-      const { data } = await apiClient.post(
-        `/platform/payments/collections/${companyId}/reinstate`,
-      )
+      const { data } = await apiClient.post(`/platform/payments/collections/${companyId}/reinstate`)
       return data
     },
     onSuccess: invalidate,

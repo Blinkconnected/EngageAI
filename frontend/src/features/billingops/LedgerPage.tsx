@@ -70,9 +70,7 @@ function TrialBalance() {
                   size="small"
                   color={books.in_balance ? 'success' : 'error'}
                   variant={books.in_balance ? 'outlined' : 'filled'}
-                  label={
-                    books.in_balance ? t('ledger.inBalance') : t('ledger.outOfBalance')
-                  }
+                  label={books.in_balance ? t('ledger.inBalance') : t('ledger.outOfBalance')}
                 />
                 <Typography variant="caption" color="text.secondary">
                   {t('ledger.entryCount', { count: books.entry_count })}
@@ -244,19 +242,13 @@ export function LedgerPage() {
             >
               <Figure
                 label={t('ledger.opening')}
-                value={
-                  <Amount value={statement.opening_balance} currency={statement.currency} />
-                }
+                value={<Amount value={statement.opening_balance} currency={statement.currency} />}
                 caption={t('ledger.openingCaption')}
               />
               <Figure
                 label={t('ledger.closing')}
                 value={
-                  <Amount
-                    value={statement.closing_balance}
-                    currency={statement.currency}
-                    bold
-                  />
+                  <Amount value={statement.closing_balance} currency={statement.currency} bold />
                 }
                 caption={t(`ledgerAccount.${statement.account}`)}
                 emphasis
@@ -316,11 +308,7 @@ export function LedgerPage() {
                     </TableCell>
                     <TableCell>{row.entry.reference_number ?? '—'}</TableCell>
                     <TableCell align="right">
-                      {row.debit ? (
-                        <Amount value={row.debit} currency={row.entry.currency} />
-                      ) : (
-                        '—'
-                      )}
+                      {row.debit ? <Amount value={row.debit} currency={row.entry.currency} /> : '—'}
                     </TableCell>
                     <TableCell align="right">
                       {row.credit ? (
@@ -355,9 +343,9 @@ export function LedgerPage() {
                 rowsPerPage={PAGE_SIZE}
                 rowsPerPageOptions={[PAGE_SIZE]}
                 labelRowsPerPage={t('pagination.perPage')}
-              labelDisplayedRows={({ from, to, count }) =>
-                t('pagination.showing', { from, to, count })
-              }
+                labelDisplayedRows={({ from, to, count }) =>
+                  t('pagination.showing', { from, to, count })
+                }
               />
             )}
           </CardContent>

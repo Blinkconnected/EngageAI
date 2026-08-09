@@ -26,8 +26,7 @@ import type { CreditNoteLineSelection } from './types'
 
 function errorText(error: unknown): string | null {
   if (!error) return null
-  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data
-    ?.detail
+  const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
   if (typeof detail === 'string') return detail
   if (Array.isArray(detail)) {
     const first = detail[0] as { msg?: string } | undefined
@@ -246,11 +245,7 @@ export function CreditNoteDialog({
               </Typography>
               <Typography variant="subtitle1">
                 {t('credit.total')}{' '}
-                <Amount
-                  value={preview.data.total_amount}
-                  currency={preview.data.currency}
-                  bold
-                />
+                <Amount value={preview.data.total_amount} currency={preview.data.currency} bold />
               </Typography>
               {/* Formatted, not interpolated raw: the API sends amounts at
                   storage scale, and "412.500000" in a sentence is machine

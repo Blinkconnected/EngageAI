@@ -88,9 +88,7 @@ function signedInAsOperator() {
     http.get(`${API_BASE_URL}/platform/companies`, () =>
       HttpResponse.json({ items: [], total: 0, page: 1, page_size: 20 }),
     ),
-    http.get(`${API_BASE_URL}/platform/billing/revenue`, () =>
-      HttpResponse.json(TWO_CURRENCIES),
-    ),
+    http.get(`${API_BASE_URL}/platform/billing/revenue`, () => HttpResponse.json(TWO_CURRENCIES)),
   )
 }
 
@@ -287,9 +285,7 @@ describe('the console navigation', () => {
       http.get(`${API_BASE_URL}/platform/payments/collections/aging`, () =>
         HttpResponse.json({ as_of: '2026-07-31T12:00:00Z', currencies: [] }),
       ),
-      http.get(`${API_BASE_URL}/platform/payments/collections/status`, () =>
-        HttpResponse.json([]),
-      ),
+      http.get(`${API_BASE_URL}/platform/payments/collections/status`, () => HttpResponse.json([])),
     )
     goTo('/platform/billing')
     render(<App />)

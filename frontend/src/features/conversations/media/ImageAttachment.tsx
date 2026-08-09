@@ -46,9 +46,7 @@ export function ImageAttachment({ attachment }: { attachment: Attachment }) {
       >
         <BrokenImageOutlinedIcon fontSize="small" />
         <Typography variant="caption">
-          {attachment.needs_fallback
-            ? t('Media.formatUnsupported')
-            : t('Media.previewUnavailable')}
+          {attachment.needs_fallback ? t('Media.formatUnsupported') : t('Media.previewUnavailable')}
         </Typography>
         {src && (
           <Button

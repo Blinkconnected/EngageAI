@@ -16,18 +16,9 @@
 
 export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'overdue' | 'cancelled'
 
-export type BillingStatus =
-  | 'active'
-  | 'payment_due'
-  | 'payment_overdue'
-  | 'payment_suspended'
+export type BillingStatus = 'active' | 'payment_due' | 'payment_overdue' | 'payment_suspended'
 
-export type AgingBucketKey =
-  | 'current'
-  | 'days_1_30'
-  | 'days_31_60'
-  | 'days_61_90'
-  | 'days_90_plus'
+export type AgingBucketKey = 'current' | 'days_1_30' | 'days_31_60' | 'days_61_90' | 'days_90_plus'
 
 export type LedgerAccount =
   | 'accounts_receivable'
@@ -49,10 +40,7 @@ export type LedgerEntryType =
   | 'receivable.written_off'
   | 'adjustment.manual'
 
-export type RunRateMethod =
-  | 'trailing_30_day'
-  | 'scaled_from_window'
-  | 'insufficient_history'
+export type RunRateMethod = 'trailing_30_day' | 'scaled_from_window' | 'insufficient_history'
 
 // --- Revenue ---------------------------------------------------------
 
@@ -448,12 +436,7 @@ export interface CompanyStanding {
 }
 
 export type DunningStage =
-  | 'upcoming'
-  | 'due_today'
-  | 'first_notice'
-  | 'second_notice'
-  | 'final_notice'
-  | 'suspended'
+  'upcoming' | 'due_today' | 'first_notice' | 'second_notice' | 'final_notice' | 'suspended'
 
 export interface DunningNotice {
   id: string

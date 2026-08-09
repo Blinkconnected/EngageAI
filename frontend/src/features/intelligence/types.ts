@@ -59,7 +59,11 @@ export interface ShadowMetrics {
   pipeline_version: number
   shadow_mode: ShadowMode
   throughput: Throughput
-  growth: { clusters_total: number; created_per_day: Record<string, number>; created_in_window: number }
+  growth: {
+    clusters_total: number
+    created_per_day: Record<string, number>
+    created_in_window: number
+  }
   size_distribution: SizeDistribution
   stability: { mean: Measured; clusters_measured: number; note: string }
   merge_rate: { merged_clusters: number; total_clusters: number; rate: Measured; note: string }
@@ -83,7 +87,12 @@ export interface ShadowMetrics {
     precision: Measured
     precision_note: string
   }
-  anomaly_quality: { by_kind: Record<string, number>; total: number; precision: Measured; precision_note: string }
+  anomaly_quality: {
+    by_kind: Record<string, number>
+    total: number
+    precision: Measured
+    precision_note: string
+  }
   churn: {
     live_clusters: number
     dormant: number

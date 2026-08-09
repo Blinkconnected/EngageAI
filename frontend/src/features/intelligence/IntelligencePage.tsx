@@ -45,11 +45,7 @@ export function IntelligencePage() {
         {t('Page.title')}
       </Typography>
 
-      <Alert
-        icon={<VisibilityOutlinedIcon fontSize="inherit" />}
-        severity="info"
-        sx={{ mb: 3 }}
-      >
+      <Alert icon={<VisibilityOutlinedIcon fontSize="inherit" />} severity="info" sx={{ mb: 3 }}>
         <Typography variant="body2" fontWeight={600}>
           {t('Page.shadowBannerTitle')}
         </Typography>
@@ -210,8 +206,14 @@ export function IntelligencePage() {
                   {t('Findings.title')}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                  <Chip size="small" label={t('Findings.trends', { count: data.trend_quality.confirmed_total })} />
-                  <Chip size="small" label={t('Findings.anomalies', { count: data.anomaly_quality.total })} />
+                  <Chip
+                    size="small"
+                    label={t('Findings.trends', { count: data.trend_quality.confirmed_total })}
+                  />
+                  <Chip
+                    size="small"
+                    label={t('Findings.anomalies', { count: data.anomaly_quality.total })}
+                  />
                 </Stack>
                 {/* Precision is null by construction in shadow mode, and
                     saying so is more useful than an empty chart. */}

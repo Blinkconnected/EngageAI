@@ -32,16 +32,15 @@ import type { ConnectorProfile, LifecycleState } from './types'
  * chip nobody reads, and the states worth interrupting for are the ones that
  * change what a customer should expect.
  */
-const BADGE: Partial<
-  Record<LifecycleState, { color: 'info' | 'warning' | 'error' | 'default' }>
-> = {
-  preview: { color: 'info' },
-  beta: { color: 'info' },
-  deprecated: { color: 'warning' },
-  maintenance: { color: 'warning' },
-  disabled: { color: 'default' },
-  end_of_life: { color: 'error' },
-}
+const BADGE: Partial<Record<LifecycleState, { color: 'info' | 'warning' | 'error' | 'default' }>> =
+  {
+    preview: { color: 'info' },
+    beta: { color: 'info' },
+    deprecated: { color: 'warning' },
+    maintenance: { color: 'warning' },
+    disabled: { color: 'default' },
+    end_of_life: { color: 'error' },
+  }
 
 function ConnectorCard({
   profile,
@@ -73,10 +72,7 @@ function ConnectorCard({
           : null
 
   return (
-    <Card
-      variant="outlined"
-      sx={{ opacity: profile.connectable ? 1 : 0.6, height: '100%' }}
-    >
+    <Card variant="outlined" sx={{ opacity: profile.connectable ? 1 : 0.6, height: '100%' }}>
       <CardActionArea
         onClick={onPick}
         disabled={!profile.connectable}
@@ -180,20 +176,10 @@ export function ChannelPicker({
                         sx={{ p: 2 }}
                         onClick={() => onPick({ templateKey: template.key })}
                       >
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          sx={{ alignItems: 'center', mb: 0.25 }}
-                        >
-                          <Typography variant="subtitle2">
-                            {copy(template.title_key)}
-                          </Typography>
+                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.25 }}>
+                          <Typography variant="subtitle2">{copy(template.title_key)}</Typography>
                           {template.recommended && (
-                            <Chip
-                              size="small"
-                              color="primary"
-                              label={t('picker.recommended')}
-                            />
+                            <Chip size="small" color="primary" label={t('picker.recommended')} />
                           )}
                         </Stack>
                         <Typography variant="caption" color="text.secondary">

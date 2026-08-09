@@ -89,9 +89,7 @@ export function FormStep({
               control={
                 <Checkbox
                   checked={values[field.name] === 'true'}
-                  onChange={(event) =>
-                    onChange(field.name, String(event.target.checked))
-                  }
+                  onChange={(event) => onChange(field.name, String(event.target.checked))}
                   disabled={disabled}
                 />
               }
@@ -122,9 +120,7 @@ export function FormStep({
               helperText={help || undefined}
               placeholder={field.placeholder ?? undefined}
               slotProps={
-                field.kind === 'number'
-                  ? { htmlInput: { inputMode: 'numeric' } }
-                  : undefined
+                field.kind === 'number' ? { htmlInput: { inputMode: 'numeric' } } : undefined
               }
             >
               {field.kind === 'select' &&
@@ -135,25 +131,13 @@ export function FormStep({
                 ))}
             </TextField>
             {field.copyable && (
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{ mt: 1, alignItems: 'center' }}
-              >
+              <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
                 <Typography variant="caption" color="text.secondary">
                   {t('wizard.form.copyThis')}
                 </Typography>
-                <Chip
-                  size="small"
-                  label={field.copyable}
-                  sx={{ fontFamily: 'monospace' }}
-                />
+                <Chip size="small" label={field.copyable} sx={{ fontFamily: 'monospace' }} />
                 <Tooltip
-                  title={
-                    copied === field.name
-                      ? t('wizard.form.copied')
-                      : t('wizard.form.copy')
-                  }
+                  title={copied === field.name ? t('wizard.form.copied') : t('wizard.form.copy')}
                 >
                   <IconButton
                     size="small"
@@ -245,11 +229,7 @@ export function ResourcePickerStep({
   const { t } = useTranslation('connectSdk')
 
   if (resources.length === 0) {
-    return (
-      <Alert severity="warning">
-        {copy(emptyKey) || t('wizard.picker.nothingFound')}
-      </Alert>
-    )
+    return <Alert severity="warning">{copy(emptyKey) || t('wizard.picker.nothingFound')}</Alert>
   }
 
   const groups = new Map<string, DiscoveredResource[]>()
@@ -364,10 +344,7 @@ export function ChecklistStep({
           icon={check.blocks ? <ErrorOutlineIcon /> : undefined}
           action={
             check.repair_action && onRepair ? (
-              <Button
-                size="small"
-                onClick={() => onRepair(check.repair_action as string)}
-              >
+              <Button size="small" onClick={() => onRepair(check.repair_action as string)}>
                 {t('wizard.checklist.fixIt')}
               </Button>
             ) : undefined

@@ -38,9 +38,7 @@ export function useSessionQuery(sessionId: string | null) {
   return useQuery({
     queryKey: sessionKey(sessionId ?? ''),
     queryFn: async () => {
-      const { data } = await apiClient.get<WizardSession>(
-        `/channel-connect/sessions/${sessionId}`,
-      )
+      const { data } = await apiClient.get<WizardSession>(`/channel-connect/sessions/${sessionId}`)
       return data
     },
     enabled: Boolean(sessionId),
