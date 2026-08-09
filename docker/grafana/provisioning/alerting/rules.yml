@@ -278,10 +278,29 @@ groups:
               #
               # The result is "intervals missed"; the threshold below is 3,
               # so a task has to miss three of its own cycles.
+              #
+              # `clamp_min(interval, 60)` is a floor on the denominator,
+              # without which this cannot work for fast tasks. Prometheus
+              # scrapes every 15s, so `last_run_timestamp` is only as
+              # fresh as the last scrape. `pickup_waiting_conversations`
+              # runs every 10 seconds: between scrapes `time() -
+              # last_run` routinely reaches 30-45s — 3 to 4.5 of its own
+              # intervals — while the task is running perfectly. Observed
+              # flapping between 2.17 and 4.30 against a threshold of 3,
+              # firing critical on measurement granularity rather than on
+              # anything being wrong.
+              #
+              # The floor says: however fast a task is scheduled, a
+              # minute is the shortest silence worth measuring. A 10s
+              # task now needs three minutes of silence — still fast, and
+              # genuinely stuck rather than merely unscraped. Tasks
+              # slower than a minute are untouched, so the 24h drift
+              # sweep keeps exactly the sensitivity it had.
               expr: >-
                 max(
                   (time() - blinkengage_scheduler_last_run_timestamp_seconds)
-                  / on(task) group_left blinkengage_scheduler_expected_interval_seconds
+                  / on(task) group_left
+                  clamp_min(blinkengage_scheduler_expected_interval_seconds, 60)
                 )
               instant: true
               refId: A
