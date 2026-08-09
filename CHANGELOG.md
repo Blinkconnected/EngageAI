@@ -59,6 +59,12 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **The CI vulnerability scan had stopped running at all.** It pinned an
+  action version upstream deleted when it re-tagged its releases, so the
+  job failed while setting itself up — before scanning anything. A scan
+  that never starts looks the same in the run list as a scan that found
+  nothing. Repinned; every other action reference was checked too.
+
 - **`PAYPAL_ENVIRONMENT` was advertised and read by nothing.** Setting it
   to `live` left the platform in sandbox — healthy, and taking no real
   money. The switch is `PAYPAL_SANDBOX`, which is now what the example

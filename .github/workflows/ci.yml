@@ -170,8 +170,14 @@ jobs:
           load: true
           tags: blinkengage-backend:scan
           cache-from: type=gha
+      # The `v` prefix is load-bearing. Upstream re-tagged every release
+      # with one on 2026-03-20 and deleted the unprefixed tags, so the
+      # old `@0.24.0` stopped resolving and this job began failing in
+      # "Set up job" — before it scanned anything. A scan that cannot
+      # start is indistinguishable in the run list from a scan that found
+      # nothing, which is the failure mode worth commenting on.
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: blinkengage-backend:scan
           severity: CRITICAL,HIGH
