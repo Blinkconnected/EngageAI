@@ -375,7 +375,19 @@ groups:
               # `or vector(0)` covers the other direction: if the
               # exporter itself is gone the series disappears entirely,
               # and an alert with no data is an alert that does not fire.
-              expr: nginx_up or vector(0)
+              # `min(...)`, not a bare `nginx_up`. PromQL's `or` returns
+              # the right-hand side for every label set NOT present on
+              # the left — and `vector(0)` carries an empty label set,
+              # which `nginx_up{instance=...,job=...}` never matches. So
+              # the bare form returned *both* series: nginx_up=1 and a
+              # permanent {}=0, and the alert fired forever regardless of
+              # nginx. It did exactly that for ten hours before this was
+              # caught.
+              #
+              # `min()` aggregates away the labels, so the left side is
+              # also `{}` — now `or` genuinely means "nginx_up if the
+              # exporter is reporting, otherwise 0".
+              expr: min(nginx_up) or vector(0)
               instant: true
               refId: A
           - refId: C
