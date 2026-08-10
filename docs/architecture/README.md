@@ -107,6 +107,7 @@ the platform is **forbidden** to do, and every later document assumes it.
 | [**Event catalogue**](./event-catalogue.md) | **All 99 event types** |
 | [Workflow engine](./workflow-engine.md) | Customer-defined automation |
 | [Notifications](./notifications.md) | Email and push delivery |
+| [Real-time](./realtime.md) | The agent WebSocket contract, presence, reconnect |
 
 ## Customers and CRM
 

@@ -413,6 +413,32 @@ class Settings(BaseSettings):
     # --- Web Chat (see docs/architecture/web-chat.md) ---
     webchat_session_ttl_hours: int = 720  # 30 days, sliding
 
+    # --- Idempotency (see docs/api/mobile-integration-guide.md) ---
+    # How long one in-flight request may hold a key before another request
+    # presenting it is allowed to proceed. Bounds the damage of a worker
+    # dying mid-request: past this, the key is free again. Comfortably
+    # longer than any request that sends a message, and far shorter than
+    # the replay window below.
+    idempotency_reservation_ttl_seconds: int = 60
+    # How long a completed response stays replayable. A day, because the
+    # case this serves is a phone that lost signal — which may be back in
+    # minutes or the following morning, and the answer must be the same
+    # either way.
+    idempotency_result_ttl_hours: int = 24
+
+    # --- Agent presence (see docs/architecture/realtime.md) ---
+    # How long an agent keeps their status after their last socket closes.
+    # Not a tuning knob so much as a statement about what a dropped
+    # connection means: on a phone it usually means the screen locked, and
+    # marking that agent offline drops them out of routing until they
+    # happen to open the app again. Ninety seconds is comfortably longer
+    # than a backgrounded app's reconnect and far shorter than a break.
+    presence_offline_grace_seconds: int = 90
+    # A backstop on the live-connection set, not a session lifetime — see
+    # ``infrastructure.cache.presence``. Only reached by a worker that died
+    # without running its disconnect path.
+    presence_connection_ttl_hours: int = 12
+
     # --- Platform/system email (see docs/architecture/notifications.md) ---
     # Distinct from a company's per-channel EmailProvider credentials
     # (M15, ChannelConfig.credentials) — this is the platform's own

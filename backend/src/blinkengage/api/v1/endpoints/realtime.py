@@ -10,9 +10,13 @@ authenticated user.
 Four things happen over one connection:
 
 1. **Presence** — connecting flips ``Agent.status`` from ``OFFLINE`` to
-   ``ONLINE`` (never overriding an explicit ``AWAY``); disconnecting
-   always sets ``OFFLINE``, since a disconnected agent genuinely can't
-   receive live work.
+   ``ONLINE`` (never overriding an explicit ``AWAY``). Disconnecting does
+   **not** set ``OFFLINE`` directly: it drops this socket from the agent's
+   live set and, only if it was their last one, schedules the transition
+   for ``presence_offline_grace_seconds`` later — see
+   ``infrastructure.cache.presence`` and ``docs/architecture/realtime.md``.
+   A phone that backgrounds and reconnects, or an agent who still has
+   another tab open, never goes offline at all.
 2. **Notifications** — the connection subscribes to the user's personal
    realtime channel and forwards whatever ``NotificationService.create``
    publishes there, live.
@@ -32,6 +36,8 @@ Four things happen over one connection:
 
 import asyncio
 import contextlib
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -43,6 +49,7 @@ from blinkengage.api.deps import (
     get_agent_service_ws,
     get_conversation_service_ws,
     get_db_session_ws,
+    get_presence_store_ws,
     get_realtime_publisher_ws,
     get_settings_dep_ws,
 )
@@ -58,6 +65,7 @@ from blinkengage.core.logging import get_logger
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.company_settings import is_typing_indicator_enabled
 from blinkengage.domain.exceptions import DomainError
+from blinkengage.infrastructure.cache.presence import PresenceStore
 from blinkengage.infrastructure.database.models.agent import AgentStatus
 from blinkengage.infrastructure.events.realtime_publisher import RealtimePublisher
 from blinkengage.infrastructure.repositories.agent_repository import AgentRepository
@@ -76,6 +84,7 @@ async def agent_gateway(
     realtime: Annotated[RealtimePublisher, Depends(get_realtime_publisher_ws)],
     conversation_service: Annotated[ConversationService, Depends(get_conversation_service_ws)],
     agent_service: Annotated[AgentService, Depends(get_agent_service_ws)],
+    presence: Annotated[PresenceStore, Depends(get_presence_store_ws)],
 ) -> None:
     token = websocket.query_params.get("token")
     if token is None:
@@ -101,6 +110,22 @@ async def agent_gateway(
     typing_indicator_enabled = company is not None and is_typing_indicator_enabled(company.settings)
 
     agent = await AgentRepository(session).get_by_user_id(company_id=company_id, user_id=user_id)
+    #: Identifies *this socket* within the agent's live set. Random rather
+    #: than derived from the user: an agent with a laptop and a phone has
+    #: two connections, and the whole point of the set is telling them
+    #: apart.
+    connection_id = secrets.token_urlsafe(16)
+    if agent is not None:
+        # Registered before the status write, and cancelling any pending
+        # offline in the same round trip. Doing it the other way round
+        # leaves a window in which the sweep sees a due agent with an
+        # empty live set and marks online-and-connected agent offline.
+        await presence.connected(
+            company_id=company_id,
+            agent_id=agent.id,
+            connection_id=connection_id,
+            ttl=timedelta(hours=settings.presence_connection_ttl_hours),
+        )
     if agent is not None and agent.status == AgentStatus.OFFLINE:
         await agent_service.update(
             company_id=company_id,
@@ -144,11 +169,16 @@ async def agent_gateway(
         with contextlib.suppress(asyncio.CancelledError):
             await forward_task
         if agent is not None:
-            await agent_service.update(
+            # No status write here. This socket leaves the agent's live
+            # set, and only if it was the last one does the agent become a
+            # candidate for OFFLINE — a deadline the sweep acts on, and
+            # that the agent's next connection cancels. See
+            # ``infrastructure.cache.presence`` for why a disconnect is
+            # not, by itself, an absence.
+            await presence.disconnected(
                 company_id=company_id,
                 agent_id=agent.id,
-                title=None,
-                department_id=None,
-                status=AgentStatus.OFFLINE,
+                connection_id=connection_id,
+                offline_at=datetime.now(UTC)
+                + timedelta(seconds=settings.presence_offline_grace_seconds),
             )
-            await session.commit()

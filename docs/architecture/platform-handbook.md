@@ -549,6 +549,7 @@ missed run, and each disposes its engine pool in a `finally` block (see
 | `blinkengage.ai.pickup_waiting_conversations` | **10s** | Hands AI conversations nobody picked up | The pickup delay defaults to 30s; a coarser sweep would turn that into up to 90s — a different promise than the administrator typed |
 | `blinkengage.notifications.dispatch_pending_pushes` | **10s** | Push notifications | A push's entire value is being current |
 | `blinkengage.notifications.dispatch_pending_emails` | **30s** | Notification emails | An email half a minute late is still an email |
+| `blinkengage.agents.sweep_presence_offline` | **30s** | Marks agents offline once their grace period since the last socket closed has run out | Enforces a 90s grace; a sweep coarser than the grace would make the effective wait up to twice the configured one |
 | `blinkengage.queues.check_sla_breaches` | **60s** | SLA breach detection sweep | A single periodic sweep, **not** a per-conversation timer |
 | `blinkengage.sla.breach_overdue_clocks` | **60s** | Marks clocks out of time | Running out is the one thing that is not an event: *nothing happens*, which is exactly the problem |
 | `blinkengage.channels.poll_email_imap` | **60s** | Fetches `UNSEEN` IMAP mail, marks `\Seen` | IMAP's own flag **is** the idempotency tracker — no cursor table |

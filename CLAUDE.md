@@ -464,6 +464,8 @@ frontend/
 
 backend/
 
+mobile/
+
 docker/
 
 scripts/

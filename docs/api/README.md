@@ -26,6 +26,10 @@ WebSocket routes — paging behaviour on lists that change while you read
 them, attachment streaming, push registration, and an honest audit of the
 gaps a native client will hit.
 
+The WebSocket contract itself — every frame type, the presence model, and
+what a client must do on reconnect — is in
+[`docs/architecture/realtime.md`](../architecture/realtime.md).
+
 ## Events
 
 Integrating with the platform asynchronously? The
@@ -92,8 +96,53 @@ Every list endpoint accepts `page` (1-indexed, default 1) and
 `page_size` (default 20, max 100), returning:
 
 ```json
-{ "items": [...], "total": 123, "page": 1, "page_size": 20 }
+{ "items": [...], "total": 123, "page": 1, "page_size": 20, "next_cursor": null }
 ```
+
+### Cursor paging
+
+The **conversation and message lists** — the two read while they are being
+written — additionally accept `cursor`. Offset paging over a changing list
+can return a row twice or, worse, on no page at all; a keyset cursor names
+a row rather than a position, so it does not move when the rows around it
+do.
+
+Send no cursor for the first page, then follow `next_cursor` until it is
+`null`. The token is opaque: echo it back unchanged. An invalid one is a
+422, not a silent first page.
+
+`total` always means "rows matching the filter" and does not shrink as you
+page. `next_cursor` is `null` on every offset-paged response, so its
+presence in the shape above changes nothing for existing callers.
+
+Note that `cursor` on the conversation list also selects a
+most-recently-active ordering instead of the default worst-SLA-health one:
+health is computed at query time, so it cannot be keyset-paged. See the
+[Mobile Integration Guide](./mobile-integration-guide.md) §8.2.
+
+### Delta sync
+
+`GET /conversations` accepts `updated_since=<iso8601>`, returning only
+conversations changed strictly after that instant — for a client resuming
+after time offline. Deletions are not reported; a deleted conversation is
+simply absent.
+
+## Idempotency
+
+`POST /conversations/{id}/messages` accepts an `Idempotency-Key` header,
+so a send whose response was lost to a dropped connection can be retried
+without the customer receiving the reply twice. The replayed response
+carries `Idempotent-Replay: true`.
+
+The key is scoped to the sender and the conversation; reusing it with a
+different body is a 422 rather than an absorbed duplicate; a key still
+held by an in-flight request is a 409. Keys stay replayable for 24 hours.
+Full semantics in the
+[Mobile Integration Guide](./mobile-integration-guide.md) §8.4.
+
+No other endpoint accepts the header yet. The guard is reusable
+(`api/idempotency.py`); message send is wired up first because it is the
+one whose duplicate is visible to a customer.
 
 ## Errors
 

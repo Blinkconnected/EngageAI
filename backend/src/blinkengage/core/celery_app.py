@@ -42,6 +42,7 @@ celery_app = Celery(
         "blinkengage.infrastructure.tasks.learning_settle_sweep_task",
         "blinkengage.infrastructure.tasks.learning_cluster_sweep_task",
         "blinkengage.infrastructure.tasks.learning_analysis_sweep_task",
+        "blinkengage.infrastructure.tasks.presence_offline_sweep_task",
     ],
 )
 
@@ -178,6 +179,19 @@ celery_app.conf.update(
         "ai-pickup-waiting-conversations": {
             "task": "blinkengage.ai.pickup_waiting_conversations",
             "schedule": 10.0,
+        },
+        # Marks agents offline whose grace period since their last socket
+        # closed has run out — see docs/architecture/realtime.md. Staying
+        # disconnected is not an event, so something has to notice.
+        #
+        # Every thirty seconds against a ninety-second default grace. A
+        # sweep coarser than the grace it enforces would make the
+        # effective wait anything up to twice the configured one; this
+        # keeps it inside a quarter. A run with nothing due costs one
+        # Redis range read.
+        "sweep-presence-offline": {
+            "task": "blinkengage.agents.sweep_presence_offline",
+            "schedule": 30.0,
         },
         # Releases ownership whose sticky window has run out — see
         # docs/architecture/queue-lifecycle.md. A lapsed hold does not

@@ -6,6 +6,7 @@ in-memory-SQLite connection this test suite's async fixtures use). See
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import orjson
@@ -19,6 +20,7 @@ from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.notification_service import NotificationService
 from blinkengage.application.services.ownership_service import OwnershipService
+from blinkengage.infrastructure.cache.presence import PendingOffline, PresenceStore
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.channels.providers.web_chat import session_channel_name
@@ -195,12 +197,18 @@ def _build_services(session, container):
         events=events,
         refresh_tokens=RefreshTokenStore(container.redis()),
     )
-    return settings, realtime, conversation_service, agent_service
+    presence = PresenceStore(container.redis())
+    return settings, realtime, conversation_service, agent_service, presence
 
 
-async def test_connect_flips_offline_agent_online_and_disconnect_flips_back(
+async def test_connect_flips_offline_agent_online_and_disconnect_only_schedules(
     client: AsyncClient, owner_headers: dict, app
 ) -> None:
+    """Connecting still puts an offline agent online. Disconnecting no
+    longer takes them off — it schedules that, and the sweep is what
+    performs it. See ``docs/architecture/realtime.md``: a phone closes its
+    socket every time the screen locks, and the old behaviour dropped
+    those agents out of routing several times an hour."""
     agent_id, token = await _create_agent_with_token(client, owner_headers)
     company_id = UUID(
         (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"]["id"]
@@ -209,7 +217,7 @@ async def test_connect_flips_offline_agent_online_and_disconnect_flips_back(
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         ws = _FakeWebSocket(query_params={"token": token}, frames=[])
@@ -220,6 +228,7 @@ async def test_connect_flips_offline_agent_online_and_disconnect_flips_back(
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await session.commit()
 
@@ -230,9 +239,104 @@ async def test_connect_flips_offline_agent_online_and_disconnect_flips_back(
             company_id=company_id, agent_id=UUID(agent_id)
         )
         assert agent is not None
-        assert (
-            agent.status == AgentStatus.OFFLINE
-        )  # flipped online on connect, back off on disconnect
+        assert agent.status == AgentStatus.ONLINE
+
+    # Scheduled, not yet due: the deadline is the grace period into the
+    # future, so a sweep running right now finds nothing.
+    presence_store = PresenceStore(container.redis())
+    assert await presence_store.due(now=datetime.now(UTC), limit=10) == []
+    grace = timedelta(seconds=container.settings().presence_offline_grace_seconds)
+    assert await presence_store.due(
+        now=datetime.now(UTC) + grace + timedelta(seconds=1), limit=10
+    ) == [PendingOffline(company_id=company_id, agent_id=UUID(agent_id))]
+
+
+async def test_a_second_connection_closing_does_not_schedule_offline(
+    client: AsyncClient, owner_headers: dict, app
+) -> None:
+    """Closing one of two open sockets is not going away. Before presence
+    was counted rather than inferred from the last close, shutting one tab
+    marked an agent offline while they sat in front of the other."""
+    agent_id, token = await _create_agent_with_token(client, owner_headers)
+    company_id = UUID(
+        (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"]["id"]
+    )
+    container = app.state.container
+    session_factory = container.session_factory()
+    presence_store = PresenceStore(container.redis())
+
+    # A phone, already connected and still connected throughout.
+    await presence_store.connected(
+        company_id=company_id,
+        agent_id=UUID(agent_id),
+        connection_id="the-phone",
+        ttl=timedelta(hours=1),
+    )
+
+    async with session_factory() as session:
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
+            session, container
+        )
+        ws = _FakeWebSocket(query_params={"token": token}, frames=[])
+        await agent_gateway(
+            ws,  # type: ignore[arg-type]
+            settings,
+            session,
+            realtime,
+            conversation_service,
+            agent_service,
+            presence,
+        )
+        await session.commit()
+
+    # The laptop's socket opened and closed; the phone is still there.
+    assert await presence_store.is_connected(company_id=company_id, agent_id=UUID(agent_id))
+    far_future = datetime.now(UTC) + timedelta(days=1)
+    assert await presence_store.due(now=far_future, limit=10) == []
+
+
+async def test_reconnecting_cancels_a_pending_offline(
+    client: AsyncClient, owner_headers: dict, app
+) -> None:
+    """The whole point of the grace period: a backgrounded app that comes
+    back before the deadline never goes offline at all."""
+    agent_id, token = await _create_agent_with_token(client, owner_headers)
+    company_id = UUID(
+        (await client.get("/api/v1/auth/me", headers=owner_headers)).json()["company"]["id"]
+    )
+    container = app.state.container
+    session_factory = container.session_factory()
+    presence_store = PresenceStore(container.redis())
+    far_future = datetime.now(UTC) + timedelta(days=1)
+
+    async def _connect_once() -> None:
+        async with session_factory() as session:
+            settings, realtime, conversation_service, agent_service, presence = _build_services(
+                session, container
+            )
+            await agent_gateway(
+                _FakeWebSocket(query_params={"token": token}, frames=[]),  # type: ignore[arg-type]
+                settings,
+                session,
+                realtime,
+                conversation_service,
+                agent_service,
+                presence,
+            )
+            await session.commit()
+
+    await _connect_once()
+    assert await presence_store.due(now=far_future, limit=10) == [
+        PendingOffline(company_id=company_id, agent_id=UUID(agent_id))
+    ]
+
+    await _connect_once()  # the app came back, then backgrounded again
+    # Still exactly one pending entry — the reconnect cancelled the first
+    # deadline rather than leaving two, which would have the sweep act on
+    # a deadline the agent had already invalidated.
+    assert await presence_store.due(now=far_future, limit=10) == [
+        PendingOffline(company_id=company_id, agent_id=UUID(agent_id))
+    ]
 
 
 async def test_connect_does_not_override_explicit_away_status(
@@ -247,7 +351,7 @@ async def test_connect_does_not_override_explicit_away_status(
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         ws = _FakeWebSocket(query_params={"token": token}, frames=[])
@@ -258,6 +362,7 @@ async def test_connect_does_not_override_explicit_away_status(
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await session.commit()
 
@@ -266,8 +371,11 @@ async def test_connect_does_not_override_explicit_away_status(
         )
         assert agent is not None
         # AWAY is an explicit choice — connecting must not silently flip it
-        # to ONLINE. It's still forced OFFLINE on disconnect, though (the
-        # gateway can't distinguish "closed the tab" from "went to lunch").
+        # to ONLINE. This assertion is newly possible: while disconnecting
+        # forced OFFLINE synchronously, the status by the time the gateway
+        # returned was always OFFLINE and the intent could not be checked
+        # here at all.
+        assert agent.status == AgentStatus.AWAY
 
 
 async def test_typing_frame_invokes_provider_typing_indicator(
@@ -279,7 +387,7 @@ async def test_typing_frame_invokes_provider_typing_indicator(
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         frame = orjson.dumps(
@@ -305,6 +413,7 @@ async def test_typing_frame_invokes_provider_typing_indicator(
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await session.commit()
         await asyncio.wait_for(collector, timeout=2)
@@ -334,7 +443,7 @@ async def test_typing_frame_is_suppressed_when_company_disables_typing_indicator
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         frame = orjson.dumps(
@@ -360,6 +469,7 @@ async def test_typing_frame_is_suppressed_when_company_disables_typing_indicator
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await session.commit()
         with pytest.raises(TimeoutError):
@@ -380,7 +490,7 @@ async def test_notification_is_forwarded_over_the_socket(
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         agent = await AgentRepository(session).get_by_id(
@@ -419,6 +529,7 @@ async def test_notification_is_forwarded_over_the_socket(
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await publisher
         await session.commit()
@@ -449,7 +560,7 @@ async def test_new_customer_message_is_forwarded_over_the_agent_socket(
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         ws = _FakeWebSocket(query_params={"token": token}, frames=[], disconnect_delay=0.3)
@@ -486,6 +597,7 @@ async def test_new_customer_message_is_forwarded_over_the_agent_socket(
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await ingester
         await session.commit()
@@ -515,7 +627,7 @@ async def test_agent_sent_reply_is_forwarded_over_the_agent_socket(
     container = app.state.container
     session_factory = container.session_factory()
     async with session_factory() as session:
-        settings, realtime, conversation_service, agent_service = _build_services(
+        settings, realtime, conversation_service, agent_service, presence = _build_services(
             session, container
         )
         ws = _FakeWebSocket(query_params={"token": token}, frames=[], disconnect_delay=0.3)
@@ -523,9 +635,13 @@ async def test_agent_sent_reply_is_forwarded_over_the_agent_socket(
         async def _reply_after_delay() -> None:
             await asyncio.sleep(0.05)
             async with session_factory() as reply_session:
-                _settings, reply_realtime, reply_conversation_service, _agent_service = (
-                    _build_services(reply_session, container)
-                )
+                (
+                    _settings,
+                    reply_realtime,
+                    reply_conversation_service,
+                    _agent_service,
+                    _presence,
+                ) = _build_services(reply_session, container)
                 await reply_conversation_service.send_reply(
                     company_id=company_id,
                     conversation_id=UUID(conversation_id),
@@ -542,6 +658,7 @@ async def test_agent_sent_reply_is_forwarded_over_the_agent_socket(
             realtime,
             conversation_service,
             agent_service,
+            presence,
         )
         await replier
         await session.commit()

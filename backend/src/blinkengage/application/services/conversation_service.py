@@ -48,6 +48,7 @@ from blinkengage.domain.exceptions import (
 from blinkengage.domain.inbox_views import InboxView
 from blinkengage.domain.lifecycle import FINISHED, can_move
 from blinkengage.domain.ownership import NOBODY, Owner, OwnerKind, OwnershipReason
+from blinkengage.domain.pagination import Cursor
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.channels.error_sanitizer import redact_credentials
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -246,6 +247,8 @@ class ConversationService:
         unassigned_only: bool = False,
         view: InboxView | None = None,
         viewer_agent_id: UUID | None = None,
+        updated_since: datetime | None = None,
+        after: Cursor | None = None,
     ) -> tuple[list[InboxRow], int]:
         return await self._conversations.list_for_company(
             company_id=company_id,
@@ -259,6 +262,8 @@ class ConversationService:
             unassigned_only=unassigned_only,
             view=view,
             viewer_agent_id=viewer_agent_id,
+            updated_since=updated_since,
+            after=after,
         )
 
     async def agent_id_for_user(self, *, company_id: UUID, user_id: UUID | None) -> UUID | None:
@@ -998,11 +1003,27 @@ class ConversationService:
         )
 
     async def list_messages(
-        self, *, company_id: UUID, conversation_id: UUID, offset: int, limit: int
+        self,
+        *,
+        company_id: UUID,
+        conversation_id: UUID,
+        offset: int,
+        limit: int,
+        after: Cursor | None = None,
     ) -> tuple[list[Message], int]:
         await self.get(company_id=company_id, conversation_id=conversation_id)
         items, total = await self._messages.list_for_conversation(
-            conversation_id=conversation_id, offset=offset, limit=limit
+            conversation_id=conversation_id,
+            offset=offset,
+            limit=limit,
+            after=after,
+            # The client-facing thread, so a total order: a caller seeds
+            # its cursor from the first (offset) page, and the two pages
+            # have to agree about messages sharing a timestamp or that
+            # handover repeats and skips rows. Internal callers that read
+            # "the newest message" deliberately do not set this — see
+            # ``MessageRepository.list_for_conversation``.
+            stable_order=True,
         )
         # Fetching a conversation's messages IS viewing it — the one
         # place in the product an agent actually reads a conversation's

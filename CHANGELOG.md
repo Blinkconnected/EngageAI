@@ -14,6 +14,97 @@ for more detail on how this page is put together.
 
 ## [Unreleased]
 
+### Added
+
+- **Safe retries when a reply is sent over a bad connection.** Sending a
+  message accepts an `Idempotency-Key` header. Present the same key again
+  and the original reply comes back rather than a second one being sent.
+
+  The problem is specific to phones and unavoidable without this: an agent
+  sends a reply, the connection drops before the confirmation arrives, and
+  neither the app nor the person holding it can tell whether the customer
+  received it. Retrying risks the customer seeing the same reply twice;
+  not retrying risks it never arriving. Neither is acceptable, so the
+  server now takes responsibility for the ambiguity.
+
+  A key is scoped to one conversation, so reusing one elsewhere cannot
+  replay a reply into the wrong thread. Reusing a key with different
+  wording is refused outright rather than quietly answered with the first
+  message — returning a plausible response to a request that was never
+  performed is the failure this exists to prevent, not a form of it.
+  Replayable for 24 hours.
+
+- **Delta sync on the conversation list.** `?updated_since=` returns only
+  what has changed. A client returning after hours offline previously had
+  to re-page the entire Inbox to discover what it had missed — the
+  slowest request, on the worst connection, at the exact moment somebody
+  is waiting to start work.
+
+  A conversation deleted while a client was away is absent from the delta
+  rather than reported as removed; there is no tombstone feed, and a
+  client that must not display deleted conversations still needs a
+  periodic full reconcile.
+
+- **Cursor pagination on the conversation and message lists** — the two
+  that are read while they are being written. `?cursor=` returns a
+  `next_cursor` to follow; `page`/`page_size` are untouched and behave
+  exactly as before.
+
+  Offset paging asks "skip the first N rows", and N means something
+  different by the time the next page is requested. The duplicate that
+  causes is recoverable — a client keying by id drops it. The row that
+  appears on *no* page is not, and on the conversation list that row is
+  somebody's unanswered customer.
+
+  Cursor mode orders conversations most-recently-active first rather than
+  worst-SLA-health first, and that is a limit rather than a preference:
+  health is computed from the clocks at query time, so a keyset over it
+  would point at a position that no longer exists. The health-ordered
+  Inbox stays offset-paged.
+
+- **The real-time contract is written down** —
+  [`docs/architecture/realtime.md`](docs/architecture/realtime.md). Every
+  frame type, the presence model, and what a client must do on reconnect.
+  FastAPI does not document WebSocket routes, so the platform's real-time
+  support was invisible to anyone reading the generated OpenAPI schema,
+  and had been concluded absent more than once.
+
+### Changed
+
+- **Locking your phone no longer takes you out of routing.** Closing the
+  last agent WebSocket now starts a grace period (90 seconds by default)
+  instead of marking the agent offline immediately; reconnecting inside it
+  cancels the transition entirely.
+
+  The old behaviour was correct for a browser tab and wrong for everything
+  else. A phone closes its socket every time the screen locks, so an agent
+  working from one was dropped from assignment several times an hour and
+  put back only when they next happened to open the app.
+
+  The same change fixes a defect that predates any mobile client: closing
+  one of two open tabs used to mark an agent offline while they were still
+  sitting in front of the other. Presence is now derived from how many
+  connections an agent holds, not from the most recent one to close.
+
+  Configurable via `PRESENCE_OFFLINE_GRACE_SECONDS`. A new sweep,
+  `blinkengage.agents.sweep_presence_offline`, performs the transition
+  every 30 seconds.
+
+- The Mobile Integration Guide's gap audit is updated: four of its six
+  recorded gaps are now closed. What remains is no APNs sender (iOS goes
+  through Firebase) and no aggregate conversation endpoint.
+
+### Fixed
+
+- **The conversation list had no index for "changed since".** Not a
+  regression — the column was never queried before — but the Mobile
+  Integration Guide recorded delta sync as needing no migration on the
+  grounds that `conversations.updated_at` was already indexed, and it was
+  not. Every index on the table covered `last_message_at`, a lifecycle
+  column, or the channel thread. Migration `c7d1e4b93a58` adds
+  `ix_conversations_company_updated_at`; the guide's §8.1 has been
+  corrected rather than quietly amended.
+
 ## [1.2.0] - 2026-08-08
 
 ### Added

@@ -93,6 +93,21 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
+        # Delta sync (``?updated_since=``) — see
+        # docs/api/mobile-integration-guide.md. Every other index on this
+        # table is ordered by when a conversation last *moved*
+        # (last_message_at) or by a lifecycle column; none covers "changed
+        # since", which is a different question and the only one a client
+        # resuming after time offline asks. Without this the filter is a
+        # full scan of the company's conversations on a request that is
+        # supposed to be the cheap one.
+        Index(
+            "ix_conversations_company_updated_at",
+            "company_id",
+            "updated_at",
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
 
     company_id: Mapped[uuid.UUID] = mapped_column(

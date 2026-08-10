@@ -21,3 +21,13 @@ class Page(BaseModel, Generic[ItemT]):
     total: int
     page: int
     page_size: int
+    #: Present only on the lists that support keyset paging, and only when
+    #: there is a further page — ``None`` both for offset-paged responses
+    #: and for the last page of a cursor-paged one, so "keep going while
+    #: this is set" is the whole client-side rule.
+    #:
+    #: Added to the shared shape rather than given a response model of its
+    #: own: an extra nullable field is invisible to every existing caller,
+    #: while a second shape would have meant a second route for each list
+    #: and two contracts to keep in step. See ``api.cursors``.
+    next_cursor: str | None = None

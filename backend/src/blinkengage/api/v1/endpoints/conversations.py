@@ -1,4 +1,6 @@
-from typing import Annotated
+from collections.abc import Callable, Sequence
+from datetime import datetime
+from typing import Annotated, TypeVar
 from uuid import UUID
 
 from fastapi import (
@@ -6,22 +8,26 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Query,
     Request,
     Response,
     UploadFile,
     status,
 )
 
+from blinkengage.api import cursors
 from blinkengage.api.deps import (
     get_ai_service,
     get_autopilot_service,
     get_conversation_service,
     get_csat_service,
+    get_idempotency_guard,
     get_internal_note_service,
     get_media_company_id,
     get_settings_dep,
     require_permission,
 )
+from blinkengage.api.idempotency import IdempotencyGuard
 from blinkengage.api.range_requests import parse_range_header
 from blinkengage.api.schemas.conversation import (
     AttachmentResponse,
@@ -54,6 +60,7 @@ from blinkengage.domain.media import (
     may_need_fallback,
 )
 from blinkengage.domain.operational_state import STATE_TEXT
+from blinkengage.domain.pagination import Cursor
 from blinkengage.domain.sla import SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
     Conversation,
@@ -70,6 +77,8 @@ from blinkengage.infrastructure.repositories.conversation_repository import Inbo
 MEDIA_CACHE_SECONDS = 60 * 60 * 24 * 7
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+RowT = TypeVar("RowT")
 
 
 def attachment_response(
@@ -192,6 +201,29 @@ async def _one(service: ConversationService, conversation: Conversation) -> Conv
     )
 
 
+def _next_cursor(
+    rows: Sequence[RowT],
+    *,
+    limit: int,
+    requested: str | None,
+    key: Callable[[RowT], Cursor],
+) -> str | None:
+    """The token for the page after this one, or ``None`` if there isn't one.
+
+    Emitted only when the caller is actually paging by cursor. A response
+    to an offset request carries no ``next_cursor``, because mixing the two
+    would let a client page halfway by offset and then switch — across two
+    *different orderings*, silently skipping whatever fell between them.
+
+    A short page means the end: with ``limit`` rows there may or may not be
+    more, and one extra empty request is a far better answer than a token
+    that promises a page which does not exist.
+    """
+    if requested is None or len(rows) < limit:
+        return None
+    return cursors.encode(key(rows[-1]))
+
+
 async def _viewer_agent_id(service: ConversationService, auth: AuthContext) -> UUID | None:
     """The agent profile of whoever is asking, if they have one.
 
@@ -233,7 +265,21 @@ async def list_conversations(
     priority: ConversationPriority | None = None,
     unassigned_only: bool = False,
     view: InboxView | None = None,
+    updated_since: Annotated[
+        datetime | None,
+        Query(
+            description=(
+                "Return only conversations changed strictly after this instant "
+                "(ISO 8601, timezone-aware). Delta sync for a client resuming "
+                "after time offline; see the Mobile Integration Guide. Note that "
+                "a conversation deleted while the client was away is absent from "
+                "the delta rather than reported as removed."
+            )
+        ),
+    ] = None,
+    cursor: Annotated[str | None, Query(description=cursors.CURSOR_DESCRIPTION)] = None,
 ) -> Page[ConversationResponse]:
+    after = cursors.parse(cursor)
     rows, total = await service.list_conversations(
         company_id=auth.company_id,
         offset=page_params.offset,
@@ -246,6 +292,8 @@ async def list_conversations(
         unassigned_only=unassigned_only,
         view=view,
         viewer_agent_id=await _viewer_agent_id(service, auth),
+        updated_since=updated_since,
+        after=after,
     )
     unread_counts = await service.unread_counts(
         conversation_ids=[row.conversation.id for row in rows]
@@ -264,6 +312,12 @@ async def list_conversations(
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
+        next_cursor=_next_cursor(
+            rows,
+            limit=page_params.page_size,
+            requested=cursor,
+            key=lambda row: Cursor(id=row.conversation.id),
+        ),
     )
 
 
@@ -469,12 +523,14 @@ async def list_messages(
     service: Annotated[ConversationService, Depends(get_conversation_service)],
     page_params: Annotated[PageParams, Depends()],
     settings: Annotated[Settings, Depends(get_settings_dep)],
+    cursor: Annotated[str | None, Query(description=cursors.CURSOR_DESCRIPTION)] = None,
 ) -> Page[MessageResponse]:
     items, total = await service.list_messages(
         company_id=auth.company_id,
         conversation_id=conversation_id,
         offset=page_params.offset,
         limit=page_params.page_size,
+        after=cursors.parse(cursor),
     )
     attachments_by_message = await service.list_attachments_for_messages(
         company_id=auth.company_id,
@@ -494,6 +550,12 @@ async def list_messages(
         total=total,
         page=page_params.page,
         page_size=page_params.page_size,
+        next_cursor=_next_cursor(
+            items,
+            limit=page_params.page_size,
+            requested=cursor,
+            key=lambda item: Cursor(id=item.id),
+        ),
     )
 
 
@@ -505,28 +567,57 @@ async def list_messages(
 async def send_message(
     conversation_id: UUID,
     payload: SendMessageRequest,
+    response: Response,
     auth: Annotated[AuthContext, Depends(require_permission("conversations.manage"))],
     service: Annotated[ConversationService, Depends(get_conversation_service)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
+    idempotency: Annotated[IdempotencyGuard, Depends(get_idempotency_guard)],
 ) -> MessageResponse:
-    message = await service.send_reply(
-        company_id=auth.company_id,
-        conversation_id=conversation_id,
-        body=payload.body,
-        attachment_ids=payload.attachment_ids,
-        actor_user_id=auth.user_id,
-        is_ai_assisted=payload.is_ai_assisted,
-    )
-    attachments_by_message = await service.list_attachments_for_messages(
-        company_id=auth.company_id,
-        conversation_id=conversation_id,
-        message_ids=[message.id],
-    )
-    return _to_message_response(
-        message,
-        attachments_by_message.get(message.id, []),
-        company_id=auth.company_id,
-        settings=settings,
+    """Send a reply. Safe to retry when the caller supplies an
+    ``Idempotency-Key`` — see ``api.idempotency``.
+
+    This is the endpoint that most needs the guarantee: a reply whose
+    response was lost to a dropped connection is indistinguishable, from
+    the client's side, from one that never sent — and guessing wrong shows
+    the customer the same message twice.
+    """
+
+    async def _send() -> MessageResponse:
+        message = await service.send_reply(
+            company_id=auth.company_id,
+            conversation_id=conversation_id,
+            body=payload.body,
+            attachment_ids=payload.attachment_ids,
+            actor_user_id=auth.user_id,
+            is_ai_assisted=payload.is_ai_assisted,
+        )
+        attachments_by_message = await service.list_attachments_for_messages(
+            company_id=auth.company_id,
+            conversation_id=conversation_id,
+            message_ids=[message.id],
+        )
+        return _to_message_response(
+            message,
+            attachments_by_message.get(message.id, []),
+            company_id=auth.company_id,
+            settings=settings,
+        )
+
+    return await idempotency.run(
+        # Scoped to the sender *and* the conversation, not just the
+        # company. The conversation, because replaying one conversation's
+        # reply into another would be worse than the duplicate this exists
+        # to prevent. The sender, because a key is a promise about one
+        # person's retry — two agents working the same conversation must
+        # not be able to absorb each other's sends by presenting the same
+        # key, and no legitimate caller needs to share one (the same user
+        # retrying from a second device still has the same user id).
+        scope=f"conversations.send_message:{auth.company_id}:{auth.user_id}:{conversation_id}",
+        request=payload,
+        model=MessageResponse,
+        produce=_send,
+        response=response,
+        status_code=status.HTTP_201_CREATED,
     )
 
 

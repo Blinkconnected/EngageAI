@@ -9,7 +9,14 @@ was verified against the running API.
 
 **Headline:** the platform is more ready for a mobile client than the
 absence of one suggests. Device registration, FCM push, token refresh and
-an agent WebSocket all exist today. Three real gaps remain, listed in §8.
+an agent WebSocket all exist today.
+
+**Since v1.2.0**, four of the six gaps this guide originally recorded are
+closed: delta sync, cursor pagination, idempotency keys on message send,
+and this WebSocket contract being documented at all. Presence also no
+longer treats a backgrounded phone as an absent agent. What remains is
+§8.3 (no APNs sender) and §8.6 (no aggregate conversation endpoint) —
+both amber, neither blocking.
 
 ---
 
@@ -94,9 +101,20 @@ support. It does:
 | Endpoint | For |
 |---|---|
 | `wss://<host>/api/v1/ws/agent` | Agent client — conversation and message updates |
-| `wss://<host>/api/v1/ws/{channel_config_id}` | Web chat widget (end customers) |
+| `wss://<host>/api/v1/web-chat/ws/{channel_config_id}` | Web chat widget (end customers) |
 
 Mobile agent apps want `/ws/agent`.
+
+**The full contract — every frame type, the presence model, reconnect
+semantics — is in [`realtime.md`](../architecture/realtime.md).** Read it
+before building the socket; what follows here is only the client-side
+shape of it.
+
+One property that catches people: the socket forwards `message_received`
+for **every conversation in the company**, not only the one on screen, and
+the client filters on the frame's own `conversation_id`. That is what
+makes an Inbox list update live without subscribing per conversation, and
+it means a busy company sends a mobile client frames it will discard.
 
 ### Connection lifecycle
 
@@ -113,11 +131,21 @@ A WebSocket is a latency optimisation, not a delivery guarantee. A phone
 that lost signal in a lift missed whatever arrived meanwhile, and nothing
 replays it.
 
-**On every reconnect, re-fetch the conversation list** and reconcile
-against local state. Design the client so that a socket which never
+**On every reconnect, re-fetch and reconcile** — with
+`GET /conversations?updated_since=<newest updated_at you hold>`, which
+exists for exactly this and costs one small request rather than a re-page
+of the whole Inbox. Design the client so that a socket which never
 connects at all still produces a correct, if less immediate, app. Polling
 every 30 s as a fallback is a legitimate degraded mode; a client that
 shows stale data confidently is not.
+
+**Backgrounding no longer takes the agent offline.** Closing the socket
+starts a grace period (90 s by default) rather than an immediate
+transition, and reconnecting inside it cancels the transition entirely —
+so an agent who pockets their phone stays in routing. A client does not
+have to do anything to get this; it is worth knowing so the app does not
+try to work around a problem that no longer exists. Full model in
+[`realtime.md`](../architecture/realtime.md).
 
 ## 4. Pagination
 
@@ -130,17 +158,37 @@ Two conventions exist in the API, and you will meet both:
 
 Both are offset-based, which has a known consequence: **on a list that is
 actively changing, an item can be seen twice or missed** as rows shift
-between page requests. Conversation lists are exactly such a list.
+between page requests.
 
-Mitigate on the client:
+### Use the cursor on the two lists that move
+
+The conversation and message lists — the two a client reads while they are
+being written — also accept `?cursor=`:
+
+```
+GET /api/v1/conversations/{id}/messages?page_size=30
+    → { "items": [...], "next_cursor": null }        ← offset request
+
+GET /api/v1/conversations/{id}/messages?page_size=30&cursor=<token>
+    → { "items": [...], "next_cursor": "eyJ2Ijox…" } ← keep going while set
+```
+
+Seed the first page without a cursor, then follow `next_cursor` until it
+is `null`. The token is **opaque** — echo it back verbatim; parsing it
+couples you to a sort key that may change. An invalid one is a 422 rather
+than a silent first page, because a paging loop that never advances is far
+harder to notice than an error.
+
+Note that passing `cursor` on the conversation list also changes the
+ordering to most-recently-active first; see §8.2 for why the SLA-health
+ordering cannot be keyset-paged.
+
+### On every other list, and as a general habit
 
 - key list items by id and de-duplicate on merge,
 - treat page 1 as authoritative on refresh rather than merging into an
   older cache,
 - do not build "load more" on the assumption that offsets are stable.
-
-Cursor pagination would fix this properly and does not exist — recorded
-in §8.
 
 ## 5. Attachments
 
@@ -199,13 +247,31 @@ financial customer's data.
 ### Idempotency
 
 Retrying a `POST` after a timeout is normal on mobile — the request may
-have succeeded before the connection dropped. **The API does not
-currently accept an idempotency key** (§8), so:
+have succeeded before the connection dropped.
 
-- Generate a client-side message id, send it, and de-duplicate on read.
-- Never auto-retry a `POST` that creates a customer-visible artefact
-  (a message, an invoice) without user confirmation.
-- `GET`, `PUT` and `DELETE` are safe to retry.
+**Message send accepts `Idempotency-Key`.** Generate one per composed
+message (a UUID is fine), keep it for the lifetime of that send including
+retries, and discard it once the message is confirmed:
+
+```
+POST /api/v1/conversations/{id}/messages
+Idempotency-Key: 6f9d2c1e-…
+
+201 Created                      ← first attempt
+201 Created + Idempotent-Replay: true   ← your retry, same message
+```
+
+Rules that follow from the semantics (full detail in §8.4):
+
+- **Never change the body while reusing a key** — that is a 422, by
+  design. A new message needs a new key.
+- A **409** means an earlier attempt is still in flight. Back off and
+  retry the same key; do not send a fresh one.
+- Keys are replayable for 24 hours, so a retry the next morning is still
+  absorbed.
+- On endpoints that do *not* yet accept the header: never auto-retry a
+  `POST` that creates a customer-visible artefact without user
+  confirmation. `GET`, `PUT` and `DELETE` remain safe to retry.
 
 ### Correlation
 
@@ -236,25 +302,53 @@ administrator granting a role, the other requires a plan change.
 What a mobile client would want and not find. Each is scoped, none is
 architectural.
 
-### 8.1 No delta sync 🟠
+### 8.1 No delta sync — ✅ **closed**
 
-There is no `?since=<timestamp>` or change-feed endpoint. A client
-returning after hours offline must re-page the conversation list to
-discover what changed.
+`GET /api/v1/conversations?updated_since=<iso8601>` now exists. The
+comparison is strictly greater-than, so a client that stores the newest
+`updated_at` it has received and sends it back is not handed that same row
+on every poll. It composes with every other filter on the list.
 
-**Cost:** more requests and more battery on resume; worse on poor
-networks, which is when it matters most.
+**One correction to this entry as originally written**, because it was
+wrong in a way that mattered: it recorded the fix as needing no migration
+on the grounds that `conversations.updated_at` was already indexed. It was
+not. The column exists (via `TimestampMixin`) but every index on the table
+covered `last_message_at`, a lifecycle column, or the channel thread —
+none of them answers "changed since". Shipping the filter alone would have
+made the request a client is told to use *on resume, on a bad network* a
+full scan of the company's conversations. Migration `c7d1e4b93a58` adds
+`ix_conversations_company_updated_at`.
 
-**Fix:** `GET /api/v1/conversations?updated_since=<iso8601>` on the
-existing list endpoint. The data is already there —
-`conversations.updated_at` is indexed. Small.
+**Still missing: deletions.** A conversation deleted while the client was
+away is simply absent from the delta rather than reported as removed.
+There is no tombstone feed, so a client that must not show deleted
+conversations has to reconcile against a full list periodically.
 
-### 8.2 No cursor pagination 🟠
+### 8.2 No cursor pagination — ✅ **closed**
 
-Offset paging over a live list can duplicate or skip rows (§4).
+Both lists that change while being read — conversations and messages —
+accept `?cursor=` and return `next_cursor`. Offset paging is untouched:
+`page`/`page_size` behave exactly as before and simply report
+`next_cursor: null`.
 
-**Fix:** cursor pagination on the conversation and message lists — the
-two that change while being read. The rest can stay page-based.
+Two things are worth knowing before building against it.
+
+**Cursor mode changes the conversation ordering**, to most-recently-active
+first rather than worst-SLA-health first. This is not a shortcut. Health is
+computed from the SLA clocks *at query time*, so a conversation's rank
+changes while a client pages through it; a keyset over that would point at
+a position that no longer exists and would promise a stability it could not
+deliver. `last_message_at` only ever moves forward, so in a descending
+ordering a row can be seen twice — which a client keying by id can drop —
+but never silently skipped, which is the guarantee actually worth having.
+The health-ordered Inbox remains offset-paged.
+
+**The cursor names a row, not a position.** It encodes only an id; the
+sort value is looked up from that row when the page is built. The obvious
+alternative — putting the timestamp in the cursor — makes the keyset
+depend on a value surviving JSON, a timezone and a bind parameter with its
+precision intact, and it does not always survive. Treat the token as
+opaque and echo it back unchanged.
 
 ### 8.3 No APNs sender 🟡
 
@@ -265,21 +359,40 @@ build to a Firebase project a customer may not want.
 interface and factory already exist, so this is an addition rather than a
 change — the architecture anticipated it.
 
-### 8.4 No idempotency keys 🟡
+### 8.4 No idempotency keys — ✅ **closed for message send**
 
-Safe `POST` retries are not expressible (§7).
+`POST /conversations/{id}/messages` accepts `Idempotency-Key`. Present the
+same key to retry safely after a timeout: the original response comes back
+with `Idempotent-Replay: true` and no second message is sent.
 
-**Fix:** accept `Idempotency-Key` on message send and other creating
-endpoints, store the key with the result, return the original response on
-replay. Standard, and worth doing before a mobile client ships.
+- The key is scoped to the **sender and the conversation**, not just the
+  company. Reusing one across conversations produces two messages —
+  replaying the first conversation's reply into the second would be worse
+  than the duplicate. Two different agents presenting the same key on the
+  same conversation likewise each get their own message.
+- Reusing a key with a *different* body is a **422**, not an absorbed
+  duplicate. Returning the first response to a request that was never
+  performed is the failure this feature exists to prevent, not a form of
+  it.
+- A key held by a request still in flight is a **409**. Retry shortly.
+- Keys are replayable for 24 hours (`idempotency_result_ttl_hours`).
 
-### 8.5 WebSocket contract is undocumented 🟡
+**Not yet covered:** other creating endpoints. The guard
+(`api/idempotency.py`) is reusable and adding one is a few lines, but only
+message send is wired up today — that is the one where a duplicate is
+visible to a customer.
 
-Real time exists and is invisible to anyone reading the OpenAPI schema.
+### 8.5 WebSocket contract is undocumented — ✅ **closed**
 
-**Fix:** document the message envelope, event types and reconnect
-semantics in `docs/architecture/realtime.md` and link it from the API
-reference. Documentation, not code — and the cheapest item here.
+[`docs/architecture/realtime.md`](../architecture/realtime.md) now
+documents the frame envelope, every event type, the presence model and
+reconnect semantics.
+
+Note one change it records: **a disconnect no longer marks an agent
+offline.** The old behaviour dropped a phone user out of routing every
+time their screen locked. Losing the last connection now schedules the
+transition for `presence_offline_grace_seconds` (default 90) later, and
+reconnecting cancels it.
 
 ### 8.6 No mobile-shaped aggregate endpoint 🟡
 
@@ -302,10 +415,11 @@ that is easy to add and hard to remove.
 ## 9. Recommended build order
 
 1. Auth + single-flight refresh (§2) — everything depends on it.
-2. Conversation list and detail, offset paging with de-duplication (§4).
-3. Send message, with client-generated ids (§7).
+2. Conversation list and detail, **cursor-paged** (§4).
+3. Send message with `Idempotency-Key` (§7).
 4. Push registration (§6).
-5. WebSocket, **as an enhancement over a working polling client** (§3).
+5. WebSocket, **as an enhancement over a working polling client** (§3),
+   with `updated_since` reconciliation on every reconnect.
 6. Attachments (§5).
 
 Building step 5 before step 2 works is the common mistake: it produces an
@@ -318,4 +432,5 @@ app that feels fast when the socket is up and is broken when it is not.
 - [API Reference](./README.md) — conventions, auth, errors
 - [Known Limitations](../releases/v1.0-known-limitations.md)
 - [Technical Debt Register](../releases/v1.0-technical-debt.md)
+- [Real-time contract](../architecture/realtime.md) — frames, presence, reconnect
 - `docs/architecture/notifications.md` — push delivery internals

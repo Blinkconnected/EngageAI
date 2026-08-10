@@ -9,13 +9,14 @@ from datetime import timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Query, Request, WebSocket, status
+from fastapi import Depends, Header, HTTPException, Query, Request, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from minio import Minio
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.api.idempotency import IdempotencyGuard
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.application.services.ai_service import AiService
@@ -138,6 +139,8 @@ from blinkengage.domain.rbac import is_known_permission
 from blinkengage.domain.verification import is_blocked_before_verification
 from blinkengage.infrastructure.ai.factory import build_ai_provider_for_company
 from blinkengage.infrastructure.cache.chat_session_store import ChatSessionStore
+from blinkengage.infrastructure.cache.idempotency import IdempotencyStore
+from blinkengage.infrastructure.cache.presence import PresenceStore
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.cache.refresh_tokens import RefreshTokenStore
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
@@ -394,6 +397,36 @@ def get_realtime_publisher_ws(
     redis: Annotated[Redis, Depends(get_redis_ws)],
 ) -> RealtimePublisher:
     return RealtimePublisher(redis)
+
+
+def get_presence_store_ws(redis: Annotated[Redis, Depends(get_redis_ws)]) -> PresenceStore:
+    return PresenceStore(redis)
+
+
+def get_idempotency_guard(
+    redis: Annotated[Redis, Depends(get_redis)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            max_length=255,
+            description=(
+                "Opt-in replay protection for a creating request. Present the same key "
+                "to retry safely after a timeout; the original response is returned "
+                "rather than the work being done twice."
+            ),
+        ),
+    ] = None,
+) -> IdempotencyGuard:
+    return IdempotencyGuard(
+        store=IdempotencyStore(redis),
+        session=session,
+        key=idempotency_key,
+        reservation_ttl=timedelta(seconds=settings.idempotency_reservation_ttl_seconds),
+        result_ttl=timedelta(hours=settings.idempotency_result_ttl_hours),
+    )
 
 
 def get_event_publisher(

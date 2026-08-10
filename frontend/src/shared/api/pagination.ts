@@ -6,6 +6,15 @@ export interface Page<T> {
   total: number
   page: number
   page_size: number
+  /**
+   * Set only on the lists that support keyset paging (conversations and
+   * messages), and only when a `cursor` was sent and a further page
+   * exists. Always null for the offset paging this console uses, which is
+   * why nothing here reads it yet — declared so the type does not quietly
+   * stop describing the response. See docs/architecture/realtime.md's
+   * sibling note in the Mobile Integration Guide §4.
+   */
+  next_cursor?: string | null
 }
 
 export interface PageParams {

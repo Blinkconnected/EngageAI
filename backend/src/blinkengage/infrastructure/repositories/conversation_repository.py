@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, case, false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from blinkengage.domain.inbox_views import InboxView
 from blinkengage.domain.lifecycle import FINISHED
@@ -14,6 +15,7 @@ from blinkengage.domain.operational_state import (
     operational_state,
 )
 from blinkengage.domain.ownership import Owner, OwnerKind
+from blinkengage.domain.pagination import Cursor
 from blinkengage.domain.routing_decisions import RoutingDecisionKind
 from blinkengage.domain.sla import SEVERITY, SlaHealth
 from blinkengage.infrastructure.database.models.conversation import (
@@ -52,6 +54,65 @@ _PRIORITY_RANK = case(
     value=Conversation.priority,
     else_=1,
 )
+
+
+def _after_condition(after: Cursor, *, company_id: UUID) -> ColumnElement[bool]:
+    """ "Strictly after this row" in ``(last_message_at DESC NULLS LAST, id DESC)``.
+
+    The anchor is read from the cursor's own row rather than carried in
+    the cursor — see ``domain.pagination.Cursor`` for the paging loop the
+    other design causes. A primary-key lookup, negligible beside the page
+    it guards.
+
+    Spelled out rather than written as a row-value comparison: SQLite
+    (which the test suite runs on) does not support those the way
+    PostgreSQL does, and a predicate that only works on one of them is one
+    that fails where it matters.
+
+    The null branch is the subtle half, and cannot be decided while the
+    query is being built because the anchor's value is only known when it
+    runs. ``NULLS LAST`` puts conversations that have never had a message
+    at the very end, so:
+
+    * a cursor pointing at a row *with* a timestamp is followed by every
+      older row **and** every null one;
+    * a cursor pointing at a null row is followed only by other null rows
+      with a smaller id — nothing sorts after the nulls.
+
+    The anchor lookup is scoped to the caller's company, not just the id.
+    Without that, a caller could present a cursor naming *another*
+    company's conversation and learn its ``last_message_at`` by observing
+    which of their own rows came back — a weak oracle, but the platform's
+    tenant-isolation claim is that a request cannot be manipulated to
+    reach another company's data at all. A foreign cursor resolves to
+    NULL.
+
+    Deliberately *not* filtered on ``deleted_at``: an anchor deleted
+    mid-scroll must still locate the position, or the client is handed an
+    empty page and concludes it has reached the end of a list it has not
+    finished reading.
+    """
+    anchor = (
+        select(Conversation.last_message_at)
+        .where(Conversation.id == after.id, Conversation.company_id == company_id)
+        .scalar_subquery()
+    )
+    last_message_at = Conversation.last_message_at
+    return or_(
+        and_(
+            anchor.is_not(None),
+            or_(
+                last_message_at < anchor,
+                and_(last_message_at == anchor, Conversation.id < after.id),
+                last_message_at.is_(None),
+            ),
+        ),
+        and_(
+            anchor.is_(None),
+            last_message_at.is_(None),
+            Conversation.id < after.id,
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +352,8 @@ class ConversationRepository:
         unassigned_only: bool = False,
         view: InboxView | None = None,
         viewer_agent_id: UUID | None = None,
+        updated_since: datetime | None = None,
+        after: Cursor | None = None,
         now: datetime | None = None,
     ) -> tuple[list[InboxRow], int]:
         """A page of the Inbox, worst SLA health first.
@@ -299,11 +362,36 @@ class ConversationRepository:
         ``InboxRow``. The health has been computed anyway, to sort by; the
         customer's name costs one join here and one request per row anywhere
         else.
+
+        ``updated_since`` narrows this to what has changed — the delta sync
+        a client returning from hours offline needs, so that resuming costs
+        one small request rather than re-paging the whole Inbox. See
+        ``docs/api/mobile-integration-guide.md``.
+
+        ``after`` switches to keyset paging, **and to a different
+        ordering**: most-recently-active first, rather than worst SLA
+        health first. That is not a shortcut, it is the only honest
+        option. Health is computed from the clocks at query time, so a
+        conversation's rank changes while a client pages through — a
+        keyset over it would point at a position that no longer exists and
+        would promise a stability it could not deliver. ``last_message_at``
+        only ever moves *forward*, so in a DESC ordering a row can be seen
+        twice (deduplicable by id) but never silently skipped, which is
+        the guarantee worth having.
         """
         moment = now or datetime.now(UTC)
         base = select(Conversation).where(
             Conversation.company_id == company_id, Conversation.deleted_at.is_(None)
         )
+        if updated_since is not None:
+            # Strictly greater than, so a client that stores the newest
+            # ``updated_at`` it has seen and sends it back does not receive
+            # that same row again on every poll. The cost is that two rows
+            # written in the same microsecond can straddle a page boundary
+            # and one be missed — which is why the recommended cursor is
+            # the timestamp of the newest row *received*, and why a client
+            # should still reconcile rather than trust the delta alone.
+            base = base.where(Conversation.updated_at > updated_since)
         if status is not None:
             base = base.where(Conversation.status == status)
         if customer_id is not None:
@@ -316,6 +404,13 @@ class ConversationRepository:
             base = base.where(Conversation.priority == priority)
         if unassigned_only:
             base = base.where(Conversation.assigned_agent_id.is_(None))
+        # Deliberately *not* applied to ``base``, and so not to the count
+        # below: ``total`` means "conversations matching this filter",
+        # which is the same thing on page four as on page one. Counting
+        # only what remains after the cursor would make the total shrink
+        # as a client pages, so "20 of 60" would become "20 of 40" with
+        # nothing having changed. Applied to the row query instead, and
+        # matching how ``MessageRepository`` already counts.
         ranks_for_filter = conversation_ranks(self._session, now=moment, company_id=company_id)
         if view is not None:
             # Joined before counting, so the total matches the page. A count
@@ -391,8 +486,37 @@ class ConversationRepository:
 
         ranks = conversation_ranks(self._session, now=moment, company_id=company_id)
         health_rank = func.coalesce(ranks.c.rank, SEVERITY[SlaHealth.HEALTHY])
+        ordering = (
+            # Keyset mode: a stable, total ordering over stored columns
+            # only, which is what makes a cursor mean the same thing on
+            # the next request. See the docstring for why health cannot
+            # lead here.
+            (
+                Conversation.last_message_at.desc().nulls_last(),
+                Conversation.id.desc(),
+            )
+            if after is not None
+            else (
+                health_rank.desc(),
+                # Then urgent-first, then most-recently-active within a
+                # priority tier — every conversation defaults to NORMAL,
+                # so this is a strict no-op change in ordering until
+                # priorities actually diverge.
+                _PRIORITY_RANK.desc(),
+                Conversation.last_message_at.desc().nulls_last(),
+                Conversation.created_at.desc(),
+            )
+        )
+        # The keyset predicate joins here rather than in ``base`` — see the
+        # comment beside the count for why the total must not shrink as a
+        # client pages.
+        rows_query = (
+            base.where(_after_condition(after, company_id=company_id))
+            if after is not None
+            else base
+        )
         result = await self._session.execute(
-            base.add_columns(
+            rows_query.add_columns(
                 ranks.c.rank,
                 Customer.full_name,
                 current_owner.c.owner_kind,
@@ -414,17 +538,11 @@ class ConversationRepository:
             # Outer, not inner: a conversation whose customer row was deleted
             # must still appear. It is exactly the row somebody needs to see.
             .outerjoin(Customer, Customer.id == Conversation.customer_id)
-            .order_by(
-                health_rank.desc(),
-                # Then urgent-first, then most-recently-active within a
-                # priority tier — every conversation defaults to NORMAL,
-                # so this is a strict no-op change in ordering until
-                # priorities actually diverge.
-                _PRIORITY_RANK.desc(),
-                Conversation.last_message_at.desc().nulls_last(),
-                Conversation.created_at.desc(),
-            )
-            .offset(offset)
+            .order_by(*ordering)
+            # A keyset already expresses "start after this row"; adding an
+            # offset on top would skip a further page's worth on every
+            # request.
+            .offset(0 if after is not None else offset)
             .limit(limit)
         )
         return ([_to_inbox_row(row) for row in result.all()], total)
