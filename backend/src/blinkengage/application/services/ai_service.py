@@ -10,6 +10,7 @@ durable event stream without this service needing its own usage-logging
 table.
 """
 
+import re
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -103,6 +104,8 @@ class AiService:
         company_id: UUID,
         conversation_id: UUID,
         conversation_history: str,
+        business_profile: str | None = None,
+        grounding: str | None = None,
         actor_user_id: UUID | None = None,
     ) -> AutopilotReply:
         """Like ``suggest_reply``, but for AI Autopilot (see
@@ -112,22 +115,69 @@ class AiService:
         Never trusted blindly: ``_parse_autopilot_reply`` defaults to
         ``needs_handoff=True``/``confidence=0.0``/``reply=None`` on
         anything that doesn't parse, so a malformed response can only
-        ever result in a human handoff, never an unreviewed auto-send."""
+        ever result in a human handoff, never an unreviewed auto-send.
+
+        **``business_profile`` and ``grounding`` are what the model is
+        allowed to know.** Before they existed this prompt said "using
+        only information present in the conversation history" and was
+        handed nothing else — so a customer who asked the company's name,
+        address or opening hours was asking for something the model had
+        no way to know and no instruction to decline. It answered anyway:
+        invented hours, an invented product list, and the bracketed
+        ``[Company name]`` placeholder that a model emits when it is
+        composing around a fact it does not have. Every one of those went
+        straight to a customer unreviewed, because this path has no human
+        in it.
+
+        Retrieval alone would not have fixed it. A knowledge base can be
+        empty, or simply not contain the answer, and the failure being
+        prevented is precisely what the model does when the answer is
+        *absent*. So the refusal rule below is unconditional and stated
+        whether or not anything was retrieved: state no business fact
+        that is not written above, never invent, never bracket a
+        placeholder, and hand off instead. The bracket rule is explicit
+        because a placeholder is the one failure that looks like
+        cooperation — a blank would have been caught by the confidence
+        check, whereas ``[Company name]`` reads as a completed reply.
+        """
         provider = self._require_provider()
+        sections = [
+            "You are an AI customer support agent handling this conversation "
+            "autonomously, with no human reviewing your reply before it's sent."
+        ]
+        if business_profile:
+            sections.append("ABOUT THIS BUSINESS (authoritative):\n" + business_profile)
+        if grounding:
+            sections.append(grounding)
+        sections.append(
+            "FACTUAL GROUNDING — these rules override helpfulness:\n"
+            "- The ONLY facts about this business you may state are those written "
+            "above and those the customer stated themselves. Everything above is "
+            "the complete set of what you know.\n"
+            "- Never guess, estimate or infer a business fact — opening hours, "
+            "prices, addresses, phone numbers, product ranges, policies, delivery "
+            "times, stock. Plausible is not the same as true.\n"
+            "- Never write a placeholder of any kind. Square brackets, a blank to "
+            "be filled in later, or a generic stand-in like 'our company' in place "
+            "of a name you were not given: if you are reaching for one, the fact is "
+            "missing and this is a handoff.\n"
+            "- If the customer asks for a fact you were not given above, do not "
+            "answer it. Set HANDOFF: YES.\n"
+            "- Reply in the language the customer wrote in."
+        )
+        sections.append(
+            "Respond in EXACTLY this format on three lines:\n"
+            "REPLY: <your proposed reply to the customer's most recent message, or "
+            "leave blank if you cannot help>\n"
+            "CONFIDENCE: <a whole number 0-100 for how confident you are this reply "
+            "fully and correctly resolves the customer's message>\n"
+            "HANDOFF: <YES if a human should take over instead — for example a "
+            "refund, a complaint, anything requiring account changes, any question "
+            "asking for a business fact you were not given above, or if you're "
+            "not fully sure — or NO otherwise>"
+        )
         result = await provider.complete(
-            system=(
-                "You are an AI customer support agent handling this conversation "
-                "autonomously, with no human reviewing your reply before it's sent. "
-                "Using only information present in the conversation history, respond in "
-                "EXACTLY this format on three lines:\n"
-                "REPLY: <your proposed reply to the customer's most recent message, or "
-                "leave blank if you cannot help>\n"
-                "CONFIDENCE: <a whole number 0-100 for how confident you are this reply "
-                "fully and correctly resolves the customer's message>\n"
-                "HANDOFF: <YES if a human should take over instead — for example a "
-                "refund, a complaint, anything requiring account changes, or if you're "
-                "not fully sure — or NO otherwise>"
-            ),
+            system="\n\n".join(sections),
             prompt=conversation_history,
             max_tokens=500,
             temperature=0.2,
@@ -452,12 +502,58 @@ def _parse_next_best_action(raw: str) -> dict[str, str]:
     return {"action": action, "reason": reason}
 
 
+#: An unfilled placeholder, in the forms a model actually emits: square
+#: or curly brackets around a short span. Matched on the *reply text*, as
+#: a backstop to the prompt rule forbidding them.
+#:
+#: A prompt rule is a strong tendency, not a guarantee, and this
+#: particular failure is the one that reaches a customer looking like a
+#: finished answer — "اسم الشركة هو [اسم الشركة]" is well-formed, fluent,
+#: confidently self-scored, and worthless. A rule the model follows 95%
+#: of the time still means one customer in twenty, so the check is also
+#: made mechanically where it cannot be talked out of.
+#:
+#: Scoped so it fires on placeholders and not on the legitimate reasons a
+#: reply contains brackets. A placeholder is a *description of a missing
+#: fact* — "[Company name]", "[اسم الشركة]", "{address}" — so the span
+#: must contain at least one letter and consist only of letters, spaces
+#: and the separators that appear in placeholder names (``_``, ``-``,
+#: ``/``). That deliberately spares an order reference like ``[#12345]``
+#: or ``[REF-2024]``: digits and ``#`` are how a real identifier is
+#: written, and holding a genuine reply because it cites one would trade
+#: this bug for a quieter one.
+#:
+#: The span must also be digit-free. A placeholder names a *concept*
+#: ("Company name", "عنوان الموقع") and a reference carries a *number*
+#: ("[#12345]", "[REF-2024]"); excluding digits outright separates the
+#: two more reliably than trying to describe every reference format a
+#: company might use.
+#:
+#: Unicode-aware by default in Python 3 — the letter classes match Arabic
+#: script, which is the language this defect was found in.
+_PLACEHOLDER_PATTERN = re.compile(
+    r"[\[\{]\s*"  # opening bracket
+    r"[^\W\d_]"  # first character must be a letter (any script)
+    r"[^\d\]\}\n]{0,58}"  # then anything but digits, newlines or a bracket
+    r"[\]\}]",  # closing bracket
+    re.UNICODE,
+)
+
+
+def _contains_placeholder(reply: str) -> bool:
+    return _PLACEHOLDER_PATTERN.search(reply) is not None
+
+
 def _parse_autopilot_reply(raw: str) -> AutopilotReply:
     """Conservative by construction: every field starts at the "hand this
     off to a human" default, and only a cleanly-parsed, in-range
     CONFIDENCE line plus an explicit HANDOFF: NO can ever produce an
     auto-sendable result — any missing/malformed line leaves the unsafe
-    default in place rather than guessing."""
+    default in place rather than guessing.
+
+    A reply containing an unfilled placeholder is forced to a handoff
+    here regardless of what the model scored itself — see
+    ``_PLACEHOLDER_PATTERN``."""
     reply: str | None = None
     confidence = 0.0
     needs_handoff = True
@@ -481,4 +577,11 @@ def _parse_autopilot_reply(raw: str) -> AutopilotReply:
                 needs_handoff = False
             elif value == "yes":
                 needs_handoff = True
+    if reply is not None and _contains_placeholder(reply):
+        # Deliberately keeps the reply text rather than blanking it: the
+        # handoff notification is more useful to the agent picking this up
+        # if they can see what the model was about to send, and nothing
+        # downstream sends a reply once needs_handoff is set.
+        needs_handoff = True
+        confidence = 0.0
     return AutopilotReply(reply=reply, confidence=confidence, needs_handoff=needs_handoff)

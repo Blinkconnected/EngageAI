@@ -386,6 +386,79 @@ self-assess is the pragmatic option available at this abstraction layer:
 second scoring call per message would double the per-message AI cost for
 a signal that's still ultimately the model's own opinion.
 
+**The grounding contract (2026-08-11).** What Autopilot is allowed to
+*know*, as distinct from how sure it says it is.
+
+The confidence contract above governs whether a reply is good enough to
+send. It says nothing about whether the facts in it are real, and the two
+are not the same question: a model can be entirely confident about a
+company detail it invented thirty tokens earlier. This is what happened
+in production. Asked in Arabic for the company's name and address,
+Autopilot answered `[اسم الشركة]` and `[عنوان الموقع]`; asked its opening
+hours and product range, it invented "9 صباحًا حتى 5 مساءً" and a list of
+goods nobody had told it about. All four were auto-sent.
+
+The cause was that the prompt said *"using only information present in
+the conversation history"* and was then handed nothing but the
+transcript. A customer asking the company's name was asking for something
+the model had no way to know and no instruction to decline. Square
+brackets are not evidence of an unsubstituted template — they are what a
+model writes when it is holding a sentence open for a fact it does not
+have.
+
+Three mechanisms, layered because none is sufficient alone:
+
+1. **Business profile.** `Company.settings.business_profile` — trading
+   name, location, contact, website, description — is passed into every
+   Autopilot prompt via `domain/company_settings.py`'s
+   `format_business_profile`. Opening hours are *derived from the
+   existing structured `business_hours` schedule* rather than duplicated
+   as free text, so the hours AI quotes and the hours the SLA engine
+   honours cannot diverge. That derivation reads the raw stored days, not
+   `business_hours.resolve_schedule`, which fills unconfigured days with
+   a 09:00–17:00 default so an SLA clock always has something to
+   calculate against — correct there, and precisely the reported
+   hallucination if reused here.
+
+2. **Retrieval.** `AutopilotService._grounding_for` runs the company's
+   Knowledge Base and FAQ retrieval against the newest inbound message
+   (not the whole transcript, which contains Autopilot's own prior
+   replies and would drift the query toward what AI already said). It
+   mirrors `/ai/knowledge-search` exactly — same hybrid retrieval, same
+   published-only corpus, same approved-answers-before-reference-material
+   ordering described under "Knowledge Search and FAQ Search are the same
+   capability". Autopilot had never called it: two retrieval systems
+   existed side by side and the unreviewed one used neither.
+
+3. **An unconditional refusal rule.** Retrieval cannot be the whole
+   answer, because a knowledge base can be empty or simply not hold the
+   fact, and the failure being prevented is exactly what the model does
+   when a fact is *absent*. So the prompt states — whether or not
+   anything was retrieved — that the facts supplied are the complete set,
+   that guessing a business fact is forbidden, that a placeholder is
+   never acceptable output, and that a question it was not given the
+   answer to is a handoff rather than an attempt.
+
+**Why a placeholder is also checked mechanically.** A prompt rule is a
+strong tendency, not a guarantee, and a placeholder is the one failure
+that reaches a customer looking like a finished answer: `اسم الشركة هو
+[اسم الشركة]` is fluent, well-formed and confidently self-scored. A blank
+reply would have been caught by the confidence gate; this would not.
+`_parse_autopilot_reply` therefore forces `needs_handoff=True` and
+`confidence=0.0` on any reply containing one, whatever the model claimed.
+The pattern distinguishes a placeholder — which names a concept, in any
+script — from a genuine reference like `[#12345]` or `[REF-2024]`, which
+carries a number. Holding back real replies would trade this bug for a
+quieter one. The reply text is kept rather than blanked, so the agent
+picking up the handoff can see what was nearly sent.
+
+Retrieval failure degrades to `None` rather than raising: an embedding
+provider that is down or rate-limited leaves the model with the business
+profile alone and still forbidden from inventing beyond it, so the worst
+case is a handoff — the correct outcome for a question the platform
+cannot currently look up. **The grounded and ungrounded prompts differ in
+what they contain, never in what they permit.**
+
 **Handoff path.** Clearing `autopilot_active` publishes
 `conversation.autopilot_handoff_needed` (payload: conversation id,
 `reason`, `confidence`), which the existing

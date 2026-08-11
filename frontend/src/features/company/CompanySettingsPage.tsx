@@ -9,6 +9,7 @@ import { useCompanyQuery } from './api'
 import { AiSettingsPanel } from './panels/AiSettingsPanel'
 import { BrandingSettingsPanel } from './panels/BrandingSettingsPanel'
 import { BusinessHoursSettingsPanel } from './panels/BusinessHoursSettingsPanel'
+import { BusinessProfileSettingsPanel } from './panels/BusinessProfileSettingsPanel'
 import { ErpEnableToggle } from './panels/ErpEnableToggle'
 import { GeneralSettingsPanel } from './panels/GeneralSettingsPanel'
 import { LanguageSettingsPanel } from './panels/LanguageSettingsPanel'
@@ -23,6 +24,10 @@ function baseTabsFor(t: (key: string) => string) {
     { value: 'general', label: t('CompanySettingsPage.tabGeneral') },
     { value: 'language', label: t('CompanySettingsPage.tabLanguage') },
     { value: 'timezone', label: t('CompanySettingsPage.tabTimezone') },
+    // Directly before Business hours: the two together are what AI
+    // Autopilot is allowed to state about the company, and an
+    // administrator filling one in should see the other.
+    { value: 'business-profile', label: t('CompanySettingsPage.tabBusinessProfile') },
     { value: 'business-hours', label: t('CompanySettingsPage.tabBusinessHours') },
     { value: 'notifications', label: t('CompanySettingsPage.tabNotifications') },
     { value: 'messaging', label: t('CompanySettingsPage.tabMessaging') },
@@ -115,6 +120,9 @@ function CompanySettingsTabs({
         {activeTab.value === 'branding' && <BrandingSettingsPanel company={company} />}
         {activeTab.value === 'language' && <LanguageSettingsPanel company={company} />}
         {activeTab.value === 'timezone' && <TimezoneSettingsPanel company={company} />}
+        {activeTab.value === 'business-profile' && (
+          <BusinessProfileSettingsPanel company={company} />
+        )}
         {activeTab.value === 'business-hours' && <BusinessHoursSettingsPanel company={company} />}
         {activeTab.value === 'notifications' && <NotificationsSettingsPanel company={company} />}
         {activeTab.value === 'messaging' && <MessagingSettingsPanel company={company} />}

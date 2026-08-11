@@ -44,6 +44,25 @@ export interface BusinessHoursSettings {
   schedule?: Partial<Record<Weekday, BusinessHoursDay>>
 }
 
+/** The business facts customers ask for by name, and the only ones AI
+ * Autopilot may state about the company.
+ *
+ * Every field is optional, and an omitted field is omitted from the AI
+ * prompt entirely rather than sent as an empty string — a blank labelled
+ * field invites the model to fill it in, which is the invented-hours bug
+ * this exists to prevent. `useCompanySettingsForm` drops blanks on save.
+ *
+ * No `business_hours` here on purpose: hours live in the structured
+ * `BusinessHoursSettings` schedule and are derived from it, so the hours
+ * AI quotes and the hours the SLA engine honours cannot disagree. */
+export interface BusinessProfileSettings {
+  legal_name?: string
+  location?: string
+  contact?: string
+  website?: string
+  about?: string
+}
+
 export interface MessagingSettings {
   typing_indicator_enabled: boolean
 }
@@ -95,6 +114,7 @@ export interface CompanySettings {
   language?: SupportedLanguage
   timezone?: string
   business_hours?: BusinessHoursSettings
+  business_profile?: BusinessProfileSettings
   notifications?: Record<string, boolean>
   messaging?: MessagingSettings
   security?: SecuritySettings

@@ -89,7 +89,9 @@ async def handle_event(event: dict[str, Any], session: AsyncSession, settings: S
     if company is None:
         return
 
-    autopilot = build_autopilot_service(session=session, settings=settings)
+    autopilot = build_autopilot_service(
+        session=session, settings=settings, company_ai_config=company.ai_config
+    )
     events = OutboxEventPublisher(EventOutboxRepository(session))
 
     def _build_ai_service() -> AiService | None:

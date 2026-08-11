@@ -275,3 +275,126 @@ def min_password_length(settings: dict[str, Any]) -> int:
     if isinstance(value, int) and value >= DEFAULT_MIN_PASSWORD_LENGTH:
         return value
     return DEFAULT_MIN_PASSWORD_LENGTH
+
+
+#: The business facts a customer asks for by name — "what are you called",
+#: "where are you", "when do you open". Free-text, one line each, written
+#: by an administrator.
+#:
+#: Deliberately *not* columns on ``companies``. ``Company.name`` is a
+#: tenant label chosen at signup ("acme-test", "Acme HQ") and is not
+#: necessarily the trading name a customer should be told; hours and
+#: address vary by branch, by channel and by season in ways no fixed
+#: column survives. What the AI may state about a business is editable
+#: content, so it belongs with the other admin-configurable preferences
+#: rather than in the tenancy record.
+#:
+#: Order is load-bearing: it is the order these appear in the prompt.
+#: Business *hours* are deliberately absent from this list. They already
+#: exist as a structured weekly schedule under ``settings.business_hours``
+#: (see ``domain/business_hours.py``), and a second free-text field for
+#: the same fact would let the two disagree — at which point the AI is
+#: quoting one and the SLA engine is honouring the other. The hours line
+#: is derived from that schedule instead; see ``_format_business_hours``.
+BUSINESS_PROFILE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("legal_name", "Company name"),
+    ("location", "Location"),
+    ("contact", "Contact details"),
+    ("website", "Website"),
+    ("about", "About the business"),
+)
+
+#: A value longer than this is not a business fact, it is an article, and
+#: an article belongs in the Knowledge Base where it can be retrieved by
+#: relevance instead of pasted into every single prompt.
+MAX_BUSINESS_PROFILE_FIELD_CHARS = 2000
+
+
+def business_profile(settings: dict[str, Any]) -> dict[str, str]:
+    """The company's stated business facts, keyed as in
+    ``BUSINESS_PROFILE_FIELDS``.
+
+    Absent, blank and non-string values are dropped rather than returned
+    as empty strings. That distinction is the whole point: a field the
+    administrator never filled in must be *missing* from the prompt, not
+    present and empty. A model shown ``Business hours:`` with nothing
+    after it will fill the gap — inventing "9am to 5pm" is exactly the
+    failure this exists to prevent — whereas a fact that is simply absent
+    leaves nothing to complete.
+    """
+    section = _section(settings, "business_profile")
+    profile: dict[str, str] = {}
+    for key, _label in BUSINESS_PROFILE_FIELDS:
+        value = section.get(key)
+        if isinstance(value, str) and value.strip():
+            profile[key] = value.strip()[:MAX_BUSINESS_PROFILE_FIELD_CHARS]
+    return profile
+
+
+_WEEKDAY_ORDER = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+
+def _format_business_hours(settings: dict[str, Any]) -> str | None:
+    """The company's opening hours as one prompt line, or ``None``.
+
+    Reads the **raw stored** schedule rather than
+    ``business_hours.resolve_schedule``, and the difference is the entire
+    point. ``resolve_schedule`` fills every unconfigured day with a
+    09:00–17:00 default because an SLA clock must always have hours to
+    calculate against — reasonable there, catastrophic here. A company
+    that never configured hours would resolve to a complete Monday-Friday
+    9-to-5 week, and the AI would state it as fact. That is verbatim the
+    bug this exists to fix: the reported hallucination was "9 صباحًا حتى
+    5 مساءً" for a company whose ``business_hours`` section is absent
+    entirely.
+
+    So: hours are stated only when the section exists, is enabled, and
+    names at least one day explicitly. Anything less is silence, and
+    silence routes to a handoff.
+    """
+    section = _section(settings, "business_hours")
+    if not section.get("enabled", False):
+        return None
+    raw_schedule = section.get("schedule")
+    if not isinstance(raw_schedule, dict):
+        return None
+
+    parts: list[str] = []
+    for day in _WEEKDAY_ORDER:
+        raw_day = raw_schedule.get(day)
+        if not isinstance(raw_day, dict):
+            # Not configured — not "open by default".
+            continue
+        label = day.capitalize()
+        if raw_day.get("closed", False):
+            parts.append(f"{label}: closed")
+            continue
+        opens, closes = raw_day.get("open"), raw_day.get("close")
+        if isinstance(opens, str) and isinstance(closes, str):
+            parts.append(f"{label}: {opens}-{closes}")
+
+    if not parts:
+        return None
+    timezone = settings.get("timezone")
+    suffix = f" ({timezone})" if isinstance(timezone, str) and timezone else ""
+    return "Business hours" + suffix + ": " + "; ".join(parts)
+
+
+def format_business_profile(settings: dict[str, Any]) -> str | None:
+    """The business profile as prompt text, or ``None`` when the company
+    has stated nothing — ``None`` rather than an empty block so the caller
+    omits the section entirely instead of captioning an absence."""
+    profile = business_profile(settings)
+    lines = [f"{label}: {profile[key]}" for key, label in BUSINESS_PROFILE_FIELDS if key in profile]
+    hours = _format_business_hours(settings)
+    if hours:
+        lines.append(hours)
+    return "\n".join(lines) if lines else None

@@ -22,6 +22,7 @@ from zoneinfo import available_timezones
 
 from pydantic import BaseModel, Field, field_validator
 
+from blinkengage.domain.company_settings import MAX_BUSINESS_PROFILE_FIELD_CHARS
 from blinkengage.domain.notification_types import is_known_notification_type
 
 _HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -116,6 +117,32 @@ class OnboardingSettingsUpdate(BaseModel):
     completed: bool = False
 
 
+class BusinessProfileSettingsUpdate(BaseModel):
+    """The business facts customers ask for by name, and the only ones AI
+    Autopilot is permitted to state about the company.
+
+    Every field is optional and defaults to ``None``, which is load-bearing
+    rather than merely convenient: an unset field is omitted from the AI
+    prompt entirely, whereas a field present-but-empty invites the model to
+    fill the gap. See ``domain.company_settings.business_profile``.
+
+    No ``business_hours`` field here — hours are configured as a structured
+    weekly schedule in the ``business_hours`` section and derived from it,
+    so the two cannot disagree.
+    """
+
+    legal_name: str | None = Field(
+        default=None,
+        max_length=MAX_BUSINESS_PROFILE_FIELD_CHARS,
+        description="The trading name customers should be told, which is not "
+        "necessarily the tenant name chosen at signup.",
+    )
+    location: str | None = Field(default=None, max_length=MAX_BUSINESS_PROFILE_FIELD_CHARS)
+    contact: str | None = Field(default=None, max_length=MAX_BUSINESS_PROFILE_FIELD_CHARS)
+    website: str | None = Field(default=None, max_length=MAX_BUSINESS_PROFILE_FIELD_CHARS)
+    about: str | None = Field(default=None, max_length=MAX_BUSINESS_PROFILE_FIELD_CHARS)
+
+
 class CompanySettingsUpdate(BaseModel):
     """Every field is a full replacement of that top-level section — a
     settings tab always sends its own section's complete current state,
@@ -128,6 +155,7 @@ class CompanySettingsUpdate(BaseModel):
     language: SupportedLanguage | None = None
     timezone: str | None = None
     business_hours: BusinessHoursSettingsUpdate | None = None
+    business_profile: BusinessProfileSettingsUpdate | None = None
     notifications: dict[str, bool] | None = None
     messaging: MessagingSettingsUpdate | None = None
     security: SecuritySettingsUpdate | None = None

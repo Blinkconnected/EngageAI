@@ -379,3 +379,118 @@ class TestSuggestAutopilotReply:
         assert result.reply is None
         assert result.confidence == 0.0
         assert result.needs_handoff is True
+
+
+class TestAutopilotGrounding:
+    """What Autopilot is allowed to know, and what it does when it does
+    not know. The defect these cover: asked its own company's name and
+    address in Arabic, Autopilot answered with a bracketed placeholder,
+    and asked its opening hours it invented "9am to 5pm" — all
+    auto-sent, because this path has no human reviewing it."""
+
+    async def test_business_profile_is_given_to_the_model(self, events: FakeEventPublisher) -> None:
+        provider = FakeAiProvider("REPLY: ok\nCONFIDENCE: 90\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        await service.suggest_autopilot_reply(
+            company_id=uuid4(),
+            conversation_id=uuid4(),
+            conversation_history="...",
+            business_profile="Company name: Blink Connected\nLocation: Amman, Jordan",
+        )
+
+        system = provider.calls[0]["system"]
+        assert isinstance(system, str)
+        assert "Blink Connected" in system
+        assert "Amman, Jordan" in system
+
+    async def test_retrieved_material_is_given_to_the_model(
+        self, events: FakeEventPublisher
+    ) -> None:
+        provider = FakeAiProvider("REPLY: ok\nCONFIDENCE: 90\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        await service.suggest_autopilot_reply(
+            company_id=uuid4(),
+            conversation_id=uuid4(),
+            conversation_history="...",
+            grounding="APPROVED ANSWERS:\nQ: Do you deliver?\nA: Yes, within 3 days.",
+        )
+
+        system = provider.calls[0]["system"]
+        assert isinstance(system, str)
+        assert "within 3 days" in system
+
+    async def test_the_refusal_rule_is_stated_even_with_nothing_to_ground_on(
+        self, events: FakeEventPublisher
+    ) -> None:
+        """The ungrounded prompt must still forbid invention — an empty
+        knowledge base is exactly when the model is most tempted to fill
+        the gap, so this is the case that must not silently relax."""
+        provider = FakeAiProvider("REPLY: ok\nCONFIDENCE: 90\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        system = provider.calls[0]["system"]
+        assert isinstance(system, str)
+        assert "Never guess" in system
+        assert "Never write a placeholder" in system
+
+    @pytest.mark.parametrize(
+        ("reply", "label"),
+        [
+            ("اسم الشركة هو [اسم الشركة].", "the Arabic company-name placeholder, as reported"),
+            ("موقعنا هو [عنوان الموقع].", "the Arabic address placeholder, as reported"),
+            ("Our company is [Company Name].", "an English placeholder"),
+            ("We are at {address}.", "a curly-brace placeholder"),
+            ("We open at [business_hours].", "a snake_case placeholder"),
+        ],
+    )
+    async def test_a_placeholder_reply_is_forced_to_handoff(
+        self, events: FakeEventPublisher, reply: str, label: str
+    ) -> None:
+        """Regardless of what the model scored itself. A placeholder is
+        the one failure that reads as a finished answer, so the prompt
+        rule against it is backed by a mechanical check that cannot be
+        talked out of."""
+        provider = FakeAiProvider(f"REPLY: {reply}\nCONFIDENCE: 95\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.needs_handoff is True, label
+        assert result.confidence == 0.0
+        # The text is kept, not blanked: the agent picking up the handoff
+        # is better off seeing what the model was about to send.
+        assert result.reply == reply
+
+    @pytest.mark.parametrize(
+        ("reply", "label"),
+        [
+            ("Your order [#12345] shipped today.", "an order reference"),
+            ("See ticket [REF-2024] for details.", "a ticket reference"),
+            ("The total is $45 (including tax).", "ordinary parenthetical prose"),
+            ("Use the code SAVE20 at checkout.", "a promo code"),
+        ],
+    )
+    async def test_a_legitimate_bracketed_reference_still_sends(
+        self, events: FakeEventPublisher, reply: str, label: str
+    ) -> None:
+        """The guard must not hold real replies. A reference carries a
+        number; a placeholder names a concept — that is the distinction
+        the pattern draws, and trading this bug for replies that never
+        arrive would be no improvement."""
+        provider = FakeAiProvider(f"REPLY: {reply}\nCONFIDENCE: 95\nHANDOFF: NO")
+        service = _service(provider, events)
+
+        result = await service.suggest_autopilot_reply(
+            company_id=uuid4(), conversation_id=uuid4(), conversation_history="..."
+        )
+
+        assert result.needs_handoff is False, label
+        assert result.confidence == 0.95

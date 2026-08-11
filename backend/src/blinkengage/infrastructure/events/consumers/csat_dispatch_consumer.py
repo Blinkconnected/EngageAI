@@ -83,9 +83,16 @@ logger = get_logger(__name__)
 QUEUE_NAME = "csat-dispatch"
 ROUTING_KEYS = ["conversation.resolved"]
 
+#: The URL sits **alone on its own line**, with no adjacent punctuation
+#: and no trailing text. Channel clients (WhatsApp, Messenger, SMS)
+#: autolink by scanning for a URL and extending to the next whitespace,
+#: so a link that shares a line with prose — or is followed by a period —
+#: is routinely detected short, or not at all, leaving the customer a
+#: dead string they cannot tap. A bare line is the one form every
+#: channel linkifies identically.
 _SURVEY_MESSAGE_TEMPLATE = (
     "Thanks for reaching out! We'd love to hear how we did — please take a "
-    "moment to share your feedback: {url}"
+    "moment to share your feedback:\n\n{url}"
 )
 
 _engine: AsyncEngine | None = None

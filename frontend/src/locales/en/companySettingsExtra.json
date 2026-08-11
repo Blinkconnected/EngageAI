@@ -81,5 +81,22 @@
     "autopilotSavingButton": "Saving…",
     "providerSaveButton": "Save provider settings",
     "providerSavingButton": "Saving…"
+  },
+  "BusinessProfileSettingsPanel": {
+    "description": "The facts customers ask for by name. AI Autopilot may state these and nothing else about your business — anything you leave blank, it will hand to a human agent rather than guess.",
+    "savedMessage": "Business profile saved.",
+    "savingButton": "Saving…",
+    "saveChangesButton": "Save changes",
+    "hoursNotice": "Opening hours come from the Business Hours tab, so AI and your SLA rules always agree. Until a day is configured there, AI will not state any hours.",
+    "legal_nameLabel": "Company name",
+    "legal_nameHelper": "The trading name customers should be told. This can differ from your account name.",
+    "locationLabel": "Location",
+    "locationHelper": "Address or area customers should be given.",
+    "contactLabel": "Contact details",
+    "contactHelper": "Phone, email or other contact route you want AI to share.",
+    "websiteLabel": "Website",
+    "websiteHelper": "Public website address.",
+    "aboutLabel": "About the business",
+    "aboutHelper": "A short description of what you do or sell."
   }
 }

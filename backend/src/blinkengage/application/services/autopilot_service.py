@@ -31,6 +31,10 @@ from uuid import UUID
 
 from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.conversation_service import ConversationService
+from blinkengage.application.services.faq_retrieval_service import FaqRetrievalService
+from blinkengage.application.services.knowledge_retrieval_service import (
+    KnowledgeRetrievalService,
+)
 from blinkengage.application.services.ownership_service import (
     OwnershipService,
     queue_owner,
@@ -41,6 +45,7 @@ from blinkengage.application.services.service_context_resolver import (
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.company_settings import (
     effective_autopilot_confidence_threshold,
+    format_business_profile,
     is_ai_enabled,
     is_autopilot_agent_request_mode_enabled,
     is_autopilot_enabled,
@@ -102,6 +107,18 @@ def _format_conversation_history(messages: list[Message]) -> str:
     return "\n".join(lines)
 
 
+def _latest_customer_question(recent_messages: list[Message]) -> str:
+    """The newest inbound message body — what retrieval searches for.
+
+    ``recent_messages`` arrives newest-first (see ``run``), so the first
+    inbound entry is the message being answered.
+    """
+    for message in recent_messages:
+        if message.direction is MessageDirection.INBOUND and message.body:
+            return message.body
+    return ""
+
+
 class AutopilotService:
     def __init__(
         self,
@@ -114,6 +131,8 @@ class AutopilotService:
         ownership: OwnershipService | None = None,
         service_contexts: ServiceContextResolver | None = None,
         decisions: RoutingDecisionRepository | None = None,
+        knowledge: KnowledgeRetrievalService | None = None,
+        faqs: FaqRetrievalService | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -133,6 +152,16 @@ class AutopilotService:
         # hand-off is enforced exactly as before and simply not explained —
         # the reason lives on an event nobody reads beside the conversation.
         self._decisions = decisions
+        # Retrieval, so Autopilot answers from the company's own published
+        # material instead of from whatever the model happens to believe.
+        # Optional like the rest, and safe when absent for a reason worth
+        # stating: without these the model is told the business facts it
+        # has are the complete set and to hand off rather than invent
+        # anything else, so a missing retriever costs answers, never
+        # accuracy. The grounded and ungrounded prompts differ in what
+        # they contain, never in what they permit.
+        self._knowledge = knowledge
+        self._faqs = faqs
 
     async def run(
         self,
@@ -257,6 +286,15 @@ class AutopilotService:
             company_id=company_id,
             conversation_id=conversation_id,
             conversation_history=history,
+            business_profile=format_business_profile(company.settings),
+            # Retrieved against the customer's own words, not the whole
+            # transcript: the transcript includes Autopilot's previous
+            # replies, and searching with those in the query drifts the
+            # results toward what AI already said rather than what the
+            # customer is asking now.
+            grounding=await self._grounding_for(
+                company_id=company_id, query=_latest_customer_question(recent_messages)
+            ),
             actor_user_id=actor_user_id,
         )
         threshold = await self._threshold_for(
@@ -327,6 +365,63 @@ class AutopilotService:
             )
         )
         return AutopilotOutcome(replied=True, confidence=result.confidence)
+
+    async def _grounding_for(self, *, company_id: UUID, query: str) -> str | None:
+        """The company's own published material for this question, as
+        prompt text — or ``None`` when there is nothing to add.
+
+        Mirrors the ``/ai/knowledge-search`` endpoint deliberately, down
+        to the FAQ-before-articles ordering and the approved-answer
+        labelling: an FAQ is a complete answer somebody published, an
+        article passage is raw material to summarise, and a model handed
+        both without being told which is which paraphrases the curated
+        wording into uncurated wording. Autopilot sends without review,
+        so it needs that distinction more than the agent-facing endpoint
+        does, not less.
+
+        Retrieval failure is caught and degrades to ``None``. An
+        embedding provider that is down or rate-limited must not take
+        Autopilot down with it: the model still has the business profile,
+        and is still forbidden from inventing anything beyond it, so the
+        worst case is a handoff — which is the correct outcome for a
+        question the platform cannot currently look up.
+        """
+        if not query.strip() or (self._knowledge is None and self._faqs is None):
+            return None
+
+        sections: list[str] = []
+        try:
+            if self._faqs is not None:
+                faq_hits = await self._faqs.grounding_answers(
+                    company_id=company_id, query=query, limit=3
+                )
+                if faq_hits:
+                    sections.append(
+                        "APPROVED ANSWERS (prefer these; they are published answers to "
+                        "this exact kind of question — reuse their wording where it "
+                        "fits):\n"
+                        + "\n\n".join(
+                            f"Q: {hit.faq.question}\nA: {hit.faq.answer}" for hit in faq_hits
+                        )
+                    )
+            if self._knowledge is not None:
+                hits = await self._knowledge.grounding_passages(
+                    company_id=company_id, query=query, limit=5
+                )
+                if hits:
+                    sections.append(
+                        "REFERENCE MATERIAL (background; summarise only what is "
+                        "needed):\n"
+                        + "\n\n".join(
+                            f"Article: {hit.article.title}\n{hit.excerpt or hit.article.body}"
+                            for hit in hits
+                        )
+                    )
+        except Exception:
+            logger.warning("autopilot_grounding_failed", company_id=str(company_id), exc_info=True)
+            return None
+
+        return "\n\n".join(sections) if sections else None
 
     async def _threshold_for(
         self, *, conversation_id: UUID, company_settings: dict[str, Any]

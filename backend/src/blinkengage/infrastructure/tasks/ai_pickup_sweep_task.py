@@ -231,9 +231,11 @@ async def _settle_one(
     # discovering AI cannot answer it would strip it from the humans who
     # could, for nothing. If the model is unavailable or unsure, the
     # conversation simply stays where it is.
-    autopilot = build_autopilot_service(session=session, settings=settings)
-    events = OutboxEventPublisher(EventOutboxRepository(session))
     company_ai_config = company.ai_config if company is not None else None
+    autopilot = build_autopilot_service(
+        session=session, settings=settings, company_ai_config=company_ai_config
+    )
+    events = OutboxEventPublisher(EventOutboxRepository(session))
 
     def _ai() -> AiService | None:
         provider = build_ai_provider_for_company(settings, company_ai_config)

@@ -16,6 +16,37 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Business profile: what AI Autopilot is allowed to say about the
+  company.** A new ``business_profile`` section on company settings
+  holding the facts customers ask for by name — trading name, location,
+  contact details, website, a short description — settable through
+  ``PATCH /company`` and injected into every Autopilot reply prompt.
+
+  Deliberately not columns on ``companies``. ``Company.name`` is a tenant
+  label chosen at signup and is not necessarily the name a customer
+  should be told, and what the AI may state about a business is editable
+  content rather than part of the tenancy record. No migration: settings
+  is already a schemaless JSON blob for exactly this reason.
+
+  **Opening hours are not part of it**, and that omission is the design.
+  A structured weekly schedule already exists under ``business_hours``,
+  and a second free-text field for the same fact would let the AI quote
+  one while the SLA engine honours the other. The hours line is derived
+  from the existing schedule — reading the *raw stored* days rather than
+  ``resolve_schedule``, because that helper fills unconfigured days with
+  a 09:00–17:00 default so an SLA clock always has something to
+  calculate against. Reasonable there, catastrophic here: it would have
+  the AI announce a full Monday-to-Friday 9-to-5 week to a company that
+  never configured hours at all.
+
+  **Settings → Business Profile** is the screen for it, placed directly
+  before Business Hours because the two together are the whole of what
+  Autopilot may say about a company. Blank fields are dropped on save
+  rather than stored as empty strings — the same rule as the reader, for
+  the same reason. The panel states plainly that anything left blank will
+  be handed to a human rather than guessed, and points at the Business
+  Hours tab for hours. English and Arabic.
+
 - **Structured knowledge: the prices a company looks up rather than
   searches for.** The first build phase of the M2 architecture below. A
   price, an SLA term or a product attribute is now a typed record with an
@@ -274,6 +305,57 @@ for more detail on how this page is put together.
   not always captured; the label then fell through to a debug string. The
   Inbox query now resolves the name, the way the Conversation Inspector
   already did for the same fall-through.
+
+- **AI Autopilot invented facts about the company it works for.** Asked
+  in Arabic for the company's name and address, it replied with the
+  bracketed placeholders ``[اسم الشركة]`` and ``[عنوان الموقع]``. Asked
+  its opening hours and what it sells, it invented both — "9 صباحًا حتى 5
+  مساءً", and a product range of clothing, electronics and homeware that
+  nobody had ever told it about. Every one of those was auto-sent to a
+  customer, because Autopilot has no human reviewing its replies.
+
+  The prompt had said *"using only information present in the
+  conversation history"* and was then handed nothing but the transcript.
+  So a customer asking the company's name was asking for something the
+  model had no way to know and no instruction to decline — and a model
+  with a reply to compose and a missing fact composes around it. The
+  brackets were never an unsubstituted template; they are what a model
+  writes when it is holding a sentence open for a fact it does not have.
+
+  Three changes, because none of them is sufficient alone:
+
+  **The model is now told what it knows.** The company's business profile
+  and, for each inbound message, retrieval against its own Knowledge Base
+  and FAQs are passed into the prompt — the same hybrid retrieval,
+  approved-answers-before-reference-material ordering, and published-only
+  corpus that ``/ai/knowledge-search`` already used. Autopilot had never
+  called it. Two retrieval systems existed side by side and the
+  autonomous one used neither.
+
+  **The refusal rule is unconditional.** Retrieval alone would not have
+  fixed this: a knowledge base can be empty, or simply not contain the
+  answer, and the failure being prevented is precisely what the model
+  does when a fact is *absent*. The prompt now states, whether or not
+  anything was retrieved, that the facts given are the complete set, that
+  guessing a business fact is forbidden, that a placeholder is never an
+  acceptable output, and that a question it was not given the answer to
+  is a handoff rather than an attempt.
+
+  **A placeholder in a reply now forces a handoff mechanically**,
+  whatever confidence the model scored itself. A prompt rule is a strong
+  tendency, not a guarantee, and this is the one failure mode that
+  reaches a customer looking like a finished answer — ``اسم الشركة هو
+  [اسم الشركة]`` is fluent, well-formed, confidently self-scored and
+  worthless. The check distinguishes a placeholder, which names a
+  concept, from a genuine reference like ``[#12345]`` or ``[REF-2024]``,
+  which carries a number; holding back real replies would have traded
+  this bug for a quieter one.
+
+  Retrieval failure degrades to a handoff rather than an error: an
+  embedding provider that is down leaves the model with the profile
+  alone, still forbidden from inventing beyond it. The grounded and
+  ungrounded prompts differ in what they contain, never in what they
+  permit.
 
 - **The CSAT survey link was not clickable.** The message put the URL on
   the same line as the sentence introducing it, immediately after a
