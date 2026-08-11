@@ -16,6 +16,116 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The M2 architecture: company knowledge, and how the platform sounds.**
+  Design only — no behaviour changes, no schema, no data. A companion to
+  the Company Intelligence Engine covering the two things that document
+  does not: knowledge that must be looked up rather than resembled, and
+  the voice a company answers in.
+
+  The audit that preceded it is most of the value. Nearly everything the
+  brief asked for already existed or was already designed — provenance and
+  confidence on `memory_facts`, hybrid retrieval, tenant-isolated vector
+  search verified at zero cross-tenant rows, the AI tool pipeline, and
+  inbound email with attachment extraction. Company DNA already split
+  brand voice into constraints that are enforced and characteristics that
+  are asked for, and had already worked out that Arabic register does not
+  map onto English formality. Writing those again would have produced a
+  second vocabulary for the same concepts, so the document names what
+  exists and adds only what does not.
+
+  What is genuinely new is **structured knowledge**: a price is not a
+  passage, and a question about one answered by semantic similarity
+  returns the 200 Mbps row with a respectable score. Records are typed,
+  carry an effective period and a version chain, and resolve by a
+  canonical key computed deterministically — Unicode-normalised, with
+  Arabic orthographic folding, so `الخدمة` and `الخدمه` are one product
+  and `٥٠٠` is `500`. No model generates that key: a key that changes
+  between runs silently forks a product's history in two.
+
+  Three rules the rest of the design hangs from. A structured lookup that
+  finds nothing **never falls back to semantic search**, because that
+  fallback is exactly how an expired price gets quoted a year later. Two
+  overlapping active prices is a contradiction the platform surfaces
+  rather than resolves, because picking the better-scoring one turns a
+  data problem into a quotation. And there is no delete anywhere in the
+  design — archive, deprecate, supersede — because a price that was quoted
+  must be reproducible in an audit two years later.
+
+  A trusted sender does not mean auto-publish. Pricing, SLA, billing,
+  legal and security knowledge always require human review before
+  publication, whatever the sender and whatever the extraction confidence:
+  a trusted sender is a statement about a mailbox, and mailboxes are
+  compromised.
+
+  Dialect adaptation ships behind a flag defaulting to off. Language
+  matching, tone and company voice all stay on; what waits is guessing
+  which Arabic someone speaks. Four safety properties can be asserted in
+  tests — language is matched, dialect only above confidence, toxicity is
+  never mirrored, the classification is never leaked — but dialect
+  *quality* cannot be, and no automated result will be reported as
+  verifying it. That needs a held-out corpus graded by native speakers of
+  each dialect, and until it exists the honest default is neutral
+  language: a badly-produced dialect reads as mockery.
+
+- **AI tool calling: the foundation an AI administrator will stand on.**
+  Not the administrator itself — nothing conversational ships here, and
+  nothing calls this in production yet. What ships is the machinery any
+  such feature must go through, built first and on its own so it could be
+  reviewed on its own.
+
+  An AI that can *change* a workspace is a different proposition from one
+  that suggests replies. A wrong suggestion is ignored; a wrong mutation
+  moves an agent out of a department or changes who can see billing. Two
+  assumptions shape everything: the model is untrusted input — it may be
+  confused, or steered by text a customer wrote into a conversation it
+  later reads — and a system prompt is a preference, not a control.
+
+  So every AI-initiated change passes one pipeline: registry allowlist →
+  strict schema validation → the authenticated user's identity → tenant
+  scope → permission check → confirmation policy → an existing
+  application service → audit. Handlers get four named services and
+  nothing else: no session, no repository, no lookup-by-name. A handler
+  that wanted to issue its own SQL has no expression available to do it
+  in.
+
+  **There are no destructive tools, and that is structural.** None is
+  registered, and the registry refuses to register a name containing
+  `delete`, `remove`, `purge`, `drop`, `reset` or `truncate` — so the
+  guarantee covers the delete tool nobody has thought of yet. The model
+  also cannot supply its own identity: `company_id`, `user_id` and
+  `permission` are refused as argument *names* at registration, which is
+  why a tool acting on somebody else says `target_agent_id`.
+
+  **High-impact actions park rather than run.** A role change is
+  validated, priced as a before/after diff, and written to
+  `pending_ai_actions`; approval is an authenticated request consuming
+  that row exactly once. Confirming re-checks everything — permissions
+  may have changed, and so may the entity — and refuses if the workspace
+  moved underneath the diff the human read. Bulk escalates automatically:
+  any list argument over five items needs a human whatever the tool says.
+
+  Tool calling is implemented for OpenAI and Claude. The other six
+  providers refuse explicitly; there is no fallback that prompts a model
+  for JSON and parses the reply, because that puts a guesser in front of
+  a mutation pipeline. `complete()` and the twelve existing AI
+  capabilities are untouched.
+
+  See [`docs/architecture/ai-tool-calling.md`](docs/architecture/ai-tool-calling.md).
+
+- **A record of what the AI did, and why.** `ai_action_logs` sits
+  alongside the existing audit trail rather than replacing it: tools run
+  through ordinary services, so the usual domain event is audited as
+  always. What the new table adds is what only matters when a machine
+  acted — the before and after state, the sentence the user actually
+  typed, and which model turned one into the other. Refusals are recorded
+  too; a model repeatedly attempting something it may not do is the
+  pattern worth being able to find.
+
+  Secrets cannot reach it. Secret-shaped argument names are refused at
+  registration, so the declared schema *is* the allowlist — the failure
+  mode of a denylist is that the new credential is the one nobody
+  remembered to add.
+
 - **Safe retries when a reply is sent over a bad connection.** Sending a
   message accepts an `Idempotency-Key` header. Present the same key again
   and the original reply comes back rather than a second one being sent.

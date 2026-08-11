@@ -75,6 +75,7 @@ change must not contradict.
 | [Knowledge, memory & intelligence](./knowledge-memory-intelligence.md) | How they relate |
 | [Memory platform](./memory-platform.md) | Conversation memory |
 | [Company Intelligence Engine](./company-intelligence-engine.md) | The engine |
+| [Company Knowledge and Adaptive Voice](./company-knowledge-and-voice.md) | M2 — structured knowledge, ingestion, voice |
 | [Intelligence platform](./intelligence-platform.md) | Observation → pattern |
 
 ### Learning Platform
@@ -108,6 +109,7 @@ the platform is **forbidden** to do, and every later document assumes it.
 | [Workflow engine](./workflow-engine.md) | Customer-defined automation |
 | [Notifications](./notifications.md) | Email and push delivery |
 | [Real-time](./realtime.md) | The agent WebSocket contract, presence, reconnect |
+| [AI tool calling](./ai-tool-calling.md) | How an AI may change a workspace, and what stops it |
 
 ## Customers and CRM
 

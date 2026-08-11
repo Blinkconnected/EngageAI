@@ -1913,6 +1913,7 @@ harness resemble production.
 
 ## See also
 
+- [Company Knowledge and Adaptive Voice](./company-knowledge-and-voice.md) — M2: deterministic structured knowledge, document ingestion, and the voice layer built on this engine's foundation
 - [Knowledge, Memory and Intelligence](./knowledge-memory-intelligence.md) — the domain boundaries this engine implements
 - [AI Engine](./ai-engine.md)
 - [Execution Context](./execution-context.md)
