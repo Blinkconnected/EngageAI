@@ -150,6 +150,26 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission(
         "knowledge_base.manage", "Create/edit/delete knowledge base categories and articles"
     ),
+    # --- Structured knowledge (see
+    # docs/architecture/company-knowledge-and-voice.md) — prices, SLA terms
+    # and product attributes, looked up by identity rather than found by
+    # resemblance.
+    #
+    # Three permissions rather than reusing knowledge_base.*, and the split
+    # is by blast radius rather than by entity. Reading a price is what an
+    # agent does all day. Drafting one is a proposal that changes nothing
+    # until somebody approves it. **Publishing is the platform committing
+    # to a number it will quote to a customer**, and it is the only one of
+    # the three that can be wrong in a way an auditor asks about — so it is
+    # the one a company can withhold without also withholding the other
+    # two. A single knowledge_records.manage would make "may draft a price"
+    # and "may make a price official" the same grant. ---
+    Permission("knowledge_records.read", "View structured knowledge records and their history"),
+    Permission("knowledge_records.propose", "Draft structured knowledge records"),
+    Permission(
+        "knowledge_records.publish",
+        "Publish, supersede and archive structured knowledge records",
+    ),
     Permission("quick_replies.read", "View quick replies"),
     Permission("quick_replies.manage", "Create/edit/delete quick replies"),
     # --- AI Engine (see docs/architecture/ai-engine.md) — one permission
@@ -219,6 +239,9 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "workflows.manage",
             "knowledge_base.read",
             "knowledge_base.manage",
+            "knowledge_records.read",
+            "knowledge_records.propose",
+            "knowledge_records.publish",
             "intelligence.read",
             "memory.read",
             "memory.manage",
@@ -247,6 +270,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[SystemRole, frozenset[str]] = {
             "queues.read",
             "workflows.read",
             "knowledge_base.read",
+            # An agent reads prices; publishing one is not their call.
+            "knowledge_records.read",
             "memory.read",
             "quick_replies.read",
             "ai.use",

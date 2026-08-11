@@ -267,6 +267,14 @@ for more detail on how this page is put together.
   as "—".** Neither is a fact about a conversation that is over. It now
   says when it finished instead.
 
+- **The Inbox printed a raw queue id where the queue name belongs** —
+  `queue 3842287b-9dfe-4b12-949f-08d5c6c89aea` on the row that should
+  have read `General`. The queue's name is denormalised onto the
+  ownership record when ownership is taken, and for queue owners it was
+  not always captured; the label then fell through to a debug string. The
+  Inbox query now resolves the name, the way the Conversation Inspector
+  already did for the same fall-through.
+
 - **The CSAT survey link was not clickable.** The message put the URL on
   the same line as the sentence introducing it, immediately after a
   colon. Channel clients — WhatsApp, Messenger, SMS — autolink by finding
