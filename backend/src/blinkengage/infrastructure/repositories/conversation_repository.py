@@ -25,6 +25,7 @@ from blinkengage.infrastructure.database.models.conversation import (
 )
 from blinkengage.infrastructure.database.models.customer import Customer
 from blinkengage.infrastructure.database.models.ownership import ConversationOwnership
+from blinkengage.infrastructure.database.models.queue import Queue
 from blinkengage.infrastructure.database.models.routing_decision import (
     RoutingDecisionRecord,
 )
@@ -521,7 +522,13 @@ class ConversationRepository:
                 Customer.full_name,
                 current_owner.c.owner_kind,
                 current_owner.c.owner_id,
-                current_owner.c.owner_name,
+                # The stored name, or the queue's own if nothing was
+                # denormalised when ownership was recorded. Without this
+                # `Owner.describe()` falls through to "queue <uuid>" and the
+                # Inbox shows a raw id where the queue name belongs — the
+                # same fall-through the Inspector already resolves (see
+                # `_owner_names`), which the Inbox never got.
+                func.coalesce(current_owner.c.owner_name, Queue.name).label("owner_name"),
                 current_owner.c.reason,
                 current_owner.c.owned_from,
                 last_event.c.sentence,
@@ -532,6 +539,10 @@ class ConversationRepository:
             # Outer: a conversation that predates the ownership model has no
             # row, and must still appear.
             .outerjoin(current_owner, current_owner.c.conversation_id == Conversation.id)
+            # Only queue owners match: `owner_id` holds an agent id for a
+            # human owner and no Queue row has that id, so the join yields
+            # NULL and the coalesce above keeps the stored name.
+            .outerjoin(Queue, Queue.id == current_owner.c.owner_id)
             # Outer again: a conversation with nothing recorded still belongs
             # in the Inbox, and is exactly the one somebody should look at.
             .outerjoin(last_event, last_event.c.conversation_id == Conversation.id)

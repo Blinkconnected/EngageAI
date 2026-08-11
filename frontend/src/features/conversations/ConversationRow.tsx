@@ -3,6 +3,7 @@ import { Box, Button, ButtonBase, Chip, Stack, Typography } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { formatElapsed } from '../../shared/utils/formatElapsed'
 import { ChannelIcon } from './ConversationCells'
+import { isPickable } from './conversationRules'
 import type { Conversation, SlaHealth } from './types'
 
 /** One conversation, communicated in the order an agent decides in.
@@ -65,7 +66,7 @@ export const ConversationRow = memo(function ConversationRow({
   const style = health === 'healthy' ? null : HEALTH_STYLE[health]
   const duration = formatElapsed(conversation.owner_since, now)
   const unread = conversation.unread_count > 0
-  const unclaimed = !conversation.assigned_agent_id && !conversation.autopilot_active
+  const pickable = isPickable(conversation)
 
   return (
     <Box
@@ -173,7 +174,7 @@ export const ConversationRow = memo(function ConversationRow({
       {/* Claiming work without opening it first. An agent working a
           pickup queue takes several in a row, and making each one a
           round trip through the conversation is the slow path. */}
-      {onPick && unclaimed ? (
+      {onPick && pickable ? (
         <Button
           size="small"
           variant="outlined"
