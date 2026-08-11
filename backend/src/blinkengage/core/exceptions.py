@@ -59,7 +59,7 @@ _STATUS_MAP: dict[type[Exception], int] = {
     AmbiguousPricingConfigurationError: status.HTTP_409_CONFLICT,
     MetricNotPriceableError: status.HTTP_409_CONFLICT,
     PricingModelNotEnabledError: status.HTTP_409_CONFLICT,
-    InvalidPricingTermsError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    InvalidPricingTermsError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     InvoiceStateError: status.HTTP_409_CONFLICT,
     InvalidInvoiceTransitionError: status.HTTP_409_CONFLICT,
     InvoiceNotPayableError: status.HTTP_409_CONFLICT,
@@ -67,8 +67,8 @@ _STATUS_MAP: dict[type[Exception], int] = {
     # A country or currency this build cannot bill in is a bad
     # request, not a conflict: nothing about the system's state
     # would make it acceptable.
-    UnknownCountryError: status.HTTP_422_UNPROCESSABLE_ENTITY,
-    UnknownCurrencyError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    UnknownCountryError: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    UnknownCurrencyError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     PaymentProcessingError: status.HTTP_409_CONFLICT,
     RefundNotPermittedError: status.HTTP_409_CONFLICT,
     PricingRangeOverlapError: status.HTTP_409_CONFLICT,
@@ -84,7 +84,7 @@ _STATUS_MAP: dict[type[Exception], int] = {
     # A threshold outside its measured safe range is a bad request, not a
     # conflict: nothing about the system's state would make it
     # acceptable, and the bounds are the same on every installation.
-    ThresholdOutOfBoundsError: status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ThresholdOutOfBoundsError: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
 

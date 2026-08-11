@@ -107,7 +107,7 @@ class IdempotencyGuard:
 
         if isinstance(reservation, Mismatch):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
                     "This Idempotency-Key was already used for a different request body. "
                     "Generate a new key for a new request."

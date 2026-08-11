@@ -82,7 +82,7 @@ async def revenue_overview(
     """
     if since and until and since >= until:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="`since` must fall before `until`.",
         )
     return RevenueOverviewResponse.model_validate(await service.overview(since=since, until=until))

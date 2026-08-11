@@ -487,7 +487,7 @@ async def search_invoices(
     """
     if issued_from is not None and issued_to is not None and issued_from > issued_to:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"issued_from ({issued_from}) is after issued_to ({issued_to}); that range "
                 "cannot match anything. Returning an empty page would look like an answer."

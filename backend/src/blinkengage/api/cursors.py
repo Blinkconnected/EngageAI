@@ -68,7 +68,7 @@ def parse(raw: str | None) -> Cursor | None:
         return decode(raw)
     except InvalidCursor as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid or expired cursor. Restart paging without one.",
         ) from exc
 
