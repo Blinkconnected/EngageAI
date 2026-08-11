@@ -291,7 +291,14 @@ services:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
         VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-/api/v1/ws}
     image: blinkengage-nginx:prod
-    volumes: !override []
+    # The config and the built bundle come from the image, so the dev
+    # bind-mounts are dropped — but the TLS material cannot be baked in and
+    # must still come from the host. `!override` replaces the base list
+    # wholesale, so anything omitted here is simply absent: an empty list
+    # here is what left the production image with no certificate to serve.
+    volumes: !override
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./docker/nginx/acme:/var/www/acme:ro
     depends_on: !override
       backend:
         condition: service_healthy
