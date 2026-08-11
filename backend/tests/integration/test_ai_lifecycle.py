@@ -34,6 +34,7 @@ from blinkengage.core.config import get_settings
 from blinkengage.domain.ownership import OwnerKind, OwnershipReason
 from blinkengage.domain.routing_decisions import RoutingDecisionKind, RoutingDecisionReason
 from blinkengage.domain.sla import SlaState, SlaTimer
+from blinkengage.infrastructure.database.models.company import Company
 from blinkengage.infrastructure.database.models.conversation import Conversation
 from blinkengage.infrastructure.database.models.routing_decision import RoutingDecisionRecord
 from blinkengage.infrastructure.database.models.sla_clock import ConversationSlaClock
@@ -455,3 +456,122 @@ class TestWhatTheLifecycleDoesNotYetDo:
             "without obeying it; or a new file mentions it only to document that "
             "it does nothing, which is fine and belongs in the list above."
         )
+
+
+class _CapturingAiProvider:
+    """Answers confidently and keeps the system prompt it was given.
+
+    The assertions below are about *what the model was told*, which is
+    not observable from the reply — a model handed nothing still produces
+    a fluent answer, which is exactly how the invented-hours defect
+    reached customers.
+    """
+
+    def __init__(self) -> None:
+        self.system: str | None = None
+
+    async def complete(
+        self, *, system: str | None, prompt: str, max_tokens: int, temperature: float
+    ) -> str:
+        self.system = system
+        return "REPLY: We can help with that.\nCONFIDENCE: 95\nHANDOFF: NO"
+
+    async def health_check(self) -> bool:
+        return True
+
+
+async def _set_business_profile(app: Any, company_id: uuid.UUID, profile: dict[str, Any]) -> None:
+    factory = app.state.container.session_factory()
+    async with factory() as session:
+        company = await session.get(Company, company_id)
+        assert company is not None
+        company.settings = {**company.settings, "business_profile": profile}
+        await session.commit()
+
+
+async def _autopilot_reply(app: Any, conversation: Any) -> _CapturingAiProvider:
+    """One Autopilot run through the real service and factory."""
+    from blinkengage.infrastructure import autopilot_factory
+
+    provider = _CapturingAiProvider()
+    factory = app.state.container.session_factory()
+    async with factory() as session:
+        service = autopilot_factory.build_autopilot_service(
+            session=session, settings=get_settings()
+        )
+        await service.run(
+            company_id=conversation.company_id,
+            conversation_id=conversation.id,
+            trigger=AutopilotTrigger.NEW_MESSAGE,
+            ai_service_factory=lambda: AiService(
+                provider=provider,  # type: ignore[arg-type]
+                events=OutboxEventPublisher(EventOutboxRepository(session)),
+            ),
+        )
+        await session.commit()
+    return provider
+
+
+class TestAutopilotIsToldWhatItKnows:
+    """The wiring the unit tests cannot see.
+
+    ``test_ai_service`` proves the prompt carries a profile when one is
+    passed; ``test_company_settings`` proves the profile formats
+    correctly. Neither notices if ``AutopilotService`` stops passing it —
+    which would restore the original defect with every other test still
+    green.
+    """
+
+    async def test_the_company_business_profile_reaches_the_model(
+        self,
+        client: AsyncClient,
+        owner_headers: dict,
+        registered_owner: dict,
+        app: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        conversation, _ = await _run(
+            client, owner_headers, registered_owner, app, settings=_AUTOPILOT_ON, ai_enabled=True
+        )
+        await _set_business_profile(
+            app,
+            conversation.company_id,
+            {"legal_name": "Blink Connected", "location": "Amman, Jordan"},
+        )
+        await _wind_back(app, conversation.id)
+        await _sweep(app, monkeypatch)
+        await _customer_asks_again(app, conversation.id)
+
+        provider = await _autopilot_reply(app, conversation)
+
+        assert provider.system is not None
+        assert "Blink Connected" in provider.system, (
+            "the company's own name never reached the prompt — this is the defect "
+            "where Autopilot answered a customer with a bracketed placeholder"
+        )
+        assert "Amman, Jordan" in provider.system
+
+    async def test_the_refusal_rule_is_present_even_with_no_profile_configured(
+        self,
+        client: AsyncClient,
+        owner_headers: dict,
+        registered_owner: dict,
+        app: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A company that has configured nothing is the dangerous case,
+        not the safe one: there is no profile and no knowledge base, so
+        the only thing standing between the customer and an invented
+        answer is the refusal rule."""
+        conversation, _ = await _run(
+            client, owner_headers, registered_owner, app, settings=_AUTOPILOT_ON, ai_enabled=True
+        )
+        await _wind_back(app, conversation.id)
+        await _sweep(app, monkeypatch)
+        await _customer_asks_again(app, conversation.id)
+
+        provider = await _autopilot_reply(app, conversation)
+
+        assert provider.system is not None
+        assert "Never guess" in provider.system
+        assert "Never write a placeholder" in provider.system

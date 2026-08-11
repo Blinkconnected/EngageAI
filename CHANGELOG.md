@@ -47,6 +47,14 @@ for more detail on how this page is put together.
   be handed to a human rather than guessed, and points at the Business
   Hours tab for hours. English and Arabic.
 
+  A cleared field is sent as an explicit `null`, never omitted. Company
+  settings merge one level deep, so an omitted field keeps whatever was
+  stored — which would have made *clearing* impossible: an administrator
+  could delete the address, be told it saved, and have AI carry on
+  quoting the old one. The backend reader drops non-string values, so a
+  nulled field is absent from the prompt, which is the state a blank is
+  meant to produce.
+
 - **Structured knowledge: the prices a company looks up rather than
   searches for.** The first build phase of the M2 architecture below. A
   price, an SLA term or a product attribute is now a typed record with an

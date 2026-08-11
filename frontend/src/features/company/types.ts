@@ -56,11 +56,11 @@ export interface BusinessHoursSettings {
  * `BusinessHoursSettings` schedule and are derived from it, so the hours
  * AI quotes and the hours the SLA engine honours cannot disagree. */
 export interface BusinessProfileSettings {
-  legal_name?: string
-  location?: string
-  contact?: string
-  website?: string
-  about?: string
+  legal_name?: string | null
+  location?: string | null
+  contact?: string | null
+  website?: string | null
+  about?: string | null
 }
 
 export interface MessagingSettings {

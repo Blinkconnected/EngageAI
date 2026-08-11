@@ -20,6 +20,7 @@ type FieldKey = (typeof FIELDS)[number]['key']
 
 function initialValues(company: Company): Record<FieldKey, string> {
   const stored = company.settings.business_profile ?? {}
+  // `?? ''` also absorbs the explicit nulls a clear-and-save writes.
   return {
     legal_name: stored.legal_name ?? '',
     location: stored.location ?? '',
@@ -29,17 +30,21 @@ function initialValues(company: Company): Record<FieldKey, string> {
   }
 }
 
-/** Blank fields are dropped rather than sent as empty strings.
+/** A cleared field is sent as an explicit `null`, never omitted.
  *
- * This is the whole point of the screen, not a tidiness detail. A field
- * the administrator left empty must be *absent* from the AI prompt: a
- * model shown a labelled blank fills it in, which is how this company's
- * Autopilot came to announce opening hours nobody had ever configured. */
+ * `CompanyService._merge_settings` merges a section one level deep, so
+ * every field this payload leaves out keeps whatever was stored before.
+ * Omitting blanks would therefore make *clearing* a field impossible: an
+ * administrator could delete the address, save, be told it saved, and
+ * have AI carry on quoting the old one. Sending `null` overwrites it,
+ * and the backend reader (`domain.company_settings.business_profile`)
+ * drops non-string values — so a nulled field is absent from the AI
+ * prompt, which is the state a blank is meant to produce. */
 function toPayload(values: Record<FieldKey, string>): BusinessProfileSettings {
   const payload: BusinessProfileSettings = {}
   for (const { key } of FIELDS) {
     const trimmed = values[key].trim()
-    if (trimmed) payload[key] = trimmed
+    payload[key] = trimmed || null
   }
   return payload
 }
