@@ -16,6 +16,31 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **`scripts/seed_company_faqs_from_profile.py` — publish a company's
+  FAQ set from the facts it has already verified.** A company that fills
+  in its business profile but publishes no FAQs is still answered
+  narrowly by Autopilot: the profile reaches the prompt, but a customer
+  who phrases the question differently, or asks in another language,
+  matches nothing and is handed to a human for a fact the platform holds.
+
+  The script writes only what the company's own
+  ``settings.business_profile`` and ``settings.business_hours`` support,
+  and skips any FAQ whose field is absent rather than filling it with a
+  plausible value. It states hours only when every open day shares one
+  open/close pair — a company with per-day hours gets no sentence rather
+  than a wrong one, and the structured schedule stays the source of truth.
+
+  **It seeds Arabic alongside English**, restating the same verified
+  fields. Not decoration: retrieval is hybrid, and with no embedding
+  provider configured it degrades to lexical matching, at which point an
+  Arabic question cannot match English text at all. A company whose
+  customers write in Arabic would otherwise get a handoff for every
+  question it demonstrably has the answer to.
+
+  Dry run by default, idempotent, and it never overwrites an existing
+  answer — a human may have edited it, and this content is a starting
+  point rather than a source of truth.
+
 - **Business profile: what AI Autopilot is allowed to say about the
   company.** A new ``business_profile`` section on company settings
   holding the facts customers ask for by name — trading name, location,
