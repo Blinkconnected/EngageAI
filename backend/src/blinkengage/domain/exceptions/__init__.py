@@ -137,6 +137,25 @@ class AiNotConfiguredError(DomainError):
         super().__init__("AI features are not configured on this platform")
 
 
+class ToolCallingNotSupportedError(DomainError):
+    """Raised when a tool-capable completion is asked of a provider that
+    cannot do it. See ``docs/architecture/ai-tool-calling.md``.
+
+    Raised rather than degraded on purpose. The tempting fallback —
+    prompt the model to emit JSON and parse whatever comes back — turns a
+    provider limitation into a *parsing* problem, and a parser that
+    guesses at a model's free text is exactly the component that must not
+    sit in front of a mutation pipeline. A provider either supports the
+    structured protocol or the feature is unavailable on it; there is no
+    third state where the platform is quietly less sure what it was asked
+    to do.
+    """
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(f"The {provider!r} AI provider does not support tool calling")
+        self.provider = provider
+
+
 class EmbeddingNotConfiguredError(DomainError):
     """Raised when semantic retrieval is asked for but no embedding
     provider is configured (``settings.embedding_provider`` is

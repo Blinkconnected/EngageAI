@@ -19,6 +19,12 @@ class AiProviderRegistry:
             existing = cls._providers.get(provider_name)
             if existing is not None and existing is not provider_cls:
                 raise ValueError(f"AI provider {provider_name!r} is already registered")
+            # Stamped here rather than repeated as a class attribute in
+            # every provider: the registry name and the name a provider
+            # reports itself by must be the same string, and two places to
+            # write it is one place for them to disagree. It ends up in
+            # every AI audit record as `model_identifier`.
+            provider_cls.provider_name = provider_name
             cls._providers[provider_name] = provider_cls
             return provider_cls
 

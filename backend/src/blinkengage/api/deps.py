@@ -17,6 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from blinkengage.api.idempotency import IdempotencyGuard
+from blinkengage.application.ai_tools import (
+    DEFAULT_REGISTRY,
+    ToolContext,
+    ToolExecutor,
+    ToolServices,
+)
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.application.services.ai_service import AiService
@@ -66,6 +72,9 @@ from blinkengage.application.services.financial_audit_service import FinancialAu
 from blinkengage.application.services.internal_note_service import InternalNoteService
 from blinkengage.application.services.invoice_document_service import InvoiceDocumentService
 from blinkengage.application.services.invoice_service import InvoiceService
+from blinkengage.application.services.knowledge_record_service import (
+    KnowledgeRecordService,
+)
 from blinkengage.application.services.knowledge_retrieval_service import (
     KnowledgeRetrievalService,
 )
@@ -124,6 +133,7 @@ from blinkengage.application.services.workflow_service import WorkflowService
 from blinkengage.core.auth_context import AuthContext, PlatformContext
 from blinkengage.core.config import Settings
 from blinkengage.core.container import Container
+from blinkengage.core.correlation import get_correlation_id
 from blinkengage.core.rate_limit import FixedWindowRateLimiter, enforce_rate_limit
 from blinkengage.core.security import InvalidTokenError, TokenType, decode_token
 from blinkengage.domain.ai_provider import AiProvider
@@ -223,6 +233,9 @@ from blinkengage.infrastructure.repositories.knowledge_index_repository import (
     EmbeddingRepository,
     KnowledgeChunkRepository,
     KnowledgeIndexStateRepository,
+)
+from blinkengage.infrastructure.repositories.knowledge_record_repository import (
+    KnowledgeRecordRepository,
 )
 from blinkengage.infrastructure.repositories.knowledge_repository import (
     KnowledgeArticleRepository,
@@ -1370,6 +1383,16 @@ def get_knowledge_service(
     )
 
 
+def get_knowledge_record_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    events: Annotated[OutboxEventPublisher, Depends(get_event_publisher)],
+) -> KnowledgeRecordService:
+    return KnowledgeRecordService(
+        records=KnowledgeRecordRepository(session),
+        events=events,
+    )
+
+
 def get_learning_query_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> LearningQueryService:
@@ -1969,4 +1992,38 @@ def get_platform_settings_service(
 ) -> PlatformSettingsService:
     return PlatformSettingsService(
         repository=PlatformSettingsRepository(session), settings=settings
+    )
+
+
+def get_tool_services(
+    departments: Annotated[DepartmentService, Depends(get_department_service)],
+    teams: Annotated[TeamService, Depends(get_team_service)],
+    agents: Annotated[AgentService, Depends(get_agent_service)],
+    roles: Annotated[RoleService, Depends(get_role_service)],
+) -> ToolServices:
+    """The closed set of services an AI tool handler may reach.
+
+    Assembled here from the same providers the REST endpoints use, so a
+    tool and the equivalent hand-driven request go through identical
+    business logic. Note what is absent: no session, no repository, no
+    container — a handler has no expression available for reaching past
+    these four.
+    """
+    return ToolServices(departments=departments, teams=teams, agents=agents, roles=roles)
+
+
+def get_tool_context(
+    auth: Annotated[AuthContext, Depends(get_active_auth)],
+    services: Annotated[ToolServices, Depends(get_tool_services)],
+) -> ToolContext:
+    """Identity for a tool call, from the request — never from the model."""
+    return ToolContext(auth=auth, services=services, correlation_id=get_correlation_id())
+
+
+def get_tool_executor(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> ToolExecutor:
+    return ToolExecutor(
+        registry=DEFAULT_REGISTRY, session=session, idempotency=IdempotencyStore(redis)
     )

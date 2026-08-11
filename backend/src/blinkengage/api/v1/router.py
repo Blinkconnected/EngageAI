@@ -8,6 +8,7 @@ from blinkengage.api.v1.endpoints import (
     admin,
     agents,
     ai,
+    ai_actions,
     audit_logs,
     auth,
     billing,
@@ -26,6 +27,7 @@ from blinkengage.api.v1.endpoints import (
     health,
     inspector,
     knowledge,
+    knowledge_records,
     learning,
     memory,
     message_redaction,
@@ -117,6 +119,14 @@ api_router.include_router(
 # search", so an FAQ router gated differently would split one product
 # capability across two things a customer can buy.
 api_router.include_router(faqs.router, dependencies=[Depends(require_feature("knowledge_base"))])
+# Structured knowledge rides the same entitlement as the articles and FAQs
+# beside it: a company that bought "internal knowledge articles and FAQ
+# search" has bought the knowledge base, and a price list is knowledge.
+# Gating it separately would split one product capability across two
+# things a customer can buy.
+api_router.include_router(
+    knowledge_records.router, dependencies=[Depends(require_feature("knowledge_base"))]
+)
 # No `require_feature` gate. Memory is platform infrastructure that the
 # Customer Timeline, CRM and Reporting read as ordinary product surface —
 # not a purchasable add-on like AI or SLA — and gating it would 402 an
@@ -128,6 +138,7 @@ api_router.include_router(learning.router)
 api_router.include_router(quick_replies.router)
 api_router.include_router(search.router)
 api_router.include_router(notifications.router)
+api_router.include_router(ai_actions.router)
 api_router.include_router(realtime.router)
 api_router.include_router(ai.router, dependencies=[Depends(require_feature("ai"))])
 api_router.include_router(reports.router, dependencies=[Depends(require_export_feature)])

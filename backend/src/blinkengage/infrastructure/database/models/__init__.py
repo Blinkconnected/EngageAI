@@ -6,6 +6,7 @@ the same side effect.
 """
 
 from blinkengage.infrastructure.database.models.agent import Agent, AgentStatus
+from blinkengage.infrastructure.database.models.ai_action import AiActionLog, PendingAiAction
 from blinkengage.infrastructure.database.models.audit_log import AuditLog
 from blinkengage.infrastructure.database.models.billable_event import BillableEvent
 from blinkengage.infrastructure.database.models.billing_summary import (
@@ -65,6 +66,9 @@ from blinkengage.infrastructure.database.models.knowledge import (
     KnowledgeArticle,
     KnowledgeArticleTag,
     KnowledgeCategory,
+)
+from blinkengage.infrastructure.database.models.knowledge_record import (
+    KnowledgeRecord,
 )
 from blinkengage.infrastructure.database.models.learning import (
     RUN_TYPE_OBSERVATION,
@@ -173,10 +177,12 @@ from blinkengage.infrastructure.database.models.workflow import (
 
 __all__ = [
     "Agent",
+    "AiActionLog",
     "AgentDailyStats",
     "AgentSkill",
     "AgentSkillAssignment",
     "AgentStatus",
+    "PendingAiAction",
     "AiDailyStats",
     "AttachmentValidationStatus",
     "AuditLog",
@@ -235,6 +241,7 @@ __all__ = [
     "KnowledgeCategory",
     "KnowledgeChunk",
     "KnowledgeIndexState",
+    "KnowledgeRecord",
     "LearningAnomaly",
     "LearningCluster",
     "LearningClusterMember",

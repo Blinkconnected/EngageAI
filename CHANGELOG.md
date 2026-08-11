@@ -16,6 +16,53 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Structured knowledge: the prices a company looks up rather than
+  searches for.** The first build phase of the M2 architecture below. A
+  price, an SLA term or a product attribute is now a typed record with an
+  effective period, a version chain and a named approver — not a paragraph
+  somebody hopes the search finds.
+
+  The reason it is not a knowledge article is the failure it prevents.
+  "What does DIA 500 Mbps cost?" answered by similarity is a lookup
+  answered by resemblance, and resemblance returns the 200 Mbps row with a
+  respectable score. So a lookup that finds no current record answers *we
+  don't have a current price for that* and stops. It never falls back to
+  the nearest-looking passage, because that fallback is exactly how last
+  year's price gets quoted this year.
+
+  Records are found by a canonical key derived from the product's name by
+  a fixed rule — never by a model, because a key that came out differently
+  on two runs would fork one product's history into two chains nothing
+  joins back together. The rule folds the things that are the same
+  product: `DIA/500 Mbps` and `dia 500 mbps`, `الخدمة` and `الخدمه`,
+  `٥٠٠` and `500`. Arabic-Indic digits needed handling of their own —
+  Unicode normalisation leaves them alone, so without it a price typed on
+  an Arabic keyboard was a different product from the same price typed on
+  a Latin one.
+
+  **Nothing is ever deleted.** Withdrawing is archiving and replacing is
+  superseding, and both keep the row, because a price that was quoted has
+  to be reproducible in an audit two years later. Superseding closes the
+  old period at the exact instant the new one opens — no moment where both
+  are true, none where neither is — and both halves happen in one
+  transaction, since a half-applied replacement leaves two current prices,
+  which is the thing the design exists to prevent. Two prices covering one
+  instant is reported as a contradiction rather than resolved by picking
+  one.
+
+  A scheduled price rise does not blank out today's price while it waits,
+  which sounds obvious and was not: superseding marks the current record
+  replaced immediately, so a change dated next month would have left the
+  product unpriced for a month. Found by a test, fixed in the resolution
+  rule.
+
+  Publishing requires provenance — an approved price whose origin nobody
+  recorded is a number that cannot be defended when somebody asks. Drafting
+  does not, because demanding a source before somebody has finished
+  pushes them toward inventing one. Reading, drafting and publishing are
+  three separate permissions: an agent reads prices all day, and making a
+  price official is not the same authority as proposing one.
+
 - **The M2 architecture: company knowledge, and how the platform sounds.**
   Design only — no behaviour changes, no schema, no data. A companion to
   the Company Intelligence Engine covering the two things that document
@@ -205,6 +252,41 @@ for more detail on how this page is put together.
   through Firebase) and no aggregate conversation endpoint.
 
 ### Fixed
+
+- **"Pick up" was offered on conversations that had already been dealt
+  with, and failed when clicked.** The Inbox decided a conversation was
+  free to claim by asking whether anybody was on it. A resolved or closed
+  conversation has no assigned agent and keeps its queue for reporting, so
+  it answered yes — the row and the conversation header both showed a
+  green Pick up, and pressing it produced "Could not pick up this
+  conversation." The server had always been right; only the interface
+  disagreed. Both screens now share one rule that mirrors it, so they
+  cannot drift apart again.
+
+- **A finished conversation reported its owner as "Nobody" and its wait
+  as "—".** Neither is a fact about a conversation that is over. It now
+  says when it finished instead.
+
+- **The CSAT survey link was not clickable.** The message put the URL on
+  the same line as the sentence introducing it, immediately after a
+  colon. Channel clients — WhatsApp, Messenger, SMS — autolink by finding
+  a URL and extending to the next whitespace, so a link sharing a line
+  with prose is routinely detected short or not detected at all, and the
+  customer is left with a long string they cannot tap. The URL now sits
+  alone on its own line, with nothing before or after it, which is the
+  one form every channel linkifies identically.
+
+  Worth separating from the deployment problem found alongside it: the
+  links customers received also pointed at a bare IP rather than the
+  configured domain. That was not this template, and not
+  `CsatService.build_survey_url`, both of which were correct. Eleven
+  consumer containers were still running with a `PUBLIC_BASE_URL` from
+  before the domain was set, because Compose reads the environment when
+  a container is created and editing `.env` does not reach a container
+  already running. Recreating them fixed it. The survey links already
+  sent keep the IP until they expire — a token is signed over the
+  conversation, not the host, so they still work, but they will show a
+  certificate warning.
 
 - **The conversation list had no index for "changed since".** Not a
   regression — the column was never queried before — but the Mobile
