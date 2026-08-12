@@ -17,16 +17,44 @@ from typing import Any
 from httpx import AsyncClient
 from sqlalchemy import update
 
-from blinkengage.api.deps import _READ_ONLY_SAFE_POSTS
+from blinkengage.api.deps import _READ_ONLY_SAFE_POST_ENDPOINTS
 from blinkengage.infrastructure.database.models.user import User
 from tests.integration.test_pricing_engine import company_id_of, platform_headers
 
 PRICING = "/api/v1/platform/pricing"
 
-#: The two POSTs that write nothing, so the sweep below expects them to be
-#: *allowed*. Imported from the gate itself rather than restated here: a
-#: second copy of this list is how one of them quietly grows an exemption.
-READ_ONLY_SAFE_POSTS = _READ_ONLY_SAFE_POSTS
+
+def read_only_safe_paths(app: Any) -> frozenset[str]:
+    """The URL templates of the POSTs the gate deliberately allows.
+
+    Derived from the gate's own allowlist rather than restated as literal
+    paths here: a second copy of the list is how one of them quietly grows
+    an exemption, and a copy written as paths would have gone stale in
+    exactly the way the gate itself did when FastAPI stopped flattening
+    routers.
+
+    The bridge is the OpenAPI ``operationId``, which FastAPI builds as
+    ``{function name}_{path}_{method}`` — so it carries the endpoint
+    identity the gate matches on *and* the absolute template the sweep
+    works in, which nothing else exposes together. The exact-count
+    assertion below is what stops that bridge rotting silently: if FastAPI
+    changes the operationId format, this raises rather than returning an
+    empty set and quietly widening the sweep.
+    """
+    wanted = {name.rsplit(".", 1)[-1] for name in _READ_ONLY_SAFE_POST_ENDPOINTS}
+    safe: set[str] = set()
+    for path, operations in app.openapi().get("paths", {}).items():
+        for operation in operations.values():
+            operation_id = operation.get("operationId", "")
+            if any(operation_id.startswith(f"{name}_api_v1_") for name in wanted):
+                safe.add(path)
+
+    assert len(safe) == len(_READ_ONLY_SAFE_POST_ENDPOINTS), (
+        f"resolved {len(safe)} paths for {len(_READ_ONLY_SAFE_POST_ENDPOINTS)} "
+        f"allowlisted endpoints: {sorted(safe)}. The operationId bridge has "
+        "broken — fix it here rather than letting the sweep grade fewer routes."
+    )
+    return frozenset(safe)
 
 
 async def make_read_only(app: Any) -> None:
@@ -199,13 +227,26 @@ class TestEveryPlatformWriteIsGated:
 
     @staticmethod
     def _mutating_routes(app: Any) -> list[tuple[str, str]]:
+        """Every mutating platform route, by full path template.
+
+        Read from the OpenAPI schema rather than by walking ``app.routes``.
+        That walk used to work because ``include_router`` flattened routes
+        into the application with absolute paths; FastAPI 0.141 nests them
+        instead, so the walk found nothing and this sweep silently graded
+        zero routes while still passing. ``app.openapi()`` is the same
+        source the published schema comes from, is public API, and yields
+        the absolute templates this test needs — a shape that cannot go
+        quietly empty, because ``test_the_sweep_actually_finds_the_routes``
+        asserts against it.
+        """
         found: list[tuple[str, str]] = []
-        for route in app.routes:
-            path = getattr(route, "path", "")
+        for path, operations in app.openapi().get("paths", {}).items():
             if not path.startswith("/api/v1/platform"):
                 continue
-            for method in getattr(route, "methods", set()) - TestEveryPlatformWriteIsGated.SAFE:
-                found.append((method, path))
+            for method in operations:
+                if method.upper() in TestEveryPlatformWriteIsGated.SAFE:
+                    continue
+                found.append((method.upper(), path))
         return sorted(found)
 
     @staticmethod
@@ -242,9 +283,10 @@ class TestEveryPlatformWriteIsGated:
         headers = await platform_headers(client, app)
         await make_read_only(app)
 
+        safe_paths = read_only_safe_paths(app)
         reached = []
         for method, path in self._mutating_routes(app):
-            if path in READ_ONLY_SAFE_POSTS:
+            if path in safe_paths:
                 continue
             response = await client.request(method, self._fill(path), headers=headers, json={})
             if response.status_code != 403:

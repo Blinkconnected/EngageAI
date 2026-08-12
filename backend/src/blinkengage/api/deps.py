@@ -4,7 +4,7 @@ These bridge the DI container to route handlers via ``Depends`` and are the
 only place API code touches the container directly.
 """
 
-from collections.abc import AsyncGenerator, Callable, Coroutine
+from collections.abc import AsyncGenerator, Callable, Coroutine, Iterable
 from datetime import timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
@@ -1896,17 +1896,56 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 #: this list is the one place where "POST" stops meaning "write": every
 #: entry has to be argued for, and anything not listed is refused. The safe
 #: direction is the default.
-_READ_ONLY_SAFE_POSTS = frozenset(
+#:
+#: Identified by *endpoint function*, not by URL path. This used to hold
+#: path templates matched against ``request.scope["route"].path``, which was
+#: correct until FastAPI 0.141 restructured ``include_router`` to nest
+#: routers instead of flattening their routes into the application. After
+#: that change ``route.path`` is the path the route was registered with —
+#: relative to its own router — while these entries are absolute, so nothing
+#: matched and every one of these previews was refused to the operators they
+#: exist for. It failed closed, which is the right direction to fail, and is
+#: also why nobody noticed it from the outside.
+#:
+#: A function identity cannot be crafted from a URL and does not move when a
+#: router is remounted under a different prefix, so this is strictly stronger
+#: than the template matching it replaces — it keeps the property the old
+#: comment claimed ("an id in the path can never be crafted to look like an
+#: allowlisted route") without depending on how paths are assembled.
+#:
+#: Written as dotted strings rather than imported callables because
+#: ``deps`` is imported *by* every endpoint module; importing them back here
+#: is a cycle. ``verify_read_only_allowlist`` resolves these against the
+#: real routing table at start-up, so a typo or a renamed endpoint fails
+#: loudly at boot rather than silently denying an operator forever.
+_READ_ONLY_SAFE_POST_ENDPOINTS = frozenset(
     {
-        "/api/v1/platform/pricing/resolve",
-        "/api/v1/platform/pricing/quote",
+        "blinkengage.api.v1.endpoints.platform_pricing.resolve_usage_price",
+        "blinkengage.api.v1.endpoints.platform_pricing.quote_pricing",
         # A POST only because the selection is a list, which does not belong
         # in a query string. It writes nothing, and a read-only operator
         # answering "how much would crediting these lines come to?" is
         # exactly the reading this account exists for.
-        "/api/v1/platform/invoices/{invoice_id}/credit-notes/preview",
+        "blinkengage.api.v1.endpoints.platform_invoicing.preview_credit_note",
     }
 )
+
+
+def endpoint_identity(route: object) -> str | None:
+    """The dotted name of the function a route dispatches to.
+
+    ``None`` for anything without an endpoint (a Mount, a WebSocket route,
+    or a router node), which never matches the allowlist — the safe answer.
+    """
+    endpoint = getattr(route, "endpoint", None)
+    if endpoint is None:
+        return None
+    module = getattr(endpoint, "__module__", None)
+    qualname = getattr(endpoint, "__qualname__", None)
+    if not module or not qualname:
+        return None
+    return f"{module}.{qualname}"
+
 
 _READ_ONLY_DETAIL = (
     "This platform account has read-only access. It can view everything here, "
@@ -1952,12 +1991,51 @@ async def deny_read_only_writes(
         return
     if request.method in _SAFE_METHODS:
         return
-    # Matched on the route's template, not the resolved URL, so an id in the
-    # path can never be crafted to look like an allowlisted route.
+    # Matched on the endpoint function, not on any form of the URL — see
+    # _READ_ONLY_SAFE_POST_ENDPOINTS for why this is not a path comparison.
     route = request.scope.get("route")
-    if getattr(route, "path", None) in _READ_ONLY_SAFE_POSTS:
+    if endpoint_identity(route) in _READ_ONLY_SAFE_POST_ENDPOINTS:
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_READ_ONLY_DETAIL)
+
+
+def verify_read_only_allowlist(app: object) -> None:
+    """Every allowlisted endpoint must actually be routed.
+
+    An entry that resolves to nothing is indistinguishable at run time from
+    an entry that is simply never requested: the gate denies, the operator
+    is refused, and no error is raised anywhere. That is exactly the failure
+    the FastAPI 0.141 routing change produced, and it went unseen because a
+    silent denial looks like a working permission check.
+
+    Called from application start-up so a rename, a typo, or another routing
+    restructure is a boot failure — loud, immediate, and before any operator
+    is quietly locked out of a preview they are entitled to.
+    """
+    routed: set[str] = set()
+
+    def walk(routes: Iterable[Any] | None) -> None:
+        for route in routes or ():
+            identity = endpoint_identity(route)
+            if identity is not None:
+                routed.add(identity)
+            # FastAPI nests included routers; the children live behind
+            # `routes` on plain routers and `original_router` on the
+            # `_IncludedRouter` wrapper introduced in 0.141.
+            walk(getattr(route, "routes", None))
+            nested = getattr(route, "original_router", None)
+            if nested is not None:
+                walk(getattr(nested, "routes", None))
+
+    walk(getattr(app, "routes", None))
+
+    missing = sorted(_READ_ONLY_SAFE_POST_ENDPOINTS - routed)
+    if missing:
+        raise RuntimeError(
+            "read-only allowlist names endpoints that are not routed: "
+            f"{missing}. They would be refused to read-only operators with "
+            "no error raised anywhere. Fix the names or remove the entries."
+        )
 
 
 async def get_media_company_id(

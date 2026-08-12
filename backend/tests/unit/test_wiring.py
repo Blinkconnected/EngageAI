@@ -183,3 +183,55 @@ class TestTheRealApplicationIsFullyWired:
         from blinkengage.core.container import Container
 
         verify_wiring(Container().session_factory())
+
+
+class TestAutopilotGrounding:
+    """Regression coverage for the collaborators added after the knowledge
+    work: ``knowledge`` and ``faqs``.
+
+    They earn their own class because the failure they guard against is
+    quieter than the four that came before. A missing SLA engine shows up as
+    wrong numbers on a report. Missing grounding shows up as *nothing* —
+    Autopilot keeps answering, fluently, using none of the company's approved
+    wording, and looks exactly like a company that has published nothing.
+    """
+
+    def test_the_real_factory_wires_both(self) -> None:
+        """The factory is the thing that can regress.
+
+        Built through ``build_autopilot_service`` rather than by hand: a test
+        that constructed its own AutopilotService would pass forever while
+        production quietly stopped passing retrieval in.
+        """
+        from blinkengage.core.config import get_settings
+        from blinkengage.core.container import Container
+        from blinkengage.infrastructure.autopilot_factory import build_autopilot_service
+
+        session = Container().session_factory()()
+        autopilot = build_autopilot_service(session=session, settings=get_settings())
+
+        assert autopilot._knowledge is not None, "Autopilot would answer without articles"
+        assert autopilot._faqs is not None, "Autopilot would answer without approved answers"
+
+    @pytest.mark.parametrize("path", ["_knowledge", "_faqs"])
+    def test_the_guard_fires_when_grounding_is_absent(self, path: str) -> None:
+        """A guard nobody has seen fail is a guard nobody knows works."""
+
+        class _Ungrounded:
+            def __init__(self) -> None:
+                self._knowledge = None
+                self._faqs = None
+
+        with pytest.raises(WiringError) as error:
+            _guard(_Ungrounded(), path=path)
+
+        assert path in str(error.value)
+
+    def test_both_grounding_collaborators_are_named_in_the_guard(self) -> None:
+        """Named explicitly, so removing one from ``critical_services()``
+        fails here rather than merely reducing what start-up checks."""
+        autopilot = next(s for s in critical_services() if s.name == "AI queue worker")
+        paths = {collaborator.path for collaborator in autopilot.collaborators}
+
+        assert "_knowledge" in paths
+        assert "_faqs" in paths

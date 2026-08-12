@@ -161,6 +161,36 @@ def critical_services() -> tuple[CriticalService, ...]:
                         "guard was written for"
                     ),
                 ),
+                # Grounding. Both are optional on the constructor because a
+                # test double legitimately does without them, and
+                # ``_grounding`` degrades to ``None`` when *retrieval fails*
+                # — an embedding provider being down must not take Autopilot
+                # down with it.
+                #
+                # Never being wired at all is a different thing wearing the
+                # same shape. It is silent, permanent, and indistinguishable
+                # from a company that has published nothing: Autopilot keeps
+                # answering, unreviewed, with none of the company's approved
+                # wording behind it. That is precisely the failure this guard
+                # exists to make loud.
+                Collaborator(
+                    path="_knowledge",
+                    name="Knowledge retrieval",
+                    consequence=(
+                        "AI would answer customers without the company's own "
+                        "published articles behind it, and would look exactly like "
+                        "a company that had published none"
+                    ),
+                ),
+                Collaborator(
+                    path="_faqs",
+                    name="FAQ retrieval",
+                    consequence=(
+                        "AI would answer without the approved answers written for "
+                        "these exact questions, reaching for its own wording where "
+                        "the company had already decided on some"
+                    ),
+                ),
             ),
         ),
     )

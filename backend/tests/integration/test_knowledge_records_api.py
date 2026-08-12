@@ -467,12 +467,19 @@ class TestTenantIsolation:
 
 
 class TestAuthorization:
-    # 403 rather than 401 throughout: this app's auth dependency refuses a
-    # request with no credentials the same way it refuses one with
-    # insufficient credentials, which is the shape every other endpoint
-    # here already has.
+    # 401 throughout, because every request in this class carries no
+    # credentials at all. These asserted 403 until FastAPI 0.141, whose
+    # ``HTTPBearer`` raises 401 for an absent Authorization header rather
+    # than 403.
+    #
+    # The distinction is now the one RFC 9110 draws and is worth keeping
+    # straight when reading the rest of the suite: 401 means "you sent no
+    # credentials", 403 means "you sent credentials and they are not
+    # enough". A tenant reaching a platform route still gets 403 — see
+    # test_revenue_dashboard.py, which asserts both against the same
+    # endpoint.
     async def test_anonymous_is_refused(self, client: AsyncClient) -> None:
-        assert (await client.get(BASE)).status_code == 403
+        assert (await client.get(BASE)).status_code == 401
 
     @pytest.mark.parametrize(
         "suffix",
@@ -480,7 +487,7 @@ class TestAuthorization:
     )
     async def test_mutations_require_authentication(self, client: AsyncClient, suffix: str) -> None:
         path = BASE + suffix.replace("{id}", "00000000-0000-0000-0000-000000000000")
-        assert (await client.post(path, json={})).status_code == 403
+        assert (await client.post(path, json={})).status_code == 401
 
     async def test_reads_require_authentication(self, client: AsyncClient) -> None:
         assert (
@@ -488,7 +495,7 @@ class TestAuthorization:
                 f"{BASE}/resolve",
                 params={"record_type": "PRICE", "subject_label": "DIA 500 Mbps"},
             )
-        ).status_code == 403
+        ).status_code == 401
 
 
 class TestValidation:

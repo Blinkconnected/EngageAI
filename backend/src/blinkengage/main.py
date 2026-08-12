@@ -14,6 +14,7 @@ from prometheus_client import REGISTRY
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from blinkengage.api.correlation_middleware import CorrelationIdMiddleware
+from blinkengage.api.deps import verify_read_only_allowlist
 from blinkengage.api.v1.router import api_router
 from blinkengage.core.celery_app import celery_app
 from blinkengage.core.changelog import ChangelogFormatError, current_release, load_releases
@@ -149,6 +150,13 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    # After the routes exist, before the app serves anything: the read-only
+    # gate's allowlist is a set of endpoint names, and a name that resolves
+    # to no route denies an operator in silence. Checked here so a rename or
+    # a routing change is a boot failure rather than a permission that
+    # quietly stopped being granted. Same principle as verify_wiring above.
+    verify_read_only_allowlist(app)
 
     Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 

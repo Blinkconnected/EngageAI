@@ -43,13 +43,47 @@ x-consumer-healthcheck: &consumer-healthcheck
   start_period: 20s
   retries: 3
 
+# Production identity, asserted here rather than inherited from .env.
+#
+# The base file defaults these to `${ENVIRONMENT:-development}` and
+# `${DEBUG:-true}`, so a production host whose .env is missing, partial, or
+# copied from a developer's machine comes up in development mode — with
+# tracebacks returned to unauthenticated callers on error. Setting them in
+# the overlay makes the production posture a property of *the file you
+# deploy with*, not of a file that is deliberately not in version control.
+#
+# Compose merges `environment` maps across files, so the base map still
+# supplies every other variable; only these two are overridden.
+x-prod-env: &prod-env
+  ENVIRONMENT: production
+  DEBUG: "false"
+
 services:
   backend:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
+    # The base file publishes "8000:8000", which binds 0.0.0.0 and puts the
+    # API on the public internet beside nginx — bypassing the edge that
+    # terminates TLS, sets the security headers and applies rate limiting.
+    # nginx reaches the backend over the compose network and needs no
+    # published port at all; this one exists for local development.
+    #
+    # Bound to loopback rather than removed, so an operator on the host can
+    # still curl it, and so the readiness probe used during deployment keeps
+    # working.
+    #
+    # A host firewall is not a substitute. Docker inserts its rules into the
+    # DOCKER chain, which iptables traverses *before* the INPUT chain ufw
+    # manages, so `ufw deny 8000` leaves a published port reachable. The
+    # binding is the control; the firewall is defence in depth. Verify with
+    # `ss -tulpn`, never with `ufw status`.
+    ports: !override
+      - "127.0.0.1:8000:8000"
     deploy:
       resources:
         limits:
@@ -69,6 +103,8 @@ services:
   celery-worker:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -93,6 +129,8 @@ services:
   celery-beat:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -106,6 +144,8 @@ services:
   audit-log-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -119,6 +159,8 @@ services:
   conversation-ingest-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -132,6 +174,8 @@ services:
   workflow-engine-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -145,6 +189,8 @@ services:
   notification-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -158,6 +204,8 @@ services:
   reporting-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -171,6 +219,8 @@ services:
   csat-dispatch-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -184,6 +234,8 @@ services:
   ai-autopilot-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -197,6 +249,8 @@ services:
   autopilot-sla-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -210,6 +264,8 @@ services:
   erp-sync-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -232,6 +288,8 @@ services:
   usage-metering-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -245,6 +303,8 @@ services:
   learning-observation-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -258,6 +318,8 @@ services:
   learning-signals-consumer:
     build:
       target: runtime
+    image: blinkengage-backend:prod
+    environment: *prod-env
     restart: always
     logging: *prod-logging
     volumes: !override []
@@ -362,6 +424,14 @@ services:
   prometheus:
     logging: *prod-logging
     restart: always
+    # Prometheus ships no authentication and none can be configured — its
+    # /api/v1/query endpoint answers whoever asks. Published on 0.0.0.0 by
+    # the base file, it hands the internet every metric this platform emits:
+    # company names carried in labels, request volumes, queue depths, error
+    # rates. Reach it over an SSH tunnel instead:
+    #   ssh -L 9090:127.0.0.1:9090 root@<host>
+    ports: !override
+      - "127.0.0.1:9090:9090"
     deploy:
       resources:
         limits:
@@ -377,6 +447,13 @@ services:
   grafana:
     logging: *prod-logging
     restart: always
+    # Grafana does authenticate, so this is a smaller exposure than
+    # Prometheus above — but it is a login form on the public internet
+    # guarding GF_SECURITY_ADMIN_PASSWORD, and it is reached by operators
+    # rather than customers. Same SSH tunnel:
+    #   ssh -L 3000:127.0.0.1:3000 root@<host>
+    ports: !override
+      - "127.0.0.1:3000:3000"
     deploy:
       resources:
         limits:
@@ -489,14 +566,26 @@ services:
           cpus: "0.25"
           memory: 128m
 
-  # A test SMTP server has no business in production. Scaled to zero
-  # rather than removed, because Compose cannot delete a service an
-  # overlay inherits — and leaving it running would mean production mail
-  # silently landing in a fake inbox.
+  # A test SMTP server has no business in production — leaving it running
+  # would mean production mail silently landing in a fake inbox.
+  #
+  # `profiles` rather than `replicas: 0`, matching how `frontend` is
+  # excluded above. Both stop the container starting, but a profile removes
+  # the service from the production project *entirely*, and that difference
+  # is visible where it matters: with `replicas: 0` the service still
+  # appears in `docker compose config` carrying its base-file
+  # `ports: 3025/3143` on 0.0.0.0, so an audit of what production publishes
+  # has to reason about whether a scaled-to-zero service can bind a port.
+  # Under a profile there is nothing to reason about — the ports are not in
+  # the resolved configuration at all.
+  #
+  # Nothing depends_on greenmail, so excluding it starts no dependency
+  # resolution failure. SMTP_HOST still defaults to `greenmail` in the base
+  # environment map; production supplies a real relay through .env, and the
+  # active per-company email channels carry their own credentials in the
+  # database regardless.
   greenmail:
-    deploy:
-      replicas: 0
-    restart: "no"
+    profiles: ["dev-only"]
 
   nginx-exporter:
     logging: *prod-logging

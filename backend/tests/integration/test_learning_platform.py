@@ -1197,9 +1197,10 @@ class TestReadApi:
     async def test_reading_is_not_open_to_an_anonymous_caller(self, app: Any, client: Any) -> None:
         """Observations are customer conversations seen sideways.
 
-        403 rather than 401 is this platform's answer to a missing
-        credential everywhere — see the auth dependency; what matters here
-        is that the endpoint is behind ``intelligence.read`` at all.
+        401 for a caller with no credentials at all — FastAPI's
+        ``HTTPBearer`` answers an absent Authorization header with 401 as
+        of 0.141, where it previously answered 403. What matters here is
+        unchanged: the endpoint is behind ``intelligence.read`` at all.
         """
         response = await client.get("/api/v1/intelligence/observations")
-        assert response.status_code == 403
+        assert response.status_code == 401

@@ -290,6 +290,46 @@ for more detail on how this page is put together.
   support was invisible to anyone reading the generated OpenAPI schema,
   and had been concluded absent more than once.
 
+- **Server migration tooling** — `scripts/migrate_export.sh`,
+  `scripts/migrate_import.sh` and
+  [`docs/deployment/server-migration-runbook.md`](docs/deployment/server-migration-runbook.md).
+  `backup_all.sh` captures what is needed to rebuild the *product* —
+  database, objects, config, secrets, source. Moving a *deployment* is a
+  larger job: the Prometheus TSDB, Grafana's own users and annotations,
+  Loki's history and the TLS material are none of them in a backup set,
+  and all of them are things somebody notices the loss of the morning
+  after a cutover. The export wraps `backup_all.sh` and adds them.
+
+  Two passes, because the alternative is a long outage: `--warm` moves the
+  bulk against a live stack, `--cold` quiesces first and is the
+  authoritative one. The cold pass stops the stateful services *before*
+  archiving their volumes — Grafana's SQLite and Prometheus's TSDB cannot
+  be tarred safely while being written, and a torn copy fails at open
+  rather than at restore, which is the wrong end of a migration to find
+  out. Redis is deliberately excluded: it holds refresh tokens, web-chat
+  sessions, presence and rate-limit counters, all reconstructible, and a
+  fresh volume costs one re-login.
+
+- **TLS renewal is now reproducible from a clean checkout** —
+  `deploy/letsencrypt/`. Two pieces of certificate renewal previously
+  existed only on the host that issued the certificate and were in no
+  repository: the deploy hook that reloads nginx after a renewal, and the
+  webroot recorded in the renewal configuration.
+
+  Neither absence is visible when it happens. Without the hook, renewal
+  succeeds and nginx carries on presenting the certificate it read at
+  startup until that one expires. Without the right webroot — certbot
+  stores it as an absolute path at issuance — renewal writes its challenge
+  somewhere nginx does not serve, and fails quietly for up to 90 days.
+  `install.sh` derives both from wherever the checkout actually is, and
+  corrects a renewal configuration migrated from another host rather than
+  leaving it to fail.
+
+  The challenge webroot itself (`docker/nginx/acme/`) is now part of the
+  repository. Compose bind-mounts it, so Docker would otherwise create it
+  implicitly on first `up` — which works, and hides that a load-bearing
+  path is not version controlled.
+
 ### Changed
 
 - **Locking your phone no longer takes you out of routing.** Closing the
@@ -315,7 +355,92 @@ for more detail on how this page is put together.
   recorded gaps are now closed. What remains is no APNs sender (iOS goes
   through Firebase) and no aggregate conversation endpoint.
 
+- **The production overlay now asserts the production posture instead of
+  inheriting it.** `docker-compose.prod.yml` previously left
+  `ENVIRONMENT` and `DEBUG` to the base file's
+  `${ENVIRONMENT:-development}` / `${DEBUG:-true}` defaults, so a host
+  whose `.env` was missing, partial, or copied from a developer's machine
+  came up in development mode — returning tracebacks to unauthenticated
+  callers on error. Both are now set in the overlay on all fifteen
+  application services, making the posture a property of the file you
+  deploy with rather than of a file deliberately kept out of version
+  control.
+
+  **Published ports are bound to loopback.** The base file publishes the
+  backend (8000), Grafana (3000) and Prometheus (9090) on `0.0.0.0` for
+  local development, and the overlay did not override them — putting the
+  API beside nginx on the public internet, bypassing the edge that
+  terminates TLS and applies rate limiting, and exposing an entirely
+  unauthenticated Prometheus whose `/api/v1/query` answers anyone who
+  asks. Production now publishes nginx's 80 and 443 and nothing else.
+
+  A host firewall would not have closed these: Docker inserts its rules
+  into the `DOCKER` chain, which iptables traverses before the `INPUT`
+  chain ufw manages, so `ufw deny 3000` leaves a published port reachable.
+  The binding is the control; verify with `ss -tulpn`, not `ufw status`.
+
+  **Application images carry an explicit production tag.** All fifteen
+  services building from `docker/backend/Dockerfile` now resolve to
+  `blinkengage-backend:prod`. The `dev` and `runtime` targets previously
+  produced the same derived `:latest` name, so the tag alone could not
+  tell you which you had — and starting production from a dev image is
+  exactly the failure recorded in the edge-cutover runbook.
+
+  **GreenMail is excluded by profile rather than scaled to zero.** Both
+  stop the container starting, but `replicas: 0` left the service in the
+  resolved configuration still carrying its `0.0.0.0` port publications,
+  so auditing what production exposes meant reasoning about whether a
+  scaled-to-zero service can bind a port. Under a profile there is nothing
+  to reason about.
+
 ### Fixed
+
+- **Read-only platform operators were refused the three previews that
+  exist for them.** Pricing resolve, pricing quote and the credit-note
+  preview are POSTs that write nothing, and the read-only gate allowlists
+  them by name. It matched on `request.scope["route"].path` against
+  absolute templates — correct until FastAPI 0.141 changed
+  `include_router` to nest routers rather than flatten their routes into
+  the application. After that, `route.path` is the path a route was
+  registered with, relative to its own router, so the comparison could
+  never match and every allowlisted preview was refused.
+
+  The gate now matches on the **endpoint function** rather than on any
+  form of the URL. A function identity cannot be crafted from a request
+  path and does not move when a router is remounted, so this keeps the
+  property the old implementation claimed — "an id in the path can never
+  be crafted to look like an allowlisted route" — without depending on
+  how paths are assembled.
+
+  It failed closed, which is the right direction to fail and also why it
+  was invisible from outside: a silent denial is indistinguishable from a
+  working permission check. `verify_read_only_allowlist` now runs at
+  start-up and refuses to boot if an allowlisted endpoint resolves to no
+  route, so the next routing change is a crash rather than a permission
+  that quietly stopped being granted.
+
+- **A security sweep over every mutating platform route was grading
+  nothing and passing.** `test_a_read_only_operator_is_refused_all_of_them`
+  walks each mutating `/api/v1/platform` route and asserts a read-only
+  operator is refused. It discovered routes by walking `app.routes`, which
+  the same FastAPI change emptied of those routes — so it iterated zero of
+  them and passed. Its companion guard, written for exactly this
+  ("a discovery test that discovers nothing passes silently forever"), is
+  what caught it.
+
+  Route discovery now reads the OpenAPI schema: public API, absolute
+  templates, and the same source the published schema comes from.
+
+- **The Autopilot start-up guard did not check the grounding it was given.**
+  `critical_services()` names the collaborators whose absence must stop
+  the AI queue worker booting. Knowledge and FAQ retrieval were wired into
+  `AutopilotService` without being named there, and the repository's own
+  test for that omission was failing: *"AutopilotService has optional
+  collaborators the start-up guard does not check: ['faqs', 'knowledge']."*
+
+  Ungrounded is the quietest way for Autopilot to be wrong. It keeps
+  answering, fluently, using none of the company's approved wording, and
+  looks exactly like a company that has published nothing.
 
 - **"Pick up" was offered on conversations that had already been dealt
   with, and failed when clicked.** The Inbox decided a conversation was
@@ -419,6 +544,71 @@ for more detail on how this page is put together.
   column, or the channel thread. Migration `c7d1e4b93a58` adds
   `ix_conversations_company_updated_at`; the guide's §8.1 has been
   corrected rather than quietly amended.
+
+### Security
+
+- **An unauthenticated request now answers 401 rather than 403.** FastAPI's
+  `HTTPBearer` refuses a request carrying no `Authorization` header with
+  401 as of 0.141, where it previously used 403. This is the distinction
+  RFC 9110 draws and the platform now makes it: **401** means "you sent no
+  credentials", **403** means "you sent credentials and they are not
+  enough". A tenant reaching a `/platform/*` route still gets 403.
+
+  Recorded here as a **contract change**, not a bug fix. It has been the
+  live behaviour since the dependency upgrade was built into the running
+  image; only the test suite still described the old shape. Any client
+  that treats 403 as "not logged in", or that triggers a token refresh on
+  401, should be checked against the new split — an anonymous request now
+  produces the same status as an expired token.
+
+- **The starlette advisories are closed, and the pins that close them are
+  now in the tree.** `HTTP_422_UNPROCESSABLE_ENTITY` was renamed to
+  `HTTP_422_UNPROCESSABLE_CONTENT` across nine call sites in an earlier
+  commit, but the dependency pins that rename depends on were left in the
+  working tree — so the committed source used a constant the pinned
+  starlette did not define, and a clean build from that commit would have
+  failed at import. Both halves now land together.
+
+  `starlette>=1.3.1` is pinned explicitly, above what FastAPI's own floor
+  would pull in. The version that resolved carried three advisories
+  needing three different fixed versions — CVE-2025-62727 (denial of
+  service via Range header merging, 0.49.1), CVE-2026-48818 (SSRF/NTLM via
+  UNC paths in `StaticFiles`, 1.1.0) and CVE-2026-54283
+  (`request.form()` limits silently ignored, 1.3.1) — and only `>=1.3.1`
+  closes all three. FastAPI could not reach it until it dropped its upper
+  bound on starlette, so `fastapi` moves to 0.141.1.
+
+  `prometheus-fastapi-instrumentator` moves to 8.1.0 because 7.0.2 pinned
+  `starlette<1.0.0`. A transitive cap in an instrumentation library was
+  the actual thing holding the API framework below its own security fixes,
+  which is worth recording: the blocker was not the framework.
+
+  `msgpack>=1.2.1` is pinned directly, though it arrives transitively via
+  kombu/celery, because the version that resolved (1.1.2) is
+  GHSA-6v7p-g79w-8964 — an out-of-bounds read when an `Unpacker` is
+  reused.
+
+- **The production image no longer ships a package installer.** The
+  `runtime` stage receives an already-built virtualenv and never installs
+  anything, so `pip` in a production container is only attack surface. It
+  is also what the image scan was reporting: pip *vendors* its own
+  dependencies, pinning `msgpack==1.1.2` and `setuptools==70.3.0` in
+  `pip/_vendor/vendor.txt`, and Trivy reads those as installed packages.
+  They were never the application's — no change to our own pins could have
+  cleared those findings, which is worth knowing before somebody spends an
+  afternoon trying.
+
+  `setuptools` in the interpreter's system site-packages is upgraded past
+  CVE-2025-47273 (path traversal in `PackageIndex`); `python:3.13-slim`
+  carried 70.3.0. Nothing at runtime imports it — the application runs from
+  `/opt/venv` — but "unused" is not a property a scanner can verify.
+
+  Both changes are image composition only. The application never imports
+  `pip`, `setuptools` or `pkg_resources`; the one runtime dependency that
+  references `pkg_resources` (`aiormq`) does so in an `except ImportError`
+  fallback behind stdlib `importlib.metadata`, and `pkg_resources` remains
+  present regardless — only `pip` is removed, and only from the `runtime`
+  stage.
 
 ## [1.2.0] - 2026-08-08
 

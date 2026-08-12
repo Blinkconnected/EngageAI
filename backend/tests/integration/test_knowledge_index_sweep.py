@@ -308,8 +308,13 @@ class TestIndexStatus:
         assert body["dimensions"] == DIMENSIONS
 
     async def test_index_status_requires_authentication(self, client: AsyncClient) -> None:
+        # 401, not 403: FastAPI's HTTPBearer refuses a request carrying no
+        # credentials with 401 as of 0.141 (it raised 403 before). 401 is
+        # the correct code for "no credentials" and 403 remains the answer
+        # for "credentials, but not enough" — see TestAuthorization in
+        # test_knowledge_records_api.py for both halves asserted together.
         response = await client.get("/api/v1/knowledge/index-status")
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 class TestModelMigration:

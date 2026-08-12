@@ -430,8 +430,16 @@ class TestBoundary:
     async def test_the_statement_route_is_declared_above_the_company_route(self, app: Any) -> None:
         """``/{company_id}`` matches anything, so a literal path
         registered after it never runs. This collision has shipped twice
-        in this repository."""
-        paths = [getattr(route, "path", "") for route in app.routes]
+        in this repository.
+
+        Order is read from the OpenAPI schema, which FastAPI builds by
+        walking the routing table in declaration order. ``app.routes`` used
+        to carry the same order with absolute paths, but FastAPI 0.141
+        nests included routers, so that list no longer contains these routes
+        at all — and ``.index()`` on it raised rather than comparing, which
+        is at least loud. The schema is public API and still ordered.
+        """
+        paths = list(app.openapi()["paths"])
 
         assert paths.index("/api/v1/platform/ledger/statement/{company_id}") < paths.index(
             "/api/v1/platform/ledger/{company_id}"

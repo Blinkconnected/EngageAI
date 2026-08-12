@@ -366,5 +366,7 @@ class TestConversationWorkingMemory:
         assert theirs.summary is None
 
     async def test_it_requires_authentication(self, client: AsyncClient) -> None:
+        # 401 for absent credentials — FastAPI's HTTPBearer changed from 403
+        # to 401 in 0.141. 403 still covers "authenticated but not allowed".
         response = await client.get(f"/api/v1/memory/conversations/{uuid4()}")
-        assert response.status_code == 403
+        assert response.status_code == 401

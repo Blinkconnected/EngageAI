@@ -77,3 +77,11 @@ monitoring/**/data/
 
 # Visual-verification harness output (screenshots are regenerated on demand)
 frontend/.visual-check/*.png
+
+# --- ACME ---
+# The challenge webroot must exist in a fresh checkout (nginx bind-mounts it
+# and serves /.well-known/acme-challenge/ from it), but the challenge files
+# certbot drops in it are transient and prove control of the domain — keep
+# the directory, never its contents.
+docker/nginx/acme/*
+!docker/nginx/acme/.gitkeep

@@ -291,7 +291,12 @@ class TestTheBoundary:
         assert response.status_code == 403
 
     async def test_it_needs_a_token_at_all(self, client: AsyncClient) -> None:
-        """403 rather than 401: the bearer scheme refuses a missing
-        credential the same way it refuses a rejected one, which is what
-        every other platform route does."""
-        assert (await client.get(REVENUE)).status_code == 403
+        """401 for no credentials, where the test above asserts 403 for a
+        tenant's perfectly valid ones.
+
+        The pair is the clearest statement of the distinction in the suite,
+        and it only became true in FastAPI 0.141: before that the bearer
+        scheme answered an absent credential with 403, collapsing "who are
+        you?" and "not you" into one code.
+        """
+        assert (await client.get(REVENUE)).status_code == 401

@@ -23,6 +23,14 @@ RUN apt-get update \
 RUN groupadd --gid 1000 blinkengage \
     && useradd --uid 1000 --gid blinkengage --shell /bin/bash --create-home blinkengage
 
+# The interpreter image ships setuptools in its *system* site-packages, and
+# it lags: python:3.13-slim carried 70.3.0, which is CVE-2025-47273 (path
+# traversal in PackageIndex). Nothing at runtime imports it — the app runs
+# from /opt/venv — but it is in the image, so it is in the scan, and
+# "unused" is not a property a scanner can verify. Upgraded rather than
+# removed: pip's own vendoring expects it to exist.
+RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1"
+
 # --- builder-runtime: compiles/installs production-only dependencies into a venv ---
 FROM base AS builder-runtime
 RUN apt-get update \
@@ -45,6 +53,24 @@ RUN pip install --no-deps .
 FROM base AS runtime
 COPY --from=builder-runtime /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
+# pip has no job here. This stage receives an already-built venv and never
+# installs anything, so a package installer in a production container is
+# only attack surface.
+#
+# It is also what the image scan was actually reporting. pip *vendors* its
+# own dependencies — `pip/_vendor/vendor.txt` pins `msgpack==1.1.2` and
+# `setuptools==70.3.0`, both of which carry advisories — and Trivy reads
+# them as installed packages. They are not the application's: the app's
+# msgpack is 1.2.1 and it has no setuptools at all. No amount of changing
+# our own pins could ever have cleared those two findings, which is worth
+# knowing before somebody spends an afternoon trying.
+RUN rm -rf /opt/venv/lib/python3.13/site-packages/pip \
+           /opt/venv/lib/python3.13/site-packages/pip-*.dist-info \
+           /usr/local/lib/python3.13/site-packages/pip \
+           /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+           /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/pip3.13 \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13
 
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic

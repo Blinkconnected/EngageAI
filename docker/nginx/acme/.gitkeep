@@ -1,0 +1,13 @@
+# The ACME challenge webroot.
+#
+# docker-compose.prod.yml bind-mounts this directory into nginx at
+# /var/www/acme, and nginx serves ^~ /.well-known/acme-challenge/ from it.
+# certbot writes challenge files here during a webroot renewal.
+#
+# It has to exist in a fresh checkout. Docker would otherwise create it as
+# an empty root-owned directory on first `up`, which happens to work and
+# hides the fact that a load-bearing path is not version controlled — until
+# somebody deploys somewhere the implicit creation does not happen.
+#
+# Challenge files themselves are transient and must never be committed;
+# .gitignore excludes everything here except this file.

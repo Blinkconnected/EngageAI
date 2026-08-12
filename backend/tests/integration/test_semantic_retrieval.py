@@ -351,12 +351,20 @@ class TestSearch:
         assert body["reason"] == "query_too_short"
 
     async def test_search_requires_authentication(self, client: AsyncClient) -> None:
-        """403, not 401 — the platform's existing answer for a
-        permission-gated route reached with no credentials. Asserted as it
+        """401 for a route reached with no credentials at all.
+
+        This asserted 403 until FastAPI 0.141, whose ``HTTPBearer`` raises
+        401 for absent credentials rather than 403 — the semantically
+        correct code, and the one RFC 9110 specifies for "no credentials"
+        as against "credentials that do not suffice".
+
+        The previous docstring said it asserted the behaviour "as it
         actually behaves rather than as it might ideally, so this test
-        fails if that contract changes."""
+        fails if that contract changes". It did change, and this test is
+        how that was found. Kept in that spirit: asserted as it behaves.
+        """
         response = await client.get("/api/v1/knowledge/search", params={"q": "refund"})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 class TestTenantIsolation:
