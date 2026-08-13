@@ -19,10 +19,14 @@ from minio import Minio
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.application.brain.service import CompanyBrain
 from blinkengage.application.services.autopilot_service import AutopilotService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.embedding_service import EmbeddingService
 from blinkengage.application.services.faq_retrieval_service import FaqRetrievalService
+from blinkengage.application.services.knowledge_record_service import (
+    KnowledgeRecordService,
+)
 from blinkengage.application.services.knowledge_retrieval_service import (
     KnowledgeRetrievalService,
 )
@@ -62,6 +66,9 @@ from blinkengage.infrastructure.repositories.faq_repository import (
 from blinkengage.infrastructure.repositories.knowledge_index_repository import (
     EmbeddingRepository,
     KnowledgeChunkRepository,
+)
+from blinkengage.infrastructure.repositories.knowledge_record_repository import (
+    KnowledgeRecordRepository,
 )
 from blinkengage.infrastructure.repositories.lexical_search_repository import (
     LexicalSearchRepository,
@@ -198,5 +205,16 @@ def build_autopilot_service(
             vector_index=build_vector_index(session),
             embeddings=embeddings,
             candidate_pool=settings.retrieval_candidate_pool,
+        ),
+        # The structured half, which the two retrievers above cannot supply.
+        # They return prose matched by resemblance; this returns the value a
+        # human approved, matched by identity. Without it a published price
+        # change altered nothing about what Autopilot said, because nothing
+        # on this path had ever read `knowledge_records`.
+        brain=CompanyBrain(
+            records=KnowledgeRecordService(
+                records=KnowledgeRecordRepository(session),
+                events=events,
+            )
         ),
     )

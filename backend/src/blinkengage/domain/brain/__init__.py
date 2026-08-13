@@ -66,6 +66,7 @@ from blinkengage.domain.brain.retrieval_policy import (
     filter_visible,
     is_visible,
 )
+from blinkengage.domain.brain.subject_matching import match_subjects, query_tokens
 from blinkengage.domain.brain.tone import ToneDirective, de_escalation_directive
 from blinkengage.domain.brain.vocabulary import (
     AnswerDisposition,
@@ -110,7 +111,9 @@ __all__ = [
     "filter_visible",
     "ingestion_identity",
     "is_visible",
+    "match_subjects",
     "proposal_requires_approval",
+    "query_tokens",
     "publication_gate",
     "route_inbound",
 ]

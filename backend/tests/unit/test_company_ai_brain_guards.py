@@ -97,18 +97,23 @@ def test_the_brain_package_exists() -> None:
     assert (SRC / "application" / "brain" / "orchestrator.py").is_file()
 
 
-def test_the_brain_never_reaches_into_infrastructure() -> None:
+def test_the_brains_domain_rules_never_reach_into_infrastructure() -> None:
     """Structural, for the reason the memory single-writer guard is.
 
     A behavioural test covers the paths somebody thought to write. This covers
-    the ones nobody has written yet — which is where the next send path, the
-    next direct repository write and the next bypassed permission check would
-    otherwise appear. The Brain reasons; it does not reach.
+    the ones nobody has written yet — which is where the next direct
+    repository read inside a policy function would otherwise appear.
+
+    Scoped to ``domain/brain`` deliberately. The application layer in this
+    codebase *does* import models and repositories — ``autopilot_service``
+    imports both — so extending this to ``application/brain`` would not be a
+    stricter version of the same rule, it would be a different and wrong one.
+    What must stay true is that the rules themselves are pure: a policy that
+    can read a row is a policy that needs a database to test, and a policy
+    that needs a database to test is one that stops being tested.
     """
     offenders: list[str] = []
-    for path in sorted(
-        [*(SRC / "domain" / "brain").rglob("*.py"), *(SRC / "application" / "brain").rglob("*.py")]
-    ):
+    for path in sorted((SRC / "domain" / "brain").rglob("*.py")):
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             module = ""

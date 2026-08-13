@@ -191,6 +191,21 @@ def critical_services() -> tuple[CriticalService, ...]:
                         "the company had already decided on some"
                     ),
                 ),
+                # The structured half. The two above return prose matched by
+                # resemblance; this returns the value a human approved,
+                # matched by identity — and its absence is the quietest of
+                # the three, because the other two still produce a fluent
+                # answer about the right product with the wrong number in it.
+                Collaborator(
+                    path="_brain",
+                    name="Company AI Brain",
+                    consequence=(
+                        "AI would answer pricing and SLA questions from article "
+                        "prose alone, so a published price change would change "
+                        "nothing about what customers were told — and no absence "
+                        "signal would reach the model when nothing is on record"
+                    ),
+                ),
             ),
         ),
     )

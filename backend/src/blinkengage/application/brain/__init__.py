@@ -7,5 +7,6 @@ executor. Phase 1 ships the interface only — see
 """
 
 from blinkengage.application.brain.orchestrator import BrainOrchestrator
+from blinkengage.application.brain.service import CompanyBrain
 
-__all__ = ["BrainOrchestrator"]
+__all__ = ["BrainOrchestrator", "CompanyBrain"]

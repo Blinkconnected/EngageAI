@@ -29,6 +29,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+from blinkengage.application.brain.orchestrator import BrainOrchestrator
 from blinkengage.application.services.ai_service import AiService
 from blinkengage.application.services.conversation_service import ConversationService
 from blinkengage.application.services.faq_retrieval_service import FaqRetrievalService
@@ -43,6 +44,8 @@ from blinkengage.application.services.service_context_resolver import (
     ServiceContextResolver,
 )
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.brain.context import BrainRequest
+from blinkengage.domain.brain.vocabulary import BrainAudience
 from blinkengage.domain.company_settings import (
     effective_autopilot_confidence_threshold,
     format_business_profile,
@@ -133,6 +136,7 @@ class AutopilotService:
         decisions: RoutingDecisionRepository | None = None,
         knowledge: KnowledgeRetrievalService | None = None,
         faqs: FaqRetrievalService | None = None,
+        brain: BrainOrchestrator | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -162,6 +166,19 @@ class AutopilotService:
         # they contain, never in what they permit.
         self._knowledge = knowledge
         self._faqs = faqs
+        # The Company AI Brain, supplying the one kind of grounding the two
+        # retrievers above cannot: a value a human approved. FAQs and article
+        # passages are prose retrieved by resemblance, and resemblance answers
+        # "what does DIA 500 Mbps cost?" with the 200 Mbps row at a
+        # respectable score. Structured records are retrieved by identity and
+        # resolve to exactly one row, none, or a contradiction.
+        #
+        # Optional like the rest, and absent it changes nothing: grounding is
+        # assembled from whatever is present, and a company with no structured
+        # records gets exactly the prompt it got before. It supplies grounding
+        # only — it does not decide whether Autopilot may reply, and the
+        # threshold and hand-off logic below are untouched by it.
+        self._brain = brain
 
     async def run(
         self,
@@ -386,10 +403,33 @@ class AutopilotService:
         worst case is a handoff — which is the correct outcome for a
         question the platform cannot currently look up.
         """
-        if not query.strip() or (self._knowledge is None and self._faqs is None):
+        if not query.strip() or (
+            self._knowledge is None and self._faqs is None and self._brain is None
+        ):
             return None
 
         sections: list[str] = []
+        # First, and on its own error boundary. An authoritative value
+        # outranks every passage below it, and a retrieval failure in the
+        # semantic half must not cost the one fact a human actually approved.
+        if self._brain is not None:
+            try:
+                advice = await self._brain.advise(
+                    BrainRequest(
+                        company_id=company_id,
+                        audience=BrainAudience.CUSTOMER,
+                        query=query,
+                    )
+                )
+                if advice.grounding:
+                    sections.append(advice.grounding)
+            except Exception:
+                logger.warning(
+                    "autopilot_brain_grounding_failed",
+                    company_id=str(company_id),
+                    exc_info=True,
+                )
+
         try:
             if self._faqs is not None:
                 faq_hits = await self._faqs.grounding_answers(
@@ -419,7 +459,10 @@ class AutopilotService:
                     )
         except Exception:
             logger.warning("autopilot_grounding_failed", company_id=str(company_id), exc_info=True)
-            return None
+            # Whatever the Brain already established still stands. Discarding
+            # an approved value because a semantic search timed out would make
+            # the weakest retriever able to veto the strongest one.
+            return "\n\n".join(sections) if sections else None
 
         return "\n\n".join(sections) if sections else None
 

@@ -16,6 +16,41 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Autopilot now answers from the company's approved records, not just its
+  prose.** `knowledge_records` shipped with lifecycle, approval, provenance and
+  deterministic resolution — and nothing on the path to a customer had ever
+  read it. Autopilot grounded on FAQs and article passages only, so publishing
+  a price change through the API altered precisely nothing about what the
+  platform told a customer.
+
+  The Brain now resolves the structured record and hands it to Autopilot as
+  grounding. Matched by **identity, not resemblance**: a subject matches when
+  its key's tokens appear contiguously in the question, canonicalised through
+  the same function the record was written with — so `خدمة ٥٠٠` finds the
+  record stored as `خدمه-500`, and "is DIA available at 500 sites, in mbps
+  terms" does not match `dia-500-mbps`. Resemblance answers "what does DIA 500
+  Mbps cost?" with the 200 Mbps row at a respectable score, which is a wrong
+  number delivered confidently.
+
+  Three outcomes stay three behaviours. One record becomes an authoritative
+  section the model is told to quote exactly and never paraphrase. None becomes
+  an explicit absence signal — the company has nothing on record, do not recall
+  a value from anywhere else — because an empty context invites the model to
+  fill it. Two becomes an escalation that states no value at all.
+
+  **Autopilot's authority is unchanged.** The Brain supplies grounding and
+  nothing else: the confidence threshold, eligibility gates and hand-off logic
+  are untouched, and a Brain failure degrades to ungrounded rather than costing
+  a reply. One exception, deliberately: a cross-tenant row raises instead of
+  degrading, because the broad handler that makes a dead database survivable
+  would otherwise turn a tenant leak into a quiet "no grounding today" that
+  nobody looks at. A semantic-retrieval failure also no longer discards an
+  approved value — the weakest retriever should not be able to veto the
+  strongest one.
+
+  Still advisory: nothing yet *blocks* a reply that states a price while the
+  absence signal is set. That is the verifier's job, and it remains deferred.
+
 - **Company AI Brain — the foundation, and the audit that shrank it.** Every
   company gets a private Brain: what it knows, what it has observed, how it
   speaks, and what it may do. The first finding was that most of it already

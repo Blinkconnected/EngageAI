@@ -5,7 +5,9 @@ observed, how it speaks, and what it is allowed to do. This document is the
 audit that preceded the build, the architecture that came out of it, and the
 list of things it deliberately does not do.
 
-Status: **Phase 1 built — vocabulary, boundaries and guards. Phases 2+ design.**
+Status: **Phases 1–2 built. Phases 3+ design.** Phase 1 is the vocabulary,
+boundaries and guards; Phase 2 is the first thing to occupy the orchestration
+seam — structured knowledge reaching a customer answer.
 
 ---
 
@@ -331,11 +333,47 @@ cannot acquire one by accident.
 
 ---
 
+## Phase 2, as built
+
+The gap was gap 2 above: `knowledge_records` shipped complete and nothing on
+the path to a customer had ever read it, so publishing a price change altered
+nothing about what Autopilot said.
+
+| Item | Where |
+|---|---|
+| Deterministic subject matching | `domain/brain/subject_matching.py` |
+| `CompanyBrain`, first `BrainOrchestrator` | `application/brain/service.py` |
+| Grounding hook | `AutopilotService._grounding_for()` |
+| Wiring | `infrastructure/autopilot_factory.py` |
+
+**Matched by identity, not resemblance.** A subject matches when its key's
+tokens appear contiguously in the question, canonicalised through the same
+`canonical_subject_key` the record was written with — so `خدمة ٥٠٠` finds
+`خدمه-500`, and "is DIA available at 500 sites, in mbps terms" does not match
+`dia-500-mbps`. Contiguity is what stops it guessing.
+
+**Three outcomes, three behaviours.** Exactly one record becomes an
+authoritative section labelled *quote exactly, never paraphrase a number*.
+None becomes an explicit absence signal — the model is told the company has
+nothing on record and must not recall a value from anywhere else. Two becomes
+an escalation that states no value at all.
+
+**Autopilot's authority is unchanged.** The Brain supplies grounding only. It
+does not decide whether Autopilot may reply, and the confidence threshold,
+eligibility gates and hand-off logic are untouched. A Brain failure degrades to
+ungrounded rather than costing a reply — with one exception:
+`CrossTenantAccessError` is re-raised rather than swallowed, because the broad
+handler that makes a dead database survivable would otherwise turn a tenant
+leak into a quiet "no grounding today".
+
+Still advisory, and this is worth being plain about: nothing yet *blocks* a
+reply that states a price while the absence signal is set. That is the
+verifier's job (engine stage 3, deferred), which M2 §1.2 already flags.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **2** | Wire structured records into Autopilot grounding via the Brain | Phase 1 |
 | **3** | `ChannelConfig.purpose`; ingestion branch before customer resolution | Phase 1 |
 | **4** | Durable email identity; replace `\Seen`-as-cursor | Phase 3 |
 | **5** | Document parsing, classification, extraction → DRAFT records | Phase 4 |

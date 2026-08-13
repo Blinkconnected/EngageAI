@@ -85,6 +85,12 @@ class BrainAdvice:
     #: Human-readable reason, for the audit trail and for an agent reading why
     #: the platform declined to answer. Never rendered to a customer verbatim.
     rationale: str = ""
+    #: The authoritative facts, as prompt text, or the explicit statement that
+    #: there are none. Carried here rather than assembled by the caller so
+    #: that every consumer states an absence the same way: an empty context
+    #: invites the model to fill it from parametric knowledge, which is the
+    #: failure the whole retrieval contract exists to prevent.
+    grounding: str | None = None
 
 
 __all__ = ["BrainAdvice", "BrainRequest", "CustomerSignals"]
