@@ -560,11 +560,42 @@ Attachments are only read for an **accepted** message. An unauthorised sender's
 files are never opened — authorization is the gate, and reading first would
 make it advisory.
 
+## Phase 4D, as built — durable ingestion jobs
+
+`knowledge_ingestion_jobs`, one row per unit of work, company-scoped.
+
+```
+RECEIVED ──▶ EXTRACTING ──▶ EXTRACTED ──▶ PROPOSED ──▶ APPROVED
+    │            │                                 └──▶ REJECTED
+    │            ├──▶ FAILED_RETRYABLE ──▶ EXTRACTING
+    └────────────┴──▶ FAILED_TERMINAL
+```
+
+`PROPOSED`/`APPROVED`/`REJECTED` are declared and **unreached** — 4E and
+publication are not authorized. A state machine missing its exits invites
+somebody to add them ad hoc.
+
+**Idempotency:** `UNIQUE(company_id, job_key)` where `job_key` is
+`{source_message}:{document}`. A deterministic string rather than a nullable
+composite key, because SQL treats NULLs as distinct and would admit duplicates.
+
+**Concurrency:** every transition is a compare-and-set — `WHERE id AND
+company_id AND state = expected`. Zero rows matched raises `JobClaimLost`.
+
+**Crash safety:** a dead worker leaves `EXTRACTING` with its attempt counted.
+Nothing silently reclaims it; recovery goes through `FAILED_RETRYABLE`.
+
+**Retries:** bounded at 5 attempts, counted on claim. Retryable exhaustion
+becomes terminal — a job that is retryable forever is one nobody looks at.
+Parser refusals are terminal immediately.
+
+**No state grants authority.** `grants_authority()` returns false for every
+state, and the guard test asserts it.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4D** | Ingestion jobs, retry and terminal states | 4C |
 | **4E** | AI fact extraction → DRAFT records via `detect_conflict()` | 4D |
 | **4G** | Knowledge tools + admin assistant surface | 4E |
 | **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |

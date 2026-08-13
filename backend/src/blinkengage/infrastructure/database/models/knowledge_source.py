@@ -166,6 +166,61 @@ class KnowledgeDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     truncated: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 
+class KnowledgeIngestionJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One unit of ingestion work, and how far it got.
+
+    The row exists so that "a worker died halfway through reading this" is a
+    fact somebody can query. Before it, ingestion was durable only in its
+    inputs: the message and the document survived a crash, and the knowledge
+    that work had been started and abandoned did not.
+
+    **``job_key`` rather than a nullable composite key.** The natural identity
+    is ``(source_message, document)`` and ``document`` is nullable — and SQL
+    treats NULLs as distinct, so a unique constraint over it would happily
+    admit two message-level jobs. The key is built deterministically instead,
+    which is uniform across dialects and says exactly what it means.
+    """
+
+    __tablename__ = "knowledge_ingestion_jobs"
+    __table_args__ = (
+        UniqueConstraint("company_id", "job_key", name="uq_knowledge_ingestion_jobs_key"),
+        Index("ix_knowledge_ingestion_jobs_company_state", "company_id", "state"),
+        # The sweep's query: resumable work, oldest first.
+        Index("ix_knowledge_ingestion_jobs_state_updated", "state", "updated_at"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(),
+        ForeignKey("knowledge_source_messages.id", ondelete="CASCADE"),
+        default=None,
+        index=True,
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(),
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        default=None,
+        index=True,
+    )
+
+    #: Deterministic, company-scoped. Replayed work finds the existing job
+    #: rather than creating a second one.
+    job_key: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    state: Mapped[str] = mapped_column(String(24), nullable=False)
+    #: Counted on every claim, not on every failure: a worker that dies
+    #: without recording anything has still consumed an attempt, and only
+    #: counting failures would let a crash loop run forever.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    #: Why it stopped. Populated for both failure states — a terminal failure
+    #: with no stated reason is indistinguishable from one nobody diagnosed.
+    failure_reason: Mapped[str | None] = mapped_column(String(40), default=None)
+    failure_detail: Mapped[str | None] = mapped_column(Text, default=None)
+
+
 class KnowledgeSenderAllowlistEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """An address a company has said may teach its Brain.
 
@@ -206,6 +261,7 @@ class KnowledgeSenderAllowlistEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 __all__ = [
     "KnowledgeDocument",
+    "KnowledgeIngestionJob",
     "KnowledgeSenderAllowlistEntry",
     "KnowledgeSourceMessage",
 ]

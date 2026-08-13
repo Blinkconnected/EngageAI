@@ -72,6 +72,7 @@ from blinkengage.infrastructure.database.models.knowledge_record import (
 )
 from blinkengage.infrastructure.database.models.knowledge_source import (
     KnowledgeDocument,
+    KnowledgeIngestionJob,
     KnowledgeSenderAllowlistEntry,
     KnowledgeSourceMessage,
 )
@@ -248,6 +249,7 @@ __all__ = [
     "KnowledgeIndexState",
     "KnowledgeRecord",
     "KnowledgeDocument",
+    "KnowledgeIngestionJob",
     "KnowledgeSenderAllowlistEntry",
     "KnowledgeSourceMessage",
     "LearningAnomaly",

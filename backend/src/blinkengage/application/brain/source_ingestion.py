@@ -3,9 +3,9 @@
 This service is the knowledge branch of inbound mail, and the list of things
 it does **not** do is as load-bearing as the list it does: no model is called
 and no ``KnowledgeRecord`` is written. The destinations are a source row and,
-since 4C, the documents extracted from its attachments. 4D, 4E and 4G are not
-authorized, and the structural guards in the test suite fail the build if that
-changes here.
+since 4C, the documents extracted from its attachments — each tracked by a
+durable job since 4D. 4E and 4G are not authorized, and the structural
+guards in the test suite fail the build if that changes here.
 
 Attachments are read for their text only, by ``KnowledgeDocumentExtractor``,
 which sniffs and size-checks before any parser sees them. Nothing in that path
@@ -43,8 +43,13 @@ from blinkengage.application.brain.document_extraction import (
     Attachment,
     KnowledgeDocumentExtractor,
 )
+from blinkengage.application.brain.ingestion_jobs import (
+    IngestionJobService,
+    JobClaimLost,
+)
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.brain.ingestion import ChannelPurpose, parse_channel_purpose
+from blinkengage.domain.brain.ingestion_jobs import JobState
 from blinkengage.domain.brain.sender_authorization import (
     AuthenticationResults,
     RejectionReason,
@@ -112,6 +117,7 @@ class KnowledgeSourceIngestionService:
         session: AsyncSession,
         events: DomainEventPublisher,
         documents: KnowledgeDocumentExtractor | None = None,
+        jobs: IngestionJobService | None = None,
     ) -> None:
         self._session = session
         self._events = events
@@ -120,6 +126,11 @@ class KnowledgeSourceIngestionService:
         # attachments are counted and not read, which is what this pipeline
         # did before extraction existed.
         self._documents = documents
+        # Optional for the same reason as ``documents``. Absent, extraction
+        # still happens and simply is not tracked — which is what this
+        # pipeline did before 4D, and is a strictly weaker guarantee rather
+        # than a different behaviour.
+        self._jobs = jobs
 
     async def ingest(self, *, config: ChannelConfig, raw: bytes) -> IngestionOutcome:
         """Take one raw message in, or record why it was refused.
@@ -251,9 +262,9 @@ class KnowledgeSourceIngestionService:
             # attachments are not opened at all — authorization is the gate,
             # and reading first would make it advisory.
             for attachment in parsed.attachments:
-                await self._documents.extract(
+                await self._extract_tracked(
                     company_id=company_id,
-                    source_message_id=source_id,
+                    source_id=source_id,
                     attachment=attachment,
                 )
 
@@ -266,6 +277,55 @@ class KnowledgeSourceIngestionService:
             source_id=source_id,
         )
         return IngestionOutcome(stored=True, rejection_reason=reason, source_id=source_id)
+
+    async def _extract_tracked(
+        self, *, company_id: UUID, source_id: UUID, attachment: Attachment
+    ) -> None:
+        """Extract one attachment inside a job, so a crash is visible.
+
+        Without a job service this is the plain 4C call. With one, the work is
+        claimed before it starts and settled after — so a worker that dies
+        mid-parse leaves ``EXTRACTING`` with its attempt counted, rather than
+        leaving nothing at all.
+        """
+        assert self._documents is not None
+
+        if self._jobs is None:
+            await self._documents.extract(
+                company_id=company_id,
+                source_message_id=source_id,
+                attachment=attachment,
+            )
+            return
+
+        job = await self._jobs.ensure(company_id=company_id, source_message_id=source_id)
+        try:
+            job = await self._jobs.claim(job)
+        except JobClaimLost:
+            # Another worker owns this attachment. Doing it anyway is exactly
+            # the duplicate work the claim exists to prevent.
+            return
+
+        try:
+            outcome = await self._documents.extract(
+                company_id=company_id,
+                source_message_id=source_id,
+                attachment=attachment,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Unknown failures are retryable: the document may parse next time
+            # if the cause was the environment. The attempt cap stops this
+            # being forever.
+            await self._jobs.fail(job, retryable=True, reason="EXTRACTION_ERROR", detail=str(exc))
+            return
+
+        if outcome.rejection is not None:
+            # A parser refusal is terminal by construction — an encrypted PDF
+            # is encrypted on the second attempt too.
+            await self._jobs.fail(job, retryable=False, reason=outcome.rejection.value)
+            return
+
+        await self._jobs.transition(job, JobState.EXTRACTED)
 
     async def _reject_without_body(
         self, *, config: ChannelConfig, reason: RejectionReason

@@ -16,6 +16,32 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Ingestion work is now durable, resumable and safe to run twice.** The
+  inputs already survived a crash — the message and the document outlive a
+  restart. What did not survive was the knowledge that work had been *started*
+  and abandoned. `knowledge_ingestion_jobs` is that fact.
+
+  Two guarantees, both enforced by the database rather than by care. One job
+  per unit of work, under `UNIQUE(company_id, job_key)`, so a replay or a
+  second worker finds the existing job instead of creating a rival. And every
+  transition is a conditional UPDATE naming the state it expects to find: two
+  workers racing to claim the same job both issue it, one matches a row and one
+  matches nothing, and the loser is told rather than proceeding on a stale
+  read. Without that they would both parse the same document and both write the
+  result.
+
+  The legal moves are a table, not a chain of `if`s, and an illegal move raises.
+  `EXTRACTING → RECEIVED` is deliberately absent: a job whose worker died is not
+  a job nobody has touched, and erasing the difference would lose the only
+  signal that something is stuck. Attempts are counted on claim rather than on
+  failure, because a worker that dies recording nothing has still consumed one —
+  otherwise a crash loop runs forever against the same file.
+
+  Retries are bounded and terminal failures state a reason. A parser refusal is
+  terminal by construction: an encrypted PDF is encrypted on the second attempt
+  too. And no job state grants authority — work completing is not approval, and
+  publication remains a human act behind `publication_gate()`.
+
 - **The Brain can now read what was attached.** PDF, DOCX, XLSX, CSV and TXT
   attachments arriving at a knowledge mailbox are extracted to text and stored
   against the company. Text only: no model sees them, and nothing becomes
