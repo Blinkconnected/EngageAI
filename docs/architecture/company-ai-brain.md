@@ -5,10 +5,12 @@ observed, how it speaks, and what it is allowed to do. This document is the
 audit that preceded the build, the architecture that came out of it, and the
 list of things it deliberately does not do.
 
-Status: **Phases 1–3 built. Phases 4+ design.** Phase 1 is the vocabulary,
-boundaries and guards; Phase 2 is the first thing to occupy the orchestration
-seam — structured knowledge reaching a customer answer; Phase 3 makes that
-grounding enforced rather than requested.
+Status: **Phases 1–3 and 4A/4B/4C/4F built. 4D, 4E, 4G design.** Phase 1 is
+the vocabulary, boundaries and guards; Phase 2 is the first thing to occupy the
+orchestration seam — structured knowledge reaching a customer answer; Phase 3
+makes that grounding enforced rather than requested; Phase 4 is the source
+side — a company mailbox whose mail is attributed, stored once, and read for
+its text.
 
 ---
 
@@ -518,11 +520,50 @@ sender, who would otherwise learn which condition to satisfy next.
 Events on the existing outbox: `knowledge.source.received`,
 `knowledge.source.duplicate`, `knowledge.source.rejected`.
 
+## Phase 4C, as built — attachment extraction
+
+Attachments arriving at a knowledge mailbox are read for their **text** and
+nothing else. No model sees them, and no knowledge record is written.
+
+| Kind | Reader | Notes |
+|---|---|---|
+| PDF | `pypdf` | text layer only; encrypted → refused; no text layer → refused as a scan |
+| DOCX | `python-docx` | paragraphs **and table cells** — real price lists live in tables |
+| XLSX | `openpyxl` | `data_only=True`, `read_only=True`; formulas never evaluated |
+| CSV | stdlib `csv` | cells are strings; a leading `=` is text, never a formula |
+| TXT | stdlib | UTF-8, latin-1 fallback |
+
+**Sniffed from content, never the extension.** `pricing.pdf` containing a ZIP
+is read as the ZIP. The filename decides exactly one thing — CSV versus TXT,
+which are the same bytes — and can never *promote* a file.
+
+**Limits before parsing:** 10 MiB per document; 300 PDF pages; 50 sheets;
+20,000 spreadsheet rows; 50,000 CSV rows; 1 M extracted characters. ZIP bombs
+are refused from the archive's own directory listing, never unpacked.
+
+Rejections, all terminal: `UNSUPPORTED_TYPE`, `TOO_LARGE`, `ENCRYPTED`,
+`NO_TEXT_LAYER`, `CORRUPT`, `ARCHIVE_BOMB`, `EMPTY`. A rejected document is
+still a row — "your Q3 price list arrived and is a scan we cannot read" is
+answerable; silence is not.
+
+**No OCR.** A scan is refused with a stated reason. `DocumentParser` is
+resolved by kind, so an OCR reader registers for that case later without the
+pipeline changing.
+
+Storage: `knowledge/{company_id}/{sha256}` in the existing bucket. Dedupe is
+`UNIQUE(company_id, content_hash)` — the same PDF forwarded three times is one
+document. Oversized files are refused *before* storage; everything else is
+kept, including refusals, because the unreadable file is the one an operator
+will want to open by hand.
+
+Attachments are only read for an **accepted** message. An unauthorised sender's
+files are never opened — authorization is the gate, and reading first would
+make it advisory.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4C** | Attachment extraction — parsers, size/type limits, no OCR | 4B |
 | **4D** | Ingestion jobs, retry and terminal states | 4C |
 | **4E** | AI fact extraction → DRAFT records via `detect_conflict()` | 4D |
 | **4G** | Knowledge tools + admin assistant surface | 4E |

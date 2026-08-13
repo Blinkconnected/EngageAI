@@ -53,6 +53,11 @@ dependencies = [
   "prometheus-fastapi-instrumentator==8.1.0",
   "reportlab==4.2.5",
   "openpyxl==3.1.5",
+  # Knowledge-document extraction (Company AI Brain phase 4C). Read-only
+  # parsers over ZIP+XML and PDF object streams: no office runtime is
+  # invoked, so a macro has nothing to execute in.
+  "pypdf==5.1.0",
+  "python-docx==1.1.2",
 ]
 
 [project.optional-dependencies]
@@ -67,11 +72,12 @@ dev = [
   "factory-boy==3.3.1",
   "faker==33.1.0",
   "fakeredis==2.26.2",
-  # Reads a rendered PDF back. A document feature whose tests only assert
-  # "these bytes start with %PDF" is a feature with no test at all — the
-  # invoice number, the totals and the currency's decimal places are the
-  # things that must be *in* the file, and only a reader can say so.
-  "pypdf==5.1.0",
+  # `pypdf` used to be pinned here, for reading a rendered invoice back in
+  # its tests — a document feature whose tests only assert "these bytes
+  # start with %PDF" is a feature with no test at all. It is now a
+  # production dependency (knowledge-document extraction), so the dev pin
+  # was removed rather than duplicated: two pins drift.
+  #
   # Reads the real Grafana alert provisioning in
   # tests/unit/test_alert_rules.py. It arrives anyway as a transitive of
   # uvicorn[standard], but a test that parses YAML should say so rather

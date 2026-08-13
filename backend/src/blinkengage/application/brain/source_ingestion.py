@@ -1,10 +1,15 @@
 """Mail that teaches the Brain, taken in exactly once and only from named senders.
 
-This service is everything the knowledge branch does in Phase 4A/4B/4F, and
-the list of things it does **not** do is as load-bearing as the list it does:
-no attachment is opened, no model is called, no ``KnowledgeRecord`` is written.
-The only destination is a source row. 4C, 4D, 4E and 4G are not authorized, and
-the structural guards in the test suite fail the build if that changes here.
+This service is the knowledge branch of inbound mail, and the list of things
+it does **not** do is as load-bearing as the list it does: no model is called
+and no ``KnowledgeRecord`` is written. The destinations are a source row and,
+since 4C, the documents extracted from its attachments. 4D, 4E and 4G are not
+authorized, and the structural guards in the test suite fail the build if that
+changes here.
+
+Attachments are read for their text only, by ``KnowledgeDocumentExtractor``,
+which sniffs and size-checks before any parser sees them. Nothing in that path
+executes a macro, invokes an office runtime, or fetches a URL.
 
 It parses the raw MIME itself rather than reusing ``EmailChannelProvider``.
 That looks like duplication and is not: the provider uploads every attachment
@@ -34,6 +39,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from blinkengage.application.brain.document_extraction import (
+    Attachment,
+    KnowledgeDocumentExtractor,
+)
 from blinkengage.core.logging import get_logger
 from blinkengage.domain.brain.ingestion import ChannelPurpose, parse_channel_purpose
 from blinkengage.domain.brain.sender_authorization import (
@@ -90,15 +99,27 @@ class _Parsed:
     raw_body: str | None
     plain_body: str | None
     attachment_count: int
+    attachments: tuple[Attachment, ...]
     authentication_headers: tuple[str, ...]
 
 
 class KnowledgeSourceIngestionService:
     """The knowledge branch of inbound mail."""
 
-    def __init__(self, *, session: AsyncSession, events: DomainEventPublisher) -> None:
+    def __init__(
+        self,
+        *,
+        session: AsyncSession,
+        events: DomainEventPublisher,
+        documents: KnowledgeDocumentExtractor | None = None,
+    ) -> None:
         self._session = session
         self._events = events
+        # Optional so a caller that only wants the source row — and every
+        # test that predates 4C — behaves exactly as before. Absent, the
+        # attachments are counted and not read, which is what this pipeline
+        # did before extraction existed.
+        self._documents = documents
 
     async def ingest(self, *, config: ChannelConfig, raw: bytes) -> IngestionOutcome:
         """Take one raw message in, or record why it was refused.
@@ -225,6 +246,17 @@ class KnowledgeSourceIngestionService:
             return IngestionOutcome(stored=False, duplicate=True)
 
         source_id = row.id
+        if accepted and self._documents is not None:
+            # Only for an accepted message. An unauthorised sender's
+            # attachments are not opened at all — authorization is the gate,
+            # and reading first would make it advisory.
+            for attachment in parsed.attachments:
+                await self._documents.extract(
+                    company_id=company_id,
+                    source_message_id=source_id,
+                    attachment=attachment,
+                )
+
         await self._publish(
             company_id=company_id,
             channel_config_id=channel_config_id,
@@ -296,8 +328,10 @@ class KnowledgeSourceIngestionService:
 def _parse(raw: bytes) -> _Parsed:
     """Raw bytes to an envelope, a body and the headers that authorise it.
 
-    Attachments are **counted, never opened**: Phase 4C is not authorized, and
-    a decode here would be exactly the extraction step this phase excludes.
+    Attachment payloads are decoded and carried, not interpreted. Deciding
+    what they are, whether they are safe to open and what can be read out of
+    them belongs to ``KnowledgeDocumentExtractor``, which sniffs and
+    size-checks first.
     """
     message: EmailMessage = BytesParser(EmailMessage, policy=policy.default).parsebytes(raw)
 
@@ -326,10 +360,20 @@ def _parse(raw: bytes) -> _Parsed:
 
     raw_body: str | None = None
     html_body: str | None = None
-    attachment_count = 0
+    attachments: list[Attachment] = []
     for part in message.walk():
         if part.get_content_disposition() == "attachment":
-            attachment_count += 1
+            # Captured, not opened. The bytes go to the extractor, which
+            # sniffs, size-checks and refuses before any parser sees them.
+            payload = part.get_payload(decode=True)
+            if isinstance(payload, bytes):
+                attachments.append(
+                    Attachment(
+                        filename=part.get_filename() or "attachment",
+                        data=payload,
+                        declared_content_type=part.get_content_type(),
+                    )
+                )
             continue
         content_type = part.get_content_type()
         if content_type == "text/plain" and raw_body is None:
@@ -352,7 +396,8 @@ def _parse(raw: bytes) -> _Parsed:
         received_at=received_at,
         raw_body=raw_body,
         plain_body=plain_body,
-        attachment_count=attachment_count,
+        attachment_count=len(attachments),
+        attachments=tuple(attachments),
         authentication_headers=tuple(
             str(header) for header in message.get_all("Authentication-Results", [])
         ),

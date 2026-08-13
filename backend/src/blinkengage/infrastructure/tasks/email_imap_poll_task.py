@@ -14,6 +14,9 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from blinkengage.application.brain.document_extraction import (
+    KnowledgeDocumentExtractor,
+)
 from blinkengage.application.brain.source_ingestion import (
     KnowledgeSourceIngestionService,
 )
@@ -64,6 +67,20 @@ def _get_provider_factory(settings: Settings) -> ChannelProviderFactory:
         _minio_client = create_minio_client(settings)
     attachments = AttachmentStore(_minio_client, bucket=settings.s3_bucket_attachments)
     return ChannelProviderFactory(realtime=RealtimePublisher(_redis), attachments=attachments)
+
+
+def _get_attachment_store(settings: Settings) -> AttachmentStore:
+    """The same bucket the customer path writes to, reusing the cached client.
+
+    Knowledge documents are separated by key prefix rather than by bucket:
+    ``knowledge/{company_id}/{sha256}``. One bucket keeps the lifecycle,
+    credentials and health check that already exist, and the prefix is what
+    makes a cross-tenant read impossible to write by accident.
+    """
+    global _minio_client
+    if _minio_client is None:
+        _minio_client = create_minio_client(settings)
+    return AttachmentStore(_minio_client, bucket=settings.s3_bucket_attachments)
 
 
 def _fetch_unseen_sync(
@@ -166,15 +183,25 @@ async def poll_channel_config(
     events = OutboxEventPublisher(EventOutboxRepository(session))
     # The branch, and it happens *before* anything parses the message into an
     # InboundMessage. Deliberately earlier than it strictly has to be: the
-    # provider's parser uploads every attachment to object storage on its way
-    # through, which is the extraction step Phase 4C excludes, and it discards
-    # the Authentication-Results headers sender authorization needs.
+    # provider's parser uploads every attachment as a customer attachment on
+    # its way through — the wrong bucket prefix, the wrong table and the wrong
+    # trust position — and it discards the Authentication-Results headers that
+    # sender authorization needs.
     purpose = parse_channel_purpose(config.purpose)
     ingested = 0
     acknowledged: list[bytes] = []
 
     if purpose is ChannelPurpose.KNOWLEDGE_INGESTION:
-        ingestion = KnowledgeSourceIngestionService(session=session, events=events)
+        ingestion = KnowledgeSourceIngestionService(
+            session=session,
+            events=events,
+            # Attachments are read for their text here. The store is the
+            # same MinIO the customer path uses; the keys are
+            # company-prefixed so nothing can collide across tenants.
+            documents=KnowledgeDocumentExtractor(
+                session=session, storage=_get_attachment_store(get_settings())
+            ),
+        )
         for uid, raw in fetched:
             outcome = await ingestion.ingest(config=config, raw=raw)
             # A duplicate is acknowledged too: the row already exists, so

@@ -104,6 +104,68 @@ class KnowledgeSourceMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     authentication_summary: Mapped[str | None] = mapped_column(String(120), default=None)
 
 
+class KnowledgeDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One attachment, and what could be read out of it.
+
+    Immutable, and stored even when extraction failed. A refusal is the more
+    useful row of the two: "we received your Q3 price list and could not read
+    it because it is a scan" is answerable, and silence is not.
+
+    Deduplicated on ``(company_id, content_hash)``. The same PDF forwarded
+    three times is one document with three source messages pointing at it, and
+    re-parsing identical bytes to reach an identical answer is work nobody
+    asked for.
+    """
+
+    __tablename__ = "knowledge_documents"
+    __table_args__ = (
+        UniqueConstraint("company_id", "content_hash", name="uq_knowledge_documents_content"),
+        Index("ix_knowledge_documents_company_status", "company_id", "status"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: The message it arrived on. Nullable because a later phase adds manual
+    #: upload, which has no message.
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(),
+        ForeignKey("knowledge_source_messages.id", ondelete="CASCADE"),
+        default=None,
+        index=True,
+    )
+
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    #: What the *bytes* are, sniffed. Never the declared content type, and
+    #: never the extension: ``pricing.pdf`` containing a ZIP is a ZIP.
+    detected_kind: Mapped[str | None] = mapped_column(String(16), default=None)
+    #: What the sender claimed, kept only so the two can be compared.
+    declared_content_type: Mapped[str | None] = mapped_column(String(200), default=None)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: Object-storage key, company-prefixed. Null when the document was
+    #: refused before storage — an oversized file is not kept.
+    storage_key: Mapped[str | None] = mapped_column(String(500), default=None)
+
+    #: ``EXTRACTED`` or ``REJECTED``.
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    rejection_reason: Mapped[str | None] = mapped_column(String(40), default=None)
+    rejection_detail: Mapped[str | None] = mapped_column(Text, default=None)
+
+    extracted_text: Mapped[str | None] = mapped_column(Text, default=None)
+    #: Which reader produced the text, and at what version. Extraction quality
+    #: changes with the library, so a record citing this text has to be able
+    #: to say what read it — otherwise "the document says 180" cannot be
+    #: checked a year later when the same file extracts differently.
+    parser: Mapped[str | None] = mapped_column(String(40), default=None)
+    parser_version: Mapped[str | None] = mapped_column(String(40), default=None)
+    #: Pages, sheets or rows read, and whether a cap stopped the read early —
+    #: a truncation is otherwise invisible in the text.
+    units_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    truncated: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+
 class KnowledgeSenderAllowlistEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """An address a company has said may teach its Brain.
 
@@ -142,4 +204,8 @@ class KnowledgeSenderAllowlistEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
-__all__ = ["KnowledgeSenderAllowlistEntry", "KnowledgeSourceMessage"]
+__all__ = [
+    "KnowledgeDocument",
+    "KnowledgeSenderAllowlistEntry",
+    "KnowledgeSourceMessage",
+]

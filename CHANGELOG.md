@@ -16,6 +16,35 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The Brain can now read what was attached.** PDF, DOCX, XLSX, CSV and TXT
+  attachments arriving at a knowledge mailbox are extracted to text and stored
+  against the company. Text only: no model sees them, and nothing becomes
+  knowledge — that is a later phase.
+
+  **The extension is a claim, not a fact.** The kind is sniffed from the
+  leading bytes, so `pricing.pdf` containing a ZIP is read as the ZIP. The
+  filename decides exactly one thing, CSV versus TXT, and can never promote a
+  file to something it is not.
+
+  **Refusals are the feature.** An encrypted PDF fails closed rather than being
+  opened with an empty password. A PDF with pages and no text layer is refused
+  as a scan rather than yielding an empty string — half-reading a price list
+  fails invisibly, and "the document said nothing" is indistinguishable from
+  "we could not read it". A ZIP that expands beyond its size is refused from
+  its own directory listing, never unpacked. Every refusal is a row with a
+  reason, because "your Q3 price list arrived and we cannot read it" is
+  answerable and silence is not.
+
+  Limits run before parsing, where they are cheap: 10 MiB per document, 300 PDF
+  pages, 50 sheets, 20,000 spreadsheet rows. Spreadsheets are read with
+  `data_only=True`, so a formula's cached value is read and the expression is
+  never evaluated; a CSV cell beginning `=` is a string here and stays one. No
+  office runtime is invoked, so a macro has nothing to execute in, and nothing
+  in this path fetches a URL or a remote image.
+
+  No OCR, deliberately. The parser is resolved by kind, so an OCR reader can
+  register for the scanned case later without the pipeline changing.
+
 - **A company can give its Brain a mailbox, and only the people it named can
   use it.** A company points `ai@theirdomain.com` at Blink and its own staff
   send price lists, policies and service descriptions to it. The mail becomes
