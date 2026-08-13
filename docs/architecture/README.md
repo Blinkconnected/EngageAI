@@ -76,6 +76,7 @@ change must not contradict.
 | [Memory platform](./memory-platform.md) | Conversation memory |
 | [Company Intelligence Engine](./company-intelligence-engine.md) | The engine |
 | [Company Knowledge and Adaptive Voice](./company-knowledge-and-voice.md) | M2 — structured knowledge, ingestion, voice |
+| [Company AI Brain](./company-ai-brain.md) | Orchestration over knowledge, memory and voice |
 | [Intelligence platform](./intelligence-platform.md) | Observation → pattern |
 
 ### Learning Platform

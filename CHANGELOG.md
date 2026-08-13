@@ -16,6 +16,56 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Company AI Brain — the foundation, and the audit that shrank it.** Every
+  company gets a private Brain: what it knows, what it has observed, how it
+  speaks, and what it may do. The first finding was that most of it already
+  exists. Structured knowledge with lifecycle, provenance, access levels and
+  deterministic Arabic-aware resolution shipped with M2A; hybrid RRF retrieval
+  and tenant-isolated vector search shipped in engine stage 1; evidence-based
+  memory, the nine-provider abstraction and the audited tool executor are all
+  in place. Building a Brain that re-modelled any of that would have produced a
+  second vocabulary for concepts that already have one.
+
+  So the Brain is **not a new knowledge stack**. It is the orchestration layer
+  the existing documents name and neither builds — the one missing piece.
+  `ToolExecutor` has been production-ready since M2B with no caller but the
+  endpoint a human uses to confirm an action it parked, and
+  `AutopilotService` grounds on articles and FAQs while the authoritative
+  structured store that exists to answer exactly those questions has no path to
+  a customer reply.
+
+  This phase adds contracts and the guards that hold them, with no pipeline, no
+  UI and no migration: Brain vocabulary and audiences, a request type whose
+  `company_id` has no default so tenant scope is a signature rather than a
+  filter somebody remembers, `publication_gate()`, conflict detection as pure
+  functions, the retrieval visibility boundary, the ingestion boundary and its
+  durable identity, the admin-assistant proposal contract, response strategy,
+  and the de-escalation policy.
+
+  **De-escalation is a function, not prompt text.** "Do not mirror abuse" is a
+  brand guarantee, and a prompt directive has an unmeasured failure rate — the
+  same argument this codebase already makes about grounding prices. Language
+  and register are mirrored; hostility is not, and `mirror_hostility` is typed
+  `Literal[False]` so enabling it fails the type check.
+
+  **The Brain advises; it does not send.** `AutopilotService` remains the only
+  autonomous path to a customer, unchanged, and a static guard fails the build
+  if anything under the Brain acquires a channel provider, a connector or a
+  send function. Better grounding constrains what may be said; it does not
+  widen permission.
+
+  One deliberate deviation from the brief is recorded in the tests rather than
+  buried: SUPERSEDED knowledge stays resolvable. Publishing a price change
+  effective next month supersedes today's record immediately while the
+  replacement does not yet cover today, so excluding superseded rows would
+  leave a subject unpriced for a month because somebody scheduled a change
+  correctly. The property actually wanted — stale knowledge must never answer
+  as current — is guaranteed by the effective period, and that is what the
+  guard asserts, for every lifecycle state including ACTIVE.
+
+  See [`docs/architecture/company-ai-brain.md`](docs/architecture/company-ai-brain.md)
+  for the audit, the five real gaps it found, and the phase order.
+
 - **`scripts/seed_company_faqs_from_profile.py` — publish a company's
   FAQ set from the facts it has already verified.** A company that fills
   in its business profile but publishes no FAQs is still answered
