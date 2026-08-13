@@ -381,7 +381,7 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
         RoutingDecisionReason.HUMAN_ARRIVED_FIRST: ai_stood_down_decision(
             queue_id=queue_id, queue_name="Support"
         ),
-        # The four hand-off reasons. Built through the real factory, which is
+        # The hand-off reasons. Built through the real factory, which is
         # also the assertion that its mapping covers the vocabulary: a reason
         # the factory does not know returns ``None`` and fails here loudly
         # rather than silently recording nothing in production.
@@ -389,6 +389,11 @@ def _every_reason() -> dict[RoutingDecisionReason, RoutingDecision]:
         RoutingDecisionReason.CONFIDENCE_BELOW_THRESHOLD: _released("low_confidence"),
         RoutingDecisionReason.NO_REPLY_GENERATED: _released("no_reply_generated"),
         RoutingDecisionReason.ACTIVATION_MODE_EXCLUDES_THIS: _released("mode_disabled"),
+        # The grounding verifier's two, which are hand-offs the model did not
+        # ask for — it was confident and unsupported, or the records could not
+        # settle the question.
+        RoutingDecisionReason.UNVERIFIED_COMPANY_FACT: _released("unverified_company_fact"),
+        RoutingDecisionReason.KNOWLEDGE_NOT_DECIDABLE: _released("knowledge_not_decidable"),
     }
 
 

@@ -68,6 +68,14 @@ from blinkengage.domain.brain.retrieval_policy import (
 )
 from blinkengage.domain.brain.subject_matching import match_subjects, query_tokens
 from blinkengage.domain.brain.tone import ToneDirective, de_escalation_directive
+from blinkengage.domain.brain.verification import (
+    GroundingFacts,
+    VerificationOutcome,
+    VerificationReason,
+    VerificationVerdict,
+    value_claims,
+    verify_reply,
+)
 from blinkengage.domain.brain.vocabulary import (
     AnswerDisposition,
     BrainAudience,
@@ -90,6 +98,7 @@ __all__ = [
     "EmotionalState",
     "EscalationRisk",
     "Formality",
+    "GroundingFacts",
     "InboundEnvelope",
     "IngestionRoute",
     "KnowledgeAuthority",
@@ -102,6 +111,9 @@ __all__ = [
     "ResponseStrategy",
     "RetrievableRecord",
     "ToneDirective",
+    "VerificationOutcome",
+    "VerificationReason",
+    "VerificationVerdict",
     "allowed_access_levels",
     "authority_of",
     "choose_response_strategy",
@@ -116,4 +128,6 @@ __all__ = [
     "query_tokens",
     "publication_gate",
     "route_inbound",
+    "value_claims",
+    "verify_reply",
 ]

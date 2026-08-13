@@ -44,7 +44,17 @@ from blinkengage.application.services.service_context_resolver import (
     ServiceContextResolver,
 )
 from blinkengage.core.logging import get_logger
-from blinkengage.domain.brain.context import BrainRequest
+from blinkengage.domain.brain.context import BrainAdvice, BrainRequest
+from blinkengage.domain.brain.response_strategy import (
+    KnowledgeAvailability,
+    choose_response_strategy,
+)
+from blinkengage.domain.brain.retrieval_policy import CrossTenantAccessError
+from blinkengage.domain.brain.verification import (
+    GroundingFacts,
+    VerificationOutcome,
+    verify_reply,
+)
 from blinkengage.domain.brain.vocabulary import BrainAudience
 from blinkengage.domain.company_settings import (
     effective_autopilot_confidence_threshold,
@@ -108,6 +118,14 @@ def _format_conversation_history(messages: list[Message]) -> str:
         if message.body:
             lines.append(f"{speaker}: {message.body}")
     return "\n".join(lines)
+
+
+@dataclass(frozen=True, slots=True)
+class _Grounding:
+    """One Brain lookup, serving both the prompt and the gate after it."""
+
+    prompt: str | None
+    advice: BrainAdvice | None
 
 
 def _latest_customer_question(recent_messages: list[Message]) -> str:
@@ -299,6 +317,9 @@ class AutopilotService:
             return AutopilotOutcome(replied=False, reason="ai_unavailable")
 
         history = _format_conversation_history(list(reversed(recent_messages)))
+        grounding = await self._ground(
+            company_id=company_id, query=_latest_customer_question(recent_messages)
+        )
         result = await ai_service.suggest_autopilot_reply(
             company_id=company_id,
             conversation_id=conversation_id,
@@ -309,9 +330,7 @@ class AutopilotService:
             # replies, and searching with those in the query drifts the
             # results toward what AI already said rather than what the
             # customer is asking now.
-            grounding=await self._grounding_for(
-                company_id=company_id, query=_latest_customer_question(recent_messages)
-            ),
+            grounding=grounding.prompt,
             actor_user_id=actor_user_id,
         )
         threshold = await self._threshold_for(
@@ -328,6 +347,45 @@ class AutopilotService:
                 else "no_reply_generated"
                 if result.reply is None
                 else "low_confidence"
+            )
+            await self._hand_off(
+                conversation=conversation,
+                company_id=company_id,
+                conversation_id=conversation_id,
+                reason=reason,
+                confidence=result.confidence,
+                handled_message_id=handled_message_id,
+            )
+            return AutopilotOutcome(replied=False, reason=reason, confidence=result.confidence)
+
+        # The grounding verifier — the last gate before a company fact
+        # reaches a customer, and deliberately *after* every existing one.
+        #
+        # It runs here rather than earlier because it judges the generated
+        # reply, which does not exist until now; and here rather than inside
+        # the send path because the send path is shared with humans, whose
+        # sentences are not the platform's to verify. It cannot widen
+        # anything: a reply that failed the confidence threshold above never
+        # reaches this line, and the only thing this can do is withhold.
+        #
+        # Both outcomes end in the same `_hand_off` every other refusal uses.
+        # No second send path, no new escalation mechanism, one gate.
+        verdict = verify_reply(
+            result.reply, grounding.advice.facts if grounding.advice else GroundingFacts()
+        )
+        if not verdict.may_send:
+            reason = (
+                "unverified_company_fact"
+                if verdict.outcome is VerificationOutcome.BLOCK
+                else "knowledge_not_decidable"
+            )
+            logger.warning(
+                "autopilot_reply_withheld",
+                company_id=str(company_id),
+                conversation_id=str(conversation_id),
+                outcome=verdict.outcome.value,
+                verifier_reason=verdict.reason.value,
+                unsupported_values=list(verdict.unsupported_values),
             )
             await self._hand_off(
                 conversation=conversation,
@@ -383,7 +441,61 @@ class AutopilotService:
         )
         return AutopilotOutcome(replied=True, confidence=result.confidence)
 
-    async def _grounding_for(self, *, company_id: UUID, query: str) -> str | None:
+    async def _ground(self, *, company_id: UUID, query: str) -> _Grounding:
+        """Grounding text for the prompt, and the facts the verifier needs.
+
+        One lookup, two consumers. The verifier must judge the reply against
+        the knowledge the model was *actually given* — re-running retrieval
+        afterwards could reach a different answer, and then the gate would be
+        checking the reply against something that never reached the prompt.
+        """
+        advice = await self._brain_advice(company_id=company_id, query=query)
+        return _Grounding(
+            prompt=await self._grounding_for(company_id=company_id, query=query, advice=advice),
+            advice=advice,
+        )
+
+    async def _brain_advice(self, *, company_id: UUID, query: str) -> BrainAdvice | None:
+        """The Brain's reading of this turn, or ``None`` when it is absent.
+
+        A failure here degrades to ``None`` rather than raising, matching the
+        existing retrievers — with one exception. ``CrossTenantAccessError``
+        is a security failure, not an availability one, and is re-raised: a
+        row from another company reaching the boundary must not be absorbed
+        into "no grounding today" by the handler that exists to survive a
+        dead database.
+        """
+        if self._brain is None or not query.strip():
+            return None
+        try:
+            return await self._brain.advise(
+                BrainRequest(
+                    company_id=company_id,
+                    audience=BrainAudience.CUSTOMER,
+                    query=query,
+                )
+            )
+        except CrossTenantAccessError:
+            raise
+        except Exception:
+            logger.warning(
+                "autopilot_brain_grounding_failed",
+                company_id=str(company_id),
+                exc_info=True,
+            )
+            # Unavailable, not absent. The verifier must be able to tell "we
+            # could not check" from "we checked and found nothing", so this
+            # returns advice saying exactly that rather than ``None``.
+            return BrainAdvice(
+                company_id=company_id,
+                strategy=choose_response_strategy(availability=KnowledgeAvailability()),
+                rationale="brain_unavailable",
+                facts=GroundingFacts(requires_authority=True, unavailable=True),
+            )
+
+    async def _grounding_for(
+        self, *, company_id: UUID, query: str, advice: BrainAdvice | None = None
+    ) -> str | None:
         """The company's own published material for this question, as
         prompt text — or ``None`` when there is nothing to add.
 
@@ -409,26 +521,17 @@ class AutopilotService:
             return None
 
         sections: list[str] = []
-        # First, and on its own error boundary. An authoritative value
-        # outranks every passage below it, and a retrieval failure in the
-        # semantic half must not cost the one fact a human actually approved.
-        if self._brain is not None:
-            try:
-                advice = await self._brain.advise(
-                    BrainRequest(
-                        company_id=company_id,
-                        audience=BrainAudience.CUSTOMER,
-                        query=query,
-                    )
-                )
-                if advice.grounding:
-                    sections.append(advice.grounding)
-            except Exception:
-                logger.warning(
-                    "autopilot_brain_grounding_failed",
-                    company_id=str(company_id),
-                    exc_info=True,
-                )
+        # First. An authoritative value outranks every passage below it, and a
+        # retrieval failure in the semantic half must not cost the one fact a
+        # human actually approved.
+        #
+        # The advice is passed in when the caller already has it, so the Brain
+        # is consulted once per turn and the verifier judges the reply against
+        # the same knowledge the model was given.
+        if advice is None:
+            advice = await self._brain_advice(company_id=company_id, query=query)
+        if advice is not None and advice.grounding:
+            sections.append(advice.grounding)
 
         try:
             if self._faqs is not None:

@@ -33,6 +33,7 @@ from blinkengage.domain.brain.response_strategy import (
 )
 from blinkengage.domain.brain.retrieval_policy import CrossTenantAccessError, is_visible
 from blinkengage.domain.brain.subject_matching import match_subjects
+from blinkengage.domain.brain.verification import GroundingFacts, value_claims
 from blinkengage.domain.knowledge_records import (
     KnowledgeAccessLevel,
     KnowledgeLifecycleState,
@@ -81,24 +82,20 @@ class CompanyBrain:
             candidates = await self._records.list_records(
                 company_id=request.company_id, at=at, limit=SUBJECT_SCAN_LIMIT
             )
-            # Visibility before matching, not after: a draft price must not
-            # even be a candidate for a customer-facing answer, and filtering
-            # later is one refactor away from being forgotten.
+            # Subject detection runs over *every* record the company has for
+            # this subject, including ones that may not answer: drafts,
+            # archived rows, restricted material.
             #
-            # Through an explicit view rather than by handing the ORM row to
-            # the domain. The row satisfies ``RetrievableRecord`` at runtime,
-            # but the adapter is the honest expression of the boundary: the
-            # domain rule depends on five values, not on a mapped class.
-            by_key = {
-                record.subject_key: record
-                for record in candidates
-                if is_visible(
-                    _visibility_view(record),
-                    company_id=request.company_id,
-                    audience=request.audience,
-                    at=at,
-                )
-            }
+            # That looks backwards and is the security-relevant part. What is
+            # being decided here is "did the customer ask about something this
+            # company prices?", which is a property of the question, not of
+            # whether an approved answer happens to exist. Filtering first
+            # meant a company whose only price record was still a DRAFT looked
+            # like a company that sells nothing priced — so the verifier never
+            # engaged, and a figure the model invented sailed through. The
+            # unapproved row must still be able to say "this is a priced
+            # subject" while being wholly unable to answer.
+            by_key = {record.subject_key: record for record in candidates}
 
             for subject_key in match_subjects(request.query, by_key):
                 looked_up = True
@@ -124,7 +121,20 @@ class CompanyBrain:
                     )
                     conflicted = True
                     continue
-                if authoritative is not None:
+                # Authority is granted here and only here. ``resolve`` applies
+                # lifecycle and period; audience and access level are this
+                # boundary's to apply, so a RESTRICTED record that resolves
+                # perfectly still cannot answer a customer.
+                #
+                # Through an explicit view rather than by handing the ORM row
+                # to the domain: the rule depends on five values, not on a
+                # mapped class.
+                if authoritative is not None and is_visible(
+                    _visibility_view(authoritative),
+                    company_id=request.company_id,
+                    audience=request.audience,
+                    at=at,
+                ):
                     resolved.append(authoritative)
         except CrossTenantAccessError:
             # Never degraded. Every other failure here is an availability
@@ -149,6 +159,13 @@ class CompanyBrain:
                     formality=request.signals.formality,
                 ),
                 rationale="knowledge_lookup_failed",
+                # `requires_authority` is true on this path even though the
+                # lookup never got far enough to know. It is the conservative
+                # reading and the only safe one: the alternative says "no
+                # priced subject was named" on the strength of a query that
+                # errored, which would let a figure through precisely when
+                # the platform is least able to check it.
+                facts=GroundingFacts(requires_authority=True, unavailable=True),
             )
 
         availability = KnowledgeAvailability(
@@ -171,7 +188,33 @@ class CompanyBrain:
             grounded_record_ids=tuple(record.id for record in resolved),
             rationale=strategy.reason,
             grounding=_render(resolved, conflicted=conflicted, absent=availability.absent),
+            facts=GroundingFacts(
+                requires_authority=requires_authoritative,
+                authoritative_hits=len(resolved),
+                conflicted=conflicted,
+                unavailable=False,
+                supported_values=_supported_values(resolved),
+            ),
         )
+
+
+def _supported_values(records: list[KnowledgeRecord]) -> frozenset[str]:
+    """Every figure this company has approved for this turn.
+
+    Both the attribute values and the subject labels, because a correct reply
+    quotes both: "our 500 Mbps DIA costs 180 JOD" carries the price from the
+    attributes and the 500 from the product's own name. Omitting labels would
+    make the verifier reject the sentence it is supposed to permit.
+
+    Nothing from the customer's message is included here — see the note on
+    ``GroundingFacts.supported_values``.
+    """
+    supported: set[str] = set()
+    for record in records:
+        for value in (record.attributes or {}).values():
+            supported |= value_claims(str(value))
+        supported |= value_claims(record.subject_label)
+    return frozenset(supported)
 
 
 @dataclass(frozen=True, slots=True)

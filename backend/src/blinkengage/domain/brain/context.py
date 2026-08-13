@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from blinkengage.domain.brain.response_strategy import ResponseStrategy
+from blinkengage.domain.brain.verification import GroundingFacts
 from blinkengage.domain.brain.vocabulary import (
     BrainAudience,
     EmotionalState,
@@ -91,6 +92,14 @@ class BrainAdvice:
     #: invites the model to fill it from parametric knowledge, which is the
     #: failure the whole retrieval contract exists to prevent.
     grounding: str | None = None
+    #: What the verifier needs to enforce this turn, established during the
+    #: same lookup that produced the grounding above.
+    #:
+    #: Carried on the advice rather than re-derived later, because a verifier
+    #: that repeated the retrieval could reach a different answer than the one
+    #: the model was actually given — and then it would be checking a reply
+    #: against knowledge that never reached the prompt.
+    facts: GroundingFacts = field(default_factory=GroundingFacts)
 
 
 __all__ = ["BrainAdvice", "BrainRequest", "CustomerSignals"]

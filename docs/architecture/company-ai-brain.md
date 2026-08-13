@@ -5,9 +5,10 @@ observed, how it speaks, and what it is allowed to do. This document is the
 audit that preceded the build, the architecture that came out of it, and the
 list of things it deliberately does not do.
 
-Status: **Phases 1–2 built. Phases 3+ design.** Phase 1 is the vocabulary,
+Status: **Phases 1–3 built. Phases 4+ design.** Phase 1 is the vocabulary,
 boundaries and guards; Phase 2 is the first thing to occupy the orchestration
-seam — structured knowledge reaching a customer answer.
+seam — structured knowledge reaching a customer answer; Phase 3 makes that
+grounding enforced rather than requested.
 
 ---
 
@@ -370,17 +371,124 @@ Still advisory, and this is worth being plain about: nothing yet *blocks* a
 reply that states a price while the absence signal is set. That is the
 verifier's job (engine stage 3, deferred), which M2 §1.2 already flags.
 
+## Phase 3, as built — the Grounding Verifier
+
+Phase 2 handed the model the approved records and asked it to quote them.
+Asking has an unmeasured failure rate. Handed an absence signal, a model
+usually says "I don't have that on record" and occasionally says "I believe
+it's around 120 JOD" — fluently, at high confidence, in the customer's own
+dialect. Nothing downstream could tell those two apart, because both are
+well-formed replies. Phase 3 is the gate that can.
+
+### The final-send boundary
+
+Found, not assumed. There is exactly one autonomous path to a customer:
+
+```
+AutopilotService.run()
+  └── conversation_service.send_reply(...)      ← the only autonomous send
+```
+
+`send_reply` is shared with humans — agents send through it too — so the
+verifier does **not** live inside it. A human's sentence is not the platform's
+to verify. It sits in `run()`, on the generated reply, immediately before the
+commit-and-send:
+
+```
+eligibility → ownership → dedupe → mode gate → AI provider
+  → Brain grounding (Phase 2)
+  → generation
+  → needs_handoff / confidence < threshold        ← existing gate, untouched
+  → GROUNDING VERIFIER                            ← Phase 3, here
+  → conversation.autopilot_active = True
+  → send_reply(...)
+```
+
+**After** the confidence gate on purpose. Running before it would let the
+verifier's ALLOW be mistaken downstream for permission; running after means it
+can only ever subtract from what was already permitted. A reply that failed the
+threshold never reaches this line.
+
+### What it decides
+
+| Outcome | Reason | When |
+|---|---|---|
+| ALLOW | `NO_COMPANY_CLAIM` | No priced subject was asked about, or the reply states no figure |
+| ALLOW | `AUTHORITY_CONFIRMED` | Every figure traces to an approved record |
+| BLOCK | `AUTHORITY_ABSENT` | Checked; the company has no approved record |
+| BLOCK | `UNSUPPORTED_VALUE` | A record exists and the reply quotes a different figure |
+| ESCALATE | `AUTHORITY_CONFLICT` | The company's own records disagree |
+| ESCALATE | `GROUNDING_UNAVAILABLE` | Could not check |
+
+BLOCK and ESCALATE both terminate in the **existing** `_hand_off()`, with
+distinct reasons on the conversation's timeline
+(`unverified_company_fact`, `knowledge_not_decidable`). No second send path, no
+new escalation mechanism, no new handoff infrastructure.
+
+### What counts as a company fact
+
+Deterministic, and deliberately narrow: **value claims** — figures — about
+subjects whose record type requires approval (`PRICE`, `SLA_TERM`,
+`POLICY_PARAM`). No keyword list, no second LLM.
+
+Supported figures come from the resolved records' attributes *and* their
+subject labels, because a correct answer quotes both ("our **500** Mbps DIA
+costs **180** JOD"). They are **never** seeded from the customer's message —
+otherwise "is it 120 JOD?" → "yes, 120 JOD" authorises itself, which is the
+cheapest possible way to make the platform quote a price it never approved.
+
+Digits are folded through `unicodedata.digit`, so Arabic-Indic `١٨٠` is the
+same figure as `180`; `180`, `180.0` and `180,00` are one figure, because a
+verifier that withholds a correct answer over decimal notation is one somebody
+switches off.
+
+### Subject detection uses unapproved records too
+
+The security-relevant subtlety, and it looks backwards. Whether a question is
+about a priced subject is a property of *the question*, not of whether an
+approved answer happens to exist. Filtering candidates by visibility before
+matching meant a company whose only price record was still a `DRAFT` looked
+like a company that sells nothing priced — so the verifier never engaged and an
+invented figure passed. An unapproved row must be able to say "this is a priced
+subject" while remaining wholly unable to answer.
+
+Authority is granted in exactly one place: a record that resolves *and* passes
+the audience visibility check. `DRAFT`, `ARCHIVED`, out-of-period `SUPERSEDED`,
+`RESTRICTED` and another tenant's rows all fail it.
+
+### Failure semantics
+
+`AUTHORITY_ABSENT` and `GROUNDING_UNAVAILABLE` are never collapsed. "We do not
+have that on record" and "our knowledge store is down" are different sentences
+to a customer and different problems to an operator. A Brain outage produces
+`requires_authority=True, unavailable=True` — the conservative reading, because
+the alternative claims no priced subject was named on the strength of a query
+that errored.
+
+### Tenant isolation
+
+`CrossTenantAccessError` propagates. It is not converted to BLOCK, ESCALATE, a
+fallback, or "no grounding today" — the broad handler that makes a dead
+database survivable explicitly re-raises it first.
+
+### Non-goals
+
+- Not a hallucination detector. Generic conversation is untouched.
+- Does not verify prose. "Our team is famously helpful" is unverifiable without
+  a model reading it, and Phase 3 adds no model.
+- Does not widen Autopilot's authority. It can only withhold.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **3** | `ChannelConfig.purpose`; ingestion branch before customer resolution | Phase 1 |
-| **4** | Durable email identity; replace `\Seen`-as-cursor | Phase 3 |
-| **5** | Document parsing, classification, extraction → DRAFT records | Phase 4 |
-| **6** | Admin assistant as a real conversation over the tool registry | Phase 1 |
-| **7** | Voice profile + constraints; verifier enforcement | M2G |
-| **8** | Customer communication signals as memory fact types | M2H |
-| **9** | Tool planning over the existing executor, read-only first | Phase 2 |
+| **4** | `ChannelConfig.purpose`; ingestion branch before customer resolution | Phase 1 |
+| **5** | Durable email identity; replace `\Seen`-as-cursor | Phase 4 |
+| **6** | Document parsing, classification, extraction → DRAFT records | Phase 5 |
+| **7** | Admin assistant as a real conversation over the tool registry | Phase 1 |
+| **8** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
+| **9** | Customer communication signals as memory fact types | M2H |
+| **10** | Tool planning over the existing executor, read-only first | Phase 2 |
 
 This intentionally matches M2's own phase letters where they correspond, rather
 than inventing a parallel numbering for the same work.

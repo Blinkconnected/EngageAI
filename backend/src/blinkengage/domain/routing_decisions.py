@@ -321,6 +321,16 @@ class RoutingDecisionReason(StrEnum):
     #: Autopilot is configured not to run for this trigger — an activation
     #: mode excludes it. The conversation was never AI's to answer.
     ACTIVATION_MODE_EXCLUDES_THIS = "activation_mode_excludes_this"
+    #: The reply quoted a company figure nothing approved, and the grounding
+    #: verifier withheld it. Distinct from ``MODEL_REQUESTED_HANDOFF`` on
+    #: purpose: the model did not ask for a human, it was confident and
+    #: wrong, and recording this as the model's own request would put a
+    #: sentence on the timeline that misdescribes what happened.
+    UNVERIFIED_COMPANY_FACT = "unverified_company_fact"
+    #: The company's own records disagree about what was asked, or the
+    #: platform could not check them. Either way a person decides, and
+    #: neither is the model's doing.
+    KNOWLEDGE_NOT_DECIDABLE = "knowledge_not_decidable"
 
     # --- Choosing an agent -------------------------------------------
 
@@ -836,6 +846,16 @@ def _headline(decision: RoutingDecision) -> str:
             "AI Autopilot handed the conversation back: it is configured not to "
             "run for what triggered this."
         )
+    if reason is RoutingDecisionReason.UNVERIFIED_COMPANY_FACT:
+        return (
+            "AI Autopilot handed the conversation back: its answer quoted a "
+            "figure this company has not approved, so it was not sent."
+        )
+    if reason is RoutingDecisionReason.KNOWLEDGE_NOT_DECIDABLE:
+        return (
+            "AI Autopilot handed the conversation back: the company's own "
+            "records could not settle what was asked."
+        )
     if reason is RoutingDecisionReason.STRATEGY_SELECTED:
         return (
             f"Assigned to {_agent_phrase(decision)} by {queue}'s {decision.strategy} "
@@ -1032,6 +1052,13 @@ _HANDOFF_REASONS: Final[dict[str, RoutingDecisionReason]] = {
     "no_reply_generated": RoutingDecisionReason.NO_REPLY_GENERATED,
     "mode_disabled": RoutingDecisionReason.ACTIVATION_MODE_EXCLUDES_THIS,
     "ai_unavailable": RoutingDecisionReason.NO_REPLY_GENERATED,
+    # The grounding verifier's two outcomes. Mapped here rather than left to
+    # fall through: an unmapped reason records no decision at all, so the
+    # conversation would show AI handing back with no explanation — and "AI
+    # withheld a price it could not support" is the single most useful thing
+    # that screen could say.
+    "unverified_company_fact": RoutingDecisionReason.UNVERIFIED_COMPANY_FACT,
+    "knowledge_not_decidable": RoutingDecisionReason.KNOWLEDGE_NOT_DECIDABLE,
 }
 
 

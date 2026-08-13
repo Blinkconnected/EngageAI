@@ -16,6 +16,49 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A company figure nobody approved no longer reaches a customer.** Phase 2
+  handed the model the approved records and asked it to quote them; asking has
+  an unmeasured failure rate. Given an absence signal, a model usually says "I
+  don't have that on record" and occasionally says "I believe it's around 120
+  JOD" — fluently, at high confidence, in the customer's own dialect. Nothing
+  downstream could tell those apart. The grounding verifier can.
+
+  It sits at the one place it can: on the generated reply, after every existing
+  gate, immediately before the single autonomous `send_reply`. Not *inside*
+  that call — agents send through it too, and a human's sentence is not the
+  platform's to verify. After the confidence threshold rather than before, so
+  it can only ever subtract from what was already permitted.
+
+  Six outcomes, and two pairs that must never collapse. A reply whose figures
+  all trace to an approved record is allowed; one quoting a figure that does
+  not is blocked. Records that disagree escalate and state nothing — never the
+  higher-scoring one, never an average. And "we checked and have no record" is
+  kept distinct from "we could not check", because those are different
+  sentences to a customer and different problems to an operator.
+
+  **Deterministic, and deliberately narrow.** It verifies figures about
+  subjects whose record type requires approval — prices, SLA terms, policy
+  parameters. No keyword list, no second model. Supported figures come from the
+  approved record's attributes and its subject label, so "our 500 Mbps DIA
+  costs 180 JOD" passes; they are never taken from the customer's message, or
+  "is it 120 JOD?" → "yes, 120 JOD" would authorise itself. Digits fold through
+  Unicode, so `١٨٠` and `180.00` and `180` are one figure.
+
+  One subtlety worth stating because it looks backwards: subject detection runs
+  over *every* record, including drafts and archived ones. Whether a question is
+  about a priced subject is a property of the question, not of whether an
+  approved answer exists — and filtering first meant a company whose only price
+  record was still a draft looked like a company that sells nothing priced, so
+  the verifier never engaged. Authority is still granted in exactly one place,
+  and draft, archived, out-of-period, restricted and other tenants' records all
+  fail it.
+
+  Refusals route through the existing hand-off with their own reasons on the
+  timeline, so the Story says *why* rather than recording nothing. No second
+  send path, no new escalation mechanism, no migration, and Autopilot's
+  eligibility, thresholds and hand-off rules are untouched — the verifier can
+  only withhold.
+
 - **Autopilot now answers from the company's approved records, not just its
   prose.** `knowledge_records` shipped with lifecycle, approval, provenance and
   deterministic resolution — and nothing on the path to a customer had ever
