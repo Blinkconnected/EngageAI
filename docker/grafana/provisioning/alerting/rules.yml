@@ -19,10 +19,60 @@ groups:
             relativeTimeRange: { from: 300, to: 0 }
             datasourceUid: prometheus
             model:
+              # Reads as: the 5xx share of traffic, but only while there is
+              # enough traffic for a share to mean anything, and 0 rather
+              # than nothing whenever that does not hold.
+              #
+              # The plain ratio could not express "healthy". A selector
+              # matching no series makes `sum()` return an empty vector,
+              # not zero, and `empty / anything` is empty — so a backend
+              # serving thousands of requests with no errors at all
+              # produced no data, and Grafana turns no data into
+              # DatasourceNoData critical. The alert was therefore loudest
+              # in exactly the state it exists to confirm is fine, and it
+              # could not be told apart from a genuinely broken pipeline.
+              # It fired that way after every deploy, because a restart
+              # resets the counters and no worker has served a 5xx yet.
+              #
+              # `or vector(0)` is safe *here* specifically because every
+              # operand is already aggregated to the empty label set.
+              # `or` returns right-hand samples for label sets absent on
+              # the left, and `vector(0)` carries no labels: against a
+              # bare `http_requests_total{...}` it would have added a
+              # permanent extra `{}` series alongside the real ones, which
+              # is what kept the nginx alert firing for ten hours (see the
+              # note on blinkengage-nginx-down). `sum(...)` leaves `{}` on
+              # both sides, so the two genuinely alternate.
+              #
+              # The `and` is the traffic gate. A ratio over a handful of
+              # requests is noise — one error in three is 33% and means
+              # nothing — so below ~60 requests in the window (0.2/s) the
+              # ratio is discarded and the outer `or vector(0)` reports 0.
+              # It is a floor, not the main control: normal probe and
+              # scrape traffic sits an order of magnitude above it, so the
+              # gate only engages when the backend is genuinely idle.
+              #
+              # Deliberately NOT responsible for absence. If Prometheus
+              # cannot scrape, or the series never appear, this expression
+              # says 0 — blinkengage-backend-down and
+              # blinkengage-backend-metrics-missing own those, so that
+              # "no errors" and "no idea" stay different alerts.
               expr: >-
-                sum(rate(http_requests_total{job="blinkengage-backend", status=~"5.."}[5m]))
-                /
-                sum(rate(http_requests_total{job="blinkengage-backend"}[5m]))
+                (
+                  (
+                    (
+                      sum(rate(http_requests_total{job="blinkengage-backend", status=~"5.."}[5m]))
+                      or vector(0)
+                    )
+                    /
+                    sum(rate(http_requests_total{job="blinkengage-backend"}[5m]))
+                  )
+                  and
+                  (
+                    sum(rate(http_requests_total{job="blinkengage-backend"}[5m])) >= 0.2
+                  )
+                )
+                or vector(0)
               instant: true
               refId: A
           - refId: C
@@ -60,6 +110,84 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [2] }
+              refId: C
+
+      # Splitting the 5xx rule's old job in three. It used to answer "are
+      # there errors", "is anything being scraped" and "do the series
+      # exist" with one number, and DatasourceNoData for all three — so a
+      # healthy idle backend, a dead backend and a broken exporter were
+      # the same critical alert. These two own the second and third
+      # questions; the ratio rule above owns only the first.
+      #
+      # `up` is what Prometheus writes for every scrape attempt: 0 when
+      # the target refused, timed out or errored, which covers both the
+      # process being gone and /metrics failing while the process lives.
+      # `min(...) or vector(0)` rather than a bare `up` so the rule still
+      # fires if the target disappears from the scrape config entirely —
+      # aggregated first, so the `or` alternates instead of adding a
+      # second series (see blinkengage-nginx-down).
+      - uid: blinkengage-backend-down
+        title: Backend is not answering Prometheus
+        condition: C
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The backend target is failing its scrape — the API process is down or /metrics is erroring.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: min(up{job="blinkengage-backend"}) or vector(0)
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+              refId: C
+
+      # The case `up` cannot see: the scrape succeeds, the payload parses,
+      # and the request counters are simply not in it. That is what four
+      # Uvicorn workers without multiprocess mode produced — a worker that
+      # had served nothing answered the scrape and the series vanished for
+      # that interval — and it is what any future regression in the
+      # exposition registry would produce too. Without this, the failure
+      # mode is silence: the 5xx and latency rules read 0 and look fine.
+      #
+      # `absent()` inverts to 1 only when the selector matches nothing;
+      # `max(...)` flattens the labels it carries so `or vector(0)` swaps
+      # rather than accumulates. 10m because a cold start legitimately has
+      # no series until the first scrape after the first request.
+      - uid: blinkengage-backend-metrics-missing
+        title: Backend request metrics are missing
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The backend is being scraped but exposes no http_requests_total — the 5xx and latency alerts are blind.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                max(absent(http_requests_total{job="blinkengage-backend"}))
+                or vector(0)
+              instant: true
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
               refId: C
 
       - uid: blinkengage-postgres-down

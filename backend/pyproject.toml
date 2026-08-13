@@ -72,6 +72,11 @@ dev = [
   # invoice number, the totals and the currency's decimal places are the
   # things that must be *in* the file, and only a reader can say so.
   "pypdf==5.1.0",
+  # Reads the real Grafana alert provisioning in
+  # tests/unit/test_alert_rules.py. It arrives anyway as a transitive of
+  # uvicorn[standard], but a test that parses YAML should say so rather
+  # than depend on another package's extras continuing to include it.
+  "pyyaml==6.0.3",
 ]
 
 [tool.setuptools.packages.find]

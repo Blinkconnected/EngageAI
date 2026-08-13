@@ -23,6 +23,7 @@ from blinkengage.core.container import Container
 from blinkengage.core.correlation import CORRELATION_HEADER
 from blinkengage.core.exceptions import register_exception_handlers
 from blinkengage.core.logging import configure_logging, get_logger
+from blinkengage.core.metrics_exposition import expose_metrics
 from blinkengage.core.operational_metrics import (
     CACHE_SECONDS,
     OperationalCollector,
@@ -158,7 +159,9 @@ def create_app() -> FastAPI:
     # quietly stopped being granted. Same principle as verify_wiring above.
     verify_read_only_allowlist(app)
 
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    # Instrumentation only. Exposition is mounted further down, once the
+    # operational collector exists — see the note there.
+    Instrumentator().instrument(app)
 
     # Two gauges the silent-failure alerts need — outbox backlog and
     # scheduler staleness. Refreshed on a timer rather than on the scrape
@@ -177,6 +180,14 @@ def create_app() -> FastAPI:
     )
     register(REGISTRY, collector)
     app.state.operational_collector = collector
+
+    # After the collector, not before: under `uvicorn --workers` the
+    # exposition registry is assembled by hand from the workers' shared
+    # sample files, and a collector that only lives in this process has to
+    # be added to it explicitly or it is not served at all. Passing it here
+    # is what keeps the outbox and scheduler gauges — and the two alerts
+    # that read them — working with more than one worker.
+    expose_metrics(app, collector)
 
     return app
 

@@ -395,6 +395,62 @@ for more detail on how this page is put together.
 
 ### Fixed
 
+- **Request metrics were wrong whenever more than one worker was
+  running, and the 5xx alert cried wolf on a healthy backend.** Two
+  defects that fed each other, both found while verifying the v1.2.0
+  deployment.
+
+  Production runs `uvicorn --workers 4`, and `prometheus_client` keeps
+  counters in each process's own memory. `/metrics` is answered by
+  whichever worker the connection reaches, so a scrape returned one
+  worker's quarter of the traffic: eight consecutive scrapes of an idle
+  backend read 51, 40, 51, 40, 51, 12, 51, 51 for the same counter.
+  Nothing errors — the series simply moves backwards, which `rate()`
+  reads as a counter reset and compensates for by adding the value again.
+  Every rate built on those series was wrong in both directions at once,
+  and a 5xx recorded on one worker was invisible to a scrape answered by
+  another. The backend now runs in `prometheus_client`'s multiprocess
+  mode: workers write to shared memory-mapped files and exposition sums
+  them. The directory is emptied once by the entrypoint before the
+  workers start, because the files are keyed by pid and pids are
+  recycled — files surviving a restart are read as live workers, and a
+  rate spanning the restart would be fabricated.
+
+  `/metrics` is now mounted directly rather than by
+  `Instrumentator.expose()`. In multiprocess mode the exposition registry
+  is assembled fresh from the workers' files, and `expose()` has no way
+  to be told about a collector that lives in memory — so the outbox and
+  scheduler gauges would have disappeared, taking the two alerts that
+  read them with them. Both are silent-failure alerts, so the symptom
+  would have been coverage that looked intact and could not fire.
+
+  **The 5xx rule reported DatasourceNoData critical whenever the backend
+  was healthy.** `sum()` over a selector matching no series returns an
+  empty vector rather than zero, and arithmetic on an empty vector is
+  empty — so a backend serving thousands of requests with no errors at
+  all produced no data, which Grafana escalates to critical. It fired
+  that way after every deploy, because a restart resets the counters and
+  no worker has served a 5xx yet. The rule now falls back to 0 and gates
+  on a minimum request rate, so a ratio is only computed where a ratio
+  means something. The 5% threshold and the 5-minute `for` are unchanged.
+
+  **Absence became two alerts of its own.** The old rule answered "are
+  there errors", "is anything being scraped" and "do the series exist"
+  with one number and one severity, so a healthy idle backend, a dead
+  backend and a broken exporter were indistinguishable. `Backend is not
+  answering Prometheus` (critical) now owns scrape failure, and `Backend
+  request metrics are missing` (warning) owns the case `up` cannot see —
+  the scrape succeeds and the counters are simply not in the payload,
+  which is exactly what the worker defect above produced. The ratio rule
+  answers only what share of traffic is failing.
+
+  Both `or vector(0)` fallbacks aggregate before the `or`, for the reason
+  recorded against `blinkengage-nginx-down`: `or` returns right-hand
+  samples for label sets absent on the left, and `vector(0)` carries no
+  labels, so against a labelled selector it adds a permanent extra series
+  instead of substituting for one. `tests/unit/test_alert_rules.py` now
+  enforces that shape across every rule in the file.
+
 - **Read-only platform operators were refused the three previews that
   exist for them.** Pricing resolve, pricing quote and the credit-note
   preview are POSTs that write nothing, and the read-only gate allowlists

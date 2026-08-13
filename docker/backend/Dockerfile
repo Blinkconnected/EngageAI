@@ -54,6 +54,23 @@ FROM base AS runtime
 COPY --from=builder-runtime /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Set in the same stage as the 4-worker CMD below, deliberately: the two
+# belong together. prometheus_client keeps counters per process, so with
+# --workers 4 and this unset, /metrics returns whichever worker answered
+# and the series appear to jump backwards between scrapes. Declaring it on
+# the image rather than in compose means the image cannot be run
+# multi-worker with broken metrics by forgetting an environment entry.
+#
+# /dev/shm because it is tmpfs: the sample files are mmap'd and written on
+# every request, and this keeps that off the container's writable layer.
+# Docker recreates the mount on `docker restart` as well as on recreate —
+# verified by leaving a marker file and restarting — so on this path the
+# directory is already empty at start. The entrypoint clears it anyway:
+# that is what holds if the variable is ever repointed at a bind mount or
+# a named volume, where the files would otherwise outlive the container
+# and be read as live workers on the next boot.
+ENV PROMETHEUS_MULTIPROC_DIR=/dev/shm/prometheus
+
 # pip has no job here. This stage receives an already-built venv and never
 # installs anything, so a package installer in a production container is
 # only attack surface.

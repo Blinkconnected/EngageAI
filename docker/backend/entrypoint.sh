@@ -30,5 +30,19 @@ PY
 echo "[entrypoint] running database migrations..."
 python -m blinkengage.core.migrate
 
+# Once, here, before uvicorn spawns anything. The multiprocess sample
+# files are named by pid and pids are recycled, so a file that outlives
+# the process that wrote it is read as a live worker: counters come back
+# from the previous run and any rate spanning the restart is invented. A
+# worker cannot do this itself — whichever started last would delete its
+# siblings' files.
+#
+# On the default /dev/shm path Docker already recreates the tmpfs on
+# restart, so this is usually a no-op. It is what makes the guarantee hold
+# if PROMETHEUS_MULTIPROC_DIR is repointed somewhere persistent. Also a
+# no-op when the variable is unset, which is the dev image and the tests.
+echo "[entrypoint] preparing metrics directory..."
+python -m blinkengage.core.metrics_exposition
+
 echo "[entrypoint] starting application..."
 exec "$@"
