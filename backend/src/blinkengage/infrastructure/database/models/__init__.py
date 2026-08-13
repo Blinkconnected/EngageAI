@@ -70,6 +70,10 @@ from blinkengage.infrastructure.database.models.knowledge import (
 from blinkengage.infrastructure.database.models.knowledge_record import (
     KnowledgeRecord,
 )
+from blinkengage.infrastructure.database.models.knowledge_source import (
+    KnowledgeSenderAllowlistEntry,
+    KnowledgeSourceMessage,
+)
 from blinkengage.infrastructure.database.models.learning import (
     RUN_TYPE_OBSERVATION,
     RUN_TYPE_SETTLE,
@@ -242,6 +246,8 @@ __all__ = [
     "KnowledgeChunk",
     "KnowledgeIndexState",
     "KnowledgeRecord",
+    "KnowledgeSenderAllowlistEntry",
+    "KnowledgeSourceMessage",
     "LearningAnomaly",
     "LearningCluster",
     "LearningClusterMember",

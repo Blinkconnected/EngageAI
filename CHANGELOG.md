@@ -16,6 +16,54 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **A company can give its Brain a mailbox, and only the people it named can
+  use it.** A company points `ai@theirdomain.com` at Blink and its own staff
+  send price lists, policies and service descriptions to it. The mail becomes
+  *source material* — durable, attributable, stored exactly once — and nothing
+  else. It creates no customer, no conversation, no knowledge record and no
+  reply; attachments are counted and never opened, and no model reads anything.
+
+  **Knowledge mail is not customer mail.** `ChannelConfig` gains a `purpose`,
+  and the branch happens before an inbound message is parsed at all — earlier
+  than strictly required, because the customer parser uploads every attachment
+  on its way through and discards the headers that authorise the sender. Every
+  existing configuration is CUSTOMER_SUPPORT and behaves exactly as before. An
+  unrecognised purpose routes nowhere: defaulting one way manufactures customer
+  records from a price list, and the other way silently stops answering
+  customers.
+
+  **The database decides what has already been seen, not IMAP.** The poll used
+  to mark each message `\Seen` as it read it and call that idempotency — so a
+  crash between reading and persisting lost the message permanently, with
+  nothing anywhere recording it had arrived. For a customer that costs a
+  resend; for a knowledge mailbox it is a price list that silently never came.
+  Now the row is written first, under a unique constraint on
+  `(company_id, channel_config_id, message_id, content_hash)`, and `\Seen` is
+  an optimisation applied afterwards. Two pollers racing on one message produce
+  one row and one duplicate outcome — an application-level existence check
+  cannot do that, because both readers see "absent" before either writes.
+
+  **A company domain proves nothing.** Three conditions, all required: the
+  address is on the company's own allowlist, which starts empty; a verifier the
+  company named stamped Authentication-Results that pass; and sensitive
+  knowledge will still need human approval later. A departed employee keeps
+  their address, and `CEO@company.com` is the most attractive spoof target in
+  the building, not the most trusted sender.
+
+  On authentication, plainly: the header is added by whichever server ran the
+  checks, and anyone can put one in mail they send. Only the header stamped by
+  the `authserv-id` the company configured is read; everything else is ignored.
+  With none configured there is no evidence and ingestion refuses, rather than
+  inventing confidence. It performs no DNS lookup against the sender's domain —
+  "the domain publishes a DMARC record" is a fact about the domain, not about
+  this message.
+
+  Refusals are rows, not silence: an unauthorised sender who tried is exactly
+  what an operator needs to see. Rejected mail keeps its envelope and reason and
+  loses its body, and a message carrying an obvious private key or bearer token
+  is refused rather than redacted — filtering fails open and cannot be verified
+  afterwards; an absent row can.
+
 - **A company figure nobody approved no longer reaches a customer.** Phase 2
   handed the model the approved records and asked it to quote them; asking has
   an unmeasured failure rate. Given an absence signal, a model usually says "I

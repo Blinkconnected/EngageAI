@@ -35,6 +35,21 @@ class ChannelConfig(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin, Base):
         GUID(), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
     )
     channel_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    #: What this configuration is *for*, which is not the same question as
+    #: ``channel_type``. Two IMAP mailboxes are both ``email``; one is a
+    #: support inbox and the other teaches the Company AI Brain, and routing
+    #: them identically would manufacture customer records for the company's
+    #: own finance team.
+    #:
+    #: A plain varchar for the same reason ``channel_type`` is one: the
+    #: vocabulary lives in ``domain.brain.ingestion.ChannelPurpose`` and is
+    #: read through ``parse_channel_purpose``, which fails closed on a value
+    #: this build does not know rather than defaulting to either pipeline.
+    #: ``server_default`` so every row that predates this column is a support
+    #: mailbox, which is what they all are.
+    purpose: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="CUSTOMER_SUPPORT", index=True
+    )
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     credentials: Mapped[dict[str, Any]] = mapped_column(

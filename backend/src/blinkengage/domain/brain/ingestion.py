@@ -88,6 +88,36 @@ class UnidentifiableMessageError(Exception):
     """
 
 
+class UnknownChannelPurposeError(Exception):
+    """A stored purpose this build does not recognise.
+
+    Raised rather than defaulted. A value that is not in the enum arrived from
+    a newer deployment, a hand-edited row or a rollback, and every safe
+    reading of it is "stop": defaulting to CUSTOMER_SUPPORT would route a
+    knowledge mailbox into the customer pipeline, and defaulting to
+    KNOWLEDGE_INGESTION would silently stop answering customers.
+    """
+
+    def __init__(self, value: str) -> None:
+        super().__init__(f"unknown channel purpose: {value!r}")
+        self.value = value
+
+
+def parse_channel_purpose(value: str | None) -> ChannelPurpose:
+    """Read a stored purpose, failing closed on anything unrecognised.
+
+    ``None`` and the empty string mean CUSTOMER_SUPPORT: every configuration
+    that predates the column is a support mailbox, and the migration backfills
+    them to say so explicitly. Only a *populated, unrecognised* value raises.
+    """
+    if value is None or not str(value).strip():
+        return ChannelPurpose.CUSTOMER_SUPPORT
+    try:
+        return ChannelPurpose(str(value))
+    except ValueError as exc:
+        raise UnknownChannelPurposeError(str(value)) from exc
+
+
 def creates_customer(purpose: ChannelPurpose) -> bool:
     """Does inbound mail on this purpose resolve to a customer?
 

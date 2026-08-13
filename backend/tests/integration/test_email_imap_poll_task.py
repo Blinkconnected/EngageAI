@@ -77,7 +77,15 @@ async def test_poll_channel_config_ingests_and_publishes_event(
         message_id="<msg-1@customer.example>",
         body="I need help",
     )
-    monkeypatch.setattr(email_imap_poll_task, "_fetch_unseen_sync", lambda *a, **k: [raw])
+    # ``(uid, raw)`` pairs now: the fetch no longer acknowledges, so the
+    # caller needs the uid to mark precisely what it managed to store.
+    monkeypatch.setattr(email_imap_poll_task, "_fetch_unseen_sync", lambda *a, **k: [(b"1", raw)])
+    acknowledged: list[list[bytes]] = []
+    monkeypatch.setattr(
+        email_imap_poll_task,
+        "_mark_seen_sync",
+        lambda *a, **k: acknowledged.append(list(a[-1])),
+    )
 
     factory = ChannelProviderFactory(
         realtime=_FakeRealtimePublisher(), attachments=_FakeAttachmentStore()
@@ -99,6 +107,10 @@ async def test_poll_channel_config_ingests_and_publishes_event(
     assert received[0].payload["external_customer_name"] == "Alice"
     assert received[0].payload["body"] == "I need help"
     assert received[0].payload["channel_type"] == "email"
+    # Acknowledged, and only after the message was published and the session
+    # flushed — the ordering that makes a crash cost a redelivery rather than
+    # the message.
+    assert acknowledged == [[b"1"]]
 
 
 async def test_poll_channel_config_skips_when_no_new_messages(

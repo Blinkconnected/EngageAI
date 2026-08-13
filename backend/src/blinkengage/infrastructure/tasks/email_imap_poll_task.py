@@ -14,12 +14,16 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from blinkengage.application.brain.source_ingestion import (
+    KnowledgeSourceIngestionService,
+)
 from blinkengage.application.services.inbound_message_events import (
     publish_inbound_message_events,
 )
 from blinkengage.core.celery_app import celery_app
 from blinkengage.core.config import Settings, get_settings
 from blinkengage.core.logging import get_logger
+from blinkengage.domain.brain.ingestion import ChannelPurpose, parse_channel_purpose
 from blinkengage.infrastructure.cache.redis import create_redis_client
 from blinkengage.infrastructure.channels.factory import ChannelProviderFactory
 from blinkengage.infrastructure.database.models.channel_config import ChannelConfig
@@ -64,12 +68,28 @@ def _get_provider_factory(settings: Settings) -> ChannelProviderFactory:
 
 def _fetch_unseen_sync(
     host: str, port: int, username: str, password: str, use_ssl: bool, folder: str
-) -> list[bytes]:
+) -> list[tuple[bytes, bytes]]:
     """Runs on a worker thread — ``imaplib`` is synchronous, the same
     "wrap the sync client" pattern ``AttachmentStore`` already established
-    for ``minio``. Marking each fetched message ``\\Seen`` as it's read is
-    the idempotency mechanism: a message is never fetched twice, no
-    separate cursor table needed."""
+    for ``minio``.
+
+    **Fetches without marking anything.** This used to set ``\\Seen`` inside
+    this loop and call that the idempotency mechanism, which meant a crash
+    between reading a message and persisting it lost the message permanently,
+    with nothing anywhere recording that it had existed. For a customer that
+    costs a resend; for a knowledge mailbox it is a price list that silently
+    never arrived.
+
+    The flag is now applied by :func:`_mark_seen_sync` *after* the message has
+    been persisted, so it is an optimisation rather than the system of record.
+    Redelivery is safe in both directions: knowledge mail is caught by the
+    unique constraint on ``knowledge_source_messages``, and customer mail by
+    the existing ``(channel_config_id, external_message_id)`` lookup and its
+    partial unique index on ``messages``.
+
+    Returns ``(uid, raw)`` pairs so the caller can acknowledge precisely the
+    messages it managed to store.
+    """
     imap_cls = imaplib.IMAP4_SSL if use_ssl else imaplib.IMAP4
     connection = imap_cls(host, port)
     try:
@@ -78,13 +98,45 @@ def _fetch_unseen_sync(
         status, data = connection.search(None, "UNSEEN")
         if status != "OK" or not data or not data[0]:
             return []
-        raw_messages: list[bytes] = []
+        fetched: list[tuple[bytes, bytes]] = []
         for uid in data[0].split():
             fetch_status, fetch_data = connection.fetch(uid, "(RFC822)")
             if fetch_status == "OK" and fetch_data and isinstance(fetch_data[0], tuple):
-                raw_messages.append(fetch_data[0][1])
-                connection.store(uid, "+FLAGS", "\\Seen")
-        return raw_messages
+                fetched.append((uid, fetch_data[0][1]))
+        return fetched
+    finally:
+        with contextlib.suppress(imaplib.IMAP4.error):
+            connection.close()
+        connection.logout()
+
+
+def _mark_seen_sync(
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    use_ssl: bool,
+    folder: str,
+    uids: list[bytes],
+) -> None:
+    """Acknowledge messages that are already durably stored.
+
+    Best-effort by design: failing to set the flag costs one redelivery, which
+    both pipelines already recognise. Failing to *store* costs the message,
+    which is why the order is this way round and not the other.
+    """
+    if not uids:
+        return
+    imap_cls = imaplib.IMAP4_SSL if use_ssl else imaplib.IMAP4
+    connection = imap_cls(host, port)
+    try:
+        connection.login(username, password)
+        connection.select(folder)
+        for uid in uids:
+            with contextlib.suppress(imaplib.IMAP4.error):
+                # ``search`` returns byte sequence numbers; ``store`` is typed
+                # for the str form and accepts either at runtime.
+                connection.store(uid.decode(), "+FLAGS", "\\Seen")
     finally:
         with contextlib.suppress(imaplib.IMAP4.error):
             connection.close()
@@ -99,25 +151,64 @@ async def poll_channel_config(
     if not host:
         return 0
 
-    raw_messages = await to_thread.run_sync(
-        _fetch_unseen_sync,
-        host,
-        int(credentials.get("imap_port", 993)),
-        credentials.get("imap_username", ""),
-        credentials.get("imap_password", ""),
-        bool(credentials.get("imap_use_ssl", True)),
-        credentials.get("imap_folder", "INBOX"),
+    port = int(credentials.get("imap_port", 993))
+    username = credentials.get("imap_username", "")
+    password = credentials.get("imap_password", "")
+    use_ssl = bool(credentials.get("imap_use_ssl", True))
+    folder = credentials.get("imap_folder", "INBOX")
+
+    fetched = await to_thread.run_sync(
+        _fetch_unseen_sync, host, port, username, password, use_ssl, folder
     )
-    if not raw_messages:
+    if not fetched:
         return 0
 
-    provider = factory.build(config)
     events = OutboxEventPublisher(EventOutboxRepository(session))
+    # The branch, and it happens *before* anything parses the message into an
+    # InboundMessage. Deliberately earlier than it strictly has to be: the
+    # provider's parser uploads every attachment to object storage on its way
+    # through, which is the extraction step Phase 4C excludes, and it discards
+    # the Authentication-Results headers sender authorization needs.
+    purpose = parse_channel_purpose(config.purpose)
     ingested = 0
-    for raw in raw_messages:
-        messages = await provider.receive_message(raw)
-        await publish_inbound_message_events(events, config=config, messages=messages)
-        ingested += len(messages)
+    acknowledged: list[bytes] = []
+
+    if purpose is ChannelPurpose.KNOWLEDGE_INGESTION:
+        ingestion = KnowledgeSourceIngestionService(session=session, events=events)
+        for uid, raw in fetched:
+            outcome = await ingestion.ingest(config=config, raw=raw)
+            # A duplicate is acknowledged too: the row already exists, so
+            # re-reading it forever would be the only alternative.
+            if outcome.stored or outcome.duplicate:
+                acknowledged.append(uid)
+            if outcome.accepted:
+                ingested += 1
+    elif purpose is ChannelPurpose.CUSTOMER_SUPPORT:
+        provider = factory.build(config)
+        for uid, raw in fetched:
+            messages = await provider.receive_message(raw)
+            await publish_inbound_message_events(events, config=config, messages=messages)
+            acknowledged.append(uid)
+            ingested += len(messages)
+    else:
+        # OTHER, or anything a future build adds. Routed nowhere and left
+        # unread, so the mail is still there when somebody decides what it is
+        # for. Guessing would mean picking one of the two pipelines.
+        logger.warning(
+            "email_poll_unroutable_purpose",
+            channel_config_id=str(config.id),
+            purpose=purpose.value,
+        )
+        return 0
+
+    # Only now, and only for what is durably stored. The session is committed
+    # by the caller's `session_scope` before this coroutine's caller returns;
+    # marking here rather than inside the loop keeps the flag strictly behind
+    # persistence even if the connection drops mid-batch.
+    await session.flush()
+    await to_thread.run_sync(
+        _mark_seen_sync, host, port, username, password, use_ssl, folder, acknowledged
+    )
     return ingested
 
 

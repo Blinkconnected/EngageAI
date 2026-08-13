@@ -478,17 +478,57 @@ database survivable explicitly re-raises it first.
   a model reading it, and Phase 3 adds no model.
 - Does not widen Autopilot's authority. It can only withhold.
 
+## Phase 4A/4B/4F, as built — the ingestion boundary
+
+The source side of the arrow. Mail arrives, is attributed, and is stored once.
+Nothing interprets it: 4C (attachments), 4D (jobs), 4E (extraction) and 4G
+(admin assistant) are not built, and structural tests fail the build if this
+path acquires a parser, a model call or a knowledge write.
+
+**Routing (4A).** `channel_configs.purpose`, read through
+`parse_channel_purpose`, which fails closed. The branch is in the IMAP poll
+*before* `receive_message()` — earlier than necessary, because that parser
+uploads attachments and drops the `Authentication-Results` headers. A second
+guard sits at `publish_inbound_message_events`, the last shared point before a
+customer exists, and raises for any non-support purpose.
+
+**Identity (4B).** `knowledge_source_messages`, unique on
+`(company_id, channel_config_id, message_id, content_hash)`. The row is
+committed before `\Seen` is set, which demotes the flag to an optimisation.
+Same id with different content is deliberately a *new* source: some senders
+reuse Message-IDs, and a price list is not a duplicate because a header
+collided.
+
+**Authorization (4F).** Allowlist (empty by default, per address, never per
+domain) **and** authentication results from a verifier the company named via
+`knowledge_authserv_id` on the channel's credentials. Untrusted or absent
+Authentication-Results ⇒ `AUTHENTICATION_UNAVAILABLE` ⇒ reject. No DNS lookups.
+
+**Known limitation, stated rather than papered over:** this depends on the
+company's own MTA stamping Authentication-Results and on the company telling
+Blink that server's `authserv-id`. Until both are true the mailbox accepts
+nothing. That is the intended failure direction, and it is the price of not
+faking verification.
+
+Rejection reasons: `TENANT_UNRESOLVED`, `INVALID_CHANNEL_PURPOSE`,
+`UNAUTHORIZED_SENDER`, `AUTHENTICATION_FAILED`, `AUTHENTICATION_UNAVAILABLE`,
+`CREDENTIAL_MATERIAL`, `MALFORMED_MESSAGE` — recorded, never returned to the
+sender, who would otherwise learn which condition to satisfy next.
+
+Events on the existing outbox: `knowledge.source.received`,
+`knowledge.source.duplicate`, `knowledge.source.rejected`.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4** | `ChannelConfig.purpose`; ingestion branch before customer resolution | Phase 1 |
-| **5** | Durable email identity; replace `\Seen`-as-cursor | Phase 4 |
-| **6** | Document parsing, classification, extraction → DRAFT records | Phase 5 |
-| **7** | Admin assistant as a real conversation over the tool registry | Phase 1 |
-| **8** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
-| **9** | Customer communication signals as memory fact types | M2H |
-| **10** | Tool planning over the existing executor, read-only first | Phase 2 |
+| **4C** | Attachment extraction — parsers, size/type limits, no OCR | 4B |
+| **4D** | Ingestion jobs, retry and terminal states | 4C |
+| **4E** | AI fact extraction → DRAFT records via `detect_conflict()` | 4D |
+| **4G** | Knowledge tools + admin assistant surface | 4E |
+| **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
+| **6** | Customer communication signals as memory fact types | M2H |
+| **7** | Tool planning over the existing executor, read-only first | Phase 2 |
 
 This intentionally matches M2's own phase letters where they correspond, rather
 than inventing a parallel numbering for the same work.
