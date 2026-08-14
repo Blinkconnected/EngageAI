@@ -16,6 +16,36 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The Brain can propose facts from a document, and can do nothing else with
+  them.** Extracted document text is read by the company's configured AI
+  provider (platform default as fallback) and returned as candidate facts:
+  record type, subject, attributes, a **verbatim source passage**, a confidence
+  tier and any effective date the document actually stated. Surviving
+  candidates become DRAFT records. Nothing else.
+
+  This is the first component that asks a model for anything, and the boundary
+  it sits on is why the earlier phases were built as they were. The only write
+  is `create_draft`; `publish`, `supersede` and `archive` are not called, and a
+  structural test fails the build if they ever are. A DRAFT never answers a
+  question, so the best outcome a poisoned document achieves is a wrong
+  proposal in a review queue with its own source passage attached, waiting for
+  a human who holds `knowledge_records.publish`.
+
+  What the model is not allowed to decide: the subject key is computed by
+  `canonical_subject_key()`, never taken from the answer, because a
+  model-generated key is not reproducible and forks a product's history.
+  Attributes naming `lifecycle_state`, `access_level`, `approved_by_user_id` or
+  `company_id` are stripped — a document naming its own lifecycle is one trying
+  to promote itself. An unrecognised confidence label reads as LOW, never HIGH.
+  A date that will not parse is dropped rather than guessed, because an
+  invented effective date silently schedules a price change. No tools are ever
+  offered, so no sentence in a document can reach one.
+
+  Failures are classified rather than collapsed: unparseable output and
+  provider errors are retryable; a document whose every candidate failed
+  validation is terminal; and **a document stating no facts is a success**, not
+  a failure — distinguished by counting what was rejected.
+
 - **Ingestion work is now durable, resumable and safe to run twice.** The
   inputs already survived a crash — the message and the document outlive a
   restart. What did not survive was the knowledge that work had been *started*

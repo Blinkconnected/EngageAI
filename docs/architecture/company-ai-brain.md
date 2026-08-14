@@ -592,11 +592,32 @@ Parser refusals are terminal immediately.
 **No state grants authority.** `grants_authority()` returns false for every
 state, and the guard test asserts it.
 
+## Phase 4E, as built — AI fact extraction
+
+Document text → candidate facts → DRAFT records. Company provider first,
+platform default as fallback; no provider means the job stays **resumable**,
+never settled with a fabricated empty result.
+
+Every fact carries a **verbatim `source_passage`** — mandatory, discarded
+without it — plus a confidence tier (HIGH/MEDIUM/LOW, ordering only, never
+authority) and `extractor_version` + model identifier recorded on the DRAFT's
+`source_reference`.
+
+`detect_conflict()` runs per fact against the current ACTIVE record, matched by
+identity. Blocking verdicts are counted and **not** drafted over. DRAFT creation
+is idempotent per `(company, type, subject_key)`.
+
+**Authority boundary:** only `create_draft`; no `complete_with_tools`; no
+ACTIVE/SUPERSEDED/ARCHIVED; `subject_key` derived; authority-bearing attributes
+stripped. No migration, no proposal table.
+
+**Not yet wired:** the service is complete and tested but no caller invokes it
+from the 4D job path. `EXTRACTED → PROPOSED` integration is the remaining step.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4E** | AI fact extraction → DRAFT records via `detect_conflict()` | 4D |
 | **4G** | Knowledge tools + admin assistant surface | 4E |
 | **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
 | **6** | Customer communication signals as memory fact types | M2H |
