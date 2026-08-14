@@ -80,7 +80,15 @@ LEGAL_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     JobState.EXTRACTING: frozenset(
         {JobState.EXTRACTED, JobState.FAILED_RETRYABLE, JobState.FAILED_TERMINAL}
     ),
-    JobState.EXTRACTED: frozenset({JobState.PROPOSED, JobState.FAILED_TERMINAL}),
+    # FAILED_RETRYABLE is reachable from here because fact extraction runs
+    # *after* the document was read: a provider timeout at that point is
+    # transient and must be retryable, even though the text is already in
+    # hand. Recovery re-enters through EXTRACTING, which re-reads a document
+    # that is already extracted — cheap, and the alternative was a second
+    # pair of states for the same shape of work.
+    JobState.EXTRACTED: frozenset(
+        {JobState.PROPOSED, JobState.FAILED_RETRYABLE, JobState.FAILED_TERMINAL}
+    ),
     JobState.PROPOSED: frozenset({JobState.APPROVED, JobState.REJECTED}),
     # A retryable failure goes back to work, or gives up. It never jumps
     # straight to EXTRACTED: the work has to actually happen again.

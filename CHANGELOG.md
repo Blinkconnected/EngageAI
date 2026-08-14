@@ -16,6 +16,32 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Extraction now actually runs.** The 4D job pipeline and the 4E extractor
+  existed side by side and never called each other, so nothing moved past
+  `EXTRACTED`. The bridge is that call: a job at `EXTRACTED` runs extraction,
+  drafts what survives, and advances to `PROPOSED`.
+
+  Drafts are created **before** the job advances. A crash between the two costs
+  a repeat, and the repeat finds its drafts already present and creates none;
+  advancing first would leave a job claiming work that never happened, which is
+  the one outcome no later phase could detect.
+
+  Failures are classified rather than collapsed: provider errors and
+  unparseable output are retryable, an all-invalid extraction and an empty
+  document are terminal, and a document stating no facts still reaches
+  `PROPOSED` because the work was done. No provider configured leaves the job
+  exactly where it was rather than settling it with an empty extraction that
+  never happened. `CrossTenantAccessError` propagates and is never converted
+  into a retry — a leak recorded as "we will try again later" is a leak nobody
+  investigates.
+
+  Building it exposed a defect in the 4D state table: `EXTRACTED →
+  FAILED_RETRYABLE` was missing, so every transient failure during fact
+  extraction would have raised an invalid-transition error instead of settling
+  the job. Fact extraction runs after the document has been read, so a provider
+  timeout there is transient even though the text is already in hand. The
+  transition was added; recovery re-enters through `EXTRACTING`.
+
 - **The Brain can propose facts from a document, and can do nothing else with
   them.** Extracted document text is read by the company's configured AI
   provider (platform default as fallback) and returned as candidate facts:

@@ -611,8 +611,14 @@ is idempotent per `(company, type, subject_key)`.
 ACTIVE/SUPERSEDED/ARCHIVED; `subject_key` derived; authority-bearing attributes
 stripped. No migration, no proposal table.
 
-**Not yet wired:** the service is complete and tested but no caller invokes it
-from the 4D job path. `EXTRACTED → PROPOSED` integration is the remaining step.
+**Wired by `ExtractionBridge`:** a job at `EXTRACTED` runs extraction, drafts
+what survives, then advances to `PROPOSED`. Drafts first — a crash between the
+two costs a repeat, not a lost job. No provider ⇒ deferred, job untouched.
+`CrossTenantAccessError` propagates and is never a failure state.
+
+Building it added one transition to 4D: `EXTRACTED → FAILED_RETRYABLE`, absent
+because fact extraction runs after the document is read and a provider timeout
+there is still transient.
 
 ## Future phases
 
