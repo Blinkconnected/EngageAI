@@ -620,11 +620,58 @@ Building it added one transition to 4D: `EXTRACTED → FAILED_RETRYABLE`, absent
 because fact extraction runs after the document is read and a provider timeout
 there is still transient.
 
+## Phase 4G-1, as built — the read-only knowledge tools
+
+`application/ai_tools/knowledge_tools.py`. Two tools on the **existing**
+registry — no second registry, no second retrieval path, no agent runtime.
+
+| Tool | Permission | Confirmation | Mutating |
+|---|---|---|---|
+| `search_knowledge` | `knowledge_records.read` | `NONE` | no |
+| `get_knowledge_record` | `knowledge_records.read` | `NONE` | no |
+
+`search_knowledge` takes `search_text`, an optional `record_type` and
+`include_drafts`. It scans company-scoped records through
+`KnowledgeRecordService.list_records`, filters through
+`retrieval_policy.is_visible` at `COMPANY_ADMIN`, and orders by
+`subject_matching.rank_subjects`. `get_knowledge_record` takes a `record_id`
+and returns the record, its visible version chain and its `source_reference`.
+
+**Retrieval was extended, not forked.** `rank_subjects` sits beside
+`match_subjects` in `domain/brain/subject_matching.py` and is built from the
+same tokens. The two answer different questions: `match_subjects` requires the
+subject's tokens contiguously, which is what stops a customer being quoted a
+neighbouring product's price; `rank_subjects` also admits partial overlap,
+because an administrator typing `dia` is browsing rather than quoting. Exact
+hits always rank above partial ones, and neither grants authority — that is
+still `resolve`, on an exact key, untouched.
+
+**The field is `search_text`, not `query`.** `test_no_tool_is_a_generic_escape_hatch`
+refuses any tool argument named `query`, `sql`, `expression`, `code` or
+`script`. That guard is about a model choosing *what runs*; the name was
+changed rather than the guard.
+
+**Read-only is structural.** The handlers hold no repository and no session,
+and never name a write method. `ToolServices` gained
+`knowledge_records` — the same service that owns `publish`, deliberately
+reachable and deliberately unused, because publication is a human act and the
+tool that would perform it does not exist. Prompt injection inside a record or
+its `source_reference` is contained by that absence, not by wording.
+
+**Visibility is the Brain's, uniformly.** DRAFT is admitted only on request
+and only for this audience; ARCHIVED is never returned by either tool, and
+`get` answers "not found" rather than "not permitted" so it cannot be used as
+an oracle for what a company has withdrawn. SUPERSEDED answers only inside its
+own period. The version chain runs through the same predicate as the record.
+
+Not in 4G-1 Step 2: the conversational endpoint, the assistant service, tool
+planning, and any write, publication or confirmation tool.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4G** | Knowledge tools + admin assistant surface | 4E |
+| **4G-2** | Admin assistant surface over these tools | 4G-1 |
 | **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
 | **6** | Customer communication signals as memory fact types | M2H |
 | **7** | Tool planning over the existing executor, read-only first | Phase 2 |

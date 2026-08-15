@@ -30,6 +30,7 @@ from pydantic import BaseModel
 
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.knowledge_record_service import KnowledgeRecordService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.core.auth_context import AuthContext
@@ -61,6 +62,13 @@ class ToolServices:
     teams: TeamService
     agents: AgentService
     roles: RoleService
+    #: Structured knowledge. Present for the *read* tools in
+    #: ``knowledge_tools`` — the service also owns ``create_draft``,
+    #: ``publish``, ``supersede`` and ``archive``, and no tool calls any of
+    #: them. That the capability is reachable and unused is the point of
+    #: this container being reviewed rather than open: publication is a
+    #: human act, and the tool that would perform it does not exist.
+    knowledge_records: KnowledgeRecordService
 
 
 @dataclass(frozen=True, slots=True)

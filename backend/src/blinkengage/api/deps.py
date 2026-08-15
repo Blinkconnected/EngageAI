@@ -2078,6 +2078,7 @@ def get_tool_services(
     teams: Annotated[TeamService, Depends(get_team_service)],
     agents: Annotated[AgentService, Depends(get_agent_service)],
     roles: Annotated[RoleService, Depends(get_role_service)],
+    knowledge_records: Annotated[KnowledgeRecordService, Depends(get_knowledge_record_service)],
 ) -> ToolServices:
     """The closed set of services an AI tool handler may reach.
 
@@ -2085,9 +2086,15 @@ def get_tool_services(
     tool and the equivalent hand-driven request go through identical
     business logic. Note what is absent: no session, no repository, no
     container — a handler has no expression available for reaching past
-    these four.
+    these five.
     """
-    return ToolServices(departments=departments, teams=teams, agents=agents, roles=roles)
+    return ToolServices(
+        departments=departments,
+        teams=teams,
+        agents=agents,
+        roles=roles,
+        knowledge_records=knowledge_records,
+    )
 
 
 def get_tool_context(

@@ -20,6 +20,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from blinkengage.application.ai_tools.knowledge_tools import register_knowledge_tools
 from blinkengage.application.ai_tools.registry import ToolRegistry
 from blinkengage.application.ai_tools.spec import ConfirmationPolicy, ToolContext, ToolSpec
 
@@ -181,6 +182,10 @@ def build_default_registry() -> ToolRegistry:
             state_reader=_agent_role_state,
         )
     )
+    # Registered from their own module rather than declared here: keeping the
+    # read-only knowledge tools in one file is what lets a structural test
+    # assert that nothing in it can write. See ``knowledge_tools``.
+    register_knowledge_tools(registry)
     return registry
 
 

@@ -82,4 +82,49 @@ def match_subjects(query: str, subject_keys: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(found, key=lambda key: (-len(subject_tokens(key)), key)))
 
 
-__all__ = ["match_subjects", "matches", "query_tokens", "subject_tokens"]
+def rank_subjects(query: str, subject_keys: Iterable[str]) -> tuple[str, ...]:
+    """Subjects a *browsing* search should return, best first.
+
+    A second question for the same matcher, not a second matcher.
+    :func:`match_subjects` answers "which subject did this sentence name?",
+    and its contiguity rule is what stops a customer's question being
+    answered with a neighbouring product's price. That rule is exactly wrong
+    for an administrator typing ``prices`` or ``dia`` into an assistant: they
+    are looking for a record to talk about, not quoting one, and a matcher
+    that returns nothing unless the whole key was spelled out cannot find it.
+
+    So the ordering is: everything :func:`match_subjects` would accept, first
+    and in its own precedence, then partial overlaps by how much of the
+    subject the query actually named. Nothing new decides *what a subject
+    is* — the tokens come from the same canonicaliser the records were
+    written with.
+
+    This never grants authority. Authority comes from ``resolve``, which
+    takes an exact key and is untouched by anything here; a looser search
+    that fed an answer would be the failure this module's docstring opens
+    with.
+    """
+    tokens = query_tokens(query)
+    if not tokens:
+        return ()
+
+    asked = set(tokens)
+    scored: list[tuple[int, int, str]] = []
+    for key in dict.fromkeys(subject_keys):
+        needle = subject_tokens(key)
+        if not needle:
+            continue
+        if matches(key, tokens):
+            # Named outright. Ranked above every partial hit, and among
+            # themselves longest-first — the same tie-break match_subjects
+            # applies, for the same reason.
+            scored.append((1, len(needle), key))
+            continue
+        overlap = len(asked & set(needle))
+        if overlap:
+            scored.append((0, overlap, key))
+
+    return tuple(key for _, _, key in sorted(scored, key=lambda hit: (-hit[0], -hit[1], hit[2])))
+
+
+__all__ = ["match_subjects", "matches", "query_tokens", "rank_subjects", "subject_tokens"]

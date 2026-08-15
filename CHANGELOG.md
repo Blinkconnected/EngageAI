@@ -16,6 +16,30 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The AI can now look up your structured knowledge — and only look.** Two
+  read-only tools join the AI tool registry: `search_knowledge`, which finds
+  records by the subjects named in a question, and `get_knowledge_record`,
+  which returns one record with its version history. Both need the existing
+  `knowledge_records.read` permission, so a role that could not already read
+  knowledge cannot read it through the assistant either.
+
+  Every result carries its lifecycle state and its `source_reference`
+  alongside the values, so an answer can say *what* the company approved and
+  *where it came from* rather than quoting a figure with no provenance.
+
+  Read-only is structural rather than promised. Neither handler holds anything
+  that could change a record — no repository, no session, and no call to
+  `create_draft`, `publish`, `supersede` or `archive` — and no tool exists that
+  would publish one, so text inside a knowledge record instructing the
+  assistant to approve itself reaches nothing that could act on it. Structural
+  tests assert all of this, including that the customer-facing and ingestion
+  paths cannot reach the admin tool registry at all.
+
+  Drafts are excluded unless explicitly requested, and archived records are
+  never returned: an unapproved record was never true, and a withdrawn one was
+  withdrawn. Tenant scope comes from the authenticated request — a company or
+  user id supplied as a tool argument is refused outright rather than ignored.
+
 - **Extraction now actually runs.** The 4D job pipeline and the 4E extractor
   existed side by side and never called each other, so nothing moved past
   `EXTRACTED`. The bridge is that call: a job at `EXTRACTED` runs extraction,

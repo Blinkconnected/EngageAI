@@ -26,6 +26,7 @@ from blinkengage.application.ai_tools import (
 from blinkengage.application.ai_tools.catalog import DEFAULT_REGISTRY
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.department_service import DepartmentService
+from blinkengage.application.services.knowledge_record_service import KnowledgeRecordService
 from blinkengage.application.services.role_service import RoleService
 from blinkengage.application.services.team_service import TeamService
 from blinkengage.core.auth_context import AuthContext
@@ -41,6 +42,9 @@ from blinkengage.infrastructure.repositories.company_repository import CompanyRe
 from blinkengage.infrastructure.repositories.department_repository import DepartmentRepository
 from blinkengage.infrastructure.repositories.event_outbox_repository import (
     EventOutboxRepository,
+)
+from blinkengage.infrastructure.repositories.knowledge_record_repository import (
+    KnowledgeRecordRepository,
 )
 from blinkengage.infrastructure.repositories.role_repository import RoleRepository
 from blinkengage.infrastructure.repositories.team_repository import TeamRepository
@@ -73,6 +77,9 @@ def _services(session, container) -> ToolServices:
             refresh_tokens=RefreshTokenStore(container.redis()),
         ),
         roles=RoleService(roles=RoleRepository(session), events=events),
+        knowledge_records=KnowledgeRecordService(
+            records=KnowledgeRecordRepository(session), events=events
+        ),
     )
 
 
