@@ -667,11 +667,55 @@ own period. The version chain runs through the same predicate as the record.
 Not in 4G-1 Step 2: the conversational endpoint, the assistant service, tool
 planning, and any write, publication or confirmation tool.
 
+## Phase 4G-2a, as built — the mutating knowledge tools
+
+`application/ai_tools/knowledge_write_tools.py`. Four tools on the same
+registry, split by what they cost to get wrong.
+
+| Tool | Permission | Confirmation | Gate |
+|---|---|---|---|
+| `propose_knowledge_update` | `knowledge_records.propose` | `NONE` | DRAFT only |
+| `publish_knowledge_record` | `knowledge_records.publish` | `REQUIRED` | `publication_gate` |
+| `supersede_knowledge_record` | `knowledge_records.publish` | `REQUIRED` | `publication_gate` |
+| `archive_knowledge_record` | `knowledge_records.publish` | `REQUIRED` | none — see below |
+
+**Why proposing needs no human.** A DRAFT was never true, resolves for
+nobody, and is visible only to `COMPANY_ADMIN`. An AI that proposes freely
+costs a review; an AI that publishes freely costs a wrong quotation. So the
+line is drawn at authority, not at mutation.
+
+**`publication_gate`'s first caller.** The gate shipped in Phase 1 with the
+contract written before its enforcement point, and `grep` found no call site
+in `src/` until now. Publishing and superseding evaluate it. The candidate's
+`approved_by_user_id` is `ctx.actor_user_id` **at confirm time** — the
+authenticated administrator who came back through `ToolExecutor.confirm` —
+and `granted_permissions` is `ctx.auth.permissions`. Neither can be reached
+from a tool argument: `RESERVED_ARGUMENT_NAMES` refuses the identity names at
+registration, and a structural test refuses any field whose name suggests an
+approver. Consequences worth knowing: a record with no `source_reference` is
+refused `MISSING_PROVENANCE`, and because
+`knowledge_records.approve_restricted` is not a permission any role holds,
+RESTRICTED material cannot be published through the assistant at all.
+
+**Why archive skips the gate.** The gate answers "may this become
+authoritative?". Withdrawal makes nothing authoritative, and requiring
+provenance to retract a claim would block exactly the material a company most
+wants to stop repeating. Archiving still parks for confirmation and still
+takes `knowledge_records.publish`, because withdrawing a price changes what
+the platform says as surely as publishing one does.
+
+**Staleness.** All three confirmed tools declare a `state_reader`. Without
+one the executor compares `None` to `None` and every approval looks fresh.
+
+Not in 4G-2a: the assistant runtime, the endpoint, `ai_assistant_turns`
+integration, and any LLM call. Those are 4G-2b and 4G-2c.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4G-2** | Admin assistant surface over these tools | 4G-1 |
+| **4G-2b** | Assistant runtime over `ToolExecutor`, turn persistence, idempotency | 4G-2a |
+| **4G-2c** | `POST /ai/assistant/messages`, admin authorization | 4G-2b |
 | **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
 | **6** | Customer communication signals as memory fact types | M2H |
 | **7** | Tool planning over the existing executor, read-only first | Phase 2 |

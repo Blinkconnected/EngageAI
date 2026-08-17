@@ -119,17 +119,57 @@ def test_both_tools_are_declared_non_mutating_and_need_no_confirmation() -> None
         assert spec.state_reader is None
 
 
-def test_no_publication_or_confirmation_tool_was_added_alongside() -> None:
-    """Step 2 is retrieval. A model that could publish would make the
-    approval model advisory without anybody deciding that it should."""
+def test_the_knowledge_tool_set_is_exactly_what_was_authorised() -> None:
+    """4G-2 moved this boundary deliberately, so the assertion moved with it.
+
+    Step 2 shipped retrieval only and this test pinned the set to two. Phase
+    4G-2 authorises four mutating tools, so the pin is now the larger set —
+    still an exact equality, because the value of this test is that a tool
+    nobody authorised cannot appear quietly. What has *not* changed is the
+    rule underneath: publishing is a confirmed human act, asserted in
+    ``test_every_mutating_knowledge_tool_is_a_draft_or_needs_confirmation``.
+    """
     from blinkengage.application.ai_tools import DEFAULT_REGISTRY
 
     names = DEFAULT_REGISTRY.names()
-    for forbidden in ("publish_knowledge", "approve_restricted", "create_knowledge_draft"):
+    # Still absent: nothing grants restricted access, and nothing publishes
+    # without going through the confirmation path.
+    for forbidden in ("approve_restricted", "grant_permission", "publish_all"):
         assert forbidden not in names
 
-    knowledge_tools = [name for name in names if "knowledge" in name]
-    assert sorted(knowledge_tools) == ["get_knowledge_record", "search_knowledge"]
+    assert sorted(name for name in names if "knowledge" in name) == [
+        "archive_knowledge_record",
+        "get_knowledge_record",
+        "propose_knowledge_update",
+        "publish_knowledge_record",
+        "search_knowledge",
+        "supersede_knowledge_record",
+    ]
+
+
+def test_every_mutating_knowledge_tool_is_a_draft_or_needs_confirmation() -> None:
+    """The rule Step 2's narrower assertion was really protecting.
+
+    A knowledge tool may change something without a human only if what it
+    creates is a DRAFT — unapproved, answering nobody. Anything that makes a
+    record authoritative, replaces one, or withdraws one parks as a
+    ``PendingAiAction`` and waits.
+    """
+    from blinkengage.application.ai_tools import DEFAULT_REGISTRY
+    from blinkengage.application.ai_tools.spec import ConfirmationPolicy
+
+    for spec in DEFAULT_REGISTRY.all():
+        if "knowledge" not in spec.name or not spec.mutating:
+            continue
+        if spec.name == "propose_knowledge_update":
+            assert spec.confirmation is ConfirmationPolicy.NONE
+            continue
+        assert (
+            spec.confirmation is ConfirmationPolicy.REQUIRED
+        ), f"{spec.name} changes authoritative knowledge without a human"
+        assert (
+            spec.state_reader is not None
+        ), f"{spec.name} has no before-state, so a stale approval cannot be detected"
 
 
 # --- 3 & 4: the boundary between principals ---------------------------

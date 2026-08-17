@@ -581,25 +581,40 @@ async def test_injected_text_inside_a_record_is_returned_as_data(
 async def test_an_injected_record_cannot_reach_a_write(
     client, owner_headers, app, fake_redis
 ) -> None:
-    """The injection asks for publication. There is no tool to grant it."""
-    names = DEFAULT_REGISTRY.names()
-    assert not any("publish" in name for name in names)
+    """The injection asks for publication. Asking is not getting.
 
+    Written for Step 2, when no publish tool existed and the assertion could
+    simply be that the registry had none. Phase 4G-2a adds one, so the
+    guarantee is restated at the level that actually holds: publishing parks
+    for a human, and the record the injection rode in on is still a draft
+    afterwards. Weakening would have been dropping the check; this is the
+    same claim against a registry that now contains the tool.
+    """
     company_id, user_id = await _identity(client, owner_headers)
     async with app.state.container.session_factory()() as session:
         record = await _seed_price(
             session, company_id=company_id, publish=False, source_reference=INJECTION
         )
-        result = await _executor(session, fake_redis).execute(
+        ctx = _ctx(session, app.state.container, company_id=company_id, user_id=user_id)
+
+        # The tool the injected text is asking for. It exists — and stops.
+        parked = await _executor(session, fake_redis).execute(
             _call("publish_knowledge_record", {"record_id": str(record.id)}),
-            ctx=_ctx(session, app.state.container, company_id=company_id, user_id=user_id),
+            ctx=ctx,
             invocation=AiInvocation(),
+        )
+        # A name it might invent instead reaches nothing at all.
+        invented = await _executor(session, fake_redis).execute(
+            _call("publish_all_drafts", {}), ctx=ctx, invocation=AiInvocation()
         )
         refreshed = await _records(session).get(company_id=company_id, record_id=record.id)
         state_after = refreshed.lifecycle_state
 
-    assert result.status is ToolResultStatus.ERROR
-    assert "Unknown tool" in result.content["error"]
+    assert parked.status is ToolResultStatus.CONFIRMATION_REQUIRED
+    assert "cannot approve it yourself" in parked.content["message"]
+    assert invented.status is ToolResultStatus.ERROR
+    assert "Unknown tool" in invented.content["error"]
+    # The whole point: nothing was published by text inside a record.
     assert state_after == "DRAFT"
 
 

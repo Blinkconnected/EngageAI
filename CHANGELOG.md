@@ -16,6 +16,35 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The AI can now propose knowledge changes — but never approve its own.**
+  Four tools join the registry: `propose_knowledge_update`, which creates a
+  DRAFT and nothing else, and `publish_knowledge_record`,
+  `supersede_knowledge_record` and `archive_knowledge_record`, each of which
+  refuses to run directly. Those three validate, show the change as a
+  before/after diff, park as a pending action and wait for a human to confirm
+  — enforced by the executor, not by prompt wording.
+
+  Publishing now runs `publication_gate()` for the first time. The gate has
+  existed since the knowledge design landed but had no caller; publishing
+  through the assistant is that caller. The approver it records is the
+  authenticated administrator who came back to confirm, taken from the
+  request rather than from anything the AI produced, so a record cannot
+  approve itself and a model cannot name its approver. A record with no
+  stated source is refused, and restricted material cannot be published this
+  way at all.
+
+  Archiving deliberately does not run the gate: the gate asks whether
+  something may become authoritative, and withdrawal makes nothing
+  authoritative. Requiring provenance to *retract* a claim would block
+  exactly the material a company most wants to stop repeating. It still needs
+  the same permission and the same explicit confirmation.
+
+  Everything goes through the existing knowledge service, so the lifecycle
+  rules, the no-overlap rule and the audit trail apply unchanged. Structural
+  tests prove the handlers hold no repository or session, that the draft-only
+  tool cannot publish, and that no tool accepts an identity or an approver as
+  an argument.
+
 - **The AI can now look up your structured knowledge — and only look.** Two
   read-only tools join the AI tool registry: `search_knowledge`, which finds
   records by the subjects named in a question, and `get_knowledge_record`,

@@ -21,6 +21,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from blinkengage.application.ai_tools.knowledge_tools import register_knowledge_tools
+from blinkengage.application.ai_tools.knowledge_write_tools import register_knowledge_write_tools
 from blinkengage.application.ai_tools.registry import ToolRegistry
 from blinkengage.application.ai_tools.spec import ConfirmationPolicy, ToolContext, ToolSpec
 
@@ -186,6 +187,10 @@ def build_default_registry() -> ToolRegistry:
     # read-only knowledge tools in one file is what lets a structural test
     # assert that nothing in it can write. See ``knowledge_tools``.
     register_knowledge_tools(registry)
+    # The mutating half, in its own module for the same reason: a structural
+    # test asserts that every tool in it either creates a draft or carries
+    # ConfirmationPolicy.REQUIRED.
+    register_knowledge_write_tools(registry)
     return registry
 
 
