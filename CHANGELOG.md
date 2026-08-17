@@ -16,6 +16,32 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **The admin assistant can hold a conversation.** A runtime now sits between
+  an authenticated administrator and the knowledge tools: it asks the model,
+  runs whatever tools the model requests through the existing executor, and
+  writes the exchange to `ai_assistant_turns`. It is orchestration only —
+  the registry still decides what exists, the executor still decides who may
+  call it, and the knowledge service still performs every change.
+
+  It cannot approve anything. A publish, supersede or archive request comes
+  back as "confirmation required", the assistant explains what would change,
+  and the administrator confirms through the existing action endpoints. The
+  runtime never calls the confirmation path itself, and a structural test
+  fails the build if it ever starts to.
+
+  Repeating a request with the same `Idempotency-Key` returns the stored
+  reply without calling the model or running a single tool again. Two
+  requests that genuinely race are settled by the database rather than by a
+  check-then-write: exactly one turn survives, and the request that loses
+  returns what the winner stored instead of duplicating the work. Keys are
+  scoped per company and per user, so one customer's key can never collapse
+  another's conversation.
+
+  Nothing is stored when a turn fails. A provider timeout, a provider error,
+  an empty model answer, a failed tool or a missing permission all leave no
+  turn behind, because a stored turn is a record of something that actually
+  happened. Answers cite only records that were genuinely retrieved.
+
 - **The AI can now propose knowledge changes — but never approve its own.**
   Four tools join the registry: `propose_knowledge_update`, which creates a
   DRAFT and nothing else, and `publish_knowledge_record`,

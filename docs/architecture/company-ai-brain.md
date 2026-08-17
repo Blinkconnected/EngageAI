@@ -710,12 +710,63 @@ one the executor compares `None` to `None` and every approval looks fresh.
 Not in 4G-2a: the assistant runtime, the endpoint, `ai_assistant_turns`
 integration, and any LLM call. Those are 4G-2b and 4G-2c.
 
+## Phase 4G-2b, as built — the assistant runtime
+
+`application/assistant/admin_assistant.py`. Orchestration only, and deliberately
+outside `application/brain` — that package is the customer-facing grounding
+path and is structurally forbidden from importing `ai_tools` at all.
+
+```
+AuthContext → AdminAssistant.respond
+                ├─ authorize (company.manage)      before any model call
+                ├─ replay lookup (if key present)  returns stored turn, 0 calls
+                ├─ provider.complete_with_tools ⇄ ToolExecutor.execute
+                └─ INSERT ai_assistant_turns       unique index is the arbiter
+```
+
+**Authorization** is `company.manage`, an existing RBAC code rather than a new
+AI-specific grant — an administrator who may use the assistant is exactly one
+who may administer the company. It is checked first, so an unauthorised caller
+costs no provider tokens and puts no company data in a prompt.
+
+**Tools** come from `registry.definitions_for(auth.permissions)`, so the model
+is never shown a tool this caller would only be refused. Dispatch is a single
+`self._executor.execute` call site; there is no other path, and an invented
+name reaches nothing.
+
+**It cannot confirm.** `ToolExecutor.confirm` is never called. A publish
+request returns `CONFIRMATION_REQUIRED`, the runtime surfaces the pending
+action id, and the administrator approves via the existing
+`/ai/actions/{id}/confirm`. Asserted structurally on call sites.
+
+**Idempotency.** A lookup is the fast path for completed replays — zero model
+calls, zero tool executions, both asserted by counting fakes. The *authority*
+is the partial unique index: a genuine race has both requests miss the lookup
+and do the work, one insert survives, and the loser rolls back (discarding its
+own tool work rather than duplicating the winner's) and returns the winner's
+turn. The transaction is never held open across the provider call.
+
+**Failure never stores a turn.** Provider error, empty answer, non-converging
+tool loop, raising tool, missing authorization, absent provider — each raises
+and leaves nothing behind. `CrossTenantAccessError` propagates unchanged.
+A turn that *explains* a required confirmation is a success; the mutation it
+describes has not happened.
+
+**Citations** are built from read-tool results only, never from model prose,
+so they cannot be invented and are company-scoped by the tools themselves.
+
+**Injection** is contained structurally: the prompt marks retrieved knowledge
+as data rather than instruction, but the load-bearing part is that a record
+demanding publication reaches a tool that parks for a human — and, for a
+read-only caller, a tool that was never offered.
+
+Not in 4G-2b: the HTTP endpoint, request/response schemas and DI wiring.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4G-2b** | Assistant runtime over `ToolExecutor`, turn persistence, idempotency | 4G-2a |
-| **4G-2c** | `POST /ai/assistant/messages`, admin authorization | 4G-2b |
+| **4G-2c** | `POST /ai/assistant/messages`, schemas, DI wiring | 4G-2b |
 | **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
 | **6** | Customer communication signals as memory fact types | M2H |
 | **7** | Tool planning over the existing executor, read-only first | Phase 2 |
