@@ -318,3 +318,115 @@ def test_the_runtime_does_not_live_in_the_customer_facing_brain_package() -> Non
         assert "ai_tools" not in _imported_modules(
             path
         ), f"{path.name} reaches the tool registry from the customer-facing package"
+
+
+# --- the HTTP edge (4G-2c) --------------------------------------------
+
+ENDPOINT_MODULE = SRC / "api" / "v1" / "endpoints" / "ai_assistant.py"
+
+
+def _endpoint_tree() -> ast.Module:
+    return ast.parse(ENDPOINT_MODULE.read_text(), filename=str(ENDPOINT_MODULE))
+
+
+def test_the_endpoint_has_no_direct_mutation_path() -> None:
+    """It authenticates and hands over. Every change still goes through a
+    registered tool and therefore through the executor's parking rules."""
+    assert ENDPOINT_MODULE.is_file()
+    called = {
+        node.func.attr
+        for node in ast.walk(_endpoint_tree())
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    for forbidden in ("create_draft", "publish", "supersede", "archive", "confirm", "reject"):
+        assert forbidden not in called, f"the assistant endpoint calls {forbidden}()"
+
+    plain = {
+        node.func.id
+        for node in ast.walk(_endpoint_tree())
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "publication_gate" not in plain
+
+
+def test_the_endpoint_imports_no_repository_or_knowledge_service() -> None:
+    forbidden = ("repositories", "knowledge_record_service", "publication", "sqlalchemy")
+    offenders = [
+        module
+        for module in sorted(_imported_modules(ENDPOINT_MODULE))
+        for needle in forbidden
+        if needle in module
+    ]
+    assert offenders == [], f"ai_assistant.py imports {offenders}"
+
+
+def test_the_endpoint_does_not_filter_tools_itself() -> None:
+    """Tool availability is the runtime's, from
+    ``registry.definitions_for(auth.permissions)``. A second filter at the
+    edge is a second place for the two to disagree."""
+    tree = _endpoint_tree()
+
+    called = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    for forbidden in ("definitions_for", "visible_to", "names", "all"):
+        assert forbidden not in called, f"ai_assistant.py calls registry.{forbidden}()"
+
+    # Checked on imports and call sites, not source text: the module's own
+    # docstring names ``definitions_for`` while explaining that the runtime
+    # owns it, and a guard that must be worded around gets deleted.
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom | ast.Import):
+            imported.update(alias.name for alias in node.names)
+    for forbidden in ("DEFAULT_REGISTRY", "ToolRegistry", "ToolExecutor", "build_default_registry"):
+        assert forbidden not in imported, f"ai_assistant.py imports {forbidden}"
+
+
+def test_the_endpoint_has_no_confirmation_shortcut() -> None:
+    """No flag on this route may shorten the human step. Checked on the
+    request schema, so it covers the field nobody has added yet."""
+    from blinkengage.api.v1.endpoints.ai_assistant import AssistantMessageRequest
+
+    declared = set(AssistantMessageRequest.model_fields)
+    assert declared == {"message", "session_id", "idempotency_key"}
+    assert AssistantMessageRequest.model_config["extra"] == "forbid"
+    for forbidden in ("confirm", "approve", "auto", "force", "publish"):
+        assert not any(forbidden in name for name in declared)
+
+
+def test_the_request_schema_accepts_no_identity_or_provider_choice() -> None:
+    from blinkengage.api.v1.endpoints.ai_assistant import AssistantMessageRequest
+
+    declared = set(AssistantMessageRequest.model_fields)
+    for forbidden in (
+        "company_id",
+        "user_id",
+        "actor_user_id",
+        "permissions",
+        "roles",
+        "tenant_id",
+        "is_platform_admin",
+        "approved_by_user_id",
+        "model_identifier",
+        "provider",
+        "tools",
+        "system",
+    ):
+        assert forbidden not in declared, f"the request schema accepts {forbidden}"
+
+
+def test_the_response_schema_exposes_nothing_internal() -> None:
+    from blinkengage.api.v1.endpoints.ai_assistant import AssistantMessageResponse
+
+    assert set(AssistantMessageResponse.model_fields) == {
+        "turn_id",
+        "session_id",
+        "reply",
+        "citations",
+        "pending_action_ids",
+        "model_identifier",
+        "replayed",
+    }

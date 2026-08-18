@@ -16,6 +16,25 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Administrators can now talk to the assistant over the API.**
+  `POST /api/v1/ai/assistant/messages` takes a message, a session id and an
+  optional idempotency key — and nothing else. The body cannot name a
+  company, a user, a permission, a model or a tool: those fields are
+  rejected outright rather than quietly ignored, so a caller who thinks they
+  acted as someone else is told they did not.
+
+  The endpoint confirms nothing. If the assistant proposes publishing,
+  superseding or archiving a record, the response carries the parked action
+  id and stops there; approving it remains a separate authenticated request
+  to `/ai/actions/{id}/confirm`. There is no flag on this route that shortens
+  that step.
+
+  Repeating a request with the same idempotency key returns the stored turn
+  without calling the model, running a tool, creating a second draft or
+  parking a second action. Provider problems surface as errors rather than
+  as confident-sounding answers, and never quote a prompt, a payload or a
+  key back to the caller.
+
 - **The admin assistant can hold a conversation.** A runtime now sits between
   an authenticated administrator and the knowledge tools: it asks the model,
   runs whatever tools the model requests through the existing executor, and

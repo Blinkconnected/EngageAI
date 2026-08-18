@@ -762,11 +762,45 @@ read-only caller, a tool that was never offered.
 
 Not in 4G-2b: the HTTP endpoint, request/response schemas and DI wiring.
 
+## Phase 4G-2c, as built — the HTTP edge
+
+`api/v1/endpoints/ai_assistant.py`. Wiring, deliberately thin.
+
+`POST /api/v1/ai/assistant/messages`, gated by `require_permission("ai.use")`
+— the same gate the sibling AI routes use — with the runtime's
+`company.manage` check behind it. Two independent gates, each proven to
+refuse without costing a model call.
+
+**Request**: `message`, `session_id`, `idempotency_key?`, `extra="forbid"`.
+That last part is the tenant boundary at the edge: a body carrying
+`company_id`, `permissions`, `model_identifier`, `tools` or `auto_confirm` is
+a 422, not a field somebody must remember to ignore. The client chooses the
+words and nothing else — not the provider, not the model, not the tools.
+
+**Response**: `turn_id`, `session_id`, `reply`, `citations`,
+`pending_action_ids`, `model_identifier`, `replayed`. Nothing else, asserted
+by an exact set comparison, so a prompt or a provider payload cannot leak in
+later.
+
+**Dependencies** are all pre-existing: `get_ai_provider` (company override
+first, platform fallback), `get_tool_executor`, `get_tool_services`. The new
+`get_admin_assistant` assembles them and is the only addition.
+
+**Error mapping**: 403 unauthorised, 422 malformed, 503 no provider
+configured, 502 provider failure or malformed model output, 500 for
+`CrossTenantAccessError` — which never names the other tenant and never
+becomes an answer. Provider messages are logged, never returned.
+
+**Confirmation stays elsewhere.** A publish request returns a parked action
+id; the record is unchanged; `PendingAiAction.consumed_at` is still null. An
+AST guard proves the endpoint calls no write method, no `confirm`, and no
+`publication_gate`, and imports no repository.
+
 ## Future phases
 
 | Phase | Contents | Depends on |
 |---|---|---|
-| **4G-2c** | `POST /ai/assistant/messages`, schemas, DI wiring | 4G-2b |
+| **5** | Voice constraints enforced by the verifier | Phase 3 |
 | **5** | Voice constraints enforced by the verifier — prohibited phrases, mandatory disclaimers | Phase 3 |
 | **6** | Customer communication signals as memory fact types | M2H |
 | **7** | Tool planning over the existing executor, read-only first | Phase 2 |

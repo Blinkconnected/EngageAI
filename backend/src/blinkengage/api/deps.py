@@ -23,6 +23,7 @@ from blinkengage.application.ai_tools import (
     ToolExecutor,
     ToolServices,
 )
+from blinkengage.application.assistant import AdminAssistant
 from blinkengage.application.services.agent_service import AgentService
 from blinkengage.application.services.agent_skill_service import AgentSkillService
 from blinkengage.application.services.ai_service import AiService
@@ -2111,4 +2112,26 @@ def get_tool_executor(
 ) -> ToolExecutor:
     return ToolExecutor(
         registry=DEFAULT_REGISTRY, session=session, idempotency=IdempotencyStore(redis)
+    )
+
+
+def get_admin_assistant(
+    provider: Annotated[AiProvider | None, Depends(get_ai_provider)],
+    executor: Annotated[ToolExecutor, Depends(get_tool_executor)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AdminAssistant:
+    """The admin assistant, assembled from parts that already existed.
+
+    Note what is *not* a parameter: the tool registry is ``DEFAULT_REGISTRY``
+    via the executor and passed explicitly, the provider comes from
+    ``get_ai_provider`` (company override first, platform fallback), and
+    neither can be influenced by a request body. A client that could name its
+    own provider could point the company's knowledge at an endpoint nobody
+    reviewed.
+    """
+    return AdminAssistant(
+        provider=provider,
+        executor=executor,
+        registry=DEFAULT_REGISTRY,
+        session=session,
     )

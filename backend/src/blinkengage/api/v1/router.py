@@ -9,6 +9,7 @@ from blinkengage.api.v1.endpoints import (
     agents,
     ai,
     ai_actions,
+    ai_assistant,
     audit_logs,
     auth,
     billing,
@@ -139,6 +140,7 @@ api_router.include_router(quick_replies.router)
 api_router.include_router(search.router)
 api_router.include_router(notifications.router)
 api_router.include_router(ai_actions.router)
+api_router.include_router(ai_assistant.router)
 api_router.include_router(realtime.router)
 api_router.include_router(ai.router, dependencies=[Depends(require_feature("ai"))])
 api_router.include_router(reports.router, dependencies=[Depends(require_export_feature)])
