@@ -16,6 +16,14 @@ for more detail on how this page is put together.
 
 ### Added
 
+- **Requirements for the Armada Group (Jordan) data integration.**
+  [`docs/integrations/armada-jordan-requirements.md`](docs/integrations/armada-jordan-requirements.md)
+  records what Armada asked for on 18 Nov 2026: a daily product master file
+  to normalise into style, colour, size, brand, season, theme and group
+  masters keyed by SKU, followed by daily sales and return JSON files in
+  Armada's exact field format. Documentation only; no behaviour changes.
+  Armada's access key and bucket name are kept out of the repository.
+
 - **Administrators can now talk to the assistant over the API.**
   `POST /api/v1/ai/assistant/messages` takes a message, a session id and an
   optional idempotency key — and nothing else. The body cannot name a
